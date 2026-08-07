@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+*.db
+*.db-shm
+*.db-wal
+.pi-workbench/
+
+.DS_Store
+.idea/
+.vscode/

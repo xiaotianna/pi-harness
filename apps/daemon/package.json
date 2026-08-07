@@ -1,0 +1,28 @@
+{
+  "name": "@pi-workbench/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/bootstrap.ts",
+    "start": "node dist/bootstrap.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "catalog:",
+    "@pi-workbench/config": "workspace:*",
+    "@pi-workbench/protocol": "workspace:*",
+    "fastify": "catalog:",
+    "pino": "catalog:",
+    "typebox": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

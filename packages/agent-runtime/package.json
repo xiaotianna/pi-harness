@@ -1,0 +1,25 @@
+{
+  "name": "@pi-workbench/agent-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "catalog:",
+    "@earendil-works/pi-ai": "catalog:",
+    "@pi-workbench/policy": "workspace:*",
+    "@pi-workbench/protocol": "workspace:*",
+    "@pi-workbench/providers": "workspace:*",
+    "@pi-workbench/storage": "workspace:*",
+    "@pi-workbench/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

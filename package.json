@@ -1,0 +1,25 @@
+{
+  "name": "pi-workbench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @pi-workbench/daemon --filter @pi-workbench/web dev",
+    "dev:daemon": "pnpm --filter @pi-workbench/daemon dev",
+    "dev:web": "pnpm --filter @pi-workbench/web dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "check": "biome check .",
+    "check:write": "biome check --write .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "typescript": "catalog:"
+  }
+}

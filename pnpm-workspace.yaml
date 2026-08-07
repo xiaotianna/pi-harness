@@ -1,0 +1,37 @@
+packages:
+  - apps/*
+  - packages/*
+
+catalogMode: strict
+cleanupUnusedCatalogs: true
+
+catalog:
+  "@biomejs/biome": ^2.2.0
+  "@earendil-works/pi-agent-core": ^0.82.1
+  "@earendil-works/pi-ai": ^0.82.1
+  "@fastify/cors": ^11.0.0
+  "@heroui/react": ^3.0.0
+  "@heroui/styles": ^3.0.0
+  "@tailwindcss/vite": ^4.1.0
+  "@tanstack/react-query": ^5.85.0
+  "@tanstack/react-router": ^1.130.0
+  "@tanstack/react-virtual": ^3.13.0
+  "@types/node": ^24.0.0
+  "@types/react": ^19.1.0
+  "@types/react-dom": ^19.1.0
+  "@vitejs/plugin-react": ^5.0.0
+  chokidar: ^4.0.0
+  execa: ^9.6.0
+  fastify: ^5.6.0
+  lucide-react: ^0.500.0
+  motion: ^12.23.0
+  pino: ^10.0.0
+  react: ^19.1.0
+  react-dom: ^19.1.0
+  react-resizable-panels: ^3.0.0
+  tailwindcss: ^4.1.0
+  tsx: ^4.20.0
+  typebox: ^1.0.0
+  typescript: ^5.9.0
+  vite: ^7.1.0
+  zustand: ^5.0.0
