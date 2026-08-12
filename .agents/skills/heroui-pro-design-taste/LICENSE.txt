@@ -1,0 +1,39 @@
+HeroUI Pro License Agreement
+
+1. Ownership
+All code and related assets included in this package remain the exclusive property of NextUI Inc.
+Licensed users are granted the right to integrate this package into their own software projects. All resulting applications, including their design, logic, and functionality, are the exclusive property of the license holder.
+
+The underlying HeroUI Pro code and related assets remain the intellectual property of NextUI Inc. Using HeroUI Pro in a project does not transfer ownership of this code or grant any right to extract, resell, or distribute it outside the licensed project.
+
+2. License Grant
+A valid and active HeroUI Pro license is required for any use of this software.
+Each individual actively working with or accessing the HeroUI Pro codebase must have a valid license.
+After project development is complete, only one active license is required to continue receiving updates or installing new versions of HeroUI Pro.
+
+The license permits building, publishing, and distributing an unlimited number of commercial, internal, or open applications, provided that the license is active at the time of development and distribution.
+
+3. Restrictions
+You may not:
+
+Share, publish, redistribute, or sub-license the package or any part of its source code.
+
+Use the package, in whole or in part, to create or distribute a tool, library, or service that competes with HeroUI Pro or any related NextUI Inc. products.
+
+Reverse-engineer, decompile, or modify the package for redistribution.
+
+Expose or share CI/CD tokens, authentication credentials, or license keys publicly or with unauthorized parties.
+
+4. Term and Termination
+This license remains valid while your subscription or seat license is active and in compliance with these terms.
+NextUI Inc. may terminate the license immediately if these terms are violated. Upon termination, you must cease using and distributing the software.
+
+5. Warranty Disclaimer
+The software is provided "as is," without warranties of any kind, whether express or implied, including but not limited to fitness for a particular purpose or non-infringement.
+In no event shall NextUI Inc. or its contributors be liable for any damages or losses arising from the use or inability to use this software.
+
+6. General Terms
+By installing or using HeroUI Pro, you acknowledge that you have read, understood, and agreed to these terms.
+For licensing inquiries or additional permissions, contact support@heroui.pro.
+
+Copyright (c) 2026 NextUI Inc. All rights reserved.

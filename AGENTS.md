@@ -31,7 +31,7 @@ PI Workbench 是一个本地优先的 Agent Harness：通过浏览器提供 Code
 - TanStack Query
 - Zustand
 - Tailwind CSS v4
-- HeroUI v3，作为唯一基础组件库
+- HeroUI v3（`@heroui/react`）作为唯一基础组件库，HeroUI Pro 组件使用兼容包 `@agile-avocation/ui-pro`
 - Motion，负责页面和业务状态动画
 - Animate UI，仅用于少量动画组件补充
 - Lucide React
@@ -215,6 +215,9 @@ export const sessionQueryKeys = {
 
 - 页面负责组合 feature，不直接发起底层 fetch；HTTP/SSE 客户端统一放在 API 层。
 - HeroUI v3 是项目唯一的基础组件库，Button、Input、Select、Modal、Popover、Tooltip、Tabs、Accordion、Menu 和 Toast 等基础交互优先使用 HeroUI。
+- 项目使用已购买的第三方 HeroUI Pro 兼容包 `@agile-avocation/ui-pro`，不得安装、导入或替换为官方包 `@heroui-pro/react`。HeroUI Pro 文档中的 `@heroui-pro/react` 导入示例在本项目中统一改为从 `@agile-avocation/ui-pro` 导入。
+- 使用 Pro 组件前先查阅 [HeroUI Pro React 组件文档](https://heroui.pro/docs/react/components)，以其中的组件清单、结构、属性和示例为准；同时结合本项目已安装版本的 TypeScript 类型与实际导出进行确认，不凭记忆猜测 API。
+- Button、Input、Select、Modal、Popover、Tooltip、Tabs、Accordion、Menu、Toast 等基础组件继续使用 `@heroui/react`，并参考 [HeroUI React 基础文档](https://heroui.com/en/docs/react/getting-started)。不得为了使用 Pro 组件而重复实现或替换已有的 HeroUI 基础组件。
 - 普通悬停、按压、弹出、折叠和进入退出效果优先使用 HeroUI 自带的 CSS transition 与状态属性，不为简单动画引入 JavaScript 动画。
 - Motion 只用于会话切换、消息进入、Tool Call 状态变化、审批卡片、Diff 面板和共享布局等业务动画。
 - Animate UI 仅作为特殊 Sheet、Animated Icon、Copy Button 等少量组件的补充。引入前确认 HeroUI + Motion 无法以更小成本实现。

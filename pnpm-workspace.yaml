@@ -6,12 +6,14 @@ catalogMode: strict
 cleanupUnusedCatalogs: true
 
 catalog:
+  "@agile-avocation/ui-pro": 1.0.0-beta.8
   "@biomejs/biome": ^2.2.0
   "@earendil-works/pi-agent-core": ^0.82.1
   "@earendil-works/pi-ai": ^0.82.1
   "@fastify/cors": ^11.0.0
   "@heroui/react": ^3.0.0
   "@heroui/styles": ^3.0.0
+  "@react-aria/utils": ^3.34.1
   "@tailwindcss/vite": ^4.1.0
   "@tanstack/react-query": ^5.85.0
   "@tanstack/react-router": ^1.130.0
@@ -28,7 +30,15 @@ catalog:
   pino: ^10.0.0
   react: ^19.1.0
   react-dom: ^19.1.0
-  react-resizable-panels: ^3.0.0
+  marked: ^18.0.9
+  react-aria-components: ^1.20.0
+  react-markdown: ^10.1.0
+  react-resizable-panels: ^4.12.2
+  remark-breaks: ^4.0.0
+  remark-gfm: ^4.0.1
+  shiki: ^4.4.1
+  streamdown: ^2.5.0
+  tailwind-variants: ^3.3.1
   tailwindcss: ^4.1.0
   tsx: ^4.20.0
   typebox: ^1.0.0
