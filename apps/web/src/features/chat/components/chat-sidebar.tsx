@@ -2,7 +2,7 @@
 
 import { Sidebar } from "@agile-avocation/ui-pro";
 import { Avatar, Kbd } from "@heroui/react";
-import { MessageSquare } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import type { ChatNavItem, ChatNavItemId, ChatThread } from "../data/chat";
 import { CHAT_NAV_ITEMS, DEFAULT_CHAT_THREAD_ID, resolveChatActivePage } from "../data/chat";
 
@@ -189,7 +189,7 @@ function ChatSidebarThreadItem({
       {...(!disableNavigation ? { href: fullHref } : {})}
     >
       <Sidebar.MenuIcon>
-        <MessageSquare className="size-4" />
+        <MessageCircle className="size-4" />
       </Sidebar.MenuIcon>
       <Sidebar.MenuLabel>{thread.title}</Sidebar.MenuLabel>
     </Sidebar.MenuItem>

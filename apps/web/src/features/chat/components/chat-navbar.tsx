@@ -2,7 +2,7 @@
 
 import { AppLayout, Navbar, Sidebar } from "@agile-avocation/ui-pro";
 import { Button, Kbd, Tooltip } from "@heroui/react";
-import { LogOut, Search } from "lucide-react";
+import { LogIn, Search } from "lucide-react";
 import type { ChatActivePage } from "../data/chat";
 
 const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: string }> = {
@@ -63,7 +63,7 @@ export function ChatNavbar({ activePage, onSearch }: ChatNavbarProps) {
           </Tooltip>
           {isThread ? (
             <Button className="hidden md:inline-flex" size="sm">
-              <LogOut className="size-4" />
+              <LogIn className="size-4" />
               Share
             </Button>
           ) : null}

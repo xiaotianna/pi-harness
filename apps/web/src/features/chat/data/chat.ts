@@ -1,5 +1,5 @@
 import type { ToolPartState } from "@agile-avocation/ui-pro/chat-tool";
-import { Compass, Library, SquarePen } from "lucide-react";
+import { Compass, Images, SquarePlus } from "lucide-react";
 import type { ComponentType } from "react";
 import { SHOWCASE_THREAD } from "./showcase-thread";
 
@@ -145,8 +145,8 @@ export type ExploreCategory = {
 };
 
 export const CHAT_NAV_ITEMS: readonly ChatNavItem[] = [
-  { href: "/new", icon: SquarePen, id: "new", label: "New Chat" },
-  { href: "/library", icon: Library, id: "library", label: "Library" },
+  { href: "/new", icon: SquarePlus, id: "new", label: "New Chat" },
+  { href: "/library", icon: Images, id: "library", label: "Library" },
   { href: "/explore", icon: Compass, id: "explore", label: "Explore" },
 ] as const;
 

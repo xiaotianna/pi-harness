@@ -2,7 +2,7 @@
 
 import { Command } from "@agile-avocation/ui-pro";
 import { Kbd } from "@heroui/react";
-import { MessageSquare, Search } from "lucide-react";
+import { MessageCircle, Search } from "lucide-react";
 import type { ChatThread } from "../data/chat";
 
 export interface ChatSearchDialogProps {
@@ -49,7 +49,7 @@ export function ChatSearchDialog({
                     textValue={`${thread.title} ${thread.preview}`}
                     onAction={() => onSelect(thread)}
                   >
-                    <MessageSquare />
+                    <MessageCircle />
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate text-sm font-medium text-foreground">
                         {thread.title}
