@@ -64,7 +64,13 @@ PI Workbench 是一个本地优先的 Agent Harness：通过浏览器提供 Code
 
 ```text
 apps/
-├── daemon/                 # 本地后端进程、HTTP API、SSE、静态资源托管
+├── daemon/                 # 本地后端进程、HTTP API、SSE、配置与 SQLite
+│   └── src/
+│       ├── config/         # daemon 运行时配置与环境变量校验
+│       ├── routes/         # Fastify 路由与 HTTP/Cookie 映射
+│       ├── services/       # OAuth、会话等应用服务
+│       ├── storage/        # 当前 daemon 私有的 SQLite 与 migrations
+│       └── server/         # Fastify 实例装配
 └── web/                    # React 页面
     └── src/
         ├── app/            # 应用入口、Provider、Router 和全局初始化
@@ -78,24 +84,20 @@ packages/
 ├── agent-runtime/          # AgentManager、Agent 创建、上下文和事件适配
 ├── providers/              # pi-ai Provider 注册和 CredentialStore
 ├── tools/                  # 文件、搜索、编辑、Shell 工具
-├── policy/                 # 路径保护、命令策略和用户审批
-├── protocol/               # 前后端共享 DTO 与 WorkbenchEvent
-├── storage/                # SQLite migrations 与 repositories
-└── config/                 # 配置加载与校验
+└── policy/                 # 路径保护、命令策略和用户审批
 ```
 
 新增代码应放入职责最接近的模块。不要把业务逻辑堆积在 Fastify route、React 页面或 `bootstrap.ts` 中。
 
 ## 模块依赖边界
 
-- `apps/web` 只能依赖浏览器安全的包和 `packages/protocol`，不得导入 Node API、`pi-ai`、`pi-agent-core`、storage 或 tools。
-- `packages/protocol` 必须保持轻量且与运行环境无关，不依赖 React、Fastify、SQLite 或 Pi。
+- `apps/web` 只能依赖浏览器安全的包，不得导入 daemon 源码、Node API、`pi-ai`、`pi-agent-core`、daemon storage 或 tools。
 - Fastify route 只负责参数校验、调用 application service 和映射 HTTP 响应。
 - `agent-runtime` 负责编排，不直接实现文件读写或 SQL。
 - `tools` 不直接操作 Web、SSE 或数据库事务；工具进度通过回调或领域事件上报。
-- `storage` 只负责持久化，不包含 Agent 调度、权限判断或 UI 逻辑。
+- `apps/daemon/src/storage` 只负责当前 daemon 的持久化，不包含 OAuth 流程、Agent 调度、权限判断或 UI 逻辑；出现第二个真实消费者前不提前拆成 workspace package。
 - `policy` 是所有副作用操作的统一入口。审批不能散落在 route 或具体页面中。
-- 避免循环依赖；共享类型下沉到 `protocol` 或所属领域包，不创建无边界的 `utils` 大杂烩。
+- 避免循环依赖；类型放在实际消费它的应用或领域中，出现明确的第二个运行时消费者前不提前提取 workspace package，也不创建无边界的 `utils` 大杂烩。
 
 ## TypeScript 规范
 
@@ -131,7 +133,7 @@ export type RunStatus = (typeof RunStatus)[keyof typeof RunStatus];
 ```
 
 - 不在业务代码中散落字符串状态，例如 `status === "running"`。统一引用 `RunStatus.RUNNING`。
-- 前后端共享的状态、事件名、错误码、Provider ID 和 API 参数名放在 `packages/protocol`，并使用 TypeBox schema 作为数据边界。
+- daemon 在 API 边界使用 TypeBox schema；Web 对实际消费的响应进行最小校验。当前不为共享状态、错误码或 API 参数单独建立 protocol package。
 - 仅 daemon 使用的常量放在其所属 package 内；仅 Web 使用且被多个 feature 或页面复用的常量放在 `apps/web/src/shared/constants`。
 - 只在单个文件中使用、语义明确且不会变化的值可以保留为文件级常量，不要为了抽离而制造全局常量。
 - 同一个常量被两个及以上页面或 feature 使用时必须抽离，不允许复制定义。
@@ -229,7 +231,7 @@ export const sessionQueryKeys = {
 - `pages` 只负责路由级数据装配、布局和 feature 组合，不承载可复用业务逻辑，不堆积大段 JSX。
 - `components` 只放按钮、弹窗、表格、空状态等无业务语义的通用 UI；包含 session、run、tool、approval 等领域词汇的组件不属于通用组件。
 - 一个 feature 内优先按 `components`、`hooks`、`api`、`state`、`types` 和 `constants` 分层；只有确实存在对应内容时才创建目录。
-- feature 私有实现不得被其他 feature 深层导入。跨 feature 只通过该 feature 的公开入口或提升到 `shared`/`protocol` 的稳定能力复用。
+- feature 私有实现不得被其他 feature 深层导入。跨 feature 只通过该 feature 的公开入口或提升到 `shared` 的稳定能力复用。
 - 业务组件不得直接拼装 API 路径、SSE 事件名、Query Key、状态枚举或路由参数名，应引用集中定义的协议、常量和参数工厂。
 - 服务端数据使用 TanStack Query，跨组件的纯 UI 状态使用 Zustand，组件局部状态保留在组件内部。
 - 不把同一份服务端数据同时复制进 Query cache 和 Zustand。
@@ -263,7 +265,7 @@ export const sessionQueryKeys = {
 ## Git 提交规范
 
 - 提交信息遵循 Conventional Commits，格式为 `<type>(<scope>): <subject>`。
-- `scope` 应使用受影响的应用或 package 名称，例如 `web`、`daemon`、`protocol`、`agent-runtime`、`providers`、`tools`、`policy`、`storage`、`config`、`deps` 或 `docs`。
+- `scope` 应使用受影响的应用或 package 名称，例如 `web`、`daemon`、`agent-runtime`、`providers`、`tools`、`policy`、`deps` 或 `docs`。
 - 允许的 `type`：
   - `feat`：新增用户可感知的功能。
   - `fix`：修复缺陷。
@@ -279,7 +281,7 @@ export const sessionQueryKeys = {
 - 一个提交只表达一个完整目的。不要把重构、依赖升级、格式化和无关业务修改混在同一提交中。
 - 提交前只暂存属于当前任务的文件，不覆盖或顺带提交用户已有的无关修改。
 - 单纯依赖升级使用 `chore(deps)`；影响构建方式时使用 `build(deps)`。
-- 破坏性变更在 type/scope 后添加 `!`，并在正文中使用 `BREAKING CHANGE:` 说明迁移方式，例如 `feat(protocol)!: 调整事件数据结构`。
+- 破坏性变更在 type/scope 后添加 `!`，并在正文中使用 `BREAKING CHANGE:` 说明迁移方式，例如 `feat(daemon)!: 调整事件数据结构`。
 - 需要解释背景、取舍或迁移步骤时，在标题后空一行书写正文；正文说明“为什么”，不要重复文件改动清单。
 - 关联任务或问题放在 footer，例如 `Refs: #123`、`Closes: #123`。
 - 不使用 `update`、`changes`、`fix stuff` 等无法表达意图的模糊提交信息。

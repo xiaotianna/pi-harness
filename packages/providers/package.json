@@ -10,8 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "catalog:",
-    "@pi-workbench/protocol": "workspace:*"
+    "@earendil-works/pi-ai": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

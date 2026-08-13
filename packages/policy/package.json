@@ -10,7 +10,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pi-workbench/protocol": "workspace:*",
     "typebox": "catalog:"
   },
   "devDependencies": {

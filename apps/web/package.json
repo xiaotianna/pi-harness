@@ -16,7 +16,6 @@
     "@agile-avocation/ui-pro": "catalog:",
     "@heroui/react": "catalog:",
     "@heroui/styles": "catalog:",
-    "@pi-workbench/protocol": "workspace:*",
     "@react-aria/utils": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
@@ -34,6 +33,7 @@
     "shiki": "catalog:",
     "streamdown": "catalog:",
     "tailwind-variants": "catalog:",
+    "typebox": "catalog:",
     "zustand": "catalog:"
   },
   "devDependencies": {

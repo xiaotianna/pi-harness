@@ -140,12 +140,6 @@ importers:
       '@fastify/cors':
         specifier: 'catalog:'
         version: 11.3.0
-      '@pi-workbench/config':
-        specifier: workspace:*
-        version: link:../../packages/config
-      '@pi-workbench/protocol':
-        specifier: workspace:*
-        version: link:../../packages/protocol
       fastify:
         specifier: 'catalog:'
         version: 5.11.2
@@ -177,9 +171,6 @@ importers:
       '@heroui/styles':
         specifier: 'catalog:'
         version: 3.2.3(tailwind-merge@3.4.0)(tailwindcss@4.3.3)
-      '@pi-workbench/protocol':
-        specifier: workspace:*
-        version: link:../../packages/protocol
       '@react-aria/utils':
         specifier: 'catalog:'
         version: 3.34.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -231,6 +222,9 @@ importers:
       tailwind-variants:
         specifier: 'catalog:'
         version: 3.3.1(tailwind-merge@3.4.0)(tailwindcss@4.3.3)
+      typebox:
+        specifier: 'catalog:'
+        version: 1.3.11
       zustand:
         specifier: 'catalog:'
         version: 5.0.14(@types/react@19.2.18)(immer@11.1.16)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
@@ -268,15 +262,9 @@ importers:
       '@pi-workbench/policy':
         specifier: workspace:*
         version: link:../policy
-      '@pi-workbench/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       '@pi-workbench/providers':
         specifier: workspace:*
         version: link:../providers
-      '@pi-workbench/storage':
-        specifier: workspace:*
-        version: link:../storage
       '@pi-workbench/tools':
         specifier: workspace:*
         version: link:../tools
@@ -288,24 +276,8 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
-  packages/config:
-    dependencies:
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.11
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.13.3
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-
   packages/policy:
     dependencies:
-      '@pi-workbench/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       typebox:
         specifier: 'catalog:'
         version: 1.3.11
@@ -313,16 +285,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-
-  packages/protocol:
-    dependencies:
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.11
-    devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -332,25 +294,6 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
         version: 0.82.1(ws@8.21.2)(zod@4.4.3)
-      '@pi-workbench/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.13.3
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-
-  packages/storage:
-    dependencies:
-      '@pi-workbench/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.11
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -367,9 +310,6 @@ importers:
       '@pi-workbench/policy':
         specifier: workspace:*
         version: link:../policy
-      '@pi-workbench/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       chokidar:
         specifier: 'catalog:'
         version: 4.0.3
@@ -443,6 +383,45 @@ packages:
       tailwind-merge: '>=3.4.0'
       tailwind-variants: '>=3.3.1'
       tailwindcss: '>=4.0.0'
+    peerDependenciesMeta:
+      '@number-flow/react':
+        optional: true
+      '@tiptap/core':
+        optional: true
+      '@tiptap/extension-link':
+        optional: true
+      '@tiptap/extension-underline':
+        optional: true
+      '@tiptap/extensions':
+        optional: true
+      '@tiptap/pm':
+        optional: true
+      '@tiptap/react':
+        optional: true
+      '@tiptap/starter-kit':
+        optional: true
+      '@tiptap/suggestion':
+        optional: true
+      embla-carousel:
+        optional: true
+      embla-carousel-react:
+        optional: true
+      maplibre-gl:
+        optional: true
+      marked:
+        optional: true
+      react-markdown:
+        optional: true
+      recharts:
+        optional: true
+      remark-breaks:
+        optional: true
+      remark-gfm:
+        optional: true
+      shiki:
+        optional: true
+      streamdown:
+        optional: true
 
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
@@ -3604,11 +3583,21 @@ snapshots:
       '@heroui/styles': 3.2.3(tailwind-merge@3.4.0)(tailwindcss@4.3.3)
       '@internationalized/date': 3.12.3
       '@internationalized/number': 3.6.7
-      '@number-flow/react': 0.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-aria/i18n': 3.13.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-aria/ssr': 3.10.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-aria/utils': 3.34.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@react-stately/utils': 3.12.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      motion: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react: 19.2.8
+      react-aria: 3.51.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react-aria-components: 1.20.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react-dom: 19.2.8(react@19.2.8)
+      react-resizable-panels: 4.12.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      tailwind-merge: 3.4.0
+      tailwind-variants: 3.3.1(tailwind-merge@3.4.0)(tailwindcss@4.3.3)
+      tailwindcss: 4.3.3
+    optionalDependencies:
+      '@number-flow/react': 0.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
       '@tiptap/extension-link': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)
       '@tiptap/extension-underline': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))
@@ -3621,21 +3610,12 @@ snapshots:
       embla-carousel-react: 8.6.0(react@19.2.8)
       maplibre-gl: 6.3.0
       marked: 18.0.9
-      motion: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react: 19.2.8
-      react-aria: 3.51.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react-aria-components: 1.20.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react-dom: 19.2.8(react@19.2.8)
       react-markdown: 10.1.0(@types/react@19.2.18)(react@19.2.8)
-      react-resizable-panels: 4.12.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       recharts: 3.10.1(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react-is@16.13.1)(react@19.2.8)(redux@5.0.1)
       remark-breaks: 4.0.0
       remark-gfm: 4.0.1
       shiki: 4.4.3
       streamdown: 2.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      tailwind-merge: 3.4.0
-      tailwind-variants: 3.3.1(tailwind-merge@3.4.0)(tailwindcss@4.3.3)
-      tailwindcss: 4.3.3
 
   '@antfu/install-pkg@1.1.0':
     dependencies:
@@ -4160,13 +4140,16 @@ snapshots:
   '@floating-ui/core@1.8.0':
     dependencies:
       '@floating-ui/utils': 0.2.12
+    optional: true
 
   '@floating-ui/dom@1.8.0':
     dependencies:
       '@floating-ui/core': 1.8.0
       '@floating-ui/utils': 0.2.12
+    optional: true
 
-  '@floating-ui/utils@0.2.12': {}
+  '@floating-ui/utils@0.2.12':
+    optional: true
 
   '@formatjs/ecma402-abstract@2.3.6':
     dependencies:
@@ -4280,23 +4263,29 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@mapbox/jsonlint-lines-primitives@2.0.3': {}
+  '@mapbox/jsonlint-lines-primitives@2.0.3':
+    optional: true
 
-  '@mapbox/point-geometry@1.1.0': {}
+  '@mapbox/point-geometry@1.1.0':
+    optional: true
 
-  '@mapbox/tiny-sdf@2.2.0': {}
+  '@mapbox/tiny-sdf@2.2.0':
+    optional: true
 
-  '@mapbox/unitbezier@1.0.0': {}
+  '@mapbox/unitbezier@1.0.0':
+    optional: true
 
   '@mapbox/vector-tile@3.0.0':
     dependencies:
       '@mapbox/point-geometry': 1.1.0
       '@types/geojson': 7946.0.16
       pbf: 5.1.2
+    optional: true
 
   '@maplibre/geojson-vt@6.1.1':
     dependencies:
       kdbush: 4.1.0
+    optional: true
 
   '@maplibre/maplibre-gl-style-spec@26.2.1':
     dependencies:
@@ -4306,16 +4295,19 @@ snapshots:
       minimist: 1.2.8
       quickselect: 3.0.0
       tinyqueue: 3.0.0
+    optional: true
 
   '@maplibre/mlt@1.1.12':
     dependencies:
       '@mapbox/point-geometry': 1.1.0
+    optional: true
 
   '@maplibre/vt-pbf@4.3.2':
     dependencies:
       '@mapbox/point-geometry': 1.1.0
       '@types/geojson': 7946.0.16
       pbf: 5.1.2
+    optional: true
 
   '@mermaid-js/parser@1.2.0':
     dependencies:
@@ -4342,6 +4334,7 @@ snapshots:
       number-flow: 0.6.2
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
+    optional: true
 
   '@opentelemetry/api@1.9.0': {}
 
@@ -4518,6 +4511,7 @@ snapshots:
     optionalDependencies:
       react: 19.2.8
       react-redux: 9.3.0(@types/react@19.2.18)(react@19.2.8)(redux@5.0.1)
+    optional: true
 
   '@rolldown/pluginutils@1.0.0-rc.3': {}
 
@@ -4710,9 +4704,11 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  '@standard-schema/spec@1.1.0': {}
+  '@standard-schema/spec@1.1.0':
+    optional: true
 
-  '@standard-schema/utils@0.3.0': {}
+  '@standard-schema/utils@0.3.0':
+    optional: true
 
   '@swc/helpers@0.5.23':
     dependencies:
@@ -4831,15 +4827,18 @@ snapshots:
   '@tiptap/core@3.30.0(@tiptap/pm@3.30.0)':
     dependencies:
       '@tiptap/pm': 3.30.0
+    optional: true
 
   '@tiptap/extension-blockquote@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
       '@tiptap/pm': 3.30.0
+    optional: true
 
   '@tiptap/extension-bold@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-bubble-menu@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)':
     dependencies:
@@ -4851,23 +4850,28 @@ snapshots:
   '@tiptap/extension-bullet-list@3.30.0(@tiptap/extension-list@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/extension-list': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-code-block@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
       '@tiptap/pm': 3.30.0
+    optional: true
 
   '@tiptap/extension-code@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-document@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-dropcursor@3.30.0(@tiptap/extensions@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/extensions': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-floating-menu@3.30.0(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)':
     dependencies:
@@ -4879,67 +4883,82 @@ snapshots:
   '@tiptap/extension-gapcursor@3.30.0(@tiptap/extensions@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/extensions': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-hard-break@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-heading@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-horizontal-rule@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
       '@tiptap/pm': 3.30.0
+    optional: true
 
   '@tiptap/extension-italic@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-link@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
       '@tiptap/pm': 3.30.0
       linkifyjs: 4.3.3
+    optional: true
 
   '@tiptap/extension-list-item@3.30.0(@tiptap/extension-list@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/extension-list': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-list-keymap@3.30.0(@tiptap/extension-list@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/extension-list': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-list@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
       '@tiptap/pm': 3.30.0
+    optional: true
 
   '@tiptap/extension-ordered-list@3.30.0(@tiptap/extension-list@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/extension-list': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-paragraph@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-strike@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-text@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extension-underline@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
+    optional: true
 
   '@tiptap/extensions@3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)':
     dependencies:
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
       '@tiptap/pm': 3.30.0
+    optional: true
 
   '@tiptap/pm@3.30.0':
     dependencies:
@@ -4956,6 +4975,7 @@ snapshots:
       prosemirror-tables: 1.8.5
       prosemirror-transform: 1.12.0
       prosemirror-view: 1.42.2
+    optional: true
 
   '@tiptap/react@3.30.0(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
@@ -4973,6 +4993,7 @@ snapshots:
       '@tiptap/extension-floating-menu': 3.30.0(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)
     transitivePeerDependencies:
       - '@floating-ui/dom'
+    optional: true
 
   '@tiptap/starter-kit@3.30.0':
     dependencies:
@@ -5000,12 +5021,14 @@ snapshots:
       '@tiptap/extension-underline': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))
       '@tiptap/extensions': 3.30.0(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)
       '@tiptap/pm': 3.30.0
+    optional: true
 
   '@tiptap/suggestion@3.30.0(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.0(@tiptap/pm@3.30.0))(@tiptap/pm@3.30.0)':
     dependencies:
       '@floating-ui/dom': 1.8.0
       '@tiptap/core': 3.30.0(@tiptap/pm@3.30.0)
       '@tiptap/pm': 3.30.0
+    optional: true
 
   '@types/babel__core@7.20.5':
     dependencies:
@@ -5188,7 +5211,8 @@ snapshots:
 
   '@types/unist@3.0.3': {}
 
-  '@types/use-sync-external-store@0.0.6': {}
+  '@types/use-sync-external-store@0.0.6':
+    optional: true
 
   '@ungap/structured-clone@1.3.3': {}
 
@@ -5495,7 +5519,8 @@ snapshots:
     dependencies:
       ms: 2.1.3
 
-  decimal.js-light@2.5.1: {}
+  decimal.js-light@2.5.1:
+    optional: true
 
   decimal.js@10.6.0: {}
 
@@ -5526,7 +5551,8 @@ snapshots:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
-  earcut@3.2.3: {}
+  earcut@3.2.3:
+    optional: true
 
   ecdsa-sig-formatter@1.0.11:
     dependencies:
@@ -5539,12 +5565,15 @@ snapshots:
       embla-carousel: 8.6.0
       embla-carousel-reactive-utils: 8.6.0(embla-carousel@8.6.0)
       react: 19.2.8
+    optional: true
 
   embla-carousel-reactive-utils@8.6.0(embla-carousel@8.6.0):
     dependencies:
       embla-carousel: 8.6.0
+    optional: true
 
-  embla-carousel@8.6.0: {}
+  embla-carousel@8.6.0:
+    optional: true
 
   enhanced-resolve@5.24.5:
     dependencies:
@@ -5588,11 +5617,13 @@ snapshots:
 
   escape-string-regexp@5.0.0: {}
 
-  esm-env@1.2.2: {}
+  esm-env@1.2.2:
+    optional: true
 
   estree-util-is-identifier-name@3.0.0: {}
 
-  eventemitter3@5.0.4: {}
+  eventemitter3@5.0.4:
+    optional: true
 
   execa@9.6.1:
     dependencies:
@@ -5615,7 +5646,8 @@ snapshots:
 
   fast-deep-equal@3.1.3: {}
 
-  fast-equals@5.4.1: {}
+  fast-equals@5.4.1:
+    optional: true
 
   fast-json-stringify@7.0.1:
     dependencies:
@@ -5716,7 +5748,8 @@ snapshots:
       '@sec-ant/readable-stream': 0.4.1
       is-stream: 4.0.1
 
-  gl-matrix@3.4.4: {}
+  gl-matrix@3.4.4:
+    optional: true
 
   google-auth-library@10.9.1:
     dependencies:
@@ -5854,7 +5887,8 @@ snapshots:
 
   ignore@7.0.5: {}
 
-  immer@11.1.16: {}
+  immer@11.1.16:
+    optional: true
 
   import-meta-resolve@4.2.0: {}
 
@@ -5920,7 +5954,8 @@ snapshots:
 
   json-schema-traverse@1.0.0: {}
 
-  json-stringify-pretty-compact@4.0.0: {}
+  json-stringify-pretty-compact@4.0.0:
+    optional: true
 
   json5@2.2.3: {}
 
@@ -5939,7 +5974,8 @@ snapshots:
     dependencies:
       commander: 8.3.0
 
-  kdbush@4.1.0: {}
+  kdbush@4.1.0:
+    optional: true
 
   khroma@2.1.0: {}
 
@@ -6002,7 +6038,8 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.32.0
       lightningcss-win32-x64-msvc: 1.32.0
 
-  linkifyjs@4.3.3: {}
+  linkifyjs@4.3.3:
+    optional: true
 
   lodash-es@4.18.1: {}
 
@@ -6045,6 +6082,7 @@ snapshots:
       potpack: 2.1.0
       quickselect: 3.0.0
       tinyqueue: 3.0.0
+    optional: true
 
   markdown-table@3.0.4: {}
 
@@ -6427,7 +6465,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  minimist@1.2.8: {}
+  minimist@1.2.8:
+    optional: true
 
   motion-dom@12.43.0:
     dependencies:
@@ -6445,7 +6484,8 @@ snapshots:
 
   ms@2.1.3: {}
 
-  murmurhash-js@1.0.0: {}
+  murmurhash-js@1.0.0:
+    optional: true
 
   nanoid@3.3.17: {}
 
@@ -6467,6 +6507,7 @@ snapshots:
   number-flow@0.6.2:
     dependencies:
       esm-env: 1.2.2
+    optional: true
 
   object-assign@4.1.1: {}
 
@@ -6485,7 +6526,8 @@ snapshots:
       ws: 8.21.2
       zod: 4.4.3
 
-  orderedmap@2.1.1: {}
+  orderedmap@2.1.1:
+    optional: true
 
   p-retry@4.6.2:
     dependencies:
@@ -6521,6 +6563,7 @@ snapshots:
   pbf@5.1.2:
     dependencies:
       resolve-protobuf-schema: 2.1.0
+    optional: true
 
   picocolors@1.1.1: {}
 
@@ -6559,7 +6602,8 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  potpack@2.1.0: {}
+  potpack@2.1.0:
+    optional: true
 
   pretty-ms@9.3.0:
     dependencies:
@@ -6580,18 +6624,21 @@ snapshots:
   prosemirror-changeset@2.4.1:
     dependencies:
       prosemirror-transform: 1.12.0
+    optional: true
 
   prosemirror-commands@1.7.2:
     dependencies:
       prosemirror-model: 1.25.11
       prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
+    optional: true
 
   prosemirror-dropcursor@1.8.3:
     dependencies:
       prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
       prosemirror-view: 1.42.2
+    optional: true
 
   prosemirror-gapcursor@1.4.1:
     dependencies:
@@ -6599,6 +6646,7 @@ snapshots:
       prosemirror-model: 1.25.11
       prosemirror-state: 1.4.4
       prosemirror-view: 1.42.2
+    optional: true
 
   prosemirror-history@1.5.0:
     dependencies:
@@ -6606,32 +6654,38 @@ snapshots:
       prosemirror-transform: 1.12.0
       prosemirror-view: 1.42.2
       rope-sequence: 1.3.4
+    optional: true
 
   prosemirror-inputrules@1.5.1:
     dependencies:
       prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
+    optional: true
 
   prosemirror-keymap@1.2.3:
     dependencies:
       prosemirror-state: 1.4.4
       w3c-keyname: 2.2.8
+    optional: true
 
   prosemirror-model@1.25.11:
     dependencies:
       orderedmap: 2.1.1
+    optional: true
 
   prosemirror-schema-list@1.5.1:
     dependencies:
       prosemirror-model: 1.25.11
       prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
+    optional: true
 
   prosemirror-state@1.4.4:
     dependencies:
       prosemirror-model: 1.25.11
       prosemirror-transform: 1.12.0
       prosemirror-view: 1.42.2
+    optional: true
 
   prosemirror-tables@1.8.5:
     dependencies:
@@ -6640,16 +6694,19 @@ snapshots:
       prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
       prosemirror-view: 1.42.2
+    optional: true
 
   prosemirror-transform@1.12.0:
     dependencies:
       prosemirror-model: 1.25.11
+    optional: true
 
   prosemirror-view@1.42.2:
     dependencies:
       prosemirror-model: 1.25.11
       prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
+    optional: true
 
   protobufjs@7.6.5:
     dependencies:
@@ -6665,11 +6722,13 @@ snapshots:
       '@types/node': 24.13.3
       long: 5.3.2
 
-  protocol-buffers-schema@3.6.1: {}
+  protocol-buffers-schema@3.6.1:
+    optional: true
 
   quick-format-unescaped@4.0.4: {}
 
-  quickselect@3.0.0: {}
+  quickselect@3.0.0:
+    optional: true
 
   react-aria-components@1.20.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
@@ -6730,6 +6789,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.18
       redux: 5.0.1
+    optional: true
 
   react-refresh@0.18.0: {}
 
@@ -6784,12 +6844,15 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - redux
+    optional: true
 
   redux-thunk@3.1.0(redux@5.0.1):
     dependencies:
       redux: 5.0.1
+    optional: true
 
-  redux@5.0.1: {}
+  redux@5.0.1:
+    optional: true
 
   regex-recursion@6.0.2:
     dependencies:
@@ -6860,11 +6923,13 @@ snapshots:
 
   require-from-string@2.0.2: {}
 
-  reselect@5.2.0: {}
+  reselect@5.2.0:
+    optional: true
 
   resolve-protobuf-schema@2.1.0:
     dependencies:
       protocol-buffers-schema: 3.6.1
+    optional: true
 
   ret@0.5.0: {}
 
@@ -6908,7 +6973,8 @@ snapshots:
       '@rollup/rollup-win32-x64-msvc': 4.62.4
       fsevents: 2.3.3
 
-  rope-sequence@1.3.4: {}
+  rope-sequence@1.3.4:
+    optional: true
 
   roughjs@4.6.6:
     dependencies:
@@ -7034,7 +7100,8 @@ snapshots:
     dependencies:
       real-require: 1.0.0
 
-  tiny-invariant@1.3.3: {}
+  tiny-invariant@1.3.3:
+    optional: true
 
   tinyexec@1.3.0: {}
 
@@ -7043,7 +7110,8 @@ snapshots:
       fdir: 6.5.0(picomatch@4.0.5)
       picomatch: 4.0.5
 
-  tinyqueue@3.0.0: {}
+  tinyqueue@3.0.0:
+    optional: true
 
   toad-cache@3.7.4: {}
 
@@ -7151,6 +7219,7 @@ snapshots:
       d3-shape: 3.2.0
       d3-time: 3.1.0
       d3-timer: 3.0.1
+    optional: true
 
   vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.10)(yaml@2.9.0):
     dependencies:
@@ -7168,7 +7237,8 @@ snapshots:
       tsx: 4.23.10
       yaml: 2.9.0
 
-  w3c-keyname@2.2.8: {}
+  w3c-keyname@2.2.8:
+    optional: true
 
   web-namespaces@2.0.1: {}
 
