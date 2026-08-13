@@ -3,7 +3,3 @@
 
 @source "../node_modules/@agile-avocation/ui-pro/dist/**/*.{js,mjs}";
 @source "./**/*.{ts,tsx}";
-
-body {
-  background-color: var(--background);
-}

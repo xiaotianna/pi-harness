@@ -37,7 +37,7 @@ export function UserMenu() {
         style={{ transform: "none" }}
       >
         {({ isPressed }) => (
-          <>
+          <div className="flex items-center gap-3 px-1 py-1">
             <Avatar
               className={dropdownStyles.trigger({ className: "size-9 shrink-0" })}
               data-pressed={isPressed}
@@ -53,7 +53,7 @@ export function UserMenu() {
             >
               {displayName}
             </span>
-          </>
+          </div>
         )}
       </Dropdown.Trigger>
       <Dropdown.Popover placement="bottom start">

@@ -13,10 +13,17 @@ export const chatStrings = {
   },
   composer: {
     attach: "Attach file",
+    attachmentItems: (count: number) => (count === 1 ? "Item" : "Items"),
+    clear: "Clear composer",
+    collapseAttachments: "Collapse attachments",
+    expandAttachments: "Expand attachments",
     model: "Model",
     removeAttachment: "Remove attachment",
     send: "Send message",
+    settings: "Settings",
     stop: "Stop generation",
+    voice: "Voice input",
+    voiceUnavailable: "Voice input is not available yet",
   },
   conversation: {
     scrollToBottom: "Scroll to bottom",

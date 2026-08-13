@@ -2,10 +2,21 @@
 
 import type { ChatStatus } from "@agile-avocation/ui-pro";
 import { PromptInput } from "@agile-avocation/ui-pro";
-import { ListBox, Select } from "@heroui/react";
-import { Globe, Paperclip } from "lucide-react";
+import { Button, Dropdown, Label } from "@heroui/react";
+import {
+  ChevronDown,
+  Code2,
+  Eraser,
+  Lightbulb,
+  Mic,
+  Paperclip,
+  PencilLine,
+  Search,
+  Settings2,
+  Sparkles,
+} from "lucide-react";
 import type { ChangeEvent } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CHAT_MODELS } from "../data/chat";
 import { chatStrings } from "../i18n/strings";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
@@ -38,17 +49,45 @@ export interface ChatComposerProps {
   className?: string;
   modelId?: string;
   placeholder?: string;
+  presentation?: "dock" | "hero";
 }
+
+const COMPOSER_SHORTCUTS = [
+  {
+    icon: PencilLine,
+    label: "Writing",
+    prompt: "Help me draft and improve some writing:",
+  },
+  {
+    icon: Code2,
+    label: "Coding",
+    prompt: "Help me solve this coding problem:",
+  },
+  {
+    icon: Search,
+    label: "Research",
+    prompt: "Research and compare the following:",
+  },
+  {
+    icon: Lightbulb,
+    label: "Creative",
+    prompt: "Brainstorm creative ideas for:",
+  },
+] as const;
 
 export function ChatComposer({
   className,
   modelId = CHAT_MODELS[0]?.id ?? "gpt-5.4",
-  placeholder = "What do you want to know?",
+  placeholder = "Ask anything",
+  presentation = "dock",
 }: ChatComposerProps) {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
+  const [selectedModelId, setSelectedModelId] = useState(modelId);
   const [status, setStatus] = useState<ChatStatus>("ready");
   const [value, setValue] = useState("");
   const attachmentsRef = useRef<PendingAttachment[]>([]);
+  const attachmentDrawerId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timersRef = useRef<number[]>([]);
 
@@ -62,6 +101,10 @@ export function ChatComposer({
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
+
+  useEffect(() => {
+    setSelectedModelId(modelId);
+  }, [modelId]);
 
   useEffect(() => {
     return () => {
@@ -96,8 +139,12 @@ export function ChatComposer({
   const isGenerating = status === "submitted" || status === "streaming";
   const canSend = Boolean(value.trim() || attachments.length);
   const sendLabel = isGenerating ? chatStrings.composer.stop : chatStrings.composer.send;
+  const isHero = presentation === "hero";
+  const selectedModel =
+    CHAT_MODELS.find((model) => model.id === selectedModelId) ?? CHAT_MODELS[0];
 
   const handleFilesSelected = (files: File[]) => {
+    setIsAttachmentDrawerExpanded(true);
     setAttachments((current) => [
       ...current,
       ...files.map((file) => {
@@ -136,6 +183,13 @@ export function ChatComposer({
     });
   };
 
+  const handleClear = () => {
+    revokeAttachmentUrls(attachments);
+    setAttachments([]);
+    setIsAttachmentDrawerExpanded(true);
+    setValue("");
+  };
+
   return (
     <PromptInput
       className={className}
@@ -146,21 +200,71 @@ export function ChatComposer({
       onSubmit={handleSubmit}
       onValueChange={setValue}
     >
-      <PromptInput.Shell>
+      {attachments.length ? (
+        <div className="relative rounded-t-[28px] bg-default pb-7">
+          <div className="relative flex h-8 items-center">
+            {isAttachmentDrawerExpanded ? (
+              <Button
+                isIconOnly
+                aria-controls={attachmentDrawerId}
+                aria-expanded
+                aria-label={chatStrings.composer.collapseAttachments}
+                className="absolute left-1/2 min-w-8 -translate-x-1/2 p-0"
+                size="sm"
+                variant="ghost"
+                onPress={() => setIsAttachmentDrawerExpanded(false)}
+              >
+                <span className="block h-0.5 w-5 rounded-full bg-foreground/80" />
+              </Button>
+            ) : (
+              <Button
+                aria-controls={attachmentDrawerId}
+                aria-expanded={false}
+                aria-label={chatStrings.composer.expandAttachments}
+                className="ml-4 h-8 w-fit min-w-0 translate-y-0.5 justify-start gap-2 px-0"
+                size="sm"
+                variant="ghost"
+                onPress={() => setIsAttachmentDrawerExpanded(true)}
+              >
+                <span className="flex size-5 items-center justify-center rounded-full bg-background text-xs tabular-nums text-muted">
+                  {attachments.length}
+                </span>
+                <span className="text-sm font-normal">
+                  {chatStrings.composer.attachmentItems(attachments.length)}
+                </span>
+              </Button>
+            )}
+          </div>
+          <div
+            id={attachmentDrawerId}
+            aria-hidden={!isAttachmentDrawerExpanded}
+            className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${
+              isAttachmentDrawerExpanded
+                ? "grid-rows-[1fr] opacity-100"
+                : "grid-rows-[0fr] opacity-0"
+            }`}
+            inert={!isAttachmentDrawerExpanded}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="px-4 pb-1">
+                <ChatAttachmentList
+                  attachments={attachments}
+                  removeLabel={chatStrings.composer.removeAttachment}
+                  variant="token"
+                  onRemove={handleRemoveAttachment}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <PromptInput.Shell
+        className={`relative z-10 rounded-[28px] border-border/40 bg-background shadow-[0_12px_18px_-14px_rgba(0,0,0,0.32)] ${
+          attachments.length ? "-mt-6" : ""
+        } ${isHero ? "min-h-[184px]" : "min-h-[132px]"}`}
+      >
         <PromptInput.Content>
-          {attachments.length ? (
-            <PromptInput.Attachments>
-              <ChatAttachmentList
-                attachments={attachments}
-                removeLabel={chatStrings.composer.removeAttachment}
-                onRemove={handleRemoveAttachment}
-              />
-            </PromptInput.Attachments>
-          ) : null}
-          <PromptInput.TextArea placeholder={placeholder} />
-        </PromptInput.Content>
-        <PromptInput.Toolbar>
-          <PromptInput.ToolbarStart>
+          <div className="px-3 pt-3">
             <input
               ref={fileInputRef}
               aria-hidden
@@ -173,42 +277,118 @@ export function ChatComposer({
             />
             <PromptInput.Action
               aria-label={chatStrings.composer.attach}
+              className="size-8 min-w-8"
               isDisabled={isGenerating}
+              style={{ boxShadow: "none" }}
               tooltip={chatStrings.composer.attach}
               onPress={() => fileInputRef.current?.click()}
             >
               <Paperclip className="size-4" />
             </PromptInput.Action>
-            <Select
-              aria-label={chatStrings.composer.model}
-              defaultValue={modelId}
-              isDisabled={isGenerating}
-              placeholder="Select model"
-              variant="secondary"
-            >
-              <Select.Trigger className="flex items-center gap-2">
-                <Globe className="size-4 shrink-0" />
-                <Select.Value />
-                <Select.Indicator />
-              </Select.Trigger>
-              <Select.Popover>
-                <ListBox>
+          </div>
+          <PromptInput.TextArea
+            className={isHero ? "min-h-[92px] pt-2" : "min-h-[56px] pt-2"}
+            placeholder={placeholder}
+          />
+        </PromptInput.Content>
+        <PromptInput.Toolbar>
+          <PromptInput.ToolbarStart>
+            <Dropdown>
+              <Button
+                aria-label={chatStrings.composer.model}
+                className="gap-2 px-2"
+                isDisabled={isGenerating}
+                size="sm"
+                variant="ghost"
+              >
+                <Sparkles className="size-4" />
+                <span>{selectedModel?.label ?? "Auto"}</span>
+                <ChevronDown className="size-3.5" />
+              </Button>
+              <Dropdown.Popover className="min-w-52" placement="bottom start">
+                <Dropdown.Menu
+                  aria-label={chatStrings.composer.model}
+                  selectedKeys={new Set([selectedModelId])}
+                  selectionMode="single"
+                  onAction={(key) => setSelectedModelId(String(key))}
+                >
                   {CHAT_MODELS.map((model) => (
-                    <ListBox.Item key={model.id} id={model.id} textValue={model.label}>
-                      {model.label}
-                      <ListBox.ItemIndicator />
-                    </ListBox.Item>
+                    <Dropdown.Item key={model.id} id={model.id} textValue={model.label}>
+                      <Sparkles className="size-4 text-muted" />
+                      <Label>{model.label}</Label>
+                      <Dropdown.ItemIndicator />
+                    </Dropdown.Item>
                   ))}
-                </ListBox>
-              </Select.Popover>
-            </Select>
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
+            <Dropdown>
+              <Button
+                aria-label={chatStrings.composer.settings}
+                className="gap-2 px-2"
+                isDisabled={isGenerating}
+                size="sm"
+                variant="ghost"
+              >
+                <Settings2 className="size-4" />
+                <span className="hidden sm:inline">{chatStrings.composer.settings}</span>
+                <ChevronDown className="hidden size-3.5 sm:block" />
+              </Button>
+              <Dropdown.Popover className="min-w-48" placement="bottom start">
+                <Dropdown.Menu
+                  aria-label={chatStrings.composer.settings}
+                  onAction={(key) => {
+                    if (key === "attach") fileInputRef.current?.click();
+                    if (key === "clear") handleClear();
+                  }}
+                >
+                  <Dropdown.Item id="attach" textValue={chatStrings.composer.attach}>
+                    <Paperclip className="size-4 text-muted" />
+                    <Label>{chatStrings.composer.attach}</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id="clear" textValue={chatStrings.composer.clear}>
+                    <Eraser className="size-4 text-muted" />
+                    <Label>{chatStrings.composer.clear}</Label>
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
           </PromptInput.ToolbarStart>
           <PromptInput.ToolbarEnd>
+            <PromptInput.Action
+              aria-label={chatStrings.composer.voice}
+              className="size-8 min-w-8"
+              isDisabled
+              tooltip={chatStrings.composer.voiceUnavailable}
+            >
+              <Mic className="size-4" />
+            </PromptInput.Action>
             <PromptInput.Send aria-label={sendLabel} isDisabled={!canSend && !isGenerating} />
           </PromptInput.ToolbarEnd>
         </PromptInput.Toolbar>
       </PromptInput.Shell>
-      <PromptInput.Footer>{chatStrings.disclaimer}</PromptInput.Footer>
+      {isHero ? (
+        <div className="mt-6 flex flex-wrap items-center gap-1 px-3 sm:gap-2">
+          {COMPOSER_SHORTCUTS.map((shortcut) => {
+            const ShortcutIcon = shortcut.icon;
+
+            return (
+              <Button
+                key={shortcut.label}
+                className="px-3"
+                size="sm"
+                variant="ghost"
+                onPress={() => setValue(shortcut.prompt)}
+              >
+                <ShortcutIcon className="size-4" />
+                {shortcut.label}
+              </Button>
+            );
+          })}
+        </div>
+      ) : (
+        <PromptInput.Footer>{chatStrings.disclaimer}</PromptInput.Footer>
+      )}
     </PromptInput>
   );
 }
