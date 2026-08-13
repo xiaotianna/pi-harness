@@ -259,7 +259,7 @@ export function ChatComposer({
         </div>
       ) : null}
       <PromptInput.Shell
-        className={`relative z-10 rounded-[28px] border-border/40 bg-background shadow-[0_12px_18px_-14px_rgba(0,0,0,0.32)] ${
+        className={`relative z-10 rounded-[28px] bg-field shadow-field ${
           attachments.length ? "-mt-6" : ""
         } ${isHero ? "min-h-[184px]" : "min-h-[132px]"}`}
       >

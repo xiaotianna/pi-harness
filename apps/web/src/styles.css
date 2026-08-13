@@ -3,3 +3,24 @@
 
 @source "../node_modules/@agile-avocation/ui-pro/dist/**/*.{js,mjs}";
 @source "./**/*.{ts,tsx}";
+
+@layer base {
+  :root,
+  .light,
+  .default,
+  [data-theme="light"],
+  [data-theme="default"] {
+    color-scheme: light;
+    --background: oklch(0.985 0 0);
+    --surface: var(--white);
+    --surface-foreground: var(--foreground);
+    --field-background: var(--surface);
+    --field-focus: var(--surface);
+    --field-border: transparent;
+    --field-border-hover: transparent;
+    --field-border-focus: transparent;
+    --field-shadow:
+      0 12px 32px rgba(24, 24, 27, 0.1),
+      0 3px 10px rgba(24, 24, 27, 0.06);
+  }
+}
