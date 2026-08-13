@@ -1,8 +1,9 @@
 "use client";
 
 import { Sidebar } from "@agile-avocation/ui-pro";
-import { Avatar, Kbd } from "@heroui/react";
+import { Kbd } from "@heroui/react";
 import { MessageCircle } from "lucide-react";
+import { UserMenu } from "../../auth";
 import type { ChatNavItem, ChatNavItemId, ChatThread } from "../data/chat";
 import { CHAT_NAV_ITEMS, DEFAULT_CHAT_THREAD_ID, resolveChatActivePage } from "../data/chat";
 
@@ -59,20 +60,7 @@ function SidebarContents({
   return (
     <>
       <Sidebar.Header>
-        <div className="flex items-center gap-3 px-1 py-1">
-          <Avatar className="size-9">
-            <Avatar.Image alt={threads[0]?.user.name ?? "User"} src={threads[0]?.user.avatar} />
-            <Avatar.Fallback>DH</Avatar.Fallback>
-          </Avatar>
-          <div className="flex min-w-0 flex-col" data-sidebar="label">
-            <span className="text-sm leading-tight font-medium text-foreground">
-              {threads[0]?.user.name ?? "Darnell Howe"}
-            </span>
-            <span className="text-xs leading-tight font-medium text-muted">
-              {threads[0]?.user.email ?? "darnell@email.com"}
-            </span>
-          </div>
-        </div>
+        <UserMenu />
       </Sidebar.Header>
       <Sidebar.Content>
         <Sidebar.Group>

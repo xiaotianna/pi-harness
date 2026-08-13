@@ -46,6 +46,12 @@ PI Workbench 是一个本地优先的 Agent Harness：通过浏览器提供 Code
 
 不要在同一职责上重复引入同类库。例如已经使用 TypeBox 时，不再为普通 API DTO 引入 Zod；已经使用 pino 时，不再引入另一套日志框架；已经使用 HeroUI 时，不再混用 shadcn/ui、Flowbite、daisyUI 或 Mantine 作为另一套基础组件库。
 
+## 项目 Skill 引用
+
+- 修改、生成或评审 Web UI 时，必须先阅读 `.agents/skills/heroui-pro-design-taste/SKILL.md`，遵循项目的 HeroUI 视觉与样式规范。
+- 使用 `@heroui/react` 组件时，必须先阅读 `.agents/skills/heroui-react/SKILL.md`，并按其中的 HeroUI v3 API、复合组件和文档查询约定实现。
+- Skill 规范与通用经验冲突时，以项目内 Skill 为准；不得套用 shadcn/ui 的视觉习惯或组件写法。
+
 ## 依赖管理规范
 
 - 项目统一使用 pnpm，不使用 npm、Yarn 或 Bun 修改依赖和锁文件。
@@ -67,9 +73,13 @@ apps/
 ├── daemon/                 # 本地后端进程、HTTP API、SSE、配置与 SQLite
 │   └── src/
 │       ├── config/         # daemon 运行时配置与环境变量校验
-│       ├── routes/         # Fastify 路由与 HTTP/Cookie 映射
+│       ├── routes/         # Fastify 路径与 schema 声明
+│       ├── controllers/    # HTTP 请求、Cookie 与重定向处理
+│       ├── dto/            # HTTP 请求参数模型与 TypeBox schema
 │       ├── services/       # OAuth、会话等应用服务
 │       ├── storage/        # 当前 daemon 私有的 SQLite 与 migrations
+│       ├── utils/          # 小型无状态基础工具
+│       ├── vo/             # HTTP 响应模型与 TypeBox schema
 │       └── server/         # Fastify 实例装配
 └── web/                    # React 页面
     └── src/
@@ -92,7 +102,7 @@ packages/
 ## 模块依赖边界
 
 - `apps/web` 只能依赖浏览器安全的包，不得导入 daemon 源码、Node API、`pi-ai`、`pi-agent-core`、daemon storage 或 tools。
-- Fastify route 只负责参数校验、调用 application service 和映射 HTTP 响应。
+- Fastify route 只负责声明路径、schema 和 controller；controller 映射 HTTP 请求与响应，service 处理业务流程。
 - `agent-runtime` 负责编排，不直接实现文件读写或 SQL。
 - `tools` 不直接操作 Web、SSE 或数据库事务；工具进度通过回调或领域事件上报。
 - `apps/daemon/src/storage` 只负责当前 daemon 的持久化，不包含 OAuth 流程、Agent 调度、权限判断或 UI 逻辑；出现第二个真实消费者前不提前拆成 workspace package。
@@ -217,6 +227,10 @@ export const sessionQueryKeys = {
 
 - 页面负责组合 feature，不直接发起底层 fetch；HTTP/SSE 客户端统一放在 API 层。
 - HeroUI v3 是项目唯一的基础组件库，Button、Input、Select、Modal、Popover、Tooltip、Tabs、Accordion、Menu 和 Toast 等基础交互优先使用 HeroUI。
+- 所有界面内容，包括交互控件、信息展示、状态反馈和常见布局，都必须优先使用现有业务组件、通用 UI 组件、HeroUI 或兼容的 HeroUI Pro 组件实现；尽量不要自行编写带样式的原生 HTML 元素。
+- 不得使用原生 `button`、`input`、`select`、`textarea`、`table`、`dialog` 等元素重复实现组件库已经提供的能力，也不得通过给原生元素堆叠 Tailwind 类名来仿造现有 UI 组件。`div`、`span`、`p` 等原生元素仅可用于组件库没有对应抽象的必要语义结构或基础布局，且样式必须保持最少。
+- 开始实现界面前必须先检查项目现有组件、HeroUI 和兼容的 HeroUI Pro 是否已有合适组件；同一视觉或交互模式出现两次及以上时，必须提取到 `components` 或对应 feature 内作为可复用 UI 组件。
+- HeroUI 组件的 `className` 默认只补充业务布局、尺寸和必要间距，不额外添加 `ring`、边框、阴影、焦点、悬停或按压效果；组件已有的状态视觉交给 HeroUI 自身实现。
 - 项目使用已购买的第三方 HeroUI Pro 兼容包 `@agile-avocation/ui-pro`，不得安装、导入或替换为官方包 `@heroui-pro/react`。HeroUI Pro 文档中的 `@heroui-pro/react` 导入示例在本项目中统一改为从 `@agile-avocation/ui-pro` 导入。
 - 使用 Pro 组件前先查阅 [HeroUI Pro React 组件文档](https://heroui.pro/docs/react/components)，以其中的组件清单、结构、属性和示例为准；同时结合本项目已安装版本的 TypeScript 类型与实际导出进行确认，不凭记忆猜测 API。
 - Button、Input、Select、Modal、Popover、Tooltip、Tabs、Accordion、Menu、Toast 等基础组件继续使用 `@heroui/react`，并参考 [HeroUI React 基础文档](https://heroui.com/en/docs/react/getting-started)。不得为了使用 Pro 组件而重复实现或替换已有的 HeroUI 基础组件。

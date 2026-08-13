@@ -35,7 +35,7 @@ Design taste profile for the HeroUI design system. These 78 principles across 10
 
 - Use default component sizes and omit size props when they match the default; only upsize when explicitly requested.
 - Avoid duplicate visual representations of the same data — show only the single most effective representation (e.g., stars OR a number, not both; a timer OR a progress bar, not both) and remove redundant labels, companion icons, or information already conveyed by the primary content area.
-- Avoid over-styling framework-provided components; rely on their default appearance unless there is a clear, intentional reason to customize. Prefer the design system's native/built-in components over custom implementations for standard UI patterns.
+- Avoid over-styling framework-provided components; rely on their default appearance unless there is a clear, intentional reason to customize. On HeroUI components, `className` should normally provide only the layout, sizing, and spacing required by the surrounding page. Do not copy shadcn-style rings, borders, shadows, focus treatments, hover animations, or pressed-state effects onto a component that already owns those states. Prefer the design system's native/built-in components over custom implementations for standard UI patterns.
 - Keep supplementary footer content and trust signals minimal — one icon plus one short text line is enough. Remove redundant logos, badges, or icons that add clutter without new information.
 - Minimize wrapper elements around groups of small components (chips, tags, badges). Remove unnecessary container divs when items render cleanly without them.
 

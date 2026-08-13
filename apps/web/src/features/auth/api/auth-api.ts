@@ -39,3 +39,17 @@ export async function getAuthSession(): Promise<AuthSessionResponse> {
   }
   return body;
 }
+
+export async function logout(): Promise<void> {
+  const response = await fetch("/api/auth/logout", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "X-PI-Workbench-Request": "1",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`);
+  }
+}

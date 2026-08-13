@@ -86,6 +86,7 @@ export class AuthService {
 
     authorizationUrl.searchParams.set("client_id", this.githubConfig.clientId);
     authorizationUrl.searchParams.set("redirect_uri", this.githubConfig.callbackUrl);
+    // 用于daemon验证授权是否一致，会塞入cookie中，防止伪造 OAuth 回调。
     authorizationUrl.searchParams.set("state", state);
     authorizationUrl.searchParams.set("code_challenge", codeChallenge);
     authorizationUrl.searchParams.set("code_challenge_method", "S256");

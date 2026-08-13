@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, Button, Card } from "@heroui/react";
+import { Alert, Avatar, Button, Card } from "@heroui/react";
 import { useState } from "react";
 import { type AuthErrorCode, getAuthErrorMessage } from "../constants/auth-errors";
 
@@ -49,9 +49,12 @@ export function LoginPage({ authError }: LoginPageProps) {
           </Button>
 
           {errorMessage ? (
-            <p className="mt-3 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
-              {errorMessage}
-            </p>
+            <Alert className="mt-3 bg-danger-soft" role="alert" status="danger">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>{errorMessage}</Alert.Title>
+              </Alert.Content>
+            </Alert>
           ) : null}
         </Card.Content>
       </Card>
