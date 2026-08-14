@@ -1,7 +1,6 @@
 "use client";
 
 import { ChatMessageActions } from "@agile-avocation/ui-pro";
-import { chatStrings } from "../i18n/strings";
 
 interface MessageActionsProps {
   variant: "full" | "minimal";
@@ -10,30 +9,15 @@ interface MessageActionsProps {
 export function MessageActions({ variant }: MessageActionsProps) {
   return (
     <ChatMessageActions>
-      <ChatMessageActions.Copy
-        aria-label={chatStrings.actions.copy}
-        tooltip={chatStrings.actions.copy}
-      />
+      <ChatMessageActions.Copy aria-label="复制" tooltip="复制" />
       {variant === "full" ? (
         <>
-          <ChatMessageActions.ThumbsUp
-            aria-label={chatStrings.actions.thumbsUp}
-            tooltip={chatStrings.actions.thumbsUp}
-          />
-          <ChatMessageActions.ThumbsDown
-            aria-label={chatStrings.actions.thumbsDown}
-            tooltip={chatStrings.actions.thumbsDown}
-          />
-          <ChatMessageActions.Regenerate
-            aria-label={chatStrings.actions.regenerate}
-            tooltip={chatStrings.actions.regenerate}
-          />
+          <ChatMessageActions.ThumbsUp aria-label="回答有帮助" tooltip="回答有帮助" />
+          <ChatMessageActions.ThumbsDown aria-label="回答需改进" tooltip="回答需改进" />
+          <ChatMessageActions.Regenerate aria-label="重新生成" tooltip="重新生成" />
         </>
       ) : null}
-      <ChatMessageActions.Menu
-        aria-label={chatStrings.actions.menu}
-        tooltip={chatStrings.actions.menuTooltip}
-      />
+      <ChatMessageActions.Menu aria-label="更多操作" tooltip="更多" />
     </ChatMessageActions>
   );
 }

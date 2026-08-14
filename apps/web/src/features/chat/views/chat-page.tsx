@@ -23,7 +23,7 @@ export function ChatPage({ thread }: ChatPageProps) {
         </ChatConversation.Content>
       </ChatConversation>
 
-      <div className="shrink-0 bg-background px-4 pb-4">
+      <div className="shrink-0 bg-background px-4 pb-2">
         <div className="mx-auto w-full max-w-[714px]">
           <ChatComposer className="w-full" modelId={thread.modelId} />
         </div>

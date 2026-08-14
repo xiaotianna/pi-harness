@@ -35,7 +35,7 @@ export function LoginPage({ authError }: LoginPageProps) {
       <Card className="w-full max-w-sm">
         <Card.Header className="items-center gap-2 text-center">
           <Avatar>
-            <Avatar.Image alt="Blue" src="/images/blue-avatar.jpg" />
+            <Avatar.Image alt="PI Workbench" src="/images/blue-avatar.jpg" />
             <Avatar.Fallback>PI</Avatar.Fallback>
           </Avatar>
           <Card.Title className="text-lg">登录</Card.Title>

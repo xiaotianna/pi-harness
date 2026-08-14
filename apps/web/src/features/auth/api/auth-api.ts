@@ -26,7 +26,7 @@ async function fetchJson(url: string): Promise<unknown> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
+    throw new Error(`请求失败，状态码：${response.status}`);
   }
 
   return response.json();
@@ -35,7 +35,7 @@ async function fetchJson(url: string): Promise<unknown> {
 export async function getAuthSession(): Promise<AuthSessionResponse> {
   const body = await fetchJson("/api/auth/session");
   if (!Value.Check(AuthSessionResponseSchema, body)) {
-    throw new Error("The daemon returned an invalid auth session response");
+    throw new Error("daemon 返回了无效的登录会话响应");
   }
   return body;
 }
@@ -50,6 +50,6 @@ export async function logout(): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
+    throw new Error(`请求失败，状态码：${response.status}`);
   }
 }

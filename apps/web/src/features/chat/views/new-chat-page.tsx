@@ -34,10 +34,10 @@ export function NewChatPage() {
           <div className="mb-8 flex flex-col gap-1">
             <div className="flex items-center gap-2 text-lg font-medium text-foreground">
               <GradientSparklesIcon />
-              <span>Hi there</span>
+              <span>你好</span>
             </div>
             <h1 className="text-3xl font-normal tracking-tight text-foreground sm:text-4xl">
-              Where should we start?
+              我们从哪里开始？
             </h1>
           </div>
           <ChatComposer className="w-full" presentation="hero" />

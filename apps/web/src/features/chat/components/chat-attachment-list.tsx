@@ -30,7 +30,7 @@ export function ChatAttachmentList({
   attachments,
   className,
   onRemove,
-  removeLabel = "Remove attachment",
+  removeLabel = "移除附件",
   variant = "card",
 }: ChatAttachmentListProps) {
   if (!attachments.length) return null;

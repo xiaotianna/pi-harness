@@ -11,7 +11,6 @@ import {
 import { ChatTool, ChatToolGroup } from "@agile-avocation/ui-pro/chat-tool";
 import { Markdown } from "@agile-avocation/ui-pro/markdown";
 import type { ChatMessage, ChatMessageSource, ChatMessageTool } from "../data/chat";
-import { chatStrings } from "../i18n/strings";
 import { ChatAttachmentList } from "./chat-attachment-list";
 import { MessageActions } from "./message-actions";
 
@@ -41,11 +40,11 @@ function renderTool(tool: ChatMessageTool, prefix: string, key: string) {
       <ChatTool
         key={key}
         defaultExpanded
-        approveLabel={chatStrings.tool.approve}
-        rejectLabel={chatStrings.tool.reject}
+        approveLabel="允许"
+        rejectLabel="拒绝"
         state={tool.state}
         toolName={tool.toolName}
-        triggerPrefix={`${chatStrings.tool.approvalNeeded} `}
+        triggerPrefix="需要审批："
         {...(tool.argsText !== undefined ? { argsText: tool.argsText } : {})}
         {...(tool.input !== undefined ? { input: tool.input } : {})}
         {...(tool.output !== undefined ? { output: tool.output } : {})}
@@ -87,8 +86,8 @@ export function ThreadMessage({ message }: ThreadMessageProps) {
   return (
     <ChatMessagePrimitive.Assistant>
       <ChatMessagePrimitive.Avatar
-        alt={message.avatar?.alt ?? chatStrings.assistant.avatarAlt}
-        fallback={message.avatar?.fallback ?? chatStrings.assistant.avatarFallback}
+        alt={message.avatar?.alt ?? "助手"}
+        fallback={message.avatar?.fallback ?? "AI"}
         show={message.showAvatar ?? false}
         {...(message.avatar?.src ? { src: message.avatar.src } : {})}
       />
@@ -119,14 +118,14 @@ export function ThreadMessage({ message }: ThreadMessageProps) {
             <ChatToolGroup.Trigger>{message.toolGroup.label}</ChatToolGroup.Trigger>
             <ChatToolGroup.Content>
               {message.toolGroup.tools.map((tool, index) =>
-                renderTool(tool, chatStrings.tool.used, `${tool.toolName}-${index}`),
+                renderTool(tool, "已使用工具：", `${tool.toolName}-${index}`),
               )}
             </ChatToolGroup.Content>
           </ChatToolGroup>
         ) : null}
 
         {message.tools?.map((tool, index) =>
-          renderTool(tool, chatStrings.tool.used, `${tool.toolName}-${index}`),
+          renderTool(tool, "已使用工具：", `${tool.toolName}-${index}`),
         )}
 
         {message.status === "streaming" ? (
@@ -137,7 +136,7 @@ export function ThreadMessage({ message }: ThreadMessageProps) {
         ) : null}
 
         {message.status === "skeleton" ? (
-          <ChatLoader.Skeleton label={message.loaderLabel ?? chatStrings.loading.pending} />
+          <ChatLoader.Skeleton label={message.loaderLabel ?? "正在加载回答"} />
         ) : null}
 
         {message.status !== "streaming" && message.status !== "skeleton" ? (

@@ -15,10 +15,9 @@ export function LibraryPage({ basePath = "" }: LibraryPageProps) {
       <div className="mx-auto flex w-full max-w-[960px] flex-col px-4 py-8">
         <PromptSuggestion variant="card">
           <PromptSuggestion.Header>
-            <PromptSuggestion.Title>Saved prompts and reusable setups</PromptSuggestion.Title>
+            <PromptSuggestion.Title>已保存的提示词与可复用配置</PromptSuggestion.Title>
             <PromptSuggestion.Description>
-              A mock workspace of prompt presets, tone rules, and starter threads the template ships
-              with. Save your own to pick up where you left off.
+              这里展示模板内置的提示词预设、语气规则和起始对话。保存自己的内容后，即可随时继续使用。
             </PromptSuggestion.Description>
           </PromptSuggestion.Header>
 

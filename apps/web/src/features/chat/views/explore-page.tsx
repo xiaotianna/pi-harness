@@ -10,10 +10,9 @@ export function ExplorePage() {
       <div className="mx-auto flex w-full max-w-[960px] flex-col px-4 py-8">
         <PromptSuggestion variant="card">
           <PromptSuggestion.Header>
-            <PromptSuggestion.Title>Starter prompts for everyday work</PromptSuggestion.Title>
+            <PromptSuggestion.Title>适合日常工作的起始提示词</PromptSuggestion.Title>
             <PromptSuggestion.Description>
-              Pick one to see what kinds of conversations this template pattern is designed for.
-              Prompts are mock data, nothing is sent to any backend.
+              选择一个示例，了解这套模板适合怎样的对话。以下提示词均为模拟数据，不会发送到后端。
             </PromptSuggestion.Description>
           </PromptSuggestion.Header>
 

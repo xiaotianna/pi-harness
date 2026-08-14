@@ -34,7 +34,7 @@ export function ChatSidebar({
     <>
       <Sidebar>
         <SidebarContents {...contentProps} />
-        <Sidebar.Rail />
+        <Sidebar.Rail aria-label="切换侧边栏" />
       </Sidebar>
       <Sidebar.Mobile>
         <SidebarContents {...contentProps} idPrefix="mobile-" />
@@ -64,7 +64,7 @@ function SidebarContents({
       </Sidebar.Header>
       <Sidebar.Content>
         <Sidebar.Group>
-          <Sidebar.Menu aria-label="Chat actions">
+          <Sidebar.Menu aria-label="对话操作">
             {CHAT_NAV_ITEMS.map((item) => (
               <ChatSidebarActionItem
                 key={item.id}
@@ -80,8 +80,8 @@ function SidebarContents({
         </Sidebar.Group>
         <Sidebar.Separator />
         <Sidebar.Group>
-          <Sidebar.GroupLabel>Recent</Sidebar.GroupLabel>
-          <Sidebar.Menu aria-label="Recent chats">
+          <Sidebar.GroupLabel>最近对话</Sidebar.GroupLabel>
+          <Sidebar.Menu aria-label="最近对话">
             {threads.map((thread) => (
               <ChatSidebarThreadItem
                 key={thread.id}

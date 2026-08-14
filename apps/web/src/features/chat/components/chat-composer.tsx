@@ -18,7 +18,6 @@ import {
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CHAT_MODELS } from "../data/chat";
-import { chatStrings } from "../i18n/strings";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
 import { ChatAttachmentList } from "./chat-attachment-list";
 
@@ -55,30 +54,30 @@ export interface ChatComposerProps {
 const COMPOSER_SHORTCUTS = [
   {
     icon: PencilLine,
-    label: "Writing",
-    prompt: "Help me draft and improve some writing:",
+    label: "写作",
+    prompt: "帮我起草并润色以下内容：",
   },
   {
     icon: Code2,
-    label: "Coding",
-    prompt: "Help me solve this coding problem:",
+    label: "编程",
+    prompt: "帮我解决这个编程问题：",
   },
   {
     icon: Search,
-    label: "Research",
-    prompt: "Research and compare the following:",
+    label: "研究",
+    prompt: "研究并比较以下内容：",
   },
   {
     icon: Lightbulb,
-    label: "Creative",
-    prompt: "Brainstorm creative ideas for:",
+    label: "创意",
+    prompt: "围绕以下主题集思广益：",
   },
 ] as const;
 
 export function ChatComposer({
   className,
   modelId = CHAT_MODELS[0]?.id ?? "gpt-5.4",
-  placeholder = "Ask anything",
+  placeholder = "输入任何问题",
   presentation = "dock",
 }: ChatComposerProps) {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -138,10 +137,9 @@ export function ChatComposer({
 
   const isGenerating = status === "submitted" || status === "streaming";
   const canSend = Boolean(value.trim() || attachments.length);
-  const sendLabel = isGenerating ? chatStrings.composer.stop : chatStrings.composer.send;
+  const sendLabel = isGenerating ? "停止生成" : "发送消息";
   const isHero = presentation === "hero";
-  const selectedModel =
-    CHAT_MODELS.find((model) => model.id === selectedModelId) ?? CHAT_MODELS[0];
+  const selectedModel = CHAT_MODELS.find((model) => model.id === selectedModelId) ?? CHAT_MODELS[0];
 
   const handleFilesSelected = (files: File[]) => {
     setIsAttachmentDrawerExpanded(true);
@@ -208,7 +206,7 @@ export function ChatComposer({
                 isIconOnly
                 aria-controls={attachmentDrawerId}
                 aria-expanded
-                aria-label={chatStrings.composer.collapseAttachments}
+                aria-label="收起附件"
                 className="absolute left-1/2 min-w-8 -translate-x-1/2 p-0"
                 size="sm"
                 variant="ghost"
@@ -220,7 +218,7 @@ export function ChatComposer({
               <Button
                 aria-controls={attachmentDrawerId}
                 aria-expanded={false}
-                aria-label={chatStrings.composer.expandAttachments}
+                aria-label="展开附件"
                 className="ml-4 h-8 w-fit min-w-0 translate-y-0.5 justify-start gap-2 px-0"
                 size="sm"
                 variant="ghost"
@@ -229,9 +227,7 @@ export function ChatComposer({
                 <span className="flex size-5 items-center justify-center rounded-full bg-background text-xs tabular-nums text-muted">
                   {attachments.length}
                 </span>
-                <span className="text-sm font-normal">
-                  {chatStrings.composer.attachmentItems(attachments.length)}
-                </span>
+                <span className="text-sm font-normal">{attachments.length} 个附件</span>
               </Button>
             )}
           </div>
@@ -249,7 +245,7 @@ export function ChatComposer({
               <div className="px-4 pb-1">
                 <ChatAttachmentList
                   attachments={attachments}
-                  removeLabel={chatStrings.composer.removeAttachment}
+                  removeLabel="移除附件"
                   variant="token"
                   onRemove={handleRemoveAttachment}
                 />
@@ -276,17 +272,18 @@ export function ChatComposer({
               onChange={handleFileInputChange}
             />
             <PromptInput.Action
-              aria-label={chatStrings.composer.attach}
+              aria-label="添加附件"
               className="size-8 min-w-8"
               isDisabled={isGenerating}
               style={{ boxShadow: "none" }}
-              tooltip={chatStrings.composer.attach}
+              tooltip="添加附件"
               onPress={() => fileInputRef.current?.click()}
             >
               <Paperclip className="size-4" />
             </PromptInput.Action>
           </div>
           <PromptInput.TextArea
+            aria-label="消息输入框"
             className={isHero ? "min-h-[92px] pt-2" : "min-h-[56px] pt-2"}
             placeholder={placeholder}
           />
@@ -295,19 +292,19 @@ export function ChatComposer({
           <PromptInput.ToolbarStart>
             <Dropdown>
               <Button
-                aria-label={chatStrings.composer.model}
+                aria-label="选择模型"
                 className="gap-2 px-2"
                 isDisabled={isGenerating}
                 size="sm"
                 variant="ghost"
               >
                 <Sparkles className="size-4" />
-                <span>{selectedModel?.label ?? "Auto"}</span>
+                <span>{selectedModel?.label ?? "自动选择"}</span>
                 <ChevronDown className="size-3.5" />
               </Button>
               <Dropdown.Popover className="min-w-52" placement="bottom start">
                 <Dropdown.Menu
-                  aria-label={chatStrings.composer.model}
+                  aria-label="选择模型"
                   selectedKeys={new Set([selectedModelId])}
                   selectionMode="single"
                   onAction={(key) => setSelectedModelId(String(key))}
@@ -324,31 +321,31 @@ export function ChatComposer({
             </Dropdown>
             <Dropdown>
               <Button
-                aria-label={chatStrings.composer.settings}
+                aria-label="输入设置"
                 className="gap-2 px-2"
                 isDisabled={isGenerating}
                 size="sm"
                 variant="ghost"
               >
                 <Settings2 className="size-4" />
-                <span className="hidden sm:inline">{chatStrings.composer.settings}</span>
+                <span className="hidden sm:inline">设置</span>
                 <ChevronDown className="hidden size-3.5 sm:block" />
               </Button>
               <Dropdown.Popover className="min-w-48" placement="bottom start">
                 <Dropdown.Menu
-                  aria-label={chatStrings.composer.settings}
+                  aria-label="输入设置"
                   onAction={(key) => {
                     if (key === "attach") fileInputRef.current?.click();
                     if (key === "clear") handleClear();
                   }}
                 >
-                  <Dropdown.Item id="attach" textValue={chatStrings.composer.attach}>
+                  <Dropdown.Item id="attach" textValue="添加附件">
                     <Paperclip className="size-4 text-muted" />
-                    <Label>{chatStrings.composer.attach}</Label>
+                    <Label>添加附件</Label>
                   </Dropdown.Item>
-                  <Dropdown.Item id="clear" textValue={chatStrings.composer.clear}>
+                  <Dropdown.Item id="clear" textValue="清空输入框">
                     <Eraser className="size-4 text-muted" />
-                    <Label>{chatStrings.composer.clear}</Label>
+                    <Label>清空输入框</Label>
                   </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown.Popover>
@@ -356,10 +353,10 @@ export function ChatComposer({
           </PromptInput.ToolbarStart>
           <PromptInput.ToolbarEnd>
             <PromptInput.Action
-              aria-label={chatStrings.composer.voice}
+              aria-label="语音输入"
               className="size-8 min-w-8"
               isDisabled
-              tooltip={chatStrings.composer.voiceUnavailable}
+              tooltip="语音输入暂不可用"
             >
               <Mic className="size-4" />
             </PromptInput.Action>
@@ -387,7 +384,7 @@ export function ChatComposer({
           })}
         </div>
       ) : (
-        <PromptInput.Footer>{chatStrings.disclaimer}</PromptInput.Footer>
+        <PromptInput.Footer className="mt-2!">AI 可能会出错，请核实重要信息。</PromptInput.Footer>
       )}
     </PromptInput>
   );

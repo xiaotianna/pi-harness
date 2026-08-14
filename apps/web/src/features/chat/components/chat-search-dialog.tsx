@@ -22,13 +22,13 @@ export function ChatSearchDialog({
     <Command>
       <Command.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
         <Command.Container>
-          <Command.Dialog>
-            <Command.InputGroup>
+          <Command.Dialog aria-label="搜索对话">
+            <Command.InputGroup aria-label="搜索对话">
               <Command.InputGroup.Prefix>
                 <Search />
               </Command.InputGroup.Prefix>
-              <Command.InputGroup.Input placeholder="Search your chats" />
-              <Command.InputGroup.ClearButton />
+              <Command.InputGroup.Input placeholder="搜索你的对话" />
+              <Command.InputGroup.ClearButton aria-label="清空搜索" />
               <Command.InputGroup.Suffix>
                 <Kbd className="text-xs">
                   <Kbd.Content>Esc</Kbd.Content>
@@ -38,11 +38,11 @@ export function ChatSearchDialog({
             <Command.List
               renderEmptyState={() => (
                 <div className="flex h-16 items-center justify-center text-sm text-muted">
-                  No chats match that search.
+                  没有找到匹配的对话
                 </div>
               )}
             >
-              <Command.Group heading="Recent chats">
+              <Command.Group heading="最近对话">
                 {threads.map((thread) => (
                   <Command.Item
                     key={thread.id}
@@ -74,13 +74,13 @@ export function ChatSearchDialog({
                       <Kbd.Abbr keyValue="down" />
                     </Kbd>
                   </div>
-                  <span>Navigate</span>
+                  <span>选择</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Kbd>
                     <Kbd.Abbr keyValue="enter" />
                   </Kbd>
-                  <span>Open chat</span>
+                  <span>打开对话</span>
                 </div>
               </div>
             </Command.Footer>
