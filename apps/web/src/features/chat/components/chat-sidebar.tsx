@@ -59,10 +59,7 @@ function SidebarContents({
 
   return (
     <>
-      <Sidebar.Header>
-        <UserMenu />
-      </Sidebar.Header>
-      <Sidebar.Content>
+      <Sidebar.Content className="pt-4">
         <Sidebar.Group>
           <Sidebar.Menu aria-label="对话操作">
             {CHAT_NAV_ITEMS.map((item) => (
@@ -95,6 +92,9 @@ function SidebarContents({
           </Sidebar.Menu>
         </Sidebar.Group>
       </Sidebar.Content>
+      <Sidebar.Footer>
+        <UserMenu />
+      </Sidebar.Footer>
     </>
   );
 }

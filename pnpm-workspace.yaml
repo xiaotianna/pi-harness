@@ -18,6 +18,10 @@ catalog:
   "@tanstack/react-query": ^5.85.0
   "@tanstack/react-router": ^1.130.0
   "@tanstack/react-virtual": ^3.13.0
+  "@tiptap/core": ^3.29.0
+  "@tiptap/pm": ^3.29.0
+  "@tiptap/react": ^3.29.0
+  "@tiptap/starter-kit": ^3.29.0
   "@types/node": ^24.0.0
   "@types/react": ^19.1.0
   "@types/react-dom": ^19.1.0

@@ -4,6 +4,15 @@
 @source "../node_modules/@agile-avocation/ui-pro/dist/**/*.{js,mjs}";
 @source "./**/*.{ts,tsx}";
 
+*,
+::before,
+::after,
+::backdrop {
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-inset-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+}
+
 @layer base {
   :root,
   .light,
@@ -11,6 +20,18 @@
   [data-theme="light"],
   [data-theme="default"] {
     color-scheme: light;
+    --chat-token-file: oklch(0.64 0.18 252);
+    --chat-token-folder: var(--chat-token-file);
+    --chat-token-image: oklch(0.64 0.13 160);
+    --chat-token-command: oklch(0.67 0.15 60);
+    --chat-token-mcp: oklch(0.63 0.13 210);
+    --chat-token-skill: oklch(0.64 0.16 305);
+    --chat-token-file-soft: color-mix(in oklab, var(--chat-token-file) 12%, transparent);
+    --chat-token-folder-soft: var(--chat-token-file-soft);
+    --chat-token-image-soft: color-mix(in oklab, var(--chat-token-image) 12%, transparent);
+    --chat-token-command-soft: color-mix(in oklab, var(--chat-token-command) 12%, transparent);
+    --chat-token-mcp-soft: color-mix(in oklab, var(--chat-token-mcp) 12%, transparent);
+    --chat-token-skill-soft: color-mix(in oklab, var(--chat-token-skill) 12%, transparent);
     --background: oklch(0.985 0 0);
     --surface: var(--white);
     --surface-foreground: var(--foreground);
@@ -19,8 +40,22 @@
     --field-border: transparent;
     --field-border-hover: transparent;
     --field-border-focus: transparent;
-    --field-shadow:
-      0 12px 32px rgba(24, 24, 27, 0.1),
-      0 3px 10px rgba(24, 24, 27, 0.06);
+    --field-shadow: 0 12px 32px rgba(24, 24, 27, 0.1), 0 3px 10px rgba(24, 24, 27, 0.06);
+  }
+
+  .dark,
+  [data-theme="dark"] {
+    --chat-token-file: oklch(0.72 0.14 252);
+    --chat-token-folder: var(--chat-token-file);
+    --chat-token-image: oklch(0.72 0.11 165);
+    --chat-token-command: oklch(0.76 0.13 65);
+    --chat-token-mcp: oklch(0.72 0.1 205);
+    --chat-token-skill: oklch(0.72 0.13 305);
+    --chat-token-file-soft: color-mix(in oklab, var(--chat-token-file) 14%, transparent);
+    --chat-token-folder-soft: var(--chat-token-file-soft);
+    --chat-token-image-soft: color-mix(in oklab, var(--chat-token-image) 14%, transparent);
+    --chat-token-command-soft: color-mix(in oklab, var(--chat-token-command) 14%, transparent);
+    --chat-token-mcp-soft: color-mix(in oklab, var(--chat-token-mcp) 14%, transparent);
+    --chat-token-skill-soft: color-mix(in oklab, var(--chat-token-skill) 14%, transparent);
   }
 }

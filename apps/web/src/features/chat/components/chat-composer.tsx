@@ -2,24 +2,32 @@
 
 import type { ChatStatus } from "@agile-avocation/ui-pro";
 import { PromptInput } from "@agile-avocation/ui-pro";
-import { Button, Dropdown, Label } from "@heroui/react";
+import { Button, Dropdown, Label, Tooltip } from "@heroui/react";
 import {
   ChevronDown,
   Code2,
-  Eraser,
   Lightbulb,
-  Mic,
   Paperclip,
   PencilLine,
+  Plug,
   Search,
   Settings2,
   Sparkles,
+  SquareTerminal,
+  WandSparkles,
 } from "lucide-react";
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CHAT_MODELS } from "../data/chat";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
 import { ChatAttachmentList } from "./chat-attachment-list";
+import {
+  ChatComposerEditor,
+  type ChatComposerEditorHandle,
+  type ChatComposerToken,
+  ChatComposerTokenKind,
+  type ChatComposerTokenKind as ChatComposerTokenKindValue,
+} from "./chat-composer-editor";
 
 type PendingAttachment = {
   id: string;
@@ -74,6 +82,48 @@ const COMPOSER_SHORTCUTS = [
   },
 ] as const;
 
+const COMMAND_OPTIONS = [
+  { id: "review", label: "/review" },
+  { id: "explain", label: "/explain" },
+  { id: "fix", label: "/fix" },
+] as const;
+
+const SKILL_OPTIONS = [
+  { id: "frontend-design", label: "Frontend Design" },
+  { id: "code-review", label: "Code Review" },
+  { id: "documents", label: "Documents" },
+] as const;
+
+const MCP_OPTIONS = [
+  { id: "filesystem", label: "Filesystem" },
+  { id: "github", label: "GitHub" },
+  { id: "browser", label: "Browser" },
+] as const;
+
+const SLASH_MENU_ITEMS = [
+  ...COMMAND_OPTIONS.map((option) => ({ ...option, kind: ChatComposerTokenKind.COMMAND })),
+  ...SKILL_OPTIONS.map((option) => ({ ...option, kind: ChatComposerTokenKind.SKILL })),
+  ...MCP_OPTIONS.map((option) => ({ ...option, kind: ChatComposerTokenKind.MCP })),
+] satisfies readonly ChatComposerToken[];
+
+const CONTEXT_MENU_ITEMS = [
+  { id: "design-reference.png", kind: ChatComposerTokenKind.IMAGE, label: "design-reference.png" },
+  {
+    id: "dashboard-preview.jpg",
+    kind: ChatComposerTokenKind.IMAGE,
+    label: "dashboard-preview.jpg",
+  },
+  { id: "README.md", kind: ChatComposerTokenKind.FILE, label: "README.md" },
+  { id: "package.json", kind: ChatComposerTokenKind.FILE, label: "package.json" },
+  { id: "architecture", kind: ChatComposerTokenKind.FILE, label: "架构设计.md" },
+  { id: "apps/web", kind: ChatComposerTokenKind.FOLDER, label: "apps/web" },
+  {
+    id: "packages/agent-runtime",
+    kind: ChatComposerTokenKind.FOLDER,
+    label: "packages/agent-runtime",
+  },
+] satisfies readonly ChatComposerToken[];
+
 export function ChatComposer({
   className,
   modelId = CHAT_MODELS[0]?.id ?? "gpt-5.4",
@@ -87,6 +137,7 @@ export function ChatComposer({
   const [value, setValue] = useState("");
   const attachmentsRef = useRef<PendingAttachment[]>([]);
   const attachmentDrawerId = useId();
+  const editorRef = useRef<ChatComposerEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timersRef = useRef<number[]>([]);
 
@@ -181,11 +232,15 @@ export function ChatComposer({
     });
   };
 
-  const handleClear = () => {
-    revokeAttachmentUrls(attachments);
-    setAttachments([]);
-    setIsAttachmentDrawerExpanded(true);
-    setValue("");
+  const handleInsertToken = (
+    kind: ChatComposerTokenKindValue,
+    options: ReadonlyArray<{ id: string; label: string }>,
+    key: unknown,
+  ) => {
+    const option = options.find((item) => item.id === String(key));
+    if (!option) return;
+
+    editorRef.current?.insertToken({ ...option, kind });
   };
 
   return (
@@ -255,7 +310,7 @@ export function ChatComposer({
         </div>
       ) : null}
       <PromptInput.Shell
-        className={`relative z-10 rounded-[28px] bg-field shadow-field ${
+        className={`relative z-10 overflow-visible! rounded-[28px] bg-field shadow-field ${
           attachments.length ? "-mt-6" : ""
         } ${isHero ? "min-h-[184px]" : "min-h-[132px]"}`}
       >
@@ -282,14 +337,112 @@ export function ChatComposer({
               <Paperclip className="size-4" />
             </PromptInput.Action>
           </div>
-          <PromptInput.TextArea
-            aria-label="消息输入框"
-            className={isHero ? "min-h-[92px] pt-2" : "min-h-[56px] pt-2"}
+          <ChatComposerEditor
+            ref={editorRef}
+            ariaLabel="消息输入框"
+            contextMenuItems={CONTEXT_MENU_ITEMS}
+            isDisabled={isGenerating}
+            minHeight={isHero ? 92 : 56}
             placeholder={placeholder}
+            slashMenuItems={SLASH_MENU_ITEMS}
+            value={value}
+            onSubmit={handleSubmit}
+            onValueChange={setValue}
           />
         </PromptInput.Content>
         <PromptInput.Toolbar>
           <PromptInput.ToolbarStart>
+            <Dropdown>
+              <Tooltip delay={0}>
+                <Button
+                  isIconOnly
+                  aria-label="输入设置"
+                  className="size-8 min-w-8 p-0"
+                  isDisabled={isGenerating}
+                  size="sm"
+                  variant="ghost"
+                >
+                  <Settings2 className="size-4" />
+                </Button>
+                <Tooltip.Content placement="top">设置</Tooltip.Content>
+              </Tooltip>
+              <Dropdown.Popover className="min-w-48" placement="bottom start">
+                <Dropdown.Menu
+                  aria-label="输入设置"
+                  onAction={(key) => {
+                    if (key === "attach") fileInputRef.current?.click();
+                  }}
+                >
+                  <Dropdown.Item id="attach" textValue="添加附件">
+                    <Paperclip className="size-4 text-muted" />
+                    <Label>添加附件</Label>
+                  </Dropdown.Item>
+                  <Dropdown.SubmenuTrigger>
+                    <Dropdown.Item id="commands" textValue="命令">
+                      <SquareTerminal className="size-4 text-muted" />
+                      <Label>命令</Label>
+                      <Dropdown.SubmenuIndicator />
+                    </Dropdown.Item>
+                    <Dropdown.Popover className="min-w-40" placement="right top">
+                      <Dropdown.Menu
+                        aria-label="命令"
+                        onAction={(key) =>
+                          handleInsertToken(ChatComposerTokenKind.COMMAND, COMMAND_OPTIONS, key)
+                        }
+                      >
+                        {COMMAND_OPTIONS.map((option) => (
+                          <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
+                            <Label>{option.label}</Label>
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    </Dropdown.Popover>
+                  </Dropdown.SubmenuTrigger>
+                  <Dropdown.SubmenuTrigger>
+                    <Dropdown.Item id="skills" textValue="Skills">
+                      <WandSparkles className="size-4 text-muted" />
+                      <Label>Skills</Label>
+                      <Dropdown.SubmenuIndicator />
+                    </Dropdown.Item>
+                    <Dropdown.Popover className="min-w-40" placement="right top">
+                      <Dropdown.Menu
+                        aria-label="Skills"
+                        onAction={(key) =>
+                          handleInsertToken(ChatComposerTokenKind.SKILL, SKILL_OPTIONS, key)
+                        }
+                      >
+                        {SKILL_OPTIONS.map((option) => (
+                          <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
+                            <Label>{option.label}</Label>
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    </Dropdown.Popover>
+                  </Dropdown.SubmenuTrigger>
+                  <Dropdown.SubmenuTrigger>
+                    <Dropdown.Item id="mcp" textValue="MCP">
+                      <Plug className="size-4 text-muted" />
+                      <Label>MCP</Label>
+                      <Dropdown.SubmenuIndicator />
+                    </Dropdown.Item>
+                    <Dropdown.Popover className="min-w-40" placement="right top">
+                      <Dropdown.Menu
+                        aria-label="MCP"
+                        onAction={(key) =>
+                          handleInsertToken(ChatComposerTokenKind.MCP, MCP_OPTIONS, key)
+                        }
+                      >
+                        {MCP_OPTIONS.map((option) => (
+                          <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
+                            <Label>{option.label}</Label>
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    </Dropdown.Popover>
+                  </Dropdown.SubmenuTrigger>
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
             <Dropdown>
               <Button
                 aria-label="选择模型"
@@ -319,47 +472,8 @@ export function ChatComposer({
                 </Dropdown.Menu>
               </Dropdown.Popover>
             </Dropdown>
-            <Dropdown>
-              <Button
-                aria-label="输入设置"
-                className="gap-2 px-2"
-                isDisabled={isGenerating}
-                size="sm"
-                variant="ghost"
-              >
-                <Settings2 className="size-4" />
-                <span className="hidden sm:inline">设置</span>
-                <ChevronDown className="hidden size-3.5 sm:block" />
-              </Button>
-              <Dropdown.Popover className="min-w-48" placement="bottom start">
-                <Dropdown.Menu
-                  aria-label="输入设置"
-                  onAction={(key) => {
-                    if (key === "attach") fileInputRef.current?.click();
-                    if (key === "clear") handleClear();
-                  }}
-                >
-                  <Dropdown.Item id="attach" textValue="添加附件">
-                    <Paperclip className="size-4 text-muted" />
-                    <Label>添加附件</Label>
-                  </Dropdown.Item>
-                  <Dropdown.Item id="clear" textValue="清空输入框">
-                    <Eraser className="size-4 text-muted" />
-                    <Label>清空输入框</Label>
-                  </Dropdown.Item>
-                </Dropdown.Menu>
-              </Dropdown.Popover>
-            </Dropdown>
           </PromptInput.ToolbarStart>
           <PromptInput.ToolbarEnd>
-            <PromptInput.Action
-              aria-label="语音输入"
-              className="size-8 min-w-8"
-              isDisabled
-              tooltip="语音输入暂不可用"
-            >
-              <Mic className="size-4" />
-            </PromptInput.Action>
             <PromptInput.Send aria-label={sendLabel} isDisabled={!canSend && !isGenerating} />
           </PromptInput.ToolbarEnd>
         </PromptInput.Toolbar>

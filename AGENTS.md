@@ -230,7 +230,8 @@ export const sessionQueryKeys = {
 - 所有界面内容，包括交互控件、信息展示、状态反馈和常见布局，都必须优先使用现有业务组件、通用 UI 组件、HeroUI 或兼容的 HeroUI Pro 组件实现；尽量不要自行编写带样式的原生 HTML 元素。
 - 不得使用原生 `button`、`input`、`select`、`textarea`、`table`、`dialog` 等元素重复实现组件库已经提供的能力，也不得通过给原生元素堆叠 Tailwind 类名来仿造现有 UI 组件。`div`、`span`、`p` 等原生元素仅可用于组件库没有对应抽象的必要语义结构或基础布局，且样式必须保持最少。
 - 开始实现界面前必须先检查项目现有组件、HeroUI 和兼容的 HeroUI Pro 是否已有合适组件；同一视觉或交互模式出现两次及以上时，必须提取到 `components` 或对应 feature 内作为可复用 UI 组件。
-- HeroUI 组件的 `className` 默认只补充业务布局、尺寸和必要间距，不额外添加 `ring`、边框、阴影、焦点、悬停或按压效果；组件已有的状态视觉交给 HeroUI 自身实现。
+- 项目 UI 全局不使用 `ring` 视觉。禁止添加 `ring-*`、`focus:ring-*`、`focus-visible:ring-*`、`data-[focus-visible]:ring-*` 或通过 `box-shadow` 仿造 ring；HeroUI、HeroUI Pro 和 React Aria 组件自带的 ring 也必须在全局主题层统一清除。
+- 需要表达键盘焦点时使用不改变控件尺寸的背景色、文字色或透明度变化，不使用 ring、额外边框或外描边。HeroUI 组件的 `className` 默认只补充业务布局、尺寸和必要间距，不额外添加边框、阴影、焦点、悬停或按压效果；除 ring 外的组件状态视觉交给 HeroUI 自身实现。
 - 项目使用已购买的第三方 HeroUI Pro 兼容包 `@agile-avocation/ui-pro`，不得安装、导入或替换为官方包 `@heroui-pro/react`。HeroUI Pro 文档中的 `@heroui-pro/react` 导入示例在本项目中统一改为从 `@agile-avocation/ui-pro` 导入。
 - 使用 Pro 组件前先查阅 [HeroUI Pro React 组件文档](https://heroui.pro/docs/react/components)，以其中的组件清单、结构、属性和示例为准；同时结合本项目已安装版本的 TypeScript 类型与实际导出进行确认，不凭记忆猜测 API。
 - Button、Input、Select、Modal、Popover、Tooltip、Tabs、Accordion、Menu、Toast 等基础组件继续使用 `@heroui/react`，并参考 [HeroUI React 基础文档](https://heroui.com/en/docs/react/getting-started)。不得为了使用 Pro 组件而重复实现或替换已有的 HeroUI 基础组件。

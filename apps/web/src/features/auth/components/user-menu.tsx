@@ -56,7 +56,7 @@ export function UserMenu() {
           </div>
         )}
       </Dropdown.Trigger>
-      <Dropdown.Popover placement="bottom start">
+      <Dropdown.Popover placement="top start">
         <Dropdown.Menu
           aria-label="用户操作"
           onAction={(key) => {
