@@ -12,6 +12,7 @@ export type ChatStatus = "ready" | "streaming" | "submitted";
 
 export const SHOWCASE_THREAD: ChatThread = {
   id: "pro-ai-showcase",
+  workspaceId: "pi-workbench",
   messages: [
     {
       id: "showcase-1",
@@ -173,7 +174,7 @@ export const SHOWCASE_THREAD: ChatThread = {
   preview: "展示 Markdown、思维链、工具调用、信息来源、附件、加载状态和消息操作。",
   searchModeId: "deep-search",
   title: "Pro AI 组件展示",
-  updatedAt: "刚刚",
+  updatedAt: new Date().toISOString(),
   user: {
     avatar: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg",
     email: "darnell@email.com",

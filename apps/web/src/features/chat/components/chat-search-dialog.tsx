@@ -3,6 +3,7 @@
 import { Command } from "@agile-avocation/ui-pro";
 import { Kbd } from "@heroui/react";
 import { MessageCircle, Search } from "lucide-react";
+import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import type { ChatThread } from "../data/chat";
 
 export interface ChatSearchDialogProps {
@@ -57,7 +58,7 @@ export function ChatSearchDialog({
                       <span className="truncate text-xs text-muted">{thread.preview}</span>
                     </div>
                     <span className="ml-auto shrink-0 text-[11px] text-muted">
-                      {thread.updatedAt}
+                      {formatChatTimestamp(thread.updatedAt)}
                     </span>
                   </Command.Item>
                 ))}

@@ -14,7 +14,6 @@
 }
 
 @layer base {
-  :root,
   .light,
   .default,
   [data-theme="light"],
@@ -58,4 +57,96 @@
     --chat-token-mcp-soft: color-mix(in oklab, var(--chat-token-mcp) 14%, transparent);
     --chat-token-skill-soft: color-mix(in oklab, var(--chat-token-skill) 14%, transparent);
   }
+}
+
+.sidebar__menu-item[data-workspace-item] [data-slot="sidebar-menu-trigger"] {
+  display: none;
+}
+
+.sidebar__menu-item[data-workspace-item] [data-slot="sidebar-menu-item-content"] {
+  gap: calc(var(--spacing, 0.25rem) * 2);
+}
+
+.sidebar__workspace-folder-open {
+  display: none;
+  color: var(--accent);
+  fill: color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.sidebar__menu-item[data-workspace-item][data-expanded] .sidebar__workspace-folder-closed {
+  display: none;
+}
+
+.sidebar__menu-item[data-workspace-item][data-expanded] .sidebar__workspace-folder-open {
+  display: block;
+}
+
+.sidebar__menu-item[data-thread-item] [data-slot="sidebar-menu-item-content"] {
+  margin-block: calc(var(--spacing, 0.25rem) * 0.25);
+  width: 100%;
+  margin-inline-start: 0;
+  padding-inline-start: calc(var(--spacing, 0.25rem) * 9);
+}
+
+@media (hover: none) {
+  .sidebar__menu-item[data-workspace-item] [data-slot="sidebar-menu-trigger"] {
+    display: flex;
+  }
+
+  .sidebar__menu-item[data-workspace-item] [data-slot="sidebar-menu-icon"] {
+    display: none;
+  }
+}
+
+.sidebar__menu-item[data-workspace-item]:is(
+    :hover,
+    [data-hovered="true"],
+    [data-focus-visible="true"]
+  )
+  [data-slot="sidebar-menu-trigger"] {
+  display: flex;
+}
+
+.sidebar__menu-item[data-workspace-item]:is(
+    :hover,
+    [data-hovered="true"],
+    [data-focus-visible="true"]
+  )
+  [data-slot="sidebar-menu-icon"] {
+  display: none;
+}
+
+.sidebar__menu-actions {
+  display: flex;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.sidebar__menu-item:is(
+    :hover,
+    [data-current="true"],
+    [data-hovered="true"],
+    [data-focus-visible="true"],
+    :has(.sidebar__menu-action:focus-visible),
+    :has(.sidebar__menu-action[data-focus-visible="true"]),
+    :has(.sidebar__menu-actions [aria-expanded="true"])
+  )
+  .sidebar__menu-actions,
+.sidebar__mobile .sidebar__menu-actions {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.sidebar__mobile .sidebar__menu-item[data-thread-item] .sidebar__menu-chip,
+.sidebar__menu-item[data-thread-item]:is(
+    :hover,
+    [data-current="true"],
+    [data-hovered="true"],
+    [data-focus-visible="true"],
+    :has(.sidebar__menu-action:focus-visible),
+    :has(.sidebar__menu-action[data-focus-visible="true"]),
+    :has(.sidebar__menu-actions [aria-expanded="true"])
+  )
+  .sidebar__menu-chip {
+  visibility: hidden;
 }

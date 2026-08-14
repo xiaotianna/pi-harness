@@ -1,5 +1,5 @@
 import type { ToolPartState } from "@agile-avocation/ui-pro/chat-tool";
-import { Compass, Images, SquarePlus } from "lucide-react";
+import { Compass, Images, MessageCirclePlus } from "lucide-react";
 import type { ComponentType } from "react";
 import { SHOWCASE_THREAD } from "./showcase-thread";
 
@@ -109,6 +109,7 @@ export type ChatMessage = {
 
 export type ChatThread = {
   id: string;
+  workspaceId: string;
   title: string;
   preview: string;
   updatedAt: string;
@@ -120,6 +121,13 @@ export type ChatThread = {
     name: string;
   };
   messages: readonly ChatMessage[];
+};
+
+export type ChatWorkspace = {
+  id: string;
+  name: string;
+  path: string;
+  createdAt: string;
 };
 
 export type LibraryItem = {
@@ -145,7 +153,7 @@ export type ExploreCategory = {
 };
 
 export const CHAT_NAV_ITEMS: readonly ChatNavItem[] = [
-  { href: "/new", icon: SquarePlus, id: "new", label: "新对话" },
+  { href: "/new", icon: MessageCirclePlus, id: "new", label: "新对话" },
   { href: "/library", icon: Images, id: "library", label: "资料库" },
   { href: "/explore", icon: Compass, id: "explore", label: "探索" },
 ] as const;
@@ -169,6 +177,15 @@ export const SUGGESTED_PROMPTS: readonly string[] = [
   "为一款数据密集型分析产品构思新手引导流程的名称。",
   "起草一份能发现阻碍和成长目标的每周一对一会议议程。",
   "比较三种定价模式，并为按量计费的 SaaS 推荐一种。",
+] as const;
+
+export const CHAT_WORKSPACES: readonly ChatWorkspace[] = [
+  {
+    createdAt: "2026-08-14T11:21:00+08:00",
+    id: "pi-workbench",
+    name: "pi-workbench",
+    path: "/Users/lantianyu/Desktop/pi-workbench",
+  },
 ] as const;
 
 export const CHAT_THREADS: readonly ChatThread[] = [
@@ -223,7 +240,8 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     preview: "使用简单食材和一口锅完成的快手晚餐。",
     searchModeId: "deep-search",
     title: "快手晚餐食谱",
-    updatedAt: "2 分钟前",
+    updatedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
+    workspaceId: "pi-workbench",
     user: {
       avatar: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg",
       email: "darnell@email.com",
@@ -261,7 +279,8 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     preview: "包含发布时间线和关键指标的第三季度分析仪表盘发布计划。",
     searchModeId: "deep-search",
     title: "第三季度发布计划",
-    updatedAt: "18 分钟前",
+    updatedAt: new Date(Date.now() - 18 * 60_000).toISOString(),
+    workspaceId: "pi-workbench",
     user: {
       avatar: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg",
       email: "darnell@email.com",
@@ -298,7 +317,8 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     preview: "聚焦产品经理工作流和更快决策的首页文案。",
     searchModeId: "quick-search",
     title: "改写首页价值主张",
-    updatedAt: "1 小时前",
+    updatedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+    workspaceId: "pi-workbench",
     user: {
       avatar: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg",
       email: "darnell@email.com",
@@ -335,7 +355,8 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     preview: "面向团队的产品、设计和工程更新摘要。",
     searchModeId: "quick-search",
     title: "团队每周更新摘要",
-    updatedAt: "昨天",
+    updatedAt: new Date(Date.now() - 24 * 60 * 60_000).toISOString(),
+    workspaceId: "pi-workbench",
     user: {
       avatar: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg",
       email: "darnell@email.com",
@@ -472,8 +493,8 @@ export const EXPLORE_CATEGORIES: readonly ExploreCategory[] = [
 
 export const DEFAULT_CHAT_THREAD_ID = CHAT_THREADS[0]?.id ?? "";
 
-export function getChatThread(chatId: string) {
-  return CHAT_THREADS.find((thread) => thread.id === chatId);
+export function getChatThread(chatId: string, threads: readonly ChatThread[] = CHAT_THREADS) {
+  return threads.find((thread) => thread.id === chatId);
 }
 
 export type ChatPageKind = "thread" | "new" | "library" | "explore";
@@ -484,7 +505,11 @@ export type ChatActivePage =
   | { kind: "library" }
   | { kind: "explore" };
 
-export function resolveChatActivePage(pathname: string, basePath: string): ChatActivePage {
+export function resolveChatActivePage(
+  pathname: string,
+  basePath: string,
+  threads: readonly ChatThread[] = CHAT_THREADS,
+): ChatActivePage {
   const trimmedBase = basePath.replace(/\/$/, "");
   const raw = pathname.startsWith(trimmedBase) ? pathname.slice(trimmedBase.length) : pathname;
   const relative = raw || "/";
@@ -495,7 +520,7 @@ export function resolveChatActivePage(pathname: string, basePath: string): ChatA
   if (firstSegment === "explore") return { kind: "explore" };
 
   const threadId = firstSegment || DEFAULT_CHAT_THREAD_ID;
-  const thread = getChatThread(threadId) ?? CHAT_THREADS[0];
+  const thread = getChatThread(threadId, threads) ?? threads[0];
 
   if (!thread) return { kind: "new" };
 
