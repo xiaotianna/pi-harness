@@ -1,6 +1,26 @@
-import type { ToolPartState } from "@agile-avocation/ui-pro/chat-tool";
 import { Compass, Images, MessageCirclePlus } from "lucide-react";
 import type { ComponentType } from "react";
+import { AGENT_SESSION_THREAD } from "./agent-session-thread";
+import { ChatMessageType } from "./chat-message";
+
+export type {
+  ChatAssistantMessage,
+  ChatCodeMessage,
+  ChatLoadingMessage,
+  ChatMessage,
+  ChatMessageAttachment,
+  ChatMessageSource,
+  ChatMessageTool,
+  ChatReasoningMessage,
+  ChatSourcesMessage,
+  ChatStreamingMessage,
+  ChatToolGroupMessage,
+  ChatToolMessage,
+  ChatUserMessage,
+} from "./chat-message";
+export { ChatMessageType };
+
+import type { ChatMessage } from "./chat-message";
 import { SHOWCASE_THREAD } from "./showcase-thread";
 
 export type ChatNavItemId = "new" | "library" | "explore";
@@ -24,81 +44,6 @@ export type ChatModel = {
 export type ChatSearchMode = {
   id: string;
   label: string;
-};
-
-export type ChatMessageImage = {
-  alt: string;
-  src: string;
-};
-
-export type ChatMessageReasoningStep = {
-  content: string;
-  label: string;
-};
-
-export type ChatMessageReasoning = {
-  defaultExpanded?: boolean;
-  steps: readonly ChatMessageReasoningStep[];
-  trigger: string;
-};
-
-export type ChatMessageTool = {
-  argsText?: string;
-  errorText?: string;
-  input?: unknown;
-  output?: unknown;
-  state: ToolPartState;
-  toolName: string;
-};
-
-export type ChatMessageToolGroup = {
-  active?: boolean;
-  label: string;
-  tools: readonly ChatMessageTool[];
-};
-
-export type ChatMessageSource =
-  | {
-      description?: string;
-      sourceType: "url";
-      title?: string;
-      url: string;
-    }
-  | {
-      sourceType: "document";
-      title: string;
-    };
-
-export type ChatMessageSourceGroup = {
-  label: string;
-  sources: readonly ChatMessageSource[];
-};
-
-export type ChatMessageAttachment = {
-  mimeType?: string;
-  name: string;
-  src?: string;
-};
-
-export type ChatAssistantStatus = "complete" | "skeleton" | "streaming";
-
-export type ChatMessage = {
-  id: string;
-  role: "assistant" | "user";
-  actions?: "full" | "minimal";
-  attachments?: readonly ChatMessageAttachment[];
-  image?: ChatMessageImage;
-  /** Rich markdown body for assistant messages. */
-  loaderLabel?: string;
-  markdown?: string;
-  listItems?: string[];
-  reasoning?: ChatMessageReasoning;
-  sourceGroup?: ChatMessageSourceGroup;
-  sources?: readonly ChatMessageSource[];
-  status?: ChatAssistantStatus;
-  text?: string;
-  toolGroup?: ChatMessageToolGroup;
-  tools?: readonly ChatMessageTool[];
 };
 
 export type ChatThread = {
@@ -183,51 +128,51 @@ export const CHAT_WORKSPACES: readonly ChatWorkspace[] = [
 ] as const;
 
 export const CHAT_THREADS: readonly ChatThread[] = [
+  AGENT_SESSION_THREAD,
   SHOWCASE_THREAD,
   {
     id: "quick-recipes-for-dinner",
     messages: [
       {
+        content: "今晚时间不多，有什么快手晚餐推荐吗？",
         id: "msg-1",
-        role: "user",
-        text: "今晚时间不多，有什么快手晚餐推荐吗？",
+        type: ChatMessageType.USER,
       },
       {
         actions: "full",
+        content: "当然！你是只做自己的一份，还是要给多人准备？",
         id: "msg-2",
-        role: "assistant",
-        text: "当然！你是只做自己的一份，还是要给多人准备？",
+        type: ChatMessageType.ASSISTANT,
       },
       {
+        content: "只做我自己的。想要简单但不无聊的。",
         id: "msg-3",
-        role: "user",
-        text: "只做我自己的。想要简单但不无聊的 😅",
+        type: ChatMessageType.USER,
       },
       {
         actions: "full",
+        content: `明白了。这里有几个 15～20 分钟就能完成的选择：
+
+1. 蒜香鸡肉炒蔬菜。用鸡胸肉、大蒜、酱油和冷冻蔬菜快炒，搭配米饭或卷饼。
+2. 升级版蒜香橄榄油意面。用意面、橄榄油、大蒜和辣椒碎，有虾仁或蘑菇也可以加进去。
+3. 鸡蛋卷饼或欧姆蛋。把鸡蛋、奶酪和手边的蔬菜搭配起来，也可以卷进饼皮。`,
         id: "msg-4",
-        listItems: [
-          "蒜香鸡肉炒蔬菜。用鸡胸肉、大蒜、酱油和冷冻蔬菜快炒，搭配米饭或卷饼。",
-          "升级版蒜香橄榄油意面。用意面、橄榄油、大蒜和辣椒碎，有虾仁或蘑菇也可以加进去。",
-          "鸡蛋卷饼或欧姆蛋。把鸡蛋、奶酪和手边的蔬菜搭配起来，也可以卷进饼皮。",
-        ],
-        role: "assistant",
-        text: "明白了。这里有几个 15～20 分钟就能完成的选择：",
+        type: ChatMessageType.ASSISTANT,
       },
       {
+        content: "第三种看起来是什么样？我想看看自己会不会喜欢。",
         id: "msg-5",
-        role: "user",
-        text: "第三种看起来是什么样？我想看看自己会不会喜欢。",
+        type: ChatMessageType.USER,
       },
       {
         actions: "minimal",
+        content: "当然！大概是这样的：",
         id: "msg-6",
         image: {
           alt: "搭配小番茄和欧芹的欧姆蛋",
           src: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/images/egg.webp",
         },
-        role: "assistant",
-        text: "当然！大概是这样的：",
+        type: ChatMessageType.ASSISTANT,
       },
     ],
     modelId: "gpt-5.4",
@@ -246,27 +191,27 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     id: "launch-plan-for-q3-rollout",
     messages: [
       {
+        content: "帮我为第三季度上线分析仪表盘起草一份发布计划。",
         id: "msg-1",
-        role: "user",
-        text: "帮我为第三季度上线分析仪表盘起草一份发布计划。",
+        type: ChatMessageType.USER,
       },
       {
         actions: "full",
+        content:
+          "可以。为了让计划切实可行，我会拆分为内部对齐、内测验证、发布物料和上线后评估四个部分。",
         id: "msg-2",
-        role: "assistant",
-        text: "可以。为了让计划切实可行，我会拆分为内部对齐、内测验证、发布物料和上线后评估四个部分。",
+        type: ChatMessageType.ASSISTANT,
       },
       {
         actions: "full",
+        content: `下面是一份简洁的四周发布计划：
+
+1. 第 1 周：让产品、销售和支持团队就产品定位达成一致。
+2. 第 2 周：邀请设计合作伙伴参与内测，并归纳主要异议。
+3. 第 3 周：完成发布物料、版本说明和新手引导。
+4. 第 4 周：正式发布，并监测激活率、留存率和支持请求量。`,
         id: "msg-3",
-        listItems: [
-          "第 1 周：让产品、销售和支持团队就产品定位达成一致。",
-          "第 2 周：邀请设计合作伙伴参与内测，并归纳主要异议。",
-          "第 3 周：完成发布物料、版本说明和新手引导。",
-          "第 4 周：正式发布，并监测激活率、留存率和支持请求量。",
-        ],
-        role: "assistant",
-        text: "下面是一份简洁的四周发布计划：",
+        type: ChatMessageType.ASSISTANT,
       },
     ],
     modelId: "gpt-5.4",
@@ -285,26 +230,26 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     id: "rewrite-homepage-value-prop",
     messages: [
       {
+        content: "你能改写首页的价值主张，让它更贴合产品团队吗？",
         id: "msg-1",
-        role: "user",
-        text: "你能改写首页的价值主张，让它更贴合产品团队吗？",
+        type: ChatMessageType.USER,
       },
       {
         actions: "full",
+        content:
+          "可以。最快的改进方式是不再把工具描述成泛化的 AI，而是聚焦产品工作流、效率和决策清晰度。",
         id: "msg-2",
-        role: "assistant",
-        text: "可以。最快的改进方式是不再把工具描述成泛化的 AI，而是聚焦产品工作流、效率和决策清晰度。",
+        type: ChatMessageType.ASSISTANT,
       },
       {
         actions: "full",
+        content: `这里有三个更有力的定位方向：
+
+1. 把客户反馈转化为明确优先级的产品决策。
+2. 为产品经理和设计团队提供一个用于研究、归纳和发布规划的共享工作区。
+3. 借助 AI 摘要和行动计划，缩短从洞察到路线图的时间。`,
         id: "msg-3",
-        listItems: [
-          "把客户反馈转化为明确优先级的产品决策。",
-          "为产品经理和设计团队提供一个用于研究、归纳和发布规划的共享工作区。",
-          "借助 AI 摘要和行动计划，缩短从洞察到路线图的时间。",
-        ],
-        role: "assistant",
-        text: "这里有三个更有力的定位方向：",
+        type: ChatMessageType.ASSISTANT,
       },
     ],
     modelId: "claude-4.6-sonnet",
@@ -323,26 +268,25 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     id: "weekly-team-update-summary",
     messages: [
       {
+        content: "把本周设计和工程更新整理成可发给团队的进展说明。",
         id: "msg-1",
-        role: "user",
-        text: "把本周设计和工程更新整理成可发给团队的进展说明。",
+        type: ChatMessageType.USER,
       },
       {
         actions: "full",
+        content: "已完成。我将内容精简并按进展、风险和下一步分组，可以直接粘贴到 Slack 或 Notion。",
         id: "msg-2",
-        role: "assistant",
-        text: "已完成。我将内容精简并按进展、风险和下一步分组，可以直接粘贴到 Slack 或 Notion。",
+        type: ChatMessageType.ASSISTANT,
       },
       {
         actions: "full",
+        content: `每周进展摘要：
+
+- 进展：仪表盘筛选功能已部署到预发布环境，新手引导流程正在验收。
+- 风险：一个 API 延迟回归问题仍在调查中。
+- 下一步：完善计费边界情况，并在下周启动设计系统审查。`,
         id: "msg-3",
-        listItems: [
-          "进展：仪表盘筛选功能已部署到预发布环境，新手引导流程正在验收。",
-          "风险：一个 API 延迟回归问题仍在调查中。",
-          "下一步：完善计费边界情况，并在下周启动设计系统审查。",
-        ],
-        role: "assistant",
-        text: "每周进展摘要：",
+        type: ChatMessageType.ASSISTANT,
       },
     ],
     modelId: "gemini-3.1-pro",
@@ -360,6 +304,14 @@ export const CHAT_THREADS: readonly ChatThread[] = [
 ] as const;
 
 export const LIBRARY_ITEMS: readonly LibraryItem[] = [
+  {
+    description: "包含上下文读取、工具调用、审批、写入和最终交付的 Agent 会话。",
+    id: "lib-agent-session-workflow",
+    tags: ["Agent", "组件"],
+    threadId: "agent-session-workflow",
+    title: "Agent 会话时间线",
+    updatedAt: "刚刚",
+  },
   {
     description: "展示 Markdown、思维链、加载状态和消息操作的示例对话。",
     id: "lib-pro-ai-showcase",

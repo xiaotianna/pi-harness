@@ -3,7 +3,6 @@
 import { AppLayout, Navbar, Sidebar } from "@agile-avocation/ui-pro";
 import { Button, Kbd, Tooltip } from "@heroui/react";
 import { Search } from "lucide-react";
-import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import type { ChatActivePage } from "../data/chat";
 
 const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: string }> = {
@@ -28,11 +27,7 @@ export function ChatNavbar({ activePage, onSearch }: ChatNavbarProps) {
   const isThread = activePage.kind === "thread";
   const thread = isThread ? activePage.thread : undefined;
   const title = isThread ? (thread?.title ?? "对话") : NAV_TITLES[activePage.kind].title;
-  const subtitle = isThread
-    ? thread?.updatedAt
-      ? `更新于${formatChatTimestamp(thread.updatedAt)}`
-      : "实时对话"
-    : NAV_TITLES[activePage.kind].subtitle;
+  const subtitle = isThread ? "" : NAV_TITLES[activePage.kind].subtitle;
 
   return (
     <Navbar maxWidth="full">
