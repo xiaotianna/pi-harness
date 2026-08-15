@@ -104,7 +104,7 @@ export function TraceEventList({
   }
 
   return (
-    <div className="h-full min-h-0 overflow-auto bg-background" ref={parentRef}>
+    <div className="h-full min-h-0 overflow-auto bg-background pb-12" ref={parentRef}>
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((virtualItem) => {
           const item = items[virtualItem.index];
@@ -141,7 +141,9 @@ export function TraceEventList({
                     turn={record.turn}
                   />
                   <span className="flex min-w-0 flex-1 items-center gap-2 pr-3">
-                    <TraceKindChip kind={record.kind} />
+                    <span className="flex w-20 shrink-0 justify-end">
+                      <TraceKindChip kind={record.kind} />
+                    </span>
                     <span
                       className={`min-w-0 truncate text-xs ${isSelected ? "text-foreground" : "text-muted"}`}
                     >

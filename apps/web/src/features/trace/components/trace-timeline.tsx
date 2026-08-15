@@ -57,10 +57,17 @@ export interface TraceTimelineProps {
   durationMs: number;
   range: AgentTraceRange;
   records: readonly AgentTraceRecord[];
+  selectedRecordId: string | null;
   onRangeChange: (range: AgentTraceRange) => void;
 }
 
-export function TraceTimeline({ durationMs, range, records, onRangeChange }: TraceTimelineProps) {
+export function TraceTimeline({
+  durationMs,
+  range,
+  records,
+  selectedRecordId,
+  onRangeChange,
+}: TraceTimelineProps) {
   const dragStartRef = useRef<number | null>(null);
 
   const resolveTime = (event: ReactPointerEvent<HTMLElement>): number => {
@@ -109,7 +116,7 @@ export function TraceTimeline({ durationMs, range, records, onRangeChange }: Tra
       </div>
       <section
         aria-label={`Agent 时间轴，已选择 ${formatTraceDuration(selectionStart)} 到 ${formatTraceDuration(selectionEnd)}`}
-        className="relative grid h-9 touch-none cursor-crosshair grid-rows-[repeat(3,8px)] gap-y-1.5 overflow-hidden"
+        className="relative grid h-9 touch-none cursor-crosshair grid-rows-[repeat(3,8px)] gap-y-1.5 overflow-x-clip overflow-y-visible"
         onPointerCancel={handlePointerUp}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -119,17 +126,27 @@ export function TraceTimeline({ durationMs, range, records, onRangeChange }: Tra
           <div className="relative h-2" key={lane}>
             {records
               .filter((record) => record.lane === lane)
-              .map((record) => (
-                <span
-                  className={`absolute inset-y-0 ${AGENT_TRACE_KIND_STYLES[record.kind].timelineClassName}`}
-                  key={record.id}
-                  style={{
-                    left: `${(record.startMs / durationMs) * 100}%`,
-                    width: `${Math.max((record.durationMs / durationMs) * 100, 0.7)}%`,
-                  }}
-                  title={`${record.label} · ${formatTraceDuration(record.durationMs)}`}
-                />
-              ))}
+              .map((record) => {
+                const isSelected = record.id === selectedRecordId;
+
+                return (
+                  <span
+                    aria-current={isSelected || undefined}
+                    className={`absolute ${isSelected ? "-inset-y-0.5 z-40 rounded-[3px] border border-accent bg-background p-px" : "inset-y-0"}`}
+                    key={record.id}
+                    style={{
+                      left: `${(record.startMs / durationMs) * 100}%`,
+                      width: `${Math.max((record.durationMs / durationMs) * 100, 0.7)}%`,
+                    }}
+                    title={`${record.label} · ${formatTraceDuration(record.durationMs)}`}
+                  >
+                    <span
+                      aria-hidden
+                      className={`block size-full rounded-[1px] ${AGENT_TRACE_KIND_STYLES[record.kind].timelineClassName}`}
+                    />
+                  </span>
+                );
+              })}
           </div>
         ))}
       </section>

@@ -42,7 +42,14 @@ export function TraceDetailPanel({ record, step, onClose }: TraceDetailPanelProp
           Turn {record.turn} · Step {step}
         </span>
         <Tooltip delay={0}>
-          <Button isIconOnly aria-label="关闭轨迹详情" size="sm" variant="ghost" onPress={onClose}>
+          <Button
+            isIconOnly
+            aria-label="关闭轨迹详情"
+            className="-mr-2"
+            size="sm"
+            variant="ghost"
+            onPress={onClose}
+          >
             <X className="size-3.5" />
           </Button>
           <Tooltip.Content placement="left">关闭详情</Tooltip.Content>
@@ -56,19 +63,19 @@ export function TraceDetailPanel({ record, step, onClose }: TraceDetailPanelProp
       >
         <Tabs.ListContainer className="shrink-0 px-2">
           <Tabs.List aria-label="轨迹详情分类">
-            <Tabs.Tab id="summary">
+            <Tabs.Tab className="text-xs" id="summary">
               摘要
               <Tabs.Indicator />
             </Tabs.Tab>
-            <Tabs.Tab id="preview">
+            <Tabs.Tab className="text-xs" id="preview">
               预览
               <Tabs.Indicator />
             </Tabs.Tab>
-            <Tabs.Tab id="raw">
+            <Tabs.Tab className="text-xs" id="raw">
               原始数据
               <Tabs.Indicator />
             </Tabs.Tab>
-            <Tabs.Tab id="source">
+            <Tabs.Tab className="text-xs" id="source">
               来源
               <Tabs.Indicator />
             </Tabs.Tab>

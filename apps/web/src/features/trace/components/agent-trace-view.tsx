@@ -105,6 +105,7 @@ export function AgentTraceView() {
           durationMs={MOCK_AGENT_TRACE.durationMs}
           range={range}
           records={records}
+          selectedRecordId={selectedRecordId}
           onRangeChange={setRange}
         />
       </div>
