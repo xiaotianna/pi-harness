@@ -4,6 +4,7 @@ import { AppLayout, Navbar, Sidebar } from "@agile-avocation/ui-pro";
 import { Button, Kbd, Tooltip } from "@heroui/react";
 import { PanelRightClose, PanelRightOpen, Search } from "lucide-react";
 import type { ChatActivePage } from "../data/chat";
+import { ChatViewToggle } from "./chat-view-toggle";
 
 const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: string }> = {
   explore: {
@@ -41,9 +42,12 @@ export function ChatNavbar({
       <Navbar.Header>
         <AppLayout.MenuToggle aria-label="打开导航" tooltip="打开导航" />
         <Sidebar.Trigger aria-label="切换侧边栏" />
-        <div className="flex min-w-0 flex-col">
-          <h1 className="truncate text-sm font-semibold text-foreground sm:text-base">{title}</h1>
-          {subtitle ? <span className="truncate text-xs text-muted">{subtitle}</span> : null}
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-col">
+            <h1 className="truncate text-sm font-semibold text-foreground sm:text-base">{title}</h1>
+            {subtitle ? <span className="truncate text-xs text-muted">{subtitle}</span> : null}
+          </div>
+          {isThread ? <ChatViewToggle /> : null}
         </div>
         <Navbar.Spacer />
         <div className="flex items-center gap-2">

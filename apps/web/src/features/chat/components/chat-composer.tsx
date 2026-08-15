@@ -10,8 +10,8 @@ import {
   Paperclip,
   PencilLine,
   Plug,
+  Plus,
   Search,
-  Settings2,
   Sparkles,
   SquareTerminal,
   WandSparkles,
@@ -58,6 +58,11 @@ export interface ChatComposerProps {
   placeholder?: string;
   presentation?: "dock" | "hero";
 }
+
+const CHAT_COMPOSER_EDITOR_HEIGHTS = {
+  dock: { max: 80, min: 24 },
+  hero: { max: 360, min: 92 },
+} as const;
 
 const COMPOSER_SHORTCUTS = [
   {
@@ -190,6 +195,7 @@ export function ChatComposer({
   const canSend = Boolean(value.trim() || attachments.length);
   const sendLabel = isGenerating ? "停止生成" : "发送消息";
   const isHero = presentation === "hero";
+  const editorHeight = CHAT_COMPOSER_EDITOR_HEIGHTS[presentation];
   const selectedModel = CHAT_MODELS.find((model) => model.id === selectedModelId) ?? CHAT_MODELS[0];
 
   const handleFilesSelected = (files: File[]) => {
@@ -312,37 +318,26 @@ export function ChatComposer({
       <PromptInput.Shell
         className={`relative z-10 overflow-visible! rounded-[28px] bg-field shadow-field ${
           attachments.length ? "-mt-6" : ""
-        } ${isHero ? "min-h-[184px]" : "min-h-[132px]"}`}
+        } ${isHero ? "min-h-[184px]" : ""}`}
       >
-        <PromptInput.Content>
-          <div className="px-3 pt-3">
-            <input
-              ref={fileInputRef}
-              aria-hidden
-              multiple
-              className="sr-only"
-              disabled={isGenerating}
-              tabIndex={-1}
-              type="file"
-              onChange={handleFileInputChange}
-            />
-            <PromptInput.Action
-              aria-label="添加附件"
-              className="size-8 min-w-8"
-              isDisabled={isGenerating}
-              style={{ boxShadow: "none" }}
-              tooltip="添加附件"
-              onPress={() => fileInputRef.current?.click()}
-            >
-              <Paperclip className="size-4" />
-            </PromptInput.Action>
-          </div>
+        <PromptInput.Content className="px-1 pt-1">
+          <input
+            ref={fileInputRef}
+            aria-hidden
+            multiple
+            className="sr-only"
+            disabled={isGenerating}
+            tabIndex={-1}
+            type="file"
+            onChange={handleFileInputChange}
+          />
           <ChatComposerEditor
             ref={editorRef}
             ariaLabel="消息输入框"
             contextMenuItems={CONTEXT_MENU_ITEMS}
             isDisabled={isGenerating}
-            minHeight={isHero ? 92 : 56}
+            maxHeight={editorHeight.max}
+            minHeight={editorHeight.min}
             placeholder={placeholder}
             slashMenuItems={SLASH_MENU_ITEMS}
             value={value}
@@ -362,7 +357,7 @@ export function ChatComposer({
                   size="sm"
                   variant="ghost"
                 >
-                  <Settings2 className="size-4" />
+                  <Plus className="size-4" />
                 </Button>
                 <Tooltip.Content placement="top">设置</Tooltip.Content>
               </Tooltip>

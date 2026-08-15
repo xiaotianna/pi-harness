@@ -49,6 +49,7 @@ export interface ChatComposerEditorProps {
   ariaLabel?: string;
   contextMenuItems?: readonly ChatComposerToken[];
   isDisabled?: boolean;
+  maxHeight?: number | string;
   minHeight?: number | string;
   onSubmit: () => void;
   onValueChange: (value: string) => void;
@@ -337,6 +338,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
       ariaLabel = "消息输入框",
       contextMenuItems = [],
       isDisabled = false,
+      maxHeight = 240,
       minHeight = 56,
       onSubmit,
       onValueChange,
@@ -616,7 +618,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
             </Surface>
           </div>
         ) : null}
-        <div className="relative max-h-60 overflow-y-auto px-3 pt-2" style={{ minHeight }}>
+        <div className="relative overflow-y-auto px-3 pt-2" style={{ maxHeight, minHeight }}>
           {!value.trim() ? (
             <span aria-hidden className="pointer-events-none absolute left-3 top-2 text-muted">
               {placeholder}
