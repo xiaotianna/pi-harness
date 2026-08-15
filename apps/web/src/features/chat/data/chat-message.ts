@@ -3,13 +3,17 @@ import type { ToolPartState } from "@agile-avocation/ui-pro/chat-tool";
 export const ChatMessageType = {
   ASSISTANT: "assistant",
   CODE: "code",
+  IMAGE_GENERATION: "image-generation",
   LOADING: "loading",
+  ORBS: "orbs",
   REASONING: "reasoning",
   SOURCES: "sources",
   STREAMING: "streaming",
+  TASK_LIST: "task-list",
   TOOL: "tool",
   TOOL_GROUP: "tool-group",
   USER: "user",
+  WEB_SEARCH: "web-search",
 } as const;
 
 export type ChatMessageType = (typeof ChatMessageType)[keyof typeof ChatMessageType];
@@ -114,13 +118,52 @@ export type ChatLoadingMessage = ChatMessageBase & {
   type: typeof ChatMessageType.LOADING;
 };
 
+export type ChatOrbsMessage = ChatMessageBase & {
+  label: string;
+  type: typeof ChatMessageType.ORBS;
+};
+
+export type ChatWebSearchMessage = ChatMessageBase & {
+  isSearching?: boolean;
+  query: string;
+  sources: ReadonlyArray<{
+    domain: string;
+    status: "pending" | "resolved";
+    title: string;
+    url: string;
+  }>;
+  type: typeof ChatMessageType.WEB_SEARCH;
+};
+
+export type ChatImageGenerationMessage = ChatMessageBase & {
+  alt?: string;
+  imageUrl?: string;
+  isGenerating?: boolean;
+  prompt: string;
+  type: typeof ChatMessageType.IMAGE_GENERATION;
+};
+
+export type ChatTaskListMessage = ChatMessageBase & {
+  defaultExpanded?: boolean;
+  items: ReadonlyArray<{
+    label: string;
+    status: "completed" | "in-progress" | "pending";
+  }>;
+  label: string;
+  type: typeof ChatMessageType.TASK_LIST;
+};
+
 export type ChatMessage =
   | ChatAssistantMessage
   | ChatCodeMessage
+  | ChatImageGenerationMessage
   | ChatLoadingMessage
+  | ChatOrbsMessage
   | ChatReasoningMessage
   | ChatSourcesMessage
   | ChatStreamingMessage
+  | ChatTaskListMessage
   | ChatToolGroupMessage
   | ChatToolMessage
-  | ChatUserMessage;
+  | ChatUserMessage
+  | ChatWebSearchMessage;

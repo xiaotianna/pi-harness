@@ -3,6 +3,7 @@
 import { AppLayout } from "@agile-avocation/ui-pro";
 import { AlertDialog, Button, Input, Modal, TextField } from "@heroui/react";
 import { useRouter, useRouterState } from "@tanstack/react-router";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SettingsDialog } from "../../settings";
@@ -17,6 +18,11 @@ import {
 import { ChatNavbar } from "./chat-navbar";
 import { ChatSearchDialog } from "./chat-search-dialog";
 import { ChatSidebar } from "./chat-sidebar";
+import {
+  WorkspaceInspector,
+  WorkspaceInspectorTab,
+  type WorkspaceInspectorTab as WorkspaceInspectorTabValue,
+} from "./workspace-inspector";
 
 export interface ChatShellProps {
   children: ReactNode;
@@ -33,12 +39,17 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<WorkspaceInspectorTabValue>(
+    WorkspaceInspectorTab.FILES,
+  );
   const [threads, setThreads] = useState<ChatThread[]>(() => [...CHAT_THREADS]);
   const [workspaces, setWorkspaces] = useState<ChatWorkspace[]>(() => [...CHAT_WORKSPACES]);
   const [archivedThreads, setArchivedThreads] = useState<ChatThread[]>([]);
   const [renamingTarget, setRenamingTarget] = useState<RenameTarget | null>(null);
   const [removingWorkspace, setRemovingWorkspace] = useState<ChatWorkspace | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const shouldReduceMotion = useReducedMotion();
 
   const navigate = useCallback(
     (href: string) => {
@@ -130,6 +141,11 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     [router, basePath, disableNavigation],
   );
 
+  const openInspector = (tab: WorkspaceInspectorTabValue) => {
+    setInspectorTab(tab);
+    setIsInspectorOpen(true);
+  };
+
   useEffect(() => {
     if (disableNavigation) return;
 
@@ -155,6 +171,15 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       navbar={
         <ChatNavbar
           activePage={activePage}
+          isInspectorOpen={activePage.kind === "thread" && isInspectorOpen}
+          onInfo={
+            activePage.kind === "thread"
+              ? () => openInspector(WorkspaceInspectorTab.INFO)
+              : undefined
+          }
+          onInspectorToggle={
+            activePage.kind === "thread" ? () => setIsInspectorOpen((isOpen) => !isOpen) : undefined
+          }
           onSearch={disableNavigation ? undefined : () => setIsSearchOpen(true)}
         />
       }
@@ -175,7 +200,30 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         />
       }
     >
-      {children}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="min-w-0 flex-1">{children}</div>
+        <AnimatePresence initial={false}>
+          {activePage.kind === "thread" && isInspectorOpen ? (
+            <motion.div
+              animate={{ opacity: 1, width: 420, x: 0 }}
+              className="fixed right-0 bottom-0 z-40 h-[calc(100svh-var(--chat-navbar-height,64px))] max-w-[92vw] shrink-0 overflow-hidden lg:static lg:z-auto"
+              exit={shouldReduceMotion ? { opacity: 0, width: 0 } : { opacity: 0, width: 0, x: 24 }}
+              initial={shouldReduceMotion ? false : { opacity: 0, width: 0, x: 24 }}
+              key="workspace-inspector"
+              transition={
+                shouldReduceMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
+              }
+            >
+              <WorkspaceInspector
+                activeTab={inspectorTab}
+                thread={activePage.thread}
+                onClose={() => setIsInspectorOpen(false)}
+                onTabChange={setInspectorTab}
+              />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
       <ChatSearchDialog
         isOpen={isSearchOpen}
         threads={threads}

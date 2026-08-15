@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ChainOfThought,
   ChatAttachment,
   ChatAttachmentGroup,
   ChatLoader,
@@ -15,19 +14,31 @@ import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
 import { Markdown } from "@agile-avocation/ui-pro/markdown";
 import type { ReactNode } from "react";
 import {
+  ImageGeneration,
+  Orbs,
+  TaskList,
+  ThinkingReasoning,
+  ThinkingState,
+  WebSearch,
+} from "../../../components/ai/aicss/aicss-components";
+import {
   type ChatAssistantMessage,
   type ChatCodeMessage,
+  type ChatImageGenerationMessage,
   type ChatLoadingMessage,
   type ChatMessage,
   type ChatMessageSource,
   type ChatMessageTool,
   ChatMessageType,
+  type ChatOrbsMessage,
   type ChatReasoningMessage,
   type ChatSourcesMessage,
   type ChatStreamingMessage,
+  type ChatTaskListMessage,
   type ChatToolGroupMessage,
   type ChatToolMessage,
   type ChatUserMessage,
+  type ChatWebSearchMessage,
 } from "../data/chat";
 import { MessageActions } from "./message-actions";
 
@@ -109,21 +120,65 @@ function ReasoningThreadMessage({ message }: { message: ChatReasoningMessage }) 
   return (
     <ChatMessagePrimitive.Assistant className="!py-0">
       <ChatMessagePrimitive.Body>
-        <ChainOfThought
+        <ThinkingReasoning
           defaultExpanded={message.defaultExpanded ?? false}
           isStreaming={message.isStreaming ?? false}
-        >
-          <ChainOfThought.Trigger>{message.trigger}</ChainOfThought.Trigger>
-          <ChainOfThought.Content>
-            <ChainOfThought.Steps>
-              {message.steps.map((step) => (
-                <ChainOfThought.Step key={step.label} label={step.label}>
-                  {step.content}
-                </ChainOfThought.Step>
-              ))}
-            </ChainOfThought.Steps>
-          </ChainOfThought.Content>
-        </ChainOfThought>
+          steps={message.steps}
+          trigger={message.trigger}
+        />
+      </ChatMessagePrimitive.Body>
+    </ChatMessagePrimitive.Assistant>
+  );
+}
+
+function OrbsThreadMessage({ message }: { message: ChatOrbsMessage }) {
+  return (
+    <ChatMessagePrimitive.Assistant className="!py-0">
+      <ChatMessagePrimitive.Body>
+        <Orbs label={message.label} />
+      </ChatMessagePrimitive.Body>
+    </ChatMessagePrimitive.Assistant>
+  );
+}
+
+function WebSearchThreadMessage({ message }: { message: ChatWebSearchMessage }) {
+  return (
+    <ChatMessagePrimitive.Assistant className="!py-0">
+      <ChatMessagePrimitive.Body>
+        <WebSearch
+          isSearching={message.isSearching ?? false}
+          query={message.query}
+          sources={message.sources}
+        />
+      </ChatMessagePrimitive.Body>
+    </ChatMessagePrimitive.Assistant>
+  );
+}
+
+function ImageGenerationThreadMessage({ message }: { message: ChatImageGenerationMessage }) {
+  return (
+    <ChatMessagePrimitive.Assistant className="!py-0">
+      <ChatMessagePrimitive.Body>
+        <ImageGeneration
+          prompt={message.prompt}
+          {...(message.alt !== undefined ? { alt: message.alt } : {})}
+          {...(message.imageUrl !== undefined ? { imageUrl: message.imageUrl } : {})}
+          {...(message.isGenerating !== undefined ? { isGenerating: message.isGenerating } : {})}
+        />
+      </ChatMessagePrimitive.Body>
+    </ChatMessagePrimitive.Assistant>
+  );
+}
+
+function TaskListThreadMessage({ message }: { message: ChatTaskListMessage }) {
+  return (
+    <ChatMessagePrimitive.Assistant className="!py-0">
+      <ChatMessagePrimitive.Body>
+        <TaskList
+          defaultExpanded={message.defaultExpanded ?? true}
+          items={message.items}
+          title={message.label}
+        />
       </ChatMessagePrimitive.Body>
     </ChatMessagePrimitive.Assistant>
   );
@@ -256,13 +311,7 @@ function LoadingThreadMessage({ message }: { message: ChatLoadingMessage }) {
   return (
     <ChatMessagePrimitive.Assistant aria-busy="true" aria-live="polite" className="!py-0">
       <ChatMessagePrimitive.Body>
-        <ChatLoader.Skeleton label={message.label}>
-          <ChatLoader.SkeletonBlock>
-            <ChatLoader.SkeletonLine />
-            <ChatLoader.SkeletonLine />
-            <ChatLoader.SkeletonLine />
-          </ChatLoader.SkeletonBlock>
-        </ChatLoader.Skeleton>
+        <ThinkingState label={message.label} />
       </ChatMessagePrimitive.Body>
     </ChatMessagePrimitive.Assistant>
   );
@@ -275,8 +324,15 @@ const MESSAGE_RENDER_STRATEGIES = {
   [ChatMessageType.CODE]: createMessageRenderStrategy(ChatMessageType.CODE, (message) => (
     <CodeThreadMessage message={message} />
   )),
+  [ChatMessageType.IMAGE_GENERATION]: createMessageRenderStrategy(
+    ChatMessageType.IMAGE_GENERATION,
+    (message) => <ImageGenerationThreadMessage message={message} />,
+  ),
   [ChatMessageType.LOADING]: createMessageRenderStrategy(ChatMessageType.LOADING, (message) => (
     <LoadingThreadMessage message={message} />
+  )),
+  [ChatMessageType.ORBS]: createMessageRenderStrategy(ChatMessageType.ORBS, (message) => (
+    <OrbsThreadMessage message={message} />
   )),
   [ChatMessageType.REASONING]: createMessageRenderStrategy(ChatMessageType.REASONING, (message) => (
     <ReasoningThreadMessage message={message} />
@@ -286,6 +342,9 @@ const MESSAGE_RENDER_STRATEGIES = {
   )),
   [ChatMessageType.STREAMING]: createMessageRenderStrategy(ChatMessageType.STREAMING, (message) => (
     <StreamingThreadMessage message={message} />
+  )),
+  [ChatMessageType.TASK_LIST]: createMessageRenderStrategy(ChatMessageType.TASK_LIST, (message) => (
+    <TaskListThreadMessage message={message} />
   )),
   [ChatMessageType.TOOL]: createMessageRenderStrategy(ChatMessageType.TOOL, (message) => (
     <ToolThreadMessage message={message} />
@@ -297,6 +356,10 @@ const MESSAGE_RENDER_STRATEGIES = {
   [ChatMessageType.USER]: createMessageRenderStrategy(ChatMessageType.USER, (message) => (
     <UserThreadMessage message={message} />
   )),
+  [ChatMessageType.WEB_SEARCH]: createMessageRenderStrategy(
+    ChatMessageType.WEB_SEARCH,
+    (message) => <WebSearchThreadMessage message={message} />,
+  ),
 } satisfies Record<ChatMessageType, MessageRenderStrategy>;
 
 export function ThreadMessage({ message }: ThreadMessageProps) {

@@ -2,7 +2,7 @@
 
 import { AppLayout, Navbar, Sidebar } from "@agile-avocation/ui-pro";
 import { Button, Kbd, Tooltip } from "@heroui/react";
-import { Search } from "lucide-react";
+import { Info, PanelRightClose, PanelRightOpen, Search } from "lucide-react";
 import type { ChatActivePage } from "../data/chat";
 
 const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: string }> = {
@@ -20,10 +20,19 @@ const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: stri
 
 export interface ChatNavbarProps {
   activePage: ChatActivePage;
+  isInspectorOpen?: boolean;
+  onInfo?: (() => void) | undefined;
+  onInspectorToggle?: (() => void) | undefined;
   onSearch?: (() => void) | undefined;
 }
 
-export function ChatNavbar({ activePage, onSearch }: ChatNavbarProps) {
+export function ChatNavbar({
+  activePage,
+  isInspectorOpen = false,
+  onInfo,
+  onInspectorToggle,
+  onSearch,
+}: ChatNavbarProps) {
   const isThread = activePage.kind === "thread";
   const thread = isThread ? activePage.thread : undefined;
   const title = isThread ? (thread?.title ?? "对话") : NAV_TITLES[activePage.kind].title;
@@ -39,7 +48,43 @@ export function ChatNavbar({ activePage, onSearch }: ChatNavbarProps) {
           {subtitle ? <span className="truncate text-xs text-muted">{subtitle}</span> : null}
         </div>
         <Navbar.Spacer />
-        <div className="flex items-center gap-2">
+        <div
+          className={`flex items-center gap-2 transition-[margin] duration-300 ease-out motion-reduce:transition-none ${isThread && isInspectorOpen ? "lg:mr-[420px]" : ""}`}
+        >
+          {isThread ? (
+            <>
+              <Tooltip delay={0}>
+                <Button
+                  isIconOnly
+                  aria-label="查看会话信息"
+                  size="sm"
+                  variant="tertiary"
+                  {...(onInfo ? { onPress: onInfo } : {})}
+                >
+                  <Info className="size-4" />
+                </Button>
+                <Tooltip.Content placement="bottom">查看会话信息</Tooltip.Content>
+              </Tooltip>
+              <Tooltip delay={0}>
+                <Button
+                  isIconOnly
+                  aria-label={isInspectorOpen ? "收起右侧面板" : "打开右侧面板"}
+                  size="sm"
+                  variant="tertiary"
+                  {...(onInspectorToggle ? { onPress: onInspectorToggle } : {})}
+                >
+                  {isInspectorOpen ? (
+                    <PanelRightClose className="size-4" />
+                  ) : (
+                    <PanelRightOpen className="size-4" />
+                  )}
+                </Button>
+                <Tooltip.Content placement="bottom">
+                  {isInspectorOpen ? "收起右侧面板" : "打开右侧面板"}
+                </Tooltip.Content>
+              </Tooltip>
+            </>
+          ) : null}
           <Tooltip delay={0}>
             <Button
               aria-label="搜索对话"

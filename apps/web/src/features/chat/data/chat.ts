@@ -6,17 +6,21 @@ import { ChatMessageType } from "./chat-message";
 export type {
   ChatAssistantMessage,
   ChatCodeMessage,
+  ChatImageGenerationMessage,
   ChatLoadingMessage,
   ChatMessage,
   ChatMessageAttachment,
   ChatMessageSource,
   ChatMessageTool,
+  ChatOrbsMessage,
   ChatReasoningMessage,
   ChatSourcesMessage,
   ChatStreamingMessage,
+  ChatTaskListMessage,
   ChatToolGroupMessage,
   ChatToolMessage,
   ChatUserMessage,
+  ChatWebSearchMessage,
 } from "./chat-message";
 export { ChatMessageType };
 

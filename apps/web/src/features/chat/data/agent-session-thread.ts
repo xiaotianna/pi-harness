@@ -55,6 +55,49 @@ export const AGENT_SESSION_THREAD: ChatThread = {
       type: ChatMessageType.REASONING,
     },
     {
+      id: "agent-3b",
+      label: "正在扫描工作区中的消息与面板组件",
+      type: ChatMessageType.ORBS,
+    },
+    {
+      id: "agent-3c",
+      isSearching: false,
+      query: "AIcss agent UI component patterns",
+      sources: [
+        {
+          domain: "aicss.dev",
+          status: "resolved",
+          title: "Thinking + Reasoning",
+          url: "https://www.aicss.dev/components/thinking-reasoning",
+        },
+        {
+          domain: "aicss.dev",
+          status: "resolved",
+          title: "Web Search",
+          url: "https://www.aicss.dev/components/web-search",
+        },
+        {
+          domain: "aicss.dev",
+          status: "resolved",
+          title: "To-do List",
+          url: "https://www.aicss.dev/components/task-list",
+        },
+      ],
+      type: ChatMessageType.WEB_SEARCH,
+    },
+    {
+      defaultExpanded: true,
+      id: "agent-3d",
+      items: [
+        { label: "检查现有消息渲染入口", status: "completed" },
+        { label: "接入 AIcss 状态组件", status: "completed" },
+        { label: "实现右侧工作区面板", status: "in-progress" },
+        { label: "核对组件来源文档", status: "pending" },
+      ],
+      label: "实现清单",
+      type: ChatMessageType.TASK_LIST,
+    },
+    {
       id: "agent-4",
       label: "3 次只读工具调用",
       tools: [
@@ -151,6 +194,14 @@ export const AGENT_SESSION_THREAD: ChatThread = {
       label: "thread-message-list.tsx",
       language: "tsx",
       type: ChatMessageType.CODE,
+    },
+    {
+      alt: "工作区面板概念预览",
+      id: "agent-11b",
+      imageUrl: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/images/egg.webp",
+      isGenerating: false,
+      prompt: "Codex 风格的文件树与变更检查面板",
+      type: ChatMessageType.IMAGE_GENERATION,
     },
     {
       defaultExpanded: false,
