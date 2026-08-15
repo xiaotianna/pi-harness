@@ -11,10 +11,15 @@ import {
 } from "@heroui/react";
 import type { LucideIcon } from "lucide-react";
 import { Archive, Blocks, Bot, Brain, Monitor, Moon, Plug, Settings2, Sun } from "lucide-react";
-import type { ReactNode } from "react";
 import { useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { useAppTheme } from "../theme-provider";
+import { McpSettingsPanel } from "./mcp-settings-panel";
+import { MemorySettingsPanel } from "./memory-settings-panel";
+import { ModelSettingsPanel } from "./model-settings-panel";
+import { SettingsPanelHeader } from "./settings-panel-header";
+import { SettingsRow } from "./settings-row";
+import { SkillSettingsPanel } from "./skill-settings-panel";
 
 export interface SettingsDialogProps {
   archivedConversations: readonly {
@@ -46,9 +51,9 @@ const SETTINGS_SECTIONS = [
     icon: Brain,
   },
   {
-    id: "plugins",
-    label: "插件",
-    description: "管理已安装插件及其可用状态。",
+    id: "skills",
+    label: "技能",
+    description: "管理已安装技能及其可用状态。",
     icon: Blocks,
   },
   {
@@ -71,26 +76,6 @@ const SETTINGS_SECTIONS = [
 }[];
 
 type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
-
-function SettingsRow({
-  children,
-  description,
-  title,
-}: {
-  children: ReactNode;
-  description?: string;
-  title: string;
-}) {
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-6 py-6">
-      <div className="min-w-0">
-        <h3 className="font-medium text-foreground">{title}</h3>
-        {description ? <p className="mt-1 text-muted">{description}</p> : null}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 function GeneralSettingsPanel() {
   const { setTheme, theme } = useAppTheme();
@@ -241,8 +226,7 @@ function ArchivedSettingsPanel({
 }) {
   return (
     <section aria-label="已归档对话" className="w-full max-w-[720px]">
-      <h2 className="text-lg font-medium text-foreground">已归档对话</h2>
-      <p className="mt-2 text-muted">归档的对话不会显示在侧边栏中。</p>
+      <SettingsPanelHeader description="归档的对话不会显示在侧边栏中。" title="已归档对话" />
       {conversations.length > 0 ? (
         <ul className="mt-6 flex flex-col gap-1 rounded-xl bg-default p-1">
           {conversations.map((conversation) => (
@@ -268,8 +252,6 @@ export function SettingsDialog({
   onOpenChange,
 }: SettingsDialogProps) {
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
-  const activeSection =
-    SETTINGS_SECTIONS.find((section) => section.id === activeSectionId) ?? SETTINGS_SECTIONS[0];
 
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
@@ -313,16 +295,21 @@ export function SettingsDialog({
                 </ListBox>
               </aside>
 
-              <main className="min-h-0 overflow-y-auto p-8">
+              <main className="min-h-0 overflow-y-auto py-8 pr-16 pl-8">
                 {activeSectionId === "general" ? (
                   <GeneralSettingsPanel />
+                ) : activeSectionId === "models" ? (
+                  <ModelSettingsPanel />
+                ) : activeSectionId === "memory" ? (
+                  <MemorySettingsPanel />
+                ) : activeSectionId === "skills" ? (
+                  <SkillSettingsPanel />
+                ) : activeSectionId === "mcp" ? (
+                  <McpSettingsPanel />
                 ) : activeSectionId === "archived" ? (
                   <ArchivedSettingsPanel conversations={archivedConversations} />
                 ) : (
-                  <section className="w-full max-w-[720px]">
-                    <h2 className="text-lg font-medium text-foreground">{activeSection.label}</h2>
-                    <p className="mt-2 max-w-xl text-muted">{activeSection.description}</p>
-                  </section>
+                  <GeneralSettingsPanel />
                 )}
               </main>
             </div>
