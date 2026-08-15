@@ -2,15 +2,17 @@
 
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useRef } from "react";
-import {
-  AGENT_TRACE_LANE_LABELS,
-  AGENT_TRACE_TIMELINE_CLASS_NAMES,
-} from "../constants/agent-trace";
+import { AGENT_TRACE_KIND_STYLES, AGENT_TRACE_LANE_LABELS } from "../constants/agent-trace";
 import { AgentTraceLane, type AgentTraceRange, type AgentTraceRecord } from "../types/agent-trace";
 import { formatTraceDuration } from "../utils/format-trace-duration";
 
 const TIMELINE_LANES = [AgentTraceLane.INPUT, AgentTraceLane.MODEL, AgentTraceLane.TOOLS] as const;
 const MINIMUM_RANGE_MS = 240;
+
+interface TraceTurnStart {
+  startMs: number;
+  turn: number;
+}
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
@@ -32,6 +34,23 @@ function normalizeRange(startMs: number, endMs: number, durationMs: number): Age
     endMs: expandedEnd,
     startMs: Math.max(0, expandedEnd - MINIMUM_RANGE_MS),
   };
+}
+
+function getTraceTurnStarts(records: readonly AgentTraceRecord[]): TraceTurnStart[] {
+  const startMsByTurn = new Map<number, number>();
+
+  for (const record of records) {
+    if (record.turn <= 0) continue;
+
+    const currentStartMs = startMsByTurn.get(record.turn);
+    if (currentStartMs === undefined || record.startMs < currentStartMs) {
+      startMsByTurn.set(record.turn, record.startMs);
+    }
+  }
+
+  return Array.from(startMsByTurn, ([turn, startMs]) => ({ startMs, turn })).sort(
+    (left, right) => left.startMs - right.startMs,
+  );
 }
 
 export interface TraceTimelineProps {
@@ -77,29 +96,32 @@ export function TraceTimeline({ durationMs, range, records, onRangeChange }: Tra
 
   const selectionStart = Math.min(range.startMs, range.endMs);
   const selectionEnd = Math.max(range.startMs, range.endMs);
+  const turnStarts = getTraceTurnStarts(records);
 
   return (
-    <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-separator bg-background py-3">
-      <div className="grid grid-rows-3 gap-1 pr-3 text-right text-[11px] leading-5 text-muted">
+    <div className="relative grid h-[50px] grid-cols-[40px_minmax(0,1fr)] items-center border-b border-separator bg-background">
+      <div className="grid h-9 grid-rows-[repeat(3,8px)] gap-y-1.5 pr-2 text-right text-[10px] leading-2 text-muted">
         {TIMELINE_LANES.map((lane) => (
-          <span key={lane}>{AGENT_TRACE_LANE_LABELS[lane]}</span>
+          <span className="flex items-center justify-end" key={lane}>
+            {AGENT_TRACE_LANE_LABELS[lane]}
+          </span>
         ))}
       </div>
       <section
         aria-label={`Agent 时间轴，已选择 ${formatTraceDuration(selectionStart)} 到 ${formatTraceDuration(selectionEnd)}`}
-        className="relative grid touch-none cursor-crosshair grid-rows-3 gap-1 overflow-hidden rounded-lg bg-default/45 p-1"
+        className="relative grid h-9 touch-none cursor-crosshair grid-rows-[repeat(3,8px)] gap-y-1.5 overflow-hidden"
         onPointerCancel={handlePointerUp}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
         {TIMELINE_LANES.map((lane) => (
-          <div className="relative h-4" key={lane}>
+          <div className="relative h-2" key={lane}>
             {records
               .filter((record) => record.lane === lane)
               .map((record) => (
                 <span
-                  className={`absolute inset-y-0 rounded-sm ${AGENT_TRACE_TIMELINE_CLASS_NAMES[record.kind]}`}
+                  className={`absolute inset-y-0 ${AGENT_TRACE_KIND_STYLES[record.kind].timelineClassName}`}
                   key={record.id}
                   style={{
                     left: `${(record.startMs / durationMs) * 100}%`,
@@ -110,15 +132,28 @@ export function TraceTimeline({ durationMs, range, records, onRangeChange }: Tra
               ))}
           </div>
         ))}
+      </section>
+      <div className="pointer-events-none absolute inset-y-0 right-0 left-10 z-20">
+        {turnStarts.map(({ startMs, turn }) => (
+          <span
+            aria-hidden
+            className="absolute inset-y-0 w-px bg-separator"
+            key={turn}
+            style={{ left: `${(startMs / durationMs) * 100}%` }}
+            title={`Turn ${turn}`}
+          />
+        ))}
+      </div>
+      <div className="pointer-events-none absolute inset-y-0 right-0 left-10 z-30">
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 border-x-2 border-accent bg-accent/10"
+          className="absolute inset-y-0 border-x-[3px] border-accent bg-accent/10"
           style={{
             left: `${(selectionStart / durationMs) * 100}%`,
             width: `${((selectionEnd - selectionStart) / durationMs) * 100}%`,
           }}
         />
-      </section>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,10 @@
 import { AgentTraceLane, AgentTraceRecordKind, AgentTraceStatus } from "../types/agent-trace";
 
+export const AGENT_TRACE_EVENT_ROW_HEIGHT = 30;
+
+const TRACE_KIND_CHIP_CLASS_NAME =
+  "h-4! min-h-4! rounded-sm! px-1.5 text-[10px]! leading-none font-semibold tracking-wide";
+
 export const AGENT_TRACE_LANE_LABELS = {
   [AgentTraceLane.INPUT]: "输入",
   [AgentTraceLane.MODEL]: "模型",
@@ -7,34 +12,38 @@ export const AGENT_TRACE_LANE_LABELS = {
 } as const;
 
 export const AGENT_TRACE_KIND_LABELS = {
-  [AgentTraceRecordKind.ASSISTANT]: "助手",
-  [AgentTraceRecordKind.CONTEXT]: "上下文",
-  [AgentTraceRecordKind.REASONING]: "推理",
-  [AgentTraceRecordKind.SYSTEM]: "系统",
-  [AgentTraceRecordKind.TOOL_CALL]: "工具调用",
-  [AgentTraceRecordKind.TOOL_RESULT]: "工具结果",
-  [AgentTraceRecordKind.USER]: "用户",
+  [AgentTraceRecordKind.ASSISTANT]: "ASSISTANT",
+  [AgentTraceRecordKind.CONTEXT]: "CONTEXT",
+  [AgentTraceRecordKind.SYSTEM]: "SYSTEM",
+  [AgentTraceRecordKind.TOOL]: "TOOL",
+  [AgentTraceRecordKind.USER]: "USER",
 } as const;
 
-export const AGENT_TRACE_KIND_COLORS = {
-  [AgentTraceRecordKind.ASSISTANT]: "accent",
-  [AgentTraceRecordKind.CONTEXT]: "success",
-  [AgentTraceRecordKind.REASONING]: "accent",
-  [AgentTraceRecordKind.SYSTEM]: "default",
-  [AgentTraceRecordKind.TOOL_CALL]: "warning",
-  [AgentTraceRecordKind.TOOL_RESULT]: "warning",
-  [AgentTraceRecordKind.USER]: "accent",
-} as const;
-
-export const AGENT_TRACE_TIMELINE_CLASS_NAMES = {
-  [AgentTraceRecordKind.ASSISTANT]: "bg-accent/65",
-  [AgentTraceRecordKind.CONTEXT]: "bg-success/65",
-  [AgentTraceRecordKind.REASONING]: "bg-accent",
-  [AgentTraceRecordKind.SYSTEM]: "bg-muted/70",
-  [AgentTraceRecordKind.TOOL_CALL]: "bg-warning",
-  [AgentTraceRecordKind.TOOL_RESULT]: "bg-warning/55",
-  [AgentTraceRecordKind.USER]: "bg-accent/75",
-} as const;
+export const AGENT_TRACE_KIND_STYLES = {
+  [AgentTraceRecordKind.ASSISTANT]: {
+    chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:color-mix(in_oklab,oklch(0.55_0.16_305)_16%,transparent)] [--chip-fg:oklch(0.46_0.14_305)]`,
+    timelineClassName: "bg-[oklch(0.55_0.16_305)]/65",
+  },
+  [AgentTraceRecordKind.CONTEXT]: {
+    chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--success-soft)] [--chip-fg:var(--success-soft-foreground)]`,
+    timelineClassName: "bg-success/65",
+  },
+  [AgentTraceRecordKind.SYSTEM]: {
+    chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--default)] [--chip-fg:var(--default-foreground)]`,
+    timelineClassName: "bg-muted/70",
+  },
+  [AgentTraceRecordKind.TOOL]: {
+    chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:color-mix(in_oklab,var(--warning)_10%,transparent)] [--chip-fg:oklch(0.68_0.16_55)]`,
+    timelineClassName: "bg-warning/60",
+  },
+  [AgentTraceRecordKind.USER]: {
+    chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--accent-soft)] [--chip-fg:var(--accent-soft-foreground)]`,
+    timelineClassName: "bg-accent/75",
+  },
+} as const satisfies Record<
+  AgentTraceRecordKind,
+  { chipClassName: string; timelineClassName: string }
+>;
 
 export const AGENT_TRACE_STATUS_LABELS = {
   [AgentTraceStatus.COMPLETED]: "已完成",

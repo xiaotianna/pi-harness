@@ -351,7 +351,7 @@ export function ChatComposer({
               <Tooltip delay={0}>
                 <Button
                   isIconOnly
-                  aria-label="输入设置"
+                  aria-label="添加文件等内容"
                   className="size-8 min-w-8 p-0"
                   isDisabled={isGenerating}
                   size="sm"
@@ -359,11 +359,11 @@ export function ChatComposer({
                 >
                   <Plus className="size-4" />
                 </Button>
-                <Tooltip.Content placement="top">设置</Tooltip.Content>
+                <Tooltip.Content placement="top">添加文件等内容</Tooltip.Content>
               </Tooltip>
               <Dropdown.Popover className="min-w-48" placement="bottom start">
                 <Dropdown.Menu
-                  aria-label="输入设置"
+                  aria-label="添加文件等内容"
                   onAction={(key) => {
                     if (key === "attach") fileInputRef.current?.click();
                   }}

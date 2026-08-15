@@ -9,10 +9,8 @@ export type AgentTraceLane = (typeof AgentTraceLane)[keyof typeof AgentTraceLane
 export const AgentTraceRecordKind = {
   ASSISTANT: "assistant",
   CONTEXT: "context",
-  REASONING: "reasoning",
   SYSTEM: "system",
-  TOOL_CALL: "tool-call",
-  TOOL_RESULT: "tool-result",
+  TOOL: "tool",
   USER: "user",
 } as const;
 

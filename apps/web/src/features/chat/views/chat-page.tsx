@@ -50,7 +50,11 @@ export function ChatPage({ thread }: ChatPageProps) {
         </AnimatePresence>
       </div>
 
-      <div className="shrink-0 bg-background px-4 pb-2">
+      <div className="relative z-10 shrink-0 bg-background px-4 pb-2">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
+        />
         <div className="mx-auto w-full max-w-[714px]">
           <ChatComposer className="w-full" modelId={thread.modelId} />
         </div>
