@@ -2,7 +2,7 @@
 
 import { AppLayout, Navbar, Sidebar } from "@agile-avocation/ui-pro";
 import { Button, Kbd, Tooltip } from "@heroui/react";
-import { LogIn, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import type { ChatActivePage } from "../data/chat";
 
@@ -62,12 +62,6 @@ export function ChatNavbar({ activePage, onSearch }: ChatNavbarProps) {
               </div>
             </Tooltip.Content>
           </Tooltip>
-          {isThread ? (
-            <Button className="hidden md:inline-flex" size="sm">
-              <LogIn className="size-4" />
-              分享
-            </Button>
-          ) : null}
         </div>
       </Navbar.Header>
     </Navbar>

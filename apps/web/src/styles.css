@@ -13,6 +13,20 @@
   --tw-ring-offset-shadow: 0 0 #0000;
 }
 
+.sidebar__menu-action:is(:focus-visible, [data-focus-visible="true"]) {
+  background-color: var(--color-default-hover);
+}
+
+.sidebar__menu[data-focus-visible],
+.sidebar__menu-action:focus-visible,
+.sidebar__menu-action[data-focus-visible="true"],
+.sidebar__menu-item:is([data-focus-visible="true"], :focus-visible:not(:focus))
+  .sidebar__menu-item-content {
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+  box-shadow: none;
+}
+
 @layer base {
   .light,
   .default,

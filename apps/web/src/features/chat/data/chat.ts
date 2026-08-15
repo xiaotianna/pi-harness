@@ -87,18 +87,12 @@ export type ChatMessage = {
   role: "assistant" | "user";
   actions?: "full" | "minimal";
   attachments?: readonly ChatMessageAttachment[];
-  avatar?: {
-    alt?: string;
-    fallback?: string;
-    src?: string;
-  };
   image?: ChatMessageImage;
   /** Rich markdown body for assistant messages. */
   loaderLabel?: string;
   markdown?: string;
   listItems?: string[];
   reasoning?: ChatMessageReasoning;
-  showAvatar?: boolean;
   sourceGroup?: ChatMessageSourceGroup;
   sources?: readonly ChatMessageSource[];
   status?: ChatAssistantStatus;

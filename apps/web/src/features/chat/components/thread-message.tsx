@@ -85,13 +85,6 @@ export function ThreadMessage({ message }: ThreadMessageProps) {
 
   return (
     <ChatMessagePrimitive.Assistant>
-      <ChatMessagePrimitive.Avatar
-        alt={message.avatar?.alt ?? "助手"}
-        fallback={message.avatar?.fallback ?? "AI"}
-        show={message.showAvatar ?? false}
-        {...(message.avatar?.src ? { src: message.avatar.src } : {})}
-      />
-
       <ChatMessagePrimitive.Body>
         {message.reasoning ? (
           <ChainOfThought defaultExpanded={message.reasoning.defaultExpanded ?? false}>
@@ -136,7 +129,13 @@ export function ThreadMessage({ message }: ThreadMessageProps) {
         ) : null}
 
         {message.status === "skeleton" ? (
-          <ChatLoader.Skeleton label={message.loaderLabel ?? "正在加载回答"} />
+          <ChatLoader.Skeleton label={message.loaderLabel ?? "正在加载回答"}>
+            <ChatLoader.SkeletonBlock>
+              <ChatLoader.SkeletonLine />
+              <ChatLoader.SkeletonLine />
+              <ChatLoader.SkeletonLine />
+            </ChatLoader.SkeletonBlock>
+          </ChatLoader.Skeleton>
         ) : null}
 
         {message.status !== "streaming" && message.status !== "skeleton" ? (

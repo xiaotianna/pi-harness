@@ -2,7 +2,15 @@
 
 import { Sidebar } from "@agile-avocation/ui-pro";
 import { Dropdown, Kbd, Tooltip } from "@heroui/react";
-import { Archive, Ellipsis, Folder, FolderOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  Archive,
+  Ellipsis,
+  Folder,
+  FolderOpen,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { UserMenu } from "../../auth";
 import type { ChatNavItem, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
@@ -106,7 +114,15 @@ function SidebarContents({
         </Sidebar.Group>
         <Sidebar.Separator />
         <Sidebar.Group>
-          <Sidebar.GroupLabel>工作区</Sidebar.GroupLabel>
+          <Sidebar.GroupLabel className="flex items-center justify-between text-sm font-normal">
+            <span>工作区</span>
+            <Tooltip delay={0}>
+              <Sidebar.MenuAction aria-label="新建工作区" className="-my-1">
+                <Plus className="!size-3.5 text-muted" />
+              </Sidebar.MenuAction>
+              <Tooltip.Content placement="right">新建工作区</Tooltip.Content>
+            </Tooltip>
+          </Sidebar.GroupLabel>
           <Sidebar.Menu
             aria-label="工作区"
             defaultExpandedKeys={workspaces.map(
@@ -228,7 +244,7 @@ function ChatSidebarWorkspaceItem({
         <FolderOpen className="sidebar__workspace-folder-open" />
       </Sidebar.MenuIcon>
       <Sidebar.MenuLabel>{workspace.name}</Sidebar.MenuLabel>
-      <Sidebar.MenuActions className="absolute end-2 w-16 justify-end bg-default">
+      <Sidebar.MenuActions className="absolute end-2 w-16 justify-end">
         <Dropdown>
           <Tooltip delay={0}>
             <Dropdown.Trigger
@@ -320,7 +336,7 @@ function ChatSidebarThreadItem({
     >
       <Sidebar.MenuLabel>{thread.title}</Sidebar.MenuLabel>
       <Sidebar.MenuChip>{formatChatTimestamp(thread.updatedAt)}</Sidebar.MenuChip>
-      <Sidebar.MenuActions className="absolute end-2 w-12 justify-end bg-default">
+      <Sidebar.MenuActions className="absolute end-2 w-12 justify-end">
         <Dropdown>
           <Tooltip delay={0}>
             <Dropdown.Trigger

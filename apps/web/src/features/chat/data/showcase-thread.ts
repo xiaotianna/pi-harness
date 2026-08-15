@@ -33,10 +33,6 @@ export const SHOWCASE_THREAD: ChatThread = {
     },
     {
       actions: "full",
-      avatar: {
-        alt: "助手",
-        fallback: "AI",
-      },
       id: "showcase-4",
       markdown: SHOWCASE_MARKDOWN,
       reasoning: {
@@ -55,7 +51,6 @@ export const SHOWCASE_THREAD: ChatThread = {
         trigger: "思考了 4 秒",
       },
       role: "assistant",
-      showAvatar: true,
     },
     {
       id: "showcase-5",
@@ -123,7 +118,6 @@ export const SHOWCASE_THREAD: ChatThread = {
         src: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/images/egg.webp",
       },
       role: "assistant",
-      showAvatar: true,
       text: "助手消息可以包含媒体内容，并在正文下方显示一组精简操作。",
     },
     {
