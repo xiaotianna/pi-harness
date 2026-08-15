@@ -3,9 +3,9 @@
 import { AppLayout } from "@agile-avocation/ui-pro";
 import { AlertDialog, Button, Input, Modal, TextField } from "@heroui/react";
 import { useRouter, useRouterState } from "@tanstack/react-router";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useReducedMotion } from "motion/react";
 import type { FormEvent, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SettingsDialog } from "../../settings";
 import type { ChatActivePage, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
 import {
@@ -18,11 +18,7 @@ import {
 import { ChatNavbar } from "./chat-navbar";
 import { ChatSearchDialog } from "./chat-search-dialog";
 import { ChatSidebar } from "./chat-sidebar";
-import {
-  WorkspaceInspector,
-  WorkspaceInspectorTab,
-  type WorkspaceInspectorTab as WorkspaceInspectorTabValue,
-} from "./workspace-inspector";
+import { WorkspaceInspector } from "./workspace-inspector";
 
 export interface ChatShellProps {
   children: ReactNode;
@@ -34,22 +30,25 @@ type RenameTarget =
   | { kind: "thread"; value: ChatThread }
   | { kind: "workspace"; value: ChatWorkspace };
 
+const INSPECTOR_DEFAULT_WIDTH = 500;
+const INSPECTOR_MIN_WIDTH = 500;
+const MESSAGE_PANEL_MIN_WIDTH = 500;
+
 export function ChatShell({ basePath = "", children, disableNavigation = false }: ChatShellProps) {
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const layoutRootRef = useRef<HTMLDivElement>(null);
+  const shouldReduceMotion = useReducedMotion();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<WorkspaceInspectorTabValue>(
-    WorkspaceInspectorTab.FILES,
-  );
+  const [inspectorMaxWidth, setInspectorMaxWidth] = useState(INSPECTOR_DEFAULT_WIDTH);
   const [threads, setThreads] = useState<ChatThread[]>(() => [...CHAT_THREADS]);
   const [workspaces, setWorkspaces] = useState<ChatWorkspace[]>(() => [...CHAT_WORKSPACES]);
   const [archivedThreads, setArchivedThreads] = useState<ChatThread[]>([]);
   const [renamingTarget, setRenamingTarget] = useState<RenameTarget | null>(null);
   const [removingWorkspace, setRemovingWorkspace] = useState<ChatWorkspace | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const shouldReduceMotion = useReducedMotion();
 
   const navigate = useCallback(
     (href: string) => {
@@ -141,11 +140,6 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     [router, basePath, disableNavigation],
   );
 
-  const openInspector = (tab: WorkspaceInspectorTabValue) => {
-    setInspectorTab(tab);
-    setIsInspectorOpen(true);
-  };
-
   useEffect(() => {
     if (disableNavigation) return;
 
@@ -164,19 +158,64 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [disableNavigation]);
 
+  useEffect(() => {
+    const layoutRoot = layoutRootRef.current;
+    if (!layoutRoot) return;
+
+    let observedGroup: HTMLElement | null = null;
+    const groupObserver = new ResizeObserver(() => {
+      if (!observedGroup) return;
+
+      const nextMaxWidth = Math.max(
+        INSPECTOR_MIN_WIDTH,
+        Math.floor(observedGroup.clientWidth - MESSAGE_PANEL_MIN_WIDTH),
+      );
+      setInspectorMaxWidth((current) => (current === nextMaxWidth ? current : nextMaxWidth));
+    });
+
+    const observePanelGroup = () => {
+      const nextGroup = layoutRoot.querySelector<HTMLElement>('[data-slot="resizable"]');
+      if (nextGroup === observedGroup) return;
+
+      groupObserver.disconnect();
+      observedGroup = nextGroup;
+
+      if (observedGroup) groupObserver.observe(observedGroup);
+    };
+
+    const layoutObserver = new MutationObserver(observePanelGroup);
+    layoutObserver.observe(layoutRoot, { childList: true, subtree: true });
+    observePanelGroup();
+
+    return () => {
+      layoutObserver.disconnect();
+      groupObserver.disconnect();
+    };
+  }, []);
+
   return (
     <AppLayout
+      aside={
+        activePage.kind === "thread" ? <WorkspaceInspector isOpen={isInspectorOpen} /> : undefined
+      }
+      asideDefaultSize={`${INSPECTOR_DEFAULT_WIDTH}px`}
+      asideMaxSize={`${inspectorMaxWidth}px`}
+      asideMinSize={`${INSPECTOR_MIN_WIDTH}px`}
+      asideMobile="sheet"
+      asideOpen={activePage.kind === "thread" && isInspectorOpen}
+      asideResizable
+      asideResizeBehavior="preserve-pixel-size"
       navigate={navigate}
+      reduceMotion={shouldReduceMotion ?? false}
+      ref={layoutRootRef}
+      resizableAutoSaveId="chat-workspace-inspector"
+      scrollMode="content"
       sidebarCollapsible="offcanvas"
+      onAsideOpenChange={setIsInspectorOpen}
       navbar={
         <ChatNavbar
           activePage={activePage}
           isInspectorOpen={activePage.kind === "thread" && isInspectorOpen}
-          onInfo={
-            activePage.kind === "thread"
-              ? () => openInspector(WorkspaceInspectorTab.INFO)
-              : undefined
-          }
           onInspectorToggle={
             activePage.kind === "thread" ? () => setIsInspectorOpen((isOpen) => !isOpen) : undefined
           }
@@ -200,30 +239,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         />
       }
     >
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="min-w-0 flex-1">{children}</div>
-        <AnimatePresence initial={false}>
-          {activePage.kind === "thread" && isInspectorOpen ? (
-            <motion.div
-              animate={{ opacity: 1, width: 420, x: 0 }}
-              className="fixed right-0 bottom-0 z-40 h-[calc(100svh-var(--chat-navbar-height,64px))] max-w-[92vw] shrink-0 overflow-hidden lg:static lg:z-auto"
-              exit={shouldReduceMotion ? { opacity: 0, width: 0 } : { opacity: 0, width: 0, x: 24 }}
-              initial={shouldReduceMotion ? false : { opacity: 0, width: 0, x: 24 }}
-              key="workspace-inspector"
-              transition={
-                shouldReduceMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
-              }
-            >
-              <WorkspaceInspector
-                activeTab={inspectorTab}
-                thread={activePage.thread}
-                onClose={() => setIsInspectorOpen(false)}
-                onTabChange={setInspectorTab}
-              />
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </div>
+      {children}
       <ChatSearchDialog
         isOpen={isSearchOpen}
         threads={threads}

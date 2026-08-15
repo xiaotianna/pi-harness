@@ -1,240 +1,56 @@
 "use client";
 
-import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
-import { EmptyState } from "@agile-avocation/ui-pro/empty-state";
-import { FileTree } from "@agile-avocation/ui-pro/file-tree";
-import { Button, Input, Tabs, TextField, Tooltip } from "@heroui/react";
-import {
-  FileCode2,
-  FileJson2,
-  FileText,
-  Folder,
-  FolderOpen,
-  GitCompareArrows,
-  Info,
-  X,
-} from "lucide-react";
-import { useMemo, useState } from "react";
-import type { ChatThread } from "../data/chat";
+import { Button, Tooltip } from "@heroui/react";
+import { ChevronDown, GitCompareArrows } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
+import { useId, useState } from "react";
 
-export const WorkspaceInspectorTab = {
-  CHANGES: "changes",
-  FILES: "files",
-  INFO: "info",
+const INSPECTOR_MOTION_TRANSITION = {
+  duration: 0.22,
+  ease: [0.22, 1, 0.36, 1],
 } as const;
 
-export type WorkspaceInspectorTab =
-  (typeof WorkspaceInspectorTab)[keyof typeof WorkspaceInspectorTab];
+const DiffLineType = {
+  ADDED: "added",
+  CONTEXT: "context",
+  REMOVED: "removed",
+} as const;
 
-interface WorkspaceTreeNode {
-  id: string;
-  kind: "file" | "folder";
-  title: string;
-  children?: readonly WorkspaceTreeNode[];
+type DiffLineType = (typeof DiffLineType)[keyof typeof DiffLineType];
+
+interface DiffLine {
+  content: string;
+  newLineNumber: number | null;
+  oldLineNumber: number | null;
+  type: DiffLineType;
 }
 
-const FILE_PREVIEWS = {
-  "biome.json": {
-    code: `{
-  "files": {
-    "includes": ["**", "!!**/dist", "!!**/node_modules"]
-  },
-  "formatter": {
-    "enabled": true,
-    "indentStyle": "space",
-    "indentWidth": 2,
-    "lineWidth": 100
-  },
-  "css": {
-    "parser": {
-      "tailwindDirectives": true
-    }
-  },
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "preset": "recommended"
-    }
-  },
-  "javascript": {
-    "formatter": {
-      "quoteStyle": "double",
-      "semicolons": "always",
-      "trailingCommas": "all"
-    }
-  }
-}`,
-    language: "json",
-  },
-  "apps/web/src/features/chat/components/chat-shell.tsx": {
-    code: `export function ChatShell({ children }: ChatShellProps) {
-  return (
-    <AppLayout navbar={<ChatNavbar />} sidebar={<ChatSidebar />}>
-      {children}
-    </AppLayout>
-  );
-}`,
-    language: "tsx",
-  },
-  "apps/web/src/features/chat/components/thread-message.tsx": {
-    code: `export function ThreadMessage({ message }: ThreadMessageProps) {
-  return MESSAGE_RENDER_STRATEGIES[message.type](message);
-}`,
-    language: "tsx",
-  },
-  "apps/web/src/features/chat/data/chat-message.ts": {
-    code: `export const ChatMessageType = {
-  ASSISTANT: "assistant",
-  REASONING: "reasoning",
-  TOOL: "tool",
-  USER: "user",
-} as const;`,
-    language: "ts",
-  },
-  "apps/web/package.json": {
-    code: `{
-  "name": "@pi-workbench/web",
-  "dependencies": {
-    "@agile-avocation/ui-pro": "catalog:",
-    "@heroui/react": "catalog:"
-  }
-}`,
-    language: "json",
-  },
-} as const;
+interface WorkspaceDiffFileData {
+  additions: number;
+  deletions: number;
+  id: string;
+  lines: readonly DiffLine[];
+  path: string;
+  shortPath: string;
+}
 
-const WORKSPACE_TREE = [
-  {
-    id: ".agents",
-    kind: "folder",
-    title: ".agents",
-    children: [
-      {
-        id: ".agents/skills",
-        kind: "folder",
-        title: "skills",
-        children: [{ id: ".agents/skills/heroui-react/SKILL.md", kind: "file", title: "SKILL.md" }],
-      },
-    ],
-  },
-  {
-    id: ".git",
-    kind: "folder",
-    title: ".git",
-    children: [{ id: ".git/HEAD", kind: "file", title: "HEAD" }],
-  },
-  {
-    id: ".pi-workbench",
-    kind: "folder",
-    title: ".pi-workbench",
-    children: [{ id: ".pi-workbench/workspace.json", kind: "file", title: "workspace.json" }],
-  },
-  {
-    id: "apps",
-    kind: "folder",
-    title: "apps",
-    children: [
-      {
-        id: "apps/web",
-        kind: "folder",
-        title: "web",
-        children: [
-          {
-            id: "apps/web/src",
-            kind: "folder",
-            title: "src",
-            children: [
-              {
-                id: "apps/web/src/features",
-                kind: "folder",
-                title: "features",
-                children: [
-                  {
-                    id: "apps/web/src/features/chat",
-                    kind: "folder",
-                    title: "chat",
-                    children: [
-                      {
-                        id: "apps/web/src/features/chat/components",
-                        kind: "folder",
-                        title: "components",
-                        children: [
-                          {
-                            id: "apps/web/src/features/chat/components/chat-shell.tsx",
-                            kind: "file",
-                            title: "chat-shell.tsx",
-                          },
-                          {
-                            id: "apps/web/src/features/chat/components/thread-message.tsx",
-                            kind: "file",
-                            title: "thread-message.tsx",
-                          },
-                        ],
-                      },
-                      {
-                        id: "apps/web/src/features/chat/data",
-                        kind: "folder",
-                        title: "data",
-                        children: [
-                          {
-                            id: "apps/web/src/features/chat/data/chat-message.ts",
-                            kind: "file",
-                            title: "chat-message.ts",
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-          { id: "apps/web/package.json", kind: "file", title: "package.json" },
-        ],
-      },
-    ],
-  },
-  {
-    id: "docs",
-    kind: "folder",
-    title: "docs",
-    children: [{ id: "docs/architecture.md", kind: "file", title: "architecture.md" }],
-  },
-  {
-    id: "node_modules",
-    kind: "folder",
-    title: "node_modules",
-    children: [{ id: "node_modules/.pnpm", kind: "folder", title: ".pnpm", children: [] }],
-  },
-  {
-    id: "packages",
-    kind: "folder",
-    title: "packages",
-    children: [
-      {
-        id: "packages/agent-runtime",
-        kind: "folder",
-        title: "agent-runtime",
-        children: [
-          { id: "packages/agent-runtime/package.json", kind: "file", title: "package.json" },
-        ],
-      },
-    ],
-  },
-  { id: ".editorconfig", kind: "file", title: ".editorconfig" },
-  { id: ".env", kind: "file", title: ".env" },
-  { id: ".gitignore", kind: "file", title: ".gitignore" },
-  { id: ".node-version", kind: "file", title: ".node-version" },
-  { id: ".npmrc", kind: "file", title: ".npmrc" },
-  { id: ".nvmrc", kind: "file", title: ".nvmrc" },
-  { id: "AGENTS.md", kind: "file", title: "AGENTS.md" },
-  { id: "biome.json", kind: "file", title: "biome.json" },
-  { id: "package.json", kind: "file", title: "package.json" },
-  { id: "pnpm-lock.yaml", kind: "file", title: "pnpm-lock.yaml" },
-  { id: "pnpm-workspace.yaml", kind: "file", title: "pnpm-workspace.yaml" },
-  { id: "skills-lock.json", kind: "file", title: "skills-lock.json" },
-  { id: "tsconfig.base.json", kind: "file", title: "tsconfig.base.json" },
-] as const satisfies readonly WorkspaceTreeNode[];
+const DIFF_LINE_CLASS_NAMES: Record<DiffLineType, string> = {
+  [DiffLineType.ADDED]: "bg-success/10",
+  [DiffLineType.CONTEXT]: "bg-background",
+  [DiffLineType.REMOVED]: "bg-danger/10",
+};
+
+const DIFF_LINE_GUTTER_CLASS_NAMES: Record<DiffLineType, string> = {
+  [DiffLineType.ADDED]: "border-success/20 text-success",
+  [DiffLineType.CONTEXT]: "border-separator text-muted",
+  [DiffLineType.REMOVED]: "border-danger/20 text-danger",
+};
+
+const DIFF_LINE_MARKERS: Record<DiffLineType, string> = {
+  [DiffLineType.ADDED]: "+",
+  [DiffLineType.CONTEXT]: " ",
+  [DiffLineType.REMOVED]: "-",
+};
 
 const README_DIFF = `# AIcss 组件映射
 
@@ -264,246 +80,206 @@ const README_DIFF = `# AIcss 组件映射
 - 颜色映射到 HeroUI 语义 token。
 - 动画遵循 prefers-reduced-motion。`;
 
-function collectFiles(nodes: readonly WorkspaceTreeNode[]): WorkspaceTreeNode[] {
-  return nodes.flatMap((node) =>
-    node.kind === "file" ? [node] : collectFiles(node.children ?? []),
-  );
+function createAddedDiffLines(content: string): DiffLine[] {
+  return content.split("\n").map((line, index) => ({
+    content: line,
+    newLineNumber: index + 1,
+    oldLineNumber: null,
+    type: DiffLineType.ADDED,
+  }));
 }
 
-const WORKSPACE_FILES = collectFiles(WORKSPACE_TREE);
+const README_DIFF_LINES = createAddedDiffLines(README_DIFF);
 
-function FolderIcon({ isExpanded }: { isExpanded: boolean }) {
-  return isExpanded ? (
-    <FolderOpen className="size-4 text-accent" />
-  ) : (
-    <Folder className="size-4 text-accent" />
-  );
-}
+const WORKSPACE_DIFF_FILES = [
+  {
+    additions: README_DIFF_LINES.length,
+    deletions: 0,
+    id: "aicss-readme",
+    lines: README_DIFF_LINES,
+    path: "apps/web/src/components/ai/aicss/README.md",
+    shortPath: "…components/ai/aicss/README.md",
+  },
+  {
+    additions: 3,
+    deletions: 2,
+    id: "workspace-inspector",
+    lines: [
+      {
+        content: '"use client";',
+        newLineNumber: 1,
+        oldLineNumber: 1,
+        type: DiffLineType.CONTEXT,
+      },
+      {
+        content: "",
+        newLineNumber: 2,
+        oldLineNumber: 2,
+        type: DiffLineType.CONTEXT,
+      },
+      {
+        content: 'import { GitCompareArrows } from "lucide-react";',
+        newLineNumber: null,
+        oldLineNumber: 3,
+        type: DiffLineType.REMOVED,
+      },
+      {
+        content: 'import { Button, Tooltip } from "@heroui/react";',
+        newLineNumber: 3,
+        oldLineNumber: null,
+        type: DiffLineType.ADDED,
+      },
+      {
+        content: 'import { ChevronDown, GitCompareArrows } from "lucide-react";',
+        newLineNumber: 4,
+        oldLineNumber: null,
+        type: DiffLineType.ADDED,
+      },
+      {
+        content: 'import { motion, useReducedMotion } from "motion/react";',
+        newLineNumber: 5,
+        oldLineNumber: 4,
+        type: DiffLineType.CONTEXT,
+      },
+      {
+        content: "",
+        newLineNumber: 6,
+        oldLineNumber: 5,
+        type: DiffLineType.CONTEXT,
+      },
+      {
+        content: "const DIFF_MAX_HEIGHT = 640;",
+        newLineNumber: null,
+        oldLineNumber: 6,
+        type: DiffLineType.REMOVED,
+      },
+      {
+        content: 'const DIFF_MAX_HEIGHT = "min(70dvh, 48rem)";',
+        newLineNumber: 7,
+        oldLineNumber: null,
+        type: DiffLineType.ADDED,
+      },
+      {
+        content: "",
+        newLineNumber: 8,
+        oldLineNumber: 7,
+        type: DiffLineType.CONTEXT,
+      },
+      {
+        content: "function WorkspaceDiff() {",
+        newLineNumber: 9,
+        oldLineNumber: 8,
+        type: DiffLineType.CONTEXT,
+      },
+    ],
+    path: "apps/web/src/features/chat/components/workspace-inspector.tsx",
+    shortPath: "…features/chat/components/workspace-inspector.tsx",
+  },
+] as const satisfies readonly WorkspaceDiffFileData[];
 
-function getFileIcon(title: string) {
-  if (title.endsWith(".json")) return <FileJson2 className="size-4 text-warning" />;
-  if (/\.(ts|tsx)$/.test(title)) return <FileCode2 className="size-4 text-muted" />;
-  return <FileText className="size-4 text-muted" />;
-}
-
-function renderTreeNode(node: WorkspaceTreeNode) {
-  if (node.kind === "file") {
-    return (
-      <FileTree.Item key={node.id} id={node.id} icon={getFileIcon(node.title)} title={node.title} />
-    );
-  }
+function WorkspaceDiffFile({ file }: { file: WorkspaceDiffFileData }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const contentId = useId();
+  const shouldReduceMotion = useReducedMotion();
+  const toggleLabel = isExpanded ? "收起文件变更" : "展开文件变更";
+  const transition = shouldReduceMotion ? { duration: 0 } : INSPECTOR_MOTION_TRANSITION;
 
   return (
-    <FileTree.Item key={node.id} id={node.id} icon={FolderIcon} title={node.title}>
-      {node.children?.map(renderTreeNode)}
-    </FileTree.Item>
-  );
-}
-
-function FilePreview({ fileId }: { fileId: string | null }) {
-  if (!fileId) {
-    return (
-      <div className="grid min-h-0 flex-1 place-items-center">
-        <EmptyState className="px-6" size="sm">
-          <EmptyState.Header>
-            <EmptyState.Media variant="icon">
-              <FolderOpen className="size-5" />
-            </EmptyState.Media>
-            <EmptyState.Title>打开文件</EmptyState.Title>
-            <EmptyState.Description>从工作区目录树中选择文件</EmptyState.Description>
-          </EmptyState.Header>
-        </EmptyState>
-      </div>
-    );
-  }
-
-  const preview = FILE_PREVIEWS[fileId as keyof typeof FILE_PREVIEWS];
-  const file = preview ?? { code: fileId, language: "text" };
-  const fileName = fileId.split("/").at(-1) ?? fileId;
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex h-9 shrink-0 items-center gap-2 px-3 text-xs text-muted">
-        <FileCode2 className="size-3.5" />
-        <span className="truncate">{fileId}</span>
-      </div>
-      <CodeBlock className="min-h-0 flex-1 rounded-none! border-0!">
-        <CodeBlock.Header>
-          <span>{fileName}</span>
-          <CodeBlock.CopyButton aria-label="复制文件内容" code={file.code} />
-        </CodeBlock.Header>
-        <CodeBlock.Code code={file.code} language={file.language} />
-      </CodeBlock>
-    </div>
-  );
-}
-
-function WorkspaceFileTree({
-  selectedFile,
-  onSelect,
-}: {
-  selectedFile: string | null;
-  onSelect: (fileId: string) => void;
-}) {
-  const [filter, setFilter] = useState("");
-  const nodes = useMemo(() => {
-    const query = filter.trim().toLowerCase();
-    if (!query) return WORKSPACE_TREE;
-    return WORKSPACE_FILES.filter(
-      (file) => file.title.toLowerCase().includes(query) || file.id.toLowerCase().includes(query),
-    );
-  }, [filter]);
-
-  return (
-    <div className="flex min-h-0 flex-col border-l border-separator">
-      <div className="shrink-0 px-2 pt-2">
-        <TextField
-          aria-label="筛选工作区文件"
-          fullWidth
-          value={filter}
-          variant="secondary"
-          onChange={setFilter}
-        >
-          <Input className="h-8 text-xs" placeholder="筛选文件..." />
-        </TextField>
-      </div>
-      <FileTree
-        aria-label="工作区文件"
-        className="min-h-0 flex-1 overflow-y-auto px-1 py-2 [&_.file-tree__checkbox]:hidden"
-        selectedKeys={selectedFile ? [selectedFile] : []}
-        selectionMode="single"
-        showGuideLines={false}
-        size="sm"
-        onSelectionChange={(keys) => {
-          if (keys === "all") return;
-          const key = [...keys][0];
-          if (key && WORKSPACE_FILES.some((file) => file.id === key)) onSelect(String(key));
-        }}
+    <article className="w-full overflow-hidden border-b border-separator" aria-label={file.path}>
+      <header className="flex h-10 w-full items-center gap-2 bg-background px-3">
+        <span className="shrink-0 font-semibold text-success">M</span>
+        <span className="min-w-0 flex-1 truncate" title={file.path}>
+          {file.shortPath}
+        </span>
+        <span className="shrink-0 tabular-nums text-success">+{file.additions}</span>
+        <span className="shrink-0 tabular-nums text-danger">-{file.deletions}</span>
+        <Tooltip delay={0}>
+          <Button
+            isIconOnly
+            aria-controls={contentId}
+            aria-expanded={isExpanded}
+            aria-label={`${toggleLabel}：${file.path}`}
+            size="sm"
+            variant="ghost"
+            onPress={() => setIsExpanded((expanded) => !expanded)}
+          >
+            <motion.span animate={{ rotate: isExpanded ? 0 : -90 }} transition={transition}>
+              <ChevronDown className="size-4" />
+            </motion.span>
+          </Button>
+          <Tooltip.Content placement="top">{toggleLabel}</Tooltip.Content>
+        </Tooltip>
+      </header>
+      <motion.section
+        animate={isExpanded ? { height: "auto", opacity: 1 } : { height: 0, opacity: 0 }}
+        aria-hidden={!isExpanded}
+        aria-label={`${file.path} 变更内容`}
+        className="overflow-hidden border-t border-separator"
+        id={contentId}
+        initial={false}
+        transition={transition}
       >
-        {nodes.map(renderTreeNode)}
-      </FileTree>
-    </div>
+        <div className="max-h-[min(70dvh,48rem)] overflow-auto">
+          <div className="w-max min-w-full font-mono leading-6">
+            {file.lines.map((line, index) => (
+              <div
+                className={`grid grid-cols-[40px_40px_20px_minmax(520px,1fr)] ${DIFF_LINE_CLASS_NAMES[line.type]}`}
+                key={`${file.id}-${index}-${line.content}`}
+              >
+                <span
+                  className={`border-r px-2 text-right tabular-nums select-none ${DIFF_LINE_GUTTER_CLASS_NAMES[line.type]}`}
+                >
+                  {line.oldLineNumber}
+                </span>
+                <span
+                  className={`border-r px-2 text-right tabular-nums select-none ${DIFF_LINE_GUTTER_CLASS_NAMES[line.type]}`}
+                >
+                  {line.newLineNumber}
+                </span>
+                <span
+                  className={`text-center select-none ${DIFF_LINE_GUTTER_CLASS_NAMES[line.type]}`}
+                >
+                  {DIFF_LINE_MARKERS[line.type]}
+                </span>
+                <code className="pr-3 whitespace-pre text-foreground">{line.content || " "}</code>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.section>
+    </article>
   );
 }
 
 function WorkspaceDiff() {
   return (
-    <div className="h-full overflow-auto bg-background text-xs">
-      <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-separator bg-background px-3">
-        <span className="font-semibold text-success">M↓</span>
-        <span className="min-w-0 flex-1 truncate">…components/ai/aicss/README.md</span>
-        <span className="tabular-nums text-success">+27</span>
-        <span className="tabular-nums text-danger">-0</span>
-      </div>
-      <div className="font-mono leading-6">
-        {README_DIFF.split("\n").map((line, index) => (
-          <div
-            className="grid min-w-max grid-cols-[44px_minmax(520px,1fr)] bg-success/10 text-success"
-            key={`${index}-${line}`}
-          >
-            <span className="border-r border-success/20 px-2 text-right tabular-nums select-none">
-              {index + 1}
-            </span>
-            <code className="px-3 whitespace-pre text-foreground">{line || " "}</code>
-          </div>
-        ))}
-      </div>
+    <div className="min-h-0 flex-1 overflow-y-auto bg-background text-xs">
+      {WORKSPACE_DIFF_FILES.map((file) => (
+        <WorkspaceDiffFile file={file} key={file.id} />
+      ))}
     </div>
   );
 }
 
 export interface WorkspaceInspectorProps {
-  activeTab: WorkspaceInspectorTab;
-  thread: ChatThread;
-  onClose: () => void;
-  onTabChange: (tab: WorkspaceInspectorTab) => void;
+  isOpen: boolean;
 }
 
-export function WorkspaceInspector({
-  activeTab,
-  thread,
-  onClose,
-  onTabChange,
-}: WorkspaceInspectorProps) {
-  const [selectedFile, setSelectedFile] = useState<string | null>("biome.json");
-  const selectedFileName = selectedFile?.split("/").at(-1) ?? "打开文件";
+export function WorkspaceInspector({ isOpen }: WorkspaceInspectorProps) {
+  const shouldReduceMotion = useReducedMotion();
 
   return (
-    <aside className="relative flex h-full w-full flex-col border-l border-separator bg-background">
-      <div className="absolute top-1 right-2 z-20">
-        <Tooltip delay={0}>
-          <Button
-            isIconOnly
-            aria-label="关闭右侧面板"
-            size="sm"
-            variant="tertiary"
-            onPress={onClose}
-          >
-            <X className="size-4" />
-          </Button>
-          <Tooltip.Content placement="bottom">关闭右侧面板</Tooltip.Content>
-        </Tooltip>
+    <motion.aside
+      animate={isOpen ? { opacity: 1, x: 0 } : { opacity: 0, x: 24 }}
+      className="flex h-full w-full flex-col bg-background"
+      initial={false}
+      transition={shouldReduceMotion ? { duration: 0 } : INSPECTOR_MOTION_TRANSITION}
+    >
+      <div className="flex h-12 shrink-0 items-center gap-2 px-4 text-sm font-medium">
+        <GitCompareArrows className="size-4 text-muted" />
+        <span>变更</span>
       </div>
-
-      <Tabs
-        className="flex min-h-0 flex-1 flex-col gap-0!"
-        selectedKey={activeTab}
-        variant="primary"
-        onSelectionChange={(key) => {
-          if (Object.values(WorkspaceInspectorTab).includes(key as WorkspaceInspectorTab)) {
-            onTabChange(key as WorkspaceInspectorTab);
-          }
-        }}
-      >
-        <Tabs.ListContainer className="shrink-0 rounded-none! border-b border-separator bg-transparent! pr-12">
-          <Tabs.List aria-label="工作区面板" className="min-w-0! gap-1 p-1!">
-            <Tabs.Tab className="w-auto! min-w-20 px-3!" id={WorkspaceInspectorTab.INFO}>
-              <Info className="size-3.5" />
-              会话
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab className="w-auto! min-w-24 px-3!" id={WorkspaceInspectorTab.FILES}>
-              {getFileIcon(selectedFileName)}
-              <span className="max-w-24 truncate">{selectedFileName}</span>
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab className="w-auto! min-w-20 px-3!" id={WorkspaceInspectorTab.CHANGES}>
-              <GitCompareArrows className="size-3.5" />
-              变更
-              <Tabs.Indicator />
-            </Tabs.Tab>
-          </Tabs.List>
-        </Tabs.ListContainer>
-
-        <Tabs.Panel
-          className="mt-0! min-h-0 flex-1 overflow-y-auto p-4"
-          id={WorkspaceInspectorTab.INFO}
-        >
-          <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-4 text-sm">
-            <dt className="text-muted">会话</dt>
-            <dd className="min-w-0 truncate">{thread.title}</dd>
-            <dt className="text-muted">模型</dt>
-            <dd>{thread.modelId}</dd>
-            <dt className="text-muted">工作区</dt>
-            <dd>pi-workbench</dd>
-            <dt className="text-muted">消息</dt>
-            <dd className="tabular-nums">{thread.messages.length}</dd>
-            <dt className="text-muted">变更</dt>
-            <dd>3 个文件 · +42 −11</dd>
-          </dl>
-        </Tabs.Panel>
-
-        <Tabs.Panel className="mt-0! min-h-0 flex-1 p-0" id={WorkspaceInspectorTab.FILES}>
-          <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_180px]">
-            <FilePreview fileId={selectedFile} />
-            <WorkspaceFileTree selectedFile={selectedFile} onSelect={setSelectedFile} />
-          </div>
-        </Tabs.Panel>
-
-        <Tabs.Panel className="mt-0! min-h-0 flex-1 p-0" id={WorkspaceInspectorTab.CHANGES}>
-          <WorkspaceDiff />
-        </Tabs.Panel>
-      </Tabs>
-    </aside>
+      <WorkspaceDiff />
+    </motion.aside>
   );
 }

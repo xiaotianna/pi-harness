@@ -13,6 +13,23 @@
   --tw-ring-offset-shadow: 0 0 #0000;
 }
 
+@media (min-width: 1025px) {
+  [data-app-layout][data-resizable] [data-panel]:has(> .app-layout__aside-panel) {
+    transition: flex-grow 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  [data-app-layout][data-resizable]:has([data-separator="active"])
+    [data-panel]:has(> .app-layout__aside-panel) {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-app-layout][data-resizable] [data-panel]:has(> .app-layout__aside-panel) {
+    transition: none;
+  }
+}
+
 .sidebar__menu-action:is(:focus-visible, [data-focus-visible="true"]) {
   background-color: var(--color-default-hover);
 }
