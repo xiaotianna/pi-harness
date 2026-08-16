@@ -4,7 +4,7 @@ import { EmptyState } from "@agile-avocation/ui-pro/empty-state";
 import { Button } from "@heroui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { SearchX } from "lucide-react";
-import { memo, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { AGENT_TRACE_EVENT_ROW_HEIGHT } from "../constants/agent-trace";
 import type { AgentTraceRange, AgentTraceRecord } from "../types/agent-trace";
 import { getTraceEventRowText } from "../utils/get-trace-event-row-text";
@@ -78,7 +78,11 @@ export const TraceEventList = memo(function TraceEventList({
 }: TraceEventListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const items = useMemo(() => toTraceEventListItems(records), [records]);
-  const selectedTurn = records.find((record) => record.id === selectedRecordId)?.turn ?? null;
+  const selectedIndex = useMemo(
+    () => items.findIndex((item) => item.record.id === selectedRecordId),
+    [items, selectedRecordId],
+  );
+  const selectedTurn = selectedIndex >= 0 ? (items[selectedIndex]?.record.turn ?? null) : null;
   const virtualizer = useVirtualizer({
     count: items.length,
     estimateSize: () => AGENT_TRACE_EVENT_ROW_HEIGHT,
@@ -86,6 +90,12 @@ export const TraceEventList = memo(function TraceEventList({
     getScrollElement: () => parentRef.current,
     overscan: 16,
   });
+
+  useEffect(() => {
+    if (selectedIndex < 0) return;
+
+    virtualizer.scrollToIndex(selectedIndex, { align: "auto" });
+  }, [selectedIndex, virtualizer]);
 
   if (records.length === 0) {
     return (
@@ -104,8 +114,16 @@ export const TraceEventList = memo(function TraceEventList({
   }
 
   return (
-    <div className="h-full min-h-0 overflow-auto bg-background pb-12" ref={parentRef}>
-      <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+    <div
+      className="h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background pb-12"
+      ref={parentRef}
+      style={{ contain: "strict" }}
+    >
+      <ul
+        aria-label="轨迹事件"
+        className="relative m-0 w-full list-none p-0"
+        style={{ height: virtualizer.getTotalSize() }}
+      >
         {virtualizer.getVirtualItems().map((virtualItem) => {
           const item = items[virtualItem.index];
           if (!item) return null;
@@ -115,11 +133,11 @@ export const TraceEventList = memo(function TraceEventList({
           const isSelected = record.id === selectedRecordId;
 
           return (
-            <div
+            <li
               className="absolute top-0 right-0 left-0"
-              key={record.id}
+              key={virtualItem.key}
               style={{
-                height: AGENT_TRACE_EVENT_ROW_HEIGHT,
+                height: virtualItem.size,
                 transform: `translateY(${virtualItem.start}px)`,
               }}
             >
@@ -152,10 +170,10 @@ export const TraceEventList = memo(function TraceEventList({
                   </span>
                 </span>
               </Button>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 });

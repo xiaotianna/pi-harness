@@ -61,6 +61,8 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     () => resolveChatActivePage(pathname, basePath, threads),
     [pathname, basePath, threads],
   );
+  const isThreadPage = activePage.kind === "thread";
+  const isInspectorVisible = isThreadPage && isInspectorOpen;
 
   const handleRename = useCallback((thread: ChatThread) => {
     setRenamingTarget({ kind: "thread", value: thread });
@@ -133,6 +135,15 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const handleInspectorToggle = useCallback(() => {
     setIsInspectorOpen((isOpen) => !isOpen);
   }, []);
+
+  const handleInspectorOpenChange = useCallback(
+    (isOpen: boolean) => {
+      if (!isThreadPage && isOpen) return;
+
+      setIsInspectorOpen(isOpen);
+    },
+    [isThreadPage],
+  );
 
   const handleSearchOpen = useCallback(() => {
     setIsSearchOpen(true);
@@ -209,14 +220,12 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
 
   return (
     <AppLayout
-      aside={
-        activePage.kind === "thread" ? <WorkspaceInspector isOpen={isInspectorOpen} /> : undefined
-      }
-      asideDefaultSize={`${INSPECTOR_DEFAULT_WIDTH}px`}
-      asideMaxSize={`${inspectorMaxWidth}px`}
-      asideMinSize={`${INSPECTOR_MIN_WIDTH}px`}
+      aside={<WorkspaceInspector isOpen={isInspectorVisible} />}
+      asideDefaultSize={isInspectorVisible ? `${INSPECTOR_DEFAULT_WIDTH}px` : "0px"}
+      asideMaxSize={isThreadPage ? `${inspectorMaxWidth}px` : "0px"}
+      asideMinSize={isThreadPage ? `${INSPECTOR_MIN_WIDTH}px` : "0px"}
       asideMobile="sheet"
-      asideOpen={activePage.kind === "thread" && isInspectorOpen}
+      asideOpen={isInspectorVisible}
       asideResizable
       asideResizeBehavior="preserve-pixel-size"
       navigate={navigate}
@@ -225,12 +234,12 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       resizableAutoSaveId="chat-workspace-inspector"
       scrollMode="content"
       sidebarCollapsible="offcanvas"
-      onAsideOpenChange={setIsInspectorOpen}
+      onAsideOpenChange={handleInspectorOpenChange}
       navbar={
         <ChatNavbar
           activePage={activePage}
-          isInspectorOpen={activePage.kind === "thread" && isInspectorOpen}
-          onInspectorToggle={activePage.kind === "thread" ? handleInspectorToggle : undefined}
+          isInspectorOpen={isInspectorVisible}
+          onInspectorToggle={isThreadPage ? handleInspectorToggle : undefined}
           onSearch={disableNavigation ? undefined : handleSearchOpen}
         />
       }
