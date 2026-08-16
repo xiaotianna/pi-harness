@@ -2,40 +2,35 @@
 
 import { Button, Chip, Input, TextField } from "@heroui/react";
 import { Clock3, ListTree, RotateCcw, Search, Wrench } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { MOCK_AGENT_TRACE } from "../data/mock-agent-trace";
-import { type AgentTraceRange, AgentTraceRecordKind } from "../types/agent-trace";
+import {
+  type AgentTraceRange,
+  type AgentTraceRecord,
+  AgentTraceRecordKind,
+} from "../types/agent-trace";
 import { formatTraceDuration } from "../utils/format-trace-duration";
 import { isTraceRecordInRange } from "../utils/is-trace-record-in-range";
 import { TraceDetailPanel } from "./trace-detail-panel";
 import { TraceEventList } from "./trace-event-list";
 import { TraceTimeline } from "./trace-timeline";
 
-const FULL_TRACE_RANGE = {
-  endMs: MOCK_AGENT_TRACE.durationMs,
-  startMs: 0,
-} as const satisfies AgentTraceRange;
-
-const INITIAL_TRACE_RANGE = {
-  endMs: 8_520,
-  startMs: 120,
-} as const satisfies AgentTraceRange;
-
 export function AgentTraceView() {
-  const [range, setRange] = useState<AgentTraceRange>(INITIAL_TRACE_RANGE);
+  const [range, setRange] = useState<AgentTraceRange | null>(null);
   const [search, setSearch] = useState("");
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(
     MOCK_AGENT_TRACE.records[3]?.id ?? null,
   );
+  const deferredSearch = useDeferredValue(search);
 
   const records = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = deferredSearch.trim().toLowerCase();
     if (!query) return MOCK_AGENT_TRACE.records;
 
     return MOCK_AGENT_TRACE.records.filter((record) =>
       `${record.label} ${record.preview} ${record.source}`.toLowerCase().includes(query),
     );
-  }, [search]);
+  }, [deferredSearch]);
 
   const selectedRecord =
     MOCK_AGENT_TRACE.records.find((record) => record.id === selectedRecordId) ?? null;
@@ -55,8 +50,14 @@ export function AgentTraceView() {
       .filter((record) => record.kind === AgentTraceRecordKind.TOOL)
       .map((record) => record.raw.toolCallId),
   ).size;
-  const isFullRange =
-    range.startMs === FULL_TRACE_RANGE.startMs && range.endMs === FULL_TRACE_RANGE.endMs;
+  const hasRange = range !== null;
+  const handleRecordSelect = useCallback((record: AgentTraceRecord) => {
+    setSelectedRecordId(record.id);
+  }, []);
+
+  const handleDetailClose = useCallback(() => {
+    setSelectedRecordId(null);
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background pr-6 pl-10">
@@ -75,14 +76,14 @@ export function AgentTraceView() {
             {toolCallCount} 次调用
           </span>
           <Chip className="h-5 min-h-5 text-[11px]" size="sm" variant="soft">
-            范围内 {visibleRecordCount}/{records.length}
+            {hasRange ? `范围内 ${visibleRecordCount}/${records.length}` : `全部 ${records.length}`}
           </Chip>
           <span className="min-w-0 flex-1" />
           <Button
-            isDisabled={isFullRange}
+            isDisabled={!hasRange}
             size="sm"
             variant="tertiary"
-            onPress={() => setRange(FULL_TRACE_RANGE)}
+            onPress={() => setRange(null)}
           >
             <RotateCcw className="size-3.5" />
             重置范围
@@ -107,6 +108,7 @@ export function AgentTraceView() {
           records={records}
           selectedRecordId={selectedRecordId}
           onRangeChange={setRange}
+          onSelectRecord={handleRecordSelect}
         />
       </div>
 
@@ -116,7 +118,7 @@ export function AgentTraceView() {
             range={range}
             records={records}
             selectedRecordId={selectedRecordId}
-            onSelect={(record) => setSelectedRecordId(record.id)}
+            onSelect={handleRecordSelect}
           />
         </div>
 
@@ -126,7 +128,7 @@ export function AgentTraceView() {
               key={selectedRecord.id}
               record={selectedRecord}
               step={selectedStep}
-              onClose={() => setSelectedRecordId(null)}
+              onClose={handleDetailClose}
             />
           </div>
         ) : null}

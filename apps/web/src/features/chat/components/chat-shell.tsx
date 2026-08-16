@@ -1,10 +1,9 @@
 "use client";
 
 import { AppLayout } from "@agile-avocation/ui-pro";
-import { AlertDialog, Button, Input, Modal, TextField } from "@heroui/react";
 import { useRouter, useRouterState } from "@tanstack/react-router";
 import { useReducedMotion } from "motion/react";
-import type { FormEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SettingsDialog } from "../../settings";
 import type { ChatActivePage, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
@@ -17,6 +16,11 @@ import {
 } from "../data/chat";
 import { ChatNavbar } from "./chat-navbar";
 import { ChatSearchDialog } from "./chat-search-dialog";
+import {
+  ChatRenameDialog,
+  type ChatRenameTarget,
+  RemoveWorkspaceDialog,
+} from "./chat-shell-dialogs";
 import { ChatSidebar } from "./chat-sidebar";
 import { WorkspaceInspector } from "./workspace-inspector";
 
@@ -25,10 +29,6 @@ export interface ChatShellProps {
   basePath?: string;
   disableNavigation?: boolean;
 }
-
-type RenameTarget =
-  | { kind: "thread"; value: ChatThread }
-  | { kind: "workspace"; value: ChatWorkspace };
 
 const INSPECTOR_DEFAULT_WIDTH = 500;
 const INSPECTOR_MIN_WIDTH = 500;
@@ -46,9 +46,8 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const [threads, setThreads] = useState<ChatThread[]>(() => [...CHAT_THREADS]);
   const [workspaces, setWorkspaces] = useState<ChatWorkspace[]>(() => [...CHAT_WORKSPACES]);
   const [archivedThreads, setArchivedThreads] = useState<ChatThread[]>([]);
-  const [renamingTarget, setRenamingTarget] = useState<RenameTarget | null>(null);
+  const [renamingTarget, setRenamingTarget] = useState<ChatRenameTarget | null>(null);
   const [removingWorkspace, setRemovingWorkspace] = useState<ChatWorkspace | null>(null);
-  const [renameValue, setRenameValue] = useState("");
 
   const navigate = useCallback(
     (href: string) => {
@@ -63,64 +62,55 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     [pathname, basePath, threads],
   );
 
-  const handleRename = (thread: ChatThread) => {
+  const handleRename = useCallback((thread: ChatThread) => {
     setRenamingTarget({ kind: "thread", value: thread });
-    setRenameValue(thread.title);
-  };
+  }, []);
 
-  const handleRenameWorkspace = (workspace: ChatWorkspace) => {
+  const handleRenameWorkspace = useCallback((workspace: ChatWorkspace) => {
     setRenamingTarget({ kind: "workspace", value: workspace });
-    setRenameValue(workspace.name);
-  };
+  }, []);
 
-  const handleRenameSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const title = renameValue.trim();
-
-    if (!renamingTarget || !title) return;
-
-    if (renamingTarget.kind === "thread") {
+  const handleRenameCommit = useCallback((target: ChatRenameTarget, value: string) => {
+    if (target.kind === "thread") {
       setThreads((current) =>
         current.map((thread) =>
-          thread.id === renamingTarget.value.id ? { ...thread, title } : thread,
+          thread.id === target.value.id ? { ...thread, title: value } : thread,
         ),
       );
     } else {
       setWorkspaces((current) =>
         current.map((workspace) =>
-          workspace.id === renamingTarget.value.id ? { ...workspace, name: title } : workspace,
+          workspace.id === target.value.id ? { ...workspace, name: value } : workspace,
         ),
       );
     }
+  }, []);
 
-    setRenamingTarget(null);
-  };
+  const handleArchive = useCallback(
+    (thread: ChatThread) => {
+      setThreads((current) => current.filter((item) => item.id !== thread.id));
+      setArchivedThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]);
 
-  const handleArchive = (thread: ChatThread) => {
-    setThreads((current) => current.filter((item) => item.id !== thread.id));
-    setArchivedThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]);
+      if (activePage.kind === "thread" && activePage.thread.id === thread.id) {
+        router.history.push(`${basePath}/new`);
+      }
+    },
+    [activePage, basePath, router],
+  );
 
-    if (activePage.kind === "thread" && activePage.thread.id === thread.id) {
-      router.history.push(`${basePath}/new`);
-    }
-  };
+  const handleRemoveWorkspace = useCallback(
+    (workspace: ChatWorkspace) => {
+      setWorkspaces((current) => current.filter((item) => item.id !== workspace.id));
+      setThreads((current) => current.filter((thread) => thread.workspaceId !== workspace.id));
 
-  const handleRemoveWorkspace = () => {
-    if (!removingWorkspace) return;
+      if (activePage.kind === "thread" && activePage.thread.workspaceId === workspace.id) {
+        router.history.push(`${basePath}/new`);
+      }
 
-    setWorkspaces((current) =>
-      current.filter((workspace) => workspace.id !== removingWorkspace.id),
-    );
-    setThreads((current) =>
-      current.filter((thread) => thread.workspaceId !== removingWorkspace.id),
-    );
-
-    if (activePage.kind === "thread" && activePage.thread.workspaceId === removingWorkspace.id) {
-      router.history.push(`${basePath}/new`);
-    }
-
-    setRemovingWorkspace(null);
-  };
+      setRemovingWorkspace(null);
+    },
+    [activePage, basePath, router],
+  );
 
   const handleNavAction = useCallback(
     (id: ChatNavItemId) => {
@@ -139,6 +129,30 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     },
     [router, basePath, disableNavigation],
   );
+
+  const handleInspectorToggle = useCallback(() => {
+    setIsInspectorOpen((isOpen) => !isOpen);
+  }, []);
+
+  const handleSearchOpen = useCallback(() => {
+    setIsSearchOpen(true);
+  }, []);
+
+  const handleSettingsOpen = useCallback(() => {
+    setIsSettingsOpen(true);
+  }, []);
+
+  const handleRenameClose = useCallback(() => {
+    setRenamingTarget(null);
+  }, []);
+
+  const handleRemoveWorkspaceClose = useCallback(() => {
+    setRemovingWorkspace(null);
+  }, []);
+
+  const handleNewThread = useCallback(() => {
+    navigate("/new");
+  }, [navigate]);
 
   useEffect(() => {
     if (disableNavigation) return;
@@ -216,10 +230,8 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         <ChatNavbar
           activePage={activePage}
           isInspectorOpen={activePage.kind === "thread" && isInspectorOpen}
-          onInspectorToggle={
-            activePage.kind === "thread" ? () => setIsInspectorOpen((isOpen) => !isOpen) : undefined
-          }
-          onSearch={disableNavigation ? undefined : () => setIsSearchOpen(true)}
+          onInspectorToggle={activePage.kind === "thread" ? handleInspectorToggle : undefined}
+          onSearch={disableNavigation ? undefined : handleSearchOpen}
         />
       }
       sidebar={
@@ -227,11 +239,11 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
           basePath={basePath}
           disableNavigation={disableNavigation}
           onArchive={handleArchive}
-          onNewThread={() => navigate("/new")}
+          onNewThread={handleNewThread}
           onRename={handleRename}
           onRemoveWorkspace={setRemovingWorkspace}
           onRenameWorkspace={handleRenameWorkspace}
-          onSettings={() => setIsSettingsOpen(true)}
+          onSettings={handleSettingsOpen}
           pathname={pathname || `/${DEFAULT_CHAT_THREAD_ID}`}
           threads={threads}
           workspaces={workspaces}
@@ -251,69 +263,21 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         isOpen={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
       />
-      <Modal.Backdrop
-        isOpen={renamingTarget !== null}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) setRenamingTarget(null);
-        }}
-      >
-        <Modal.Container>
-          <Modal.Dialog className="sm:max-w-md">
-            <form onSubmit={handleRenameSubmit}>
-              <Modal.Header>
-                <Modal.Heading>
-                  {renamingTarget?.kind === "workspace" ? "重命名工作区" : "重命名对话"}
-                </Modal.Heading>
-              </Modal.Header>
-              <Modal.Body>
-                <TextField
-                  aria-label={renamingTarget?.kind === "workspace" ? "工作区名称" : "对话名称"}
-                  fullWidth
-                  value={renameValue}
-                  variant="secondary"
-                  onChange={setRenameValue}
-                >
-                  <Input autoFocus />
-                </TextField>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button type="button" variant="tertiary" onPress={() => setRenamingTarget(null)}>
-                  取消
-                </Button>
-                <Button isDisabled={!renameValue.trim()} type="submit">
-                  保存
-                </Button>
-              </Modal.Footer>
-            </form>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-      <AlertDialog.Backdrop
-        isOpen={removingWorkspace !== null}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) setRemovingWorkspace(null);
-        }}
-      >
-        <AlertDialog.Container>
-          <AlertDialog.Dialog className="sm:max-w-[400px]">
-            <AlertDialog.Header>
-              <AlertDialog.Icon status="warning" />
-              <AlertDialog.Heading>移除 {removingWorkspace?.name}？</AlertDialog.Heading>
-            </AlertDialog.Header>
-            <AlertDialog.Body>
-              <p>该工作区及其对话将从侧边栏中移除，不会删除本地文件。</p>
-            </AlertDialog.Body>
-            <AlertDialog.Footer>
-              <Button slot="close" variant="tertiary">
-                取消
-              </Button>
-              <Button variant="danger" onPress={handleRemoveWorkspace}>
-                移除工作区
-              </Button>
-            </AlertDialog.Footer>
-          </AlertDialog.Dialog>
-        </AlertDialog.Container>
-      </AlertDialog.Backdrop>
+      <ChatRenameDialog
+        key={
+          renamingTarget
+            ? `${renamingTarget.kind}-${renamingTarget.value.id}`
+            : "closed-rename-dialog"
+        }
+        target={renamingTarget}
+        onClose={handleRenameClose}
+        onRename={handleRenameCommit}
+      />
+      <RemoveWorkspaceDialog
+        workspace={removingWorkspace}
+        onClose={handleRemoveWorkspaceClose}
+        onRemove={handleRemoveWorkspace}
+      />
     </AppLayout>
   );
 }

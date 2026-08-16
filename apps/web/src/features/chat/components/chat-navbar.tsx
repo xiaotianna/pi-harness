@@ -3,6 +3,7 @@
 import { AppLayout, Navbar, Sidebar } from "@agile-avocation/ui-pro";
 import { Button, Kbd, Tooltip } from "@heroui/react";
 import { PanelRightClose, PanelRightOpen, Search } from "lucide-react";
+import { memo } from "react";
 import type { ChatActivePage } from "../data/chat";
 import { ChatViewToggle } from "./chat-view-toggle";
 
@@ -26,7 +27,7 @@ export interface ChatNavbarProps {
   onSearch?: (() => void) | undefined;
 }
 
-export function ChatNavbar({
+export const ChatNavbar = memo(function ChatNavbar({
   activePage,
   isInspectorOpen = false,
   onInspectorToggle,
@@ -92,4 +93,4 @@ export function ChatNavbar({
       </Navbar.Header>
     </Navbar>
   );
-}
+});

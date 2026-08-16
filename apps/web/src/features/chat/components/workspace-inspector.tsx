@@ -3,7 +3,7 @@
 import { Button, Tooltip } from "@heroui/react";
 import { ChevronDown, GitCompareArrows } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import { useId, useState } from "react";
+import { memo, useId, useState } from "react";
 
 const INSPECTOR_MOTION_TRANSITION = {
   duration: 0.22,
@@ -265,7 +265,9 @@ export interface WorkspaceInspectorProps {
   isOpen: boolean;
 }
 
-export function WorkspaceInspector({ isOpen }: WorkspaceInspectorProps) {
+export const WorkspaceInspector = memo(function WorkspaceInspector({
+  isOpen,
+}: WorkspaceInspectorProps) {
   const shouldReduceMotion = useReducedMotion();
 
   return (
@@ -282,4 +284,4 @@ export function WorkspaceInspector({ isOpen }: WorkspaceInspectorProps) {
       <WorkspaceDiff />
     </motion.aside>
   );
-}
+});

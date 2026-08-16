@@ -2,15 +2,8 @@
 
 import { Sidebar } from "@agile-avocation/ui-pro";
 import { Dropdown, Kbd, Tooltip } from "@heroui/react";
-import {
-  Archive,
-  Ellipsis,
-  Folder,
-  FolderOpen,
-  Pencil,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { Archive, Ellipsis, Folder, FolderOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { memo } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { UserMenu } from "../../auth";
 import type { ChatNavItem, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
@@ -31,7 +24,7 @@ export interface ChatSidebarProps {
   onSettings: () => void;
 }
 
-export function ChatSidebar({
+export const ChatSidebar = memo(function ChatSidebar({
   basePath,
   disableNavigation = false,
   onArchive,
@@ -71,7 +64,7 @@ export function ChatSidebar({
       </Sidebar.Mobile>
     </>
   );
-}
+});
 
 interface SidebarContentsProps extends ChatSidebarProps {
   idPrefix?: string;

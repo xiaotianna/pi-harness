@@ -139,7 +139,7 @@ export function ChatComposer({
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
   const [selectedModelId, setSelectedModelId] = useState(modelId);
   const [status, setStatus] = useState<ChatStatus>("ready");
-  const [value, setValue] = useState("");
+  const [hasEditorContent, setHasEditorContent] = useState(false);
   const attachmentsRef = useRef<PendingAttachment[]>([]);
   const attachmentDrawerId = useId();
   const editorRef = useRef<ChatComposerEditorHandle>(null);
@@ -174,13 +174,14 @@ export function ChatComposer({
   };
 
   const handleSubmit = () => {
+    const value = editorRef.current?.getValue() ?? "";
     const trimmed = value.trim();
     const hasAttachments = attachments.length > 0;
 
     if (status !== "ready" || (!trimmed && !hasAttachments)) return;
 
     revokeAttachmentUrls(attachments);
-    setValue("");
+    editorRef.current?.clear();
     setAttachments([]);
     setStatus("submitted");
     clearTimers();
@@ -192,7 +193,7 @@ export function ChatComposer({
   };
 
   const isGenerating = status === "submitted" || status === "streaming";
-  const canSend = Boolean(value.trim() || attachments.length);
+  const canSend = hasEditorContent || attachments.length > 0;
   const sendLabel = isGenerating ? "停止生成" : "发送消息";
   const isHero = presentation === "hero";
   const editorHeight = CHAT_COMPOSER_EDITOR_HEIGHTS[presentation];
@@ -249,15 +250,18 @@ export function ChatComposer({
     editorRef.current?.insertToken({ ...option, kind });
   };
 
+  const handleEditorEmptyChange = useCallback((isEmpty: boolean) => {
+    setHasEditorContent(!isEmpty);
+  }, []);
+
   return (
     <PromptInput
       className={className}
       status={status}
-      value={value}
+      value={hasEditorContent ? "content" : ""}
       variant="primary"
       onStop={handleStop}
       onSubmit={handleSubmit}
-      onValueChange={setValue}
     >
       {attachments.length ? (
         <div className="relative rounded-t-[28px] bg-default pb-7">
@@ -338,11 +342,10 @@ export function ChatComposer({
             isDisabled={isGenerating}
             maxHeight={editorHeight.max}
             minHeight={editorHeight.min}
+            onEmptyChange={handleEditorEmptyChange}
             placeholder={placeholder}
             slashMenuItems={SLASH_MENU_ITEMS}
-            value={value}
             onSubmit={handleSubmit}
-            onValueChange={setValue}
           />
         </PromptInput.Content>
         <PromptInput.Toolbar>
@@ -484,7 +487,7 @@ export function ChatComposer({
                 className="px-3"
                 size="sm"
                 variant="ghost"
-                onPress={() => setValue(shortcut.prompt)}
+                onPress={() => editorRef.current?.setValue(shortcut.prompt)}
               >
                 <ShortcutIcon className="size-4" />
                 {shortcut.label}

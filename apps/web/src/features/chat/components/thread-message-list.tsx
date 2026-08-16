@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { type ChatMessage, ChatMessageType } from "../data/chat";
 import { ThreadMessage } from "./thread-message";
 
@@ -5,7 +6,9 @@ export interface ThreadMessageListProps {
   messages: readonly ChatMessage[];
 }
 
-export function ThreadMessageList({ messages }: ThreadMessageListProps) {
+export const ThreadMessageList = memo(function ThreadMessageList({
+  messages,
+}: ThreadMessageListProps) {
   return (
     <div className="mx-auto flex w-full max-w-[714px] flex-col gap-2 px-4 pt-10 pb-12">
       {messages.map((message, index) => {
@@ -22,4 +25,4 @@ export function ThreadMessageList({ messages }: ThreadMessageListProps) {
       })}
     </div>
   );
-}
+});

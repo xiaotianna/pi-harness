@@ -4,6 +4,7 @@ import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
 import { Button, Chip, Tabs, Tooltip } from "@heroui/react";
 import { X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
+import { memo } from "react";
 import {
   AGENT_TRACE_LANE_LABELS,
   AGENT_TRACE_STATUS_COLORS,
@@ -24,7 +25,11 @@ export interface TraceDetailPanelProps {
   onClose: () => void;
 }
 
-export function TraceDetailPanel({ record, step, onClose }: TraceDetailPanelProps) {
+export const TraceDetailPanel = memo(function TraceDetailPanel({
+  record,
+  step,
+  onClose,
+}: TraceDetailPanelProps) {
   const shouldReduceMotion = useReducedMotion();
   const rawJson = JSON.stringify(record.raw, null, 2);
 
@@ -132,4 +137,4 @@ export function TraceDetailPanel({ record, step, onClose }: TraceDetailPanelProp
       </Tabs>
     </motion.aside>
   );
-}
+});

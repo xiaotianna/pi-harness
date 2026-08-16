@@ -4,7 +4,7 @@ import { EmptyState } from "@agile-avocation/ui-pro/empty-state";
 import { Button } from "@heroui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { SearchX } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { memo, useMemo, useRef } from "react";
 import { AGENT_TRACE_EVENT_ROW_HEIGHT } from "../constants/agent-trace";
 import type { AgentTraceRange, AgentTraceRecord } from "../types/agent-trace";
 import { getTraceEventRowText } from "../utils/get-trace-event-row-text";
@@ -64,13 +64,13 @@ const TRACE_EVENT_ROW_SELECTED_CLASS_NAME =
   "[--button-bg:color-mix(in_oklab,var(--accent)_10%,transparent)] [--button-bg-hover:color-mix(in_oklab,var(--accent)_10%,transparent)] [--button-bg-pressed:color-mix(in_oklab,var(--accent)_12%,transparent)]";
 
 export interface TraceEventListProps {
-  range: AgentTraceRange;
+  range: AgentTraceRange | null;
   records: readonly AgentTraceRecord[];
   selectedRecordId: string | null;
   onSelect: (record: AgentTraceRecord) => void;
 }
 
-export function TraceEventList({
+export const TraceEventList = memo(function TraceEventList({
   range,
   records,
   selectedRecordId,
@@ -158,4 +158,4 @@ export function TraceEventList({
       </div>
     </div>
   );
-}
+});

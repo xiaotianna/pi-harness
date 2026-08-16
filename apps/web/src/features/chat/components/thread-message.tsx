@@ -12,7 +12,7 @@ import {
 import { ChatTool, ChatToolGroup } from "@agile-avocation/ui-pro/chat-tool";
 import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
 import { Markdown } from "@agile-avocation/ui-pro/markdown";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import {
   ImageGeneration,
   Orbs,
@@ -362,6 +362,6 @@ const MESSAGE_RENDER_STRATEGIES = {
   ),
 } satisfies Record<ChatMessageType, MessageRenderStrategy>;
 
-export function ThreadMessage({ message }: ThreadMessageProps) {
+export const ThreadMessage = memo(function ThreadMessage({ message }: ThreadMessageProps) {
   return MESSAGE_RENDER_STRATEGIES[message.type](message);
-}
+});

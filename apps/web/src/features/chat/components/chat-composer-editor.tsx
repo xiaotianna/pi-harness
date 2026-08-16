@@ -41,21 +41,24 @@ export interface ChatComposerToken {
 }
 
 export interface ChatComposerEditorHandle {
+  clear: () => void;
   focus: () => void;
+  getValue: () => string;
   insertToken: (token: ChatComposerToken) => void;
+  setValue: (value: string) => void;
 }
 
 export interface ChatComposerEditorProps {
   ariaLabel?: string;
   contextMenuItems?: readonly ChatComposerToken[];
+  initialValue?: string;
   isDisabled?: boolean;
   maxHeight?: number | string;
   minHeight?: number | string;
+  onEmptyChange?: (isEmpty: boolean) => void;
   onSubmit: () => void;
-  onValueChange: (value: string) => void;
   placeholder?: string;
   slashMenuItems?: readonly ChatComposerToken[];
-  value: string;
 }
 
 interface SuggestionMenuState {
@@ -337,21 +340,23 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
     {
       ariaLabel = "消息输入框",
       contextMenuItems = [],
+      initialValue = "",
       isDisabled = false,
       maxHeight = 240,
       minHeight = 56,
+      onEmptyChange,
       onSubmit,
-      onValueChange,
       placeholder = "输入任何问题",
       slashMenuItems = [],
-      value,
     },
     ref,
   ) {
+    const [isEmpty, setIsEmpty] = useState(() => !initialValue.trim());
     const [suggestionMenu, setSuggestionMenu] = useState<SuggestionMenuState | null>(null);
+    const isEmptyRef = useRef(!initialValue.trim());
     const isDisabledRef = useRef(isDisabled);
+    const onEmptyChangeRef = useRef(onEmptyChange);
     const onSubmitRef = useRef(onSubmit);
-    const onValueChangeRef = useRef(onValueChange);
     const suggestionMenuId = useId();
     const editorContainerRef = useRef<HTMLDivElement>(null);
     const suggestionMenuRef = useRef<HTMLDivElement>(null);
@@ -359,8 +364,17 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
     const filteredSuggestionItemsRef = useRef<readonly ChatComposerToken[]>([]);
     const selectSuggestionTokenRef = useRef<(token: ChatComposerToken) => void>(() => undefined);
     isDisabledRef.current = isDisabled;
+    onEmptyChangeRef.current = onEmptyChange;
     onSubmitRef.current = onSubmit;
-    onValueChangeRef.current = onValueChange;
+
+    const updateEmptyState = (nextValue: string) => {
+      const nextIsEmpty = !nextValue.trim();
+      if (isEmptyRef.current === nextIsEmpty) return;
+
+      isEmptyRef.current = nextIsEmpty;
+      setIsEmpty(nextIsEmpty);
+      onEmptyChangeRef.current?.(nextIsEmpty);
+    };
 
     const updateSuggestionMenu = (currentEditor: Editor) => {
       const match = findSuggestionMenuMatch(currentEditor);
@@ -384,7 +398,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
     };
 
     const editor = useEditor({
-      content: createEditorDocument(value),
+      content: createEditorDocument(initialValue),
       editorProps: {
         attributes: {
           "aria-label": ariaLabel,
@@ -448,7 +462,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
         updateSuggestionMenu(currentEditor);
       },
       onUpdate: ({ editor: currentEditor }) => {
-        onValueChangeRef.current(currentEditor.getText({ blockSeparator: "\n" }));
+        updateEmptyState(currentEditor.getText({ blockSeparator: "\n" }));
         updateSuggestionMenu(currentEditor);
       },
     });
@@ -508,9 +522,16 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
     useImperativeHandle(
       ref,
       () => ({
+        clear: () => {
+          if (!editor) return;
+          editor.commands.setContent(createEditorDocument(""), { emitUpdate: false });
+          setSuggestionMenu(null);
+          updateEmptyState("");
+        },
         focus: () => {
           editor?.commands.focus();
         },
+        getValue: () => editor?.getText({ blockSeparator: "\n" }) ?? "",
         insertToken: (token) => {
           editor
             ?.chain()
@@ -520,6 +541,13 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
               { text: " ", type: "text" },
             ])
             .run();
+        },
+        setValue: (nextValue) => {
+          if (!editor) return;
+          editor.commands.setContent(createEditorDocument(nextValue), { emitUpdate: false });
+          editor.commands.focus("end");
+          setSuggestionMenu(null);
+          updateEmptyState(nextValue);
         },
       }),
       [editor],
@@ -539,12 +567,6 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
         editor.view.dom.removeAttribute("aria-controls");
       }
     }, [editor, suggestionMenu, suggestionMenuId]);
-
-    useEffect(() => {
-      if (!editor || editor.getText({ blockSeparator: "\n" }) === value) return;
-      editor.commands.setContent(createEditorDocument(value), { emitUpdate: false });
-      setSuggestionMenu(null);
-    }, [editor, value]);
 
     return (
       <div
@@ -619,7 +641,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
           </div>
         ) : null}
         <div className="relative overflow-y-auto px-3 pt-2" style={{ maxHeight, minHeight }}>
-          {!value.trim() ? (
+          {isEmpty ? (
             <span aria-hidden className="pointer-events-none absolute left-3 top-2 text-muted">
               {placeholder}
             </span>
