@@ -59,11 +59,6 @@ export interface ChatComposerProps {
   presentation?: "dock" | "hero";
 }
 
-const CHAT_COMPOSER_EDITOR_HEIGHTS = {
-  dock: { max: 80, min: 24 },
-  hero: { max: 360, min: 92 },
-} as const;
-
 const COMPOSER_SHORTCUTS = [
   {
     icon: PencilLine,
@@ -196,7 +191,6 @@ export function ChatComposer({
   const canSend = hasEditorContent || attachments.length > 0;
   const sendLabel = isGenerating ? "停止生成" : "发送消息";
   const isHero = presentation === "hero";
-  const editorHeight = CHAT_COMPOSER_EDITOR_HEIGHTS[presentation];
   const selectedModel = CHAT_MODELS.find((model) => model.id === selectedModelId) ?? CHAT_MODELS[0];
 
   const handleFilesSelected = (files: File[]) => {
@@ -322,7 +316,7 @@ export function ChatComposer({
       <PromptInput.Shell
         className={`relative z-10 overflow-visible! rounded-[28px] bg-field shadow-field ${
           attachments.length ? "-mt-6" : ""
-        } ${isHero ? "min-h-[184px]" : ""}`}
+        }`}
       >
         <PromptInput.Content className="px-1 pt-1">
           <input
@@ -340,8 +334,8 @@ export function ChatComposer({
             ariaLabel="消息输入框"
             contextMenuItems={CONTEXT_MENU_ITEMS}
             isDisabled={isGenerating}
-            maxHeight={editorHeight.max}
-            minHeight={editorHeight.min}
+            maxHeight={80}
+            minHeight={24}
             onEmptyChange={handleEditorEmptyChange}
             placeholder={placeholder}
             slashMenuItems={SLASH_MENU_ITEMS}

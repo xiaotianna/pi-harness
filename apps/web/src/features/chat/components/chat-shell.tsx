@@ -221,9 +221,9 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   return (
     <AppLayout
       aside={<WorkspaceInspector isOpen={isInspectorVisible} />}
-      asideDefaultSize={isInspectorVisible ? `${INSPECTOR_DEFAULT_WIDTH}px` : "0px"}
-      asideMaxSize={isThreadPage ? `${inspectorMaxWidth}px` : "0px"}
-      asideMinSize={isThreadPage ? `${INSPECTOR_MIN_WIDTH}px` : "0px"}
+      asideDefaultSize={`${INSPECTOR_DEFAULT_WIDTH}px`}
+      asideMaxSize={`${inspectorMaxWidth}px`}
+      asideMinSize={`${INSPECTOR_MIN_WIDTH}px`}
       asideMobile="sheet"
       asideOpen={isInspectorVisible}
       asideResizable
