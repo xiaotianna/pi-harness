@@ -1,7 +1,7 @@
 "use client";
 
-import { Button, Chip, Input, TextField } from "@heroui/react";
-import { Clock3, ListTree, RotateCcw, Search, Wrench } from "lucide-react";
+import { Chip, Input, TextField } from "@heroui/react";
+import { Clock3, ListTree, Search, Wrench } from "lucide-react";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { MOCK_AGENT_TRACE } from "../data/mock-agent-trace";
 import {
@@ -79,15 +79,6 @@ export function AgentTraceView() {
             {hasRange ? `范围内 ${visibleRecordCount}/${records.length}` : `全部 ${records.length}`}
           </Chip>
           <span className="min-w-0 flex-1" />
-          <Button
-            isDisabled={!hasRange}
-            size="sm"
-            variant="tertiary"
-            onPress={() => setRange(null)}
-          >
-            <RotateCcw className="size-3.5" />
-            重置范围
-          </Button>
           <div className="relative min-w-40 max-w-56 flex-1 sm:flex-none">
             <Search className="pointer-events-none absolute top-1/2 left-2 z-10 size-3.5 -translate-y-1/2 text-muted" />
             <TextField

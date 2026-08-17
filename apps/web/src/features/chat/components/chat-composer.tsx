@@ -2,10 +2,12 @@
 
 import type { ChatStatus } from "@agile-avocation/ui-pro";
 import { PromptInput } from "@agile-avocation/ui-pro";
-import { Button, Dropdown, Label, Tooltip } from "@heroui/react";
+import { Button, Dropdown, Label, Separator, Tooltip } from "@heroui/react";
 import {
   ChevronDown,
   Code2,
+  Folder,
+  FolderOpen,
   Lightbulb,
   Paperclip,
   PencilLine,
@@ -18,7 +20,7 @@ import {
 } from "lucide-react";
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { CHAT_MODELS } from "../data/chat";
+import { CHAT_MODELS, CHAT_WORKSPACES } from "../data/chat";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
 import { ChatAttachmentList } from "./chat-attachment-list";
 import {
@@ -133,6 +135,7 @@ export function ChatComposer({
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
   const [selectedModelId, setSelectedModelId] = useState(modelId);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [status, setStatus] = useState<ChatStatus>("ready");
   const [hasEditorContent, setHasEditorContent] = useState(false);
   const attachmentsRef = useRef<PendingAttachment[]>([]);
@@ -192,6 +195,9 @@ export function ChatComposer({
   const sendLabel = isGenerating ? "停止生成" : "发送消息";
   const isHero = presentation === "hero";
   const selectedModel = CHAT_MODELS.find((model) => model.id === selectedModelId) ?? CHAT_MODELS[0];
+  const selectedWorkspace = CHAT_WORKSPACES.find(
+    (workspace) => workspace.id === selectedWorkspaceId,
+  );
 
   const handleFilesSelected = (files: File[]) => {
     setIsAttachmentDrawerExpanded(true);
@@ -343,7 +349,7 @@ export function ChatComposer({
           />
         </PromptInput.Content>
         <PromptInput.Toolbar>
-          <PromptInput.ToolbarStart>
+          <PromptInput.ToolbarStart className="translate-y-1">
             <Dropdown>
               <Tooltip delay={0}>
                 <Button
@@ -435,6 +441,52 @@ export function ChatComposer({
                 </Dropdown.Menu>
               </Dropdown.Popover>
             </Dropdown>
+            {isHero ? (
+              <Dropdown>
+                <Button
+                  aria-label="选择工作区"
+                  className="max-w-44 gap-2 px-2"
+                  isDisabled={isGenerating}
+                  size="sm"
+                  variant="ghost"
+                >
+                  {selectedWorkspace ? (
+                    <FolderOpen className="size-4 shrink-0" />
+                  ) : (
+                    <Folder className="size-4 shrink-0" />
+                  )}
+                  <span className="truncate">{selectedWorkspace?.name ?? "选择工作区"}</span>
+                  <ChevronDown className="size-3.5 shrink-0" />
+                </Button>
+                <Dropdown.Popover className="min-w-52" placement="bottom start">
+                  <Dropdown.Menu
+                    aria-label="选择工作区"
+                    selectedKeys={selectedWorkspaceId ? new Set([selectedWorkspaceId]) : new Set()}
+                    selectionMode="single"
+                    onAction={(key) => {
+                      if (key !== "add-workspace") setSelectedWorkspaceId(String(key));
+                    }}
+                  >
+                    {CHAT_WORKSPACES.map((workspace) => (
+                      <Dropdown.Item
+                        key={workspace.id}
+                        id={workspace.id}
+                        textValue={workspace.name}
+                      >
+                        <Folder className="size-4 text-muted" />
+                        <Label>{workspace.name}</Label>
+                        <Dropdown.ItemIndicator />
+                      </Dropdown.Item>
+                    ))}
+                    <Separator className="my-1" />
+                    <Dropdown.Item id="add-workspace" textValue="添加工作区">
+                      <Plus className="size-4 text-muted" />
+                      <Label>添加工作区...</Label>
+                    </Dropdown.Item>
+                  </Dropdown.Menu>
+                </Dropdown.Popover>
+              </Dropdown>
+            ) : null}
             <Dropdown>
               <Button
                 aria-label="选择模型"

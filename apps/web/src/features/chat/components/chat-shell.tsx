@@ -4,7 +4,7 @@ import { AppLayout } from "@agile-avocation/ui-pro";
 import { useRouter, useRouterState } from "@tanstack/react-router";
 import { useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SettingsDialog } from "../../settings";
 import type { ChatActivePage, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
 import {
@@ -32,17 +32,17 @@ export interface ChatShellProps {
 
 const INSPECTOR_DEFAULT_WIDTH = 500;
 const INSPECTOR_MIN_WIDTH = 500;
-const MESSAGE_PANEL_MIN_WIDTH = 500;
 
 export function ChatShell({ basePath = "", children, disableNavigation = false }: ChatShellProps) {
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const layoutRootRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
-  const [inspectorMaxWidth, setInspectorMaxWidth] = useState(INSPECTOR_DEFAULT_WIDTH);
+  const [isDesktopLayout, setIsDesktopLayout] = useState(
+    () => window.matchMedia("(min-width: 1025px)").matches,
+  );
   const [threads, setThreads] = useState<ChatThread[]>(() => [...CHAT_THREADS]);
   const [workspaces, setWorkspaces] = useState<ChatWorkspace[]>(() => [...CHAT_WORKSPACES]);
   const [archivedThreads, setArchivedThreads] = useState<ChatThread[]>([]);
@@ -166,6 +166,14 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   }, [navigate]);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1025px)");
+    const handleChange = () => setIsDesktopLayout(mediaQuery.matches);
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  useEffect(() => {
     if (disableNavigation) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -183,54 +191,18 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [disableNavigation]);
 
-  useEffect(() => {
-    const layoutRoot = layoutRootRef.current;
-    if (!layoutRoot) return;
-
-    let observedGroup: HTMLElement | null = null;
-    const groupObserver = new ResizeObserver(() => {
-      if (!observedGroup) return;
-
-      const nextMaxWidth = Math.max(
-        INSPECTOR_MIN_WIDTH,
-        Math.floor(observedGroup.clientWidth - MESSAGE_PANEL_MIN_WIDTH),
-      );
-      setInspectorMaxWidth((current) => (current === nextMaxWidth ? current : nextMaxWidth));
-    });
-
-    const observePanelGroup = () => {
-      const nextGroup = layoutRoot.querySelector<HTMLElement>('[data-slot="resizable"]');
-      if (nextGroup === observedGroup) return;
-
-      groupObserver.disconnect();
-      observedGroup = nextGroup;
-
-      if (observedGroup) groupObserver.observe(observedGroup);
-    };
-
-    const layoutObserver = new MutationObserver(observePanelGroup);
-    layoutObserver.observe(layoutRoot, { childList: true, subtree: true });
-    observePanelGroup();
-
-    return () => {
-      layoutObserver.disconnect();
-      groupObserver.disconnect();
-    };
-  }, []);
-
   return (
     <AppLayout
       aside={<WorkspaceInspector isOpen={isInspectorVisible} />}
       asideDefaultSize={`${INSPECTOR_DEFAULT_WIDTH}px`}
-      asideMaxSize={`${inspectorMaxWidth}px`}
+      asideMaxSize="50%"
       asideMinSize={`${INSPECTOR_MIN_WIDTH}px`}
       asideMobile="sheet"
       asideOpen={isInspectorVisible}
-      asideResizable
+      asideResizable={isDesktopLayout}
       asideResizeBehavior="preserve-pixel-size"
       navigate={navigate}
       reduceMotion={shouldReduceMotion ?? false}
-      ref={layoutRootRef}
       resizableAutoSaveId="chat-workspace-inspector"
       scrollMode="content"
       sidebarCollapsible="offcanvas"
