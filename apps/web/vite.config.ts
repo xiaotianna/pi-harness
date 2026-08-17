@@ -11,6 +11,10 @@ export default defineConfig({
     // beta.8 advertises development source entries that are not included in the published package.
     alias: [
       {
+        find: /^@\//,
+        replacement: resolvePackageFile("./src/"),
+      },
+      {
         find: /^@agile-avocation\/ui-pro$/,
         replacement: resolvePackageFile("./node_modules/@agile-avocation/ui-pro/dist/index.js"),
       },

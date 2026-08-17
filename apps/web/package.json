@@ -24,6 +24,7 @@
     "@tiptap/pm": "catalog:",
     "@tiptap/react": "catalog:",
     "@tiptap/starter-kit": "catalog:",
+    "clsx": "catalog:",
     "lucide-react": "catalog:",
     "marked": "catalog:",
     "motion": "catalog:",
@@ -36,6 +37,7 @@
     "remark-gfm": "catalog:",
     "shiki": "catalog:",
     "streamdown": "catalog:",
+    "tailwind-merge": "catalog:",
     "tailwind-variants": "catalog:",
     "typebox": "catalog:",
     "zustand": "catalog:"

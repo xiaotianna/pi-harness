@@ -69,6 +69,9 @@ catalogs:
     chokidar:
       specifier: ^4.0.0
       version: 4.0.3
+    clsx:
+      specifier: ^2.1.1
+      version: 2.1.1
     execa:
       specifier: ^9.6.0
       version: 9.6.1
@@ -114,6 +117,9 @@ catalogs:
     streamdown:
       specifier: ^2.5.0
       version: 2.5.0
+    tailwind-merge:
+      specifier: ^3.4.0
+      version: 3.4.0
     tailwind-variants:
       specifier: ^3.3.1
       version: 3.3.1
@@ -207,6 +213,9 @@ importers:
       '@tiptap/starter-kit':
         specifier: 'catalog:'
         version: 3.30.0
+      clsx:
+        specifier: 'catalog:'
+        version: 2.1.1
       lucide-react:
         specifier: 'catalog:'
         version: 0.500.0(react@19.2.8)
@@ -243,6 +252,9 @@ importers:
       streamdown:
         specifier: 'catalog:'
         version: 2.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      tailwind-merge:
+        specifier: 'catalog:'
+        version: 3.4.0
       tailwind-variants:
         specifier: 'catalog:'
         version: 3.3.1(tailwind-merge@3.4.0)(tailwindcss@4.3.3)
