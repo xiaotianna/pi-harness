@@ -10,13 +10,13 @@ import {
   ToggleButtonGroup,
 } from "@heroui/react";
 import type { LucideIcon } from "lucide-react";
-import { Archive, Blocks, Bot, Brain, Monitor, Moon, Plug, Settings2, Sun } from "lucide-react";
+import { Archive, Blocks, Bot, Brain, Monitor, Moon, Settings2, Store, Sun } from "lucide-react";
 import { useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { useAppTheme } from "../theme-provider";
-import { McpSettingsPanel } from "./mcp-settings-panel";
 import { MemorySettingsPanel } from "./memory-settings-panel";
 import { ModelSettingsPanel } from "./model-settings-panel";
+import { PluginMarketplacePanel } from "./plugin-marketplace-panel";
 import { SettingsPanelHeader } from "./settings-panel-header";
 import { SettingsRow } from "./settings-row";
 import { SkillSettingsPanel } from "./skill-settings-panel";
@@ -51,16 +51,16 @@ const SETTINGS_SECTIONS = [
     icon: Brain,
   },
   {
+    id: "plugins",
+    label: "插件市场",
+    description: "发现并安装可连接外部服务的插件。",
+    icon: Store,
+  },
+  {
     id: "skills",
     label: "技能",
     description: "管理已安装技能及其可用状态。",
     icon: Blocks,
-  },
-  {
-    id: "mcp",
-    label: "MCP",
-    description: "管理 MCP 服务及其连接配置。",
-    icon: Plug,
   },
   {
     id: "archived",
@@ -302,10 +302,10 @@ export function SettingsDialog({
                   <ModelSettingsPanel />
                 ) : activeSectionId === "memory" ? (
                   <MemorySettingsPanel />
+                ) : activeSectionId === "plugins" ? (
+                  <PluginMarketplacePanel />
                 ) : activeSectionId === "skills" ? (
                   <SkillSettingsPanel />
-                ) : activeSectionId === "mcp" ? (
-                  <McpSettingsPanel />
                 ) : activeSectionId === "archived" ? (
                   <ArchivedSettingsPanel conversations={archivedConversations} />
                 ) : (

@@ -11,7 +11,7 @@ import {
 } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import type { LucideIcon } from "lucide-react";
-import { File, Folder, Image as ImageIcon, Plug, SquareTerminal, WandSparkles } from "lucide-react";
+import { File, Folder, Image as ImageIcon, SquareTerminal, WandSparkles } from "lucide-react";
 import {
   forwardRef,
   useEffect,
@@ -27,7 +27,6 @@ export const ChatComposerTokenKind = {
   FILE: "file",
   FOLDER: "folder",
   IMAGE: "image",
-  MCP: "mcp",
   SKILL: "skill",
 } as const;
 
@@ -71,7 +70,7 @@ interface SuggestionMenuState {
   trigger: "/" | "@";
 }
 
-const TOKEN_PATTERN = /\[\[(command|file|folder|image|mcp|skill):([^|\]]+)\|([^\]]+)\]\]/g;
+const TOKEN_PATTERN = /\[\[(command|file|folder|image|skill):([^|\]]+)\|([^\]]+)\]\]/g;
 const SUGGESTION_MENU_GAP = 8;
 const SUGGESTION_MENU_HORIZONTAL_PADDING = 12;
 const SUGGESTION_MENU_MAX_WIDTH = 384;
@@ -103,11 +102,6 @@ const TOKEN_VISUAL_STRATEGIES = {
     icon: ImageIcon,
     selectedClassName: "bg-[var(--chat-token-image-soft)]",
   },
-  [ChatComposerTokenKind.MCP]: {
-    colorClassName: "text-[var(--chat-token-mcp)]",
-    icon: Plug,
-    selectedClassName: "bg-[var(--chat-token-mcp-soft)]",
-  },
   [ChatComposerTokenKind.SKILL]: {
     colorClassName: "text-[var(--chat-token-skill)]",
     icon: WandSparkles,
@@ -118,7 +112,6 @@ const TOKEN_VISUAL_STRATEGIES = {
 const tokenGroups = [
   { kind: ChatComposerTokenKind.COMMAND, label: "命令" },
   { kind: ChatComposerTokenKind.SKILL, label: "Skills" },
-  { kind: ChatComposerTokenKind.MCP, label: "MCP" },
   { kind: ChatComposerTokenKind.IMAGE, label: "图片" },
   { kind: ChatComposerTokenKind.FILE, label: "文件" },
   { kind: ChatComposerTokenKind.FOLDER, label: "文件夹" },
@@ -590,7 +583,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
                   aria-label={
                     suggestionMenu.trigger === "@"
                       ? "添加图片、文件或文件夹上下文"
-                      : "插入命令、Skill 或 MCP"
+                      : "插入命令或 Skill"
                   }
                   className="max-h-80 overflow-y-auto"
                   selectedKeys={selectedSuggestionItem ? [getTokenKey(selectedSuggestionItem)] : []}

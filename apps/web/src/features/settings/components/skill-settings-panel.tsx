@@ -173,10 +173,10 @@ export function SkillSettingsPanel() {
             </Tabs.Tab>
           </Tabs.List>
         </Tabs.ListContainer>
-        <Tabs.Panel className="pt-4" id="installed">
+        <Tabs.Panel className="p-0" id="installed">
           <SkillList skills={installedSkills} />
         </Tabs.Panel>
-        <Tabs.Panel className="pt-4" id="directory">
+        <Tabs.Panel className="p-0" id="directory">
           <SkillList skills={SKILLS} />
         </Tabs.Panel>
       </Tabs>

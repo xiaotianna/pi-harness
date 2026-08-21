@@ -11,7 +11,6 @@ import {
   Lightbulb,
   Paperclip,
   PencilLine,
-  Plug,
   Plus,
   Search,
   Sparkles,
@@ -96,16 +95,9 @@ const SKILL_OPTIONS = [
   { id: "documents", label: "Documents" },
 ] as const;
 
-const MCP_OPTIONS = [
-  { id: "filesystem", label: "Filesystem" },
-  { id: "github", label: "GitHub" },
-  { id: "browser", label: "Browser" },
-] as const;
-
 const SLASH_MENU_ITEMS = [
   ...COMMAND_OPTIONS.map((option) => ({ ...option, kind: ChatComposerTokenKind.COMMAND })),
   ...SKILL_OPTIONS.map((option) => ({ ...option, kind: ChatComposerTokenKind.SKILL })),
-  ...MCP_OPTIONS.map((option) => ({ ...option, kind: ChatComposerTokenKind.MCP })),
 ] satisfies readonly ChatComposerToken[];
 
 const CONTEXT_MENU_ITEMS = [
@@ -341,7 +333,7 @@ export function ChatComposer({
             contextMenuItems={CONTEXT_MENU_ITEMS}
             isDisabled={isGenerating}
             maxHeight={80}
-            minHeight={24}
+            minHeight={56}
             onEmptyChange={handleEditorEmptyChange}
             placeholder={placeholder}
             slashMenuItems={SLASH_MENU_ITEMS}
@@ -410,27 +402,6 @@ export function ChatComposer({
                         }
                       >
                         {SKILL_OPTIONS.map((option) => (
-                          <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
-                            <Label>{option.label}</Label>
-                          </Dropdown.Item>
-                        ))}
-                      </Dropdown.Menu>
-                    </Dropdown.Popover>
-                  </Dropdown.SubmenuTrigger>
-                  <Dropdown.SubmenuTrigger>
-                    <Dropdown.Item id="mcp" textValue="MCP">
-                      <Plug className="size-4 text-muted" />
-                      <Label>MCP</Label>
-                      <Dropdown.SubmenuIndicator />
-                    </Dropdown.Item>
-                    <Dropdown.Popover className="min-w-40" placement="right top">
-                      <Dropdown.Menu
-                        aria-label="MCP"
-                        onAction={(key) =>
-                          handleInsertToken(ChatComposerTokenKind.MCP, MCP_OPTIONS, key)
-                        }
-                      >
-                        {MCP_OPTIONS.map((option) => (
                           <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
                             <Label>{option.label}</Label>
                           </Dropdown.Item>

@@ -1,15 +1,11 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
-import { Type } from "typebox";
 import { loadWorkbenchConfig, type WorkbenchConfig } from "../config/index.js";
 import { registerAuthRoutes } from "../routes/auth-routes.js";
+import { registerHealthRoutes } from "../routes/health-routes.js";
 import { openWorkbenchDatabase } from "../storage/database.js";
 
 const LOCAL_WEB_ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
-
-const HealthResponseSchema = Type.Object({
-  status: Type.Literal("ok"),
-});
 
 export async function createServer(config: WorkbenchConfig = loadWorkbenchConfig()) {
   const database = openWorkbenchDatabase(config.databasePath);
@@ -54,18 +50,7 @@ export async function createServer(config: WorkbenchConfig = loadWorkbenchConfig
   });
 
   await registerAuthRoutes(server, config, database.authSessions);
-
-  server.get(
-    "/api/health",
-    {
-      schema: {
-        response: {
-          200: HealthResponseSchema,
-        },
-      },
-    },
-    async () => ({ status: "ok" as const }),
-  );
+  await registerHealthRoutes(server);
 
   return server;
 }
