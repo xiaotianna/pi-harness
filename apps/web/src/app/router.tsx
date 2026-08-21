@@ -60,9 +60,9 @@ const loginRoute = createRoute({
     return isAuthErrorCode(authError) ? { authError } : {};
   },
   beforeLoad: async () => {
-    const session = await fetchCurrentAuthSession().catch(() => null);
+    const session = await fetchCurrentAuthSession();
 
-    if (session?.authenticated) {
+    if (session.authenticated) {
       throw redirect({ replace: true, to: "/" });
     }
   },
@@ -73,15 +73,9 @@ const chatLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "chat",
   beforeLoad: async () => {
-    let isAuthenticated = false;
-    try {
-      const session = await fetchCurrentAuthSession();
-      isAuthenticated = session.authenticated;
-    } catch {
-      isAuthenticated = false;
-    }
+    const session = await fetchCurrentAuthSession();
 
-    if (!isAuthenticated) {
+    if (!session.authenticated) {
       throw redirect({ replace: true, to: "/login" });
     }
   },
