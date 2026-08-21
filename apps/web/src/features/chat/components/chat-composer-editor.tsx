@@ -64,6 +64,7 @@ interface SuggestionMenuState {
   anchorLeft: number;
   anchorTop: number;
   from: number;
+  maxHeight: number;
   query: string;
   selectedIndex: number;
   to: number;
@@ -73,6 +74,7 @@ interface SuggestionMenuState {
 const TOKEN_PATTERN = /\[\[(command|file|folder|image|skill):([^|\]]+)\|([^\]]+)\]\]/g;
 const SUGGESTION_MENU_GAP = 8;
 const SUGGESTION_MENU_HORIZONTAL_PADDING = 12;
+const SUGGESTION_MENU_MAX_HEIGHT = 336;
 const SUGGESTION_MENU_MAX_WIDTH = 384;
 
 interface TokenVisualStrategy {
@@ -130,11 +132,22 @@ function getSuggestionMenuAnchor(
   from: number,
   container: HTMLDivElement | null,
   menu: HTMLDivElement | null,
-): Pick<SuggestionMenuState, "anchorLeft" | "anchorTop"> {
-  if (!container) return { anchorLeft: SUGGESTION_MENU_HORIZONTAL_PADDING, anchorTop: 0 };
+): Pick<SuggestionMenuState, "anchorLeft" | "anchorTop" | "maxHeight"> {
+  if (!container) {
+    return {
+      anchorLeft: SUGGESTION_MENU_HORIZONTAL_PADDING,
+      anchorTop: 0,
+      maxHeight: SUGGESTION_MENU_MAX_HEIGHT,
+    };
+  }
 
   const caretRect = editor.view.coordsAtPos(from);
   const containerRect = container.getBoundingClientRect();
+  const headerBottom =
+    container
+      .closest("[data-app-layout]")
+      ?.querySelector<HTMLElement>('[data-slot="app-layout-header"]')
+      ?.getBoundingClientRect().bottom ?? 0;
   const menuWidth =
     menu?.offsetWidth ??
     Math.min(
@@ -152,12 +165,16 @@ function getSuggestionMenuAnchor(
       maxLeft,
     ),
     anchorTop: caretRect.top - containerRect.top - SUGGESTION_MENU_GAP,
+    maxHeight: Math.min(
+      SUGGESTION_MENU_MAX_HEIGHT,
+      Math.max(caretRect.top - headerBottom - SUGGESTION_MENU_GAP * 2, 0),
+    ),
   };
 }
 
 function findSuggestionMenuMatch(
   editor: Editor,
-): Omit<SuggestionMenuState, "anchorLeft" | "anchorTop" | "selectedIndex"> | null {
+): Omit<SuggestionMenuState, "anchorLeft" | "anchorTop" | "maxHeight" | "selectedIndex"> | null {
   const { selection } = editor.state;
   if (!selection.empty) return null;
 
@@ -576,7 +593,10 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
             style={{ left: suggestionMenu.anchorLeft, top: suggestionMenu.anchorTop }}
             onPointerDown={(event) => event.preventDefault()}
           >
-            <Surface className="rounded-2xl p-2 shadow-overlay">
+            <Surface
+              className="flex flex-col rounded-2xl p-2 shadow-overlay"
+              style={{ maxHeight: suggestionMenu.maxHeight }}
+            >
               {filteredSuggestionItems.length > 0 ? (
                 <ListBox
                   id={suggestionMenuId}
@@ -585,7 +605,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
                       ? "添加图片、文件或文件夹上下文"
                       : "插入命令或 Skill"
                   }
-                  className="max-h-80 overflow-y-auto"
+                  className="min-h-0 overflow-y-auto"
                   selectedKeys={selectedSuggestionItem ? [getTokenKey(selectedSuggestionItem)] : []}
                   selectionMode="single"
                   onSelectionChange={(keys) => {

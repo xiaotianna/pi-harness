@@ -137,7 +137,7 @@ export const SparklesText: React.FC<SparklesTextProps> = ({
 
   return (
     <div className={cn("text-6xl font-bold", className)} {...props}>
-      <span className="relative inline-block">
+      <span className="relative isolate inline-block">
         {sparkles.map((sparkle) => (
           <Sparkle key={sparkle.id} {...sparkle} />
         ))}
