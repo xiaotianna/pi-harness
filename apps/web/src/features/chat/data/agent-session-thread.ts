@@ -252,5 +252,5 @@ export const AGENT_SESSION_THREAD: ChatThread = {
     email: "darnell@email.com",
     name: "达内尔·豪",
   },
-  workspaceId: "pi-workbench",
+  workspaceId: "pi-harness",
 };

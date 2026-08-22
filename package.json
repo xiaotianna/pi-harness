@@ -1,5 +1,5 @@
 {
-  "name": "pi-workbench",
+  "name": "pi-harness",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,9 +9,9 @@
     "pnpm": ">=10.0.0"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter @pi-workbench/daemon --filter @pi-workbench/web dev",
-    "dev:daemon": "pnpm --filter @pi-workbench/daemon dev",
-    "dev:web": "pnpm --filter @pi-workbench/web dev",
+    "dev": "pnpm --parallel --filter @pi-harness/daemon --filter @pi-harness/web dev",
+    "dev:daemon": "pnpm --filter @pi-harness/daemon dev",
+    "dev:web": "pnpm --filter @pi-harness/web dev",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "check": "biome check .",

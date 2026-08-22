@@ -35,11 +35,11 @@ export function LoginPage({ authError }: LoginPageProps) {
       <Card className="w-full max-w-sm">
         <Card.Header className="items-center gap-2 text-center">
           <Avatar>
-            <Avatar.Image alt="PI Workbench" src="/images/blue-avatar.jpg" />
+            <Avatar.Image alt="PI Harness" src="/images/blue-avatar.jpg" />
             <Avatar.Fallback>PI</Avatar.Fallback>
           </Avatar>
           <Card.Title className="text-lg">登录</Card.Title>
-          <Card.Description>使用 GitHub 账号继续进入你的工作台</Card.Description>
+          <Card.Description>使用 GitHub 账号登录进入</Card.Description>
         </Card.Header>
 
         <Card.Content>

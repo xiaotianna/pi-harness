@@ -158,7 +158,7 @@ export class AuthService {
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${accessToken}`,
-        "User-Agent": "pi-workbench",
+        "User-Agent": "pi-harness",
         "X-GitHub-Api-Version": GITHUB_API_VERSION,
       },
       signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),

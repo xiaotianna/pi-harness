@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
-const AUTH_SESSION_COOKIE = "pi_workbench_session";
-const GITHUB_OAUTH_COOKIE = "pi_workbench_github_oauth";
+const AUTH_SESSION_COOKIE = "pi_harness_session";
+const GITHUB_OAUTH_COOKIE = "pi_harness_github_oauth";
 const GITHUB_CALLBACK_PATH = "/api/auth/github/callback";
 const OAUTH_COOKIE_MAX_AGE_SECONDS = 10 * 60;
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;

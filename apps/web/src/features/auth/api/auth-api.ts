@@ -45,7 +45,7 @@ export async function logout(): Promise<void> {
     method: "POST",
     credentials: "same-origin",
     headers: {
-      "X-PI-Workbench-Request": "1",
+      "X-PI-Harness-Request": "1",
     },
   });
 

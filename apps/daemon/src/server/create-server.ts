@@ -1,14 +1,14 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
-import { loadWorkbenchConfig, type WorkbenchConfig } from "../config/index.js";
+import { type HarnessConfig, loadHarnessConfig } from "../config/index.js";
 import { registerAuthRoutes } from "../routes/auth-routes.js";
 import { registerHealthRoutes } from "../routes/health-routes.js";
-import { openWorkbenchDatabase } from "../storage/database.js";
+import { openHarnessDatabase } from "../storage/database.js";
 
 const LOCAL_WEB_ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
 
-export async function createServer(config: WorkbenchConfig = loadWorkbenchConfig()) {
-  const database = openWorkbenchDatabase(config.databasePath);
+export async function createServer(config: HarnessConfig = loadHarnessConfig()) {
+  const database = openHarnessDatabase(config.databasePath);
   const allowedHosts = new Set([
     new URL(config.webUrl).host,
     `${config.host}:${config.port}`,

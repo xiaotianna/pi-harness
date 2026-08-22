@@ -1,8 +1,8 @@
-# PI Workbench 开发约定
+# PI Harness 开发约定
 
 ## 项目目标
 
-PI Workbench 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 风格的交互界面，由运行在用户本机的后端 daemon 执行模型调用、Agent Loop、本地文件操作和 Shell 命令。
+PI Harness 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 风格的交互界面，由运行在用户本机的后端 daemon 执行模型调用、Agent Loop、本地文件操作和 Shell 命令。
 
 完整架构说明见 `架构设计.md`。实现与文档发生冲突时，先更新设计并保持两者一致，不要静默引入另一套架构。
 
@@ -15,7 +15,7 @@ PI Workbench 是一个本地优先的 Agent Harness：通过浏览器提供 Code
 - Web 与 daemon 通过 HTTP API 和 SSE 通信。普通操作使用 HTTP，Agent 增量事件使用 SSE。
 - 不直接使用 `pi-coding-agent`，不引入 Commander、TUI、Electron 或 Tauri。
 - Agent Loop 使用 `@earendil-works/pi-agent-core` 的 `Agent`，模型与 Provider 使用 `@earendil-works/pi-ai`。
-- 不将 Pi 原始事件直接暴露给 Web；必须转换为项目自己的 `WorkbenchEvent` 协议。
+- 不将 Pi 原始事件直接暴露给 Web；必须转换为项目自己的 `HarnessEvent` 协议。
 - 第一阶段不实现云端服务、多 Agent、MCP、Skill 市场、完整 IDE 或内嵌终端。
 
 ## 技术栈
@@ -251,7 +251,7 @@ export const sessionQueryKeys = {
 - 服务端数据使用 TanStack Query，跨组件的纯 UI 状态使用 Zustand，组件局部状态保留在组件内部。
 - 不把同一份服务端数据同时复制进 Query cache 和 Zustand。
 - 按 feature 组织会话、消息、审批、模型和文件变化，不建立全局 `components` 垃圾场。
-- 组件订阅 SSE 后只消费 `WorkbenchEvent`，不得识别 Pi 的原始事件类型。
+- 组件订阅 SSE 后只消费 `HarnessEvent`，不得识别 Pi 的原始事件类型。
 - 流式文本更新应批量刷新，避免每个 token 都触发整个会话页面重渲染。
 - 所有危险操作在界面中显示明确目标和后果，不能使用含义模糊的确认按钮。
 - UI 必须正确呈现 loading、empty、streaming、error、aborted 和 awaiting-approval 状态。

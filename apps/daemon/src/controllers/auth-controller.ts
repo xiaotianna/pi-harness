@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { WorkbenchConfig } from "../config/index.js";
+import type { HarnessConfig } from "../config/index.js";
 import type { GitHubCallbackDto } from "../dto/auth-dto.js";
 import { AuthService, type AuthSessionResponse } from "../services/auth-service.js";
 import type { AuthSessionRepository } from "../storage/database.js";
@@ -25,7 +25,7 @@ export class AuthController {
   private readonly isSecure: boolean;
 
   public constructor(
-    private readonly config: WorkbenchConfig,
+    private readonly config: HarnessConfig,
     sessions: AuthSessionRepository,
   ) {
     this.authService = config.githubOAuth ? new AuthService(config.githubOAuth, sessions) : null;
@@ -100,7 +100,7 @@ export class AuthController {
   public logout = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
     if (
       request.headers.origin !== this.config.webUrl ||
-      request.headers["x-pi-workbench-request"] !== "1"
+      request.headers["x-pi-harness-request"] !== "1"
     ) {
       return reply.status(403).send({
         code: "INVALID_REQUEST_ORIGIN",

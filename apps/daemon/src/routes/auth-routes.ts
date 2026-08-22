@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { Type } from "typebox";
-import type { WorkbenchConfig } from "../config/index.js";
+import type { HarnessConfig } from "../config/index.js";
 import { AuthController } from "../controllers/auth-controller.js";
 import { type GitHubCallbackDto, GitHubCallbackDtoSchema } from "../dto/auth-dto.js";
 import type { AuthSessionRepository } from "../storage/database.js";
@@ -9,7 +9,7 @@ import { ApiErrorVoSchema, AuthSessionVoSchema } from "../vo/auth-vo.js";
 /** 仅声明认证接口路径、参数 schema 与对应 controller。 */
 export async function registerAuthRoutes(
   server: FastifyInstance,
-  config: WorkbenchConfig,
+  config: HarnessConfig,
   sessions: AuthSessionRepository,
 ): Promise<void> {
   const controller = new AuthController(config, sessions);

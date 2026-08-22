@@ -13,7 +13,7 @@ export type ChatStatus = "ready" | "streaming" | "submitted";
 
 export const SHOWCASE_THREAD: ChatThread = {
   id: "pro-ai-showcase",
-  workspaceId: "pi-workbench",
+  workspaceId: "pi-harness",
   messages: [
     {
       content: "介绍一下 HeroUI Pro 的 AI 对话组件。",

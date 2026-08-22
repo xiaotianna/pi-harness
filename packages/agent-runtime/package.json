@@ -1,5 +1,5 @@
 {
-  "name": "@pi-workbench/agent-runtime",
+  "name": "@pi-harness/agent-runtime",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,9 +12,9 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "catalog:",
     "@earendil-works/pi-ai": "catalog:",
-    "@pi-workbench/policy": "workspace:*",
-    "@pi-workbench/providers": "workspace:*",
-    "@pi-workbench/tools": "workspace:*"
+    "@pi-harness/policy": "workspace:*",
+    "@pi-harness/providers": "workspace:*",
+    "@pi-harness/tools": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

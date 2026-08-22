@@ -35,7 +35,7 @@ const SETTINGS_SECTIONS = [
   {
     id: "general",
     label: "通用设置",
-    description: "管理 PI Workbench 的界面与基础偏好。",
+    description: "管理 PI Harness 的界面与基础偏好。",
     icon: Settings2,
   },
   {

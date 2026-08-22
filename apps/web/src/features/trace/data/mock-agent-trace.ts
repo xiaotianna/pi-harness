@@ -15,12 +15,12 @@ export const MOCK_AGENT_TRACE = {
       kind: AgentTraceRecordKind.SYSTEM,
       label: "初始系统提示",
       lane: AgentTraceLane.INPUT,
-      preview: "你是 PI Workbench 的本地编程助手。遵循工作区边界、审批策略与项目 AGENTS.md 约定。",
+      preview: "你是 PI Harness 的本地编程助手。遵循工作区边界、审批策略与项目 AGENTS.md 约定。",
       raw: {
         message: {
           role: "system",
           content:
-            "You are the local coding agent for PI Workbench. Respect workspace boundaries and approval policy.",
+            "You are the local coding agent for PI Harness. Respect workspace boundaries and approval policy.",
         },
         source: "agent-runtime/system-prompt",
       },
@@ -59,9 +59,9 @@ export const MOCK_AGENT_TRACE = {
       label: "运行时上下文",
       lane: AgentTraceLane.INPUT,
       preview:
-        "工作区为 /Users/lantianyu/Desktop/pi-workbench，文件策略为 workspace-write，写入与 Shell 操作需要审批。",
+        "工作区为 /Users/lantianyu/Desktop/pi-harness，文件策略为 workspace-write，写入与 Shell 操作需要审批。",
       raw: {
-        workspaceRoot: "/Users/lantianyu/Desktop/pi-workbench",
+        workspaceRoot: "/Users/lantianyu/Desktop/pi-harness",
         filePolicy: "workspace-write",
         approvalPolicy: "ask",
         activeSkills: ["heroui-pro-design-taste", "heroui-react"],
@@ -261,7 +261,7 @@ export const MOCK_AGENT_TRACE = {
       lane: AgentTraceLane.INPUT,
       preview: "恢复上一轮上下文，并注入 write_file 已批准状态。",
       raw: {
-        workspaceRoot: "/Users/lantianyu/Desktop/pi-workbench",
+        workspaceRoot: "/Users/lantianyu/Desktop/pi-harness",
         approval: { decision: "approved", toolName: "write_file" },
         previousTurnMessages: 11,
       },
@@ -389,11 +389,11 @@ export const MOCK_AGENT_TRACE = {
       kind: AgentTraceRecordKind.TOOL,
       label: "run_command · typecheck",
       lane: AgentTraceLane.TOOLS,
-      preview: "运行 pnpm --filter @pi-workbench/web typecheck。",
+      preview: "运行 pnpm --filter @pi-harness/web typecheck。",
       raw: {
         toolCallId: "call-turn-2-typecheck",
         toolName: "run_command",
-        arguments: { command: "pnpm --filter @pi-workbench/web typecheck", timeoutMs: 120000 },
+        arguments: { command: "pnpm --filter @pi-harness/web typecheck", timeoutMs: 120000 },
       },
       source: "Tool · run_command",
       startMs: 5_970,

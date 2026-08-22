@@ -1,5 +1,5 @@
 {
-  "name": "@pi-workbench/policy",
+  "name": "@pi-harness/policy",
   "version": "0.0.0",
   "private": true,
   "type": "module",

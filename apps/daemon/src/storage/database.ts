@@ -176,13 +176,13 @@ class SqliteAuthSessionRepository implements AuthSessionRepository {
   }
 }
 
-export interface WorkbenchDatabase {
+export interface HarnessDatabase {
   authSessions: AuthSessionRepository;
   close(): void;
 }
 
 /** 打开 daemon 数据库，并在接收请求前执行尚未应用的 migration。 */
-export function openWorkbenchDatabase(databasePath: string): WorkbenchDatabase {
+export function openHarnessDatabase(databasePath: string): HarnessDatabase {
   mkdirSync(dirname(databasePath), { mode: 0o700, recursive: true });
   const database = new DatabaseSync(databasePath);
   database.exec("PRAGMA foreign_keys = ON");

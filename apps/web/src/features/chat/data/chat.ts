@@ -125,9 +125,9 @@ export const SUGGESTED_PROMPTS: readonly string[] = [
 export const CHAT_WORKSPACES: readonly ChatWorkspace[] = [
   {
     createdAt: "2026-08-14T11:21:00+08:00",
-    id: "pi-workbench",
-    name: "pi-workbench",
-    path: "/Users/lantianyu/Desktop/pi-workbench",
+    id: "pi-harness",
+    name: "pi-harness",
+    path: "/Users/lantianyu/Desktop/pi-harness",
   },
 ] as const;
 
@@ -184,7 +184,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     searchModeId: "deep-search",
     title: "快手晚餐食谱",
     updatedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
-    workspaceId: "pi-workbench",
+    workspaceId: "pi-harness",
     user: {
       avatar: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg",
       email: "darnell@email.com",
@@ -223,7 +223,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     searchModeId: "deep-search",
     title: "第三季度发布计划",
     updatedAt: new Date(Date.now() - 18 * 60_000).toISOString(),
-    workspaceId: "pi-workbench",
+    workspaceId: "pi-harness",
     user: {
       avatar: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg",
       email: "darnell@email.com",
@@ -261,7 +261,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     searchModeId: "quick-search",
     title: "改写首页价值主张",
     updatedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
-    workspaceId: "pi-workbench",
+    workspaceId: "pi-harness",
     user: {
       avatar: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg",
       email: "darnell@email.com",
@@ -298,7 +298,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
     searchModeId: "quick-search",
     title: "团队每周更新摘要",
     updatedAt: new Date(Date.now() - 24 * 60 * 60_000).toISOString(),
-    workspaceId: "pi-workbench",
+    workspaceId: "pi-harness",
     user: {
       avatar: "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg",
       email: "darnell@email.com",

@@ -1,7 +1,7 @@
-import { loadWorkbenchConfig } from "./config/index.js";
+import { loadHarnessConfig } from "./config/index.js";
 import { createServer } from "./server/create-server.js";
 
-const config = loadWorkbenchConfig();
+const config = loadHarnessConfig();
 const server = await createServer(config);
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {

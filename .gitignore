@@ -8,7 +8,7 @@ coverage/
 *.db
 *.db-shm
 *.db-wal
-.pi-workbench/
+.pi-harness/
 
 .DS_Store
 .idea/

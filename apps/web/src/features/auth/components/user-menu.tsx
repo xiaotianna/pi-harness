@@ -98,7 +98,7 @@ export function UserMenu({ onSettings }: { onSettings: () => void }) {
               <AlertDialog.Heading>确认退出登录？</AlertDialog.Heading>
             </AlertDialog.Header>
             <AlertDialog.Body>
-              <p>退出后需要重新登录才能继续使用 PI Workbench。</p>
+              <p>退出后需要重新登录才能继续使用 PI Harness。</p>
               {logoutMutation.isError ? (
                 <p className="mt-2 text-danger">退出失败，请重试。</p>
               ) : null}

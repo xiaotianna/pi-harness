@@ -17,9 +17,9 @@ const MEMORY_ITEMS = [
   {
     id: "memory-2",
     category: "project",
-    title: "PI Workbench 的 UI 约定",
+    title: "PI Harness 的 UI 约定",
     summary: "基础组件使用 HeroUI v3，不添加 focus ring，也不混用其他组件库。",
-    source: "项目 · pi-workbench",
+    source: "项目 · pi-harness",
     updatedAt: "昨天",
   },
   {
@@ -35,7 +35,7 @@ const MEMORY_ITEMS = [
     category: "project",
     title: "本地副作用需要审批",
     summary: "写文件和执行 Shell 命令前，需要明确展示目标、参数摘要与风险。",
-    source: "项目 · pi-workbench",
+    source: "项目 · pi-harness",
     updatedAt: "今天",
   },
 ] as const;

@@ -1,5 +1,5 @@
 {
-  "name": "@pi-workbench/daemon",
+  "name": "@pi-harness/daemon",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "dev": "PI_WORKBENCH_DATABASE_PATH=../../.pi-workbench/workbench.sqlite tsx watch --env-file-if-exists=../../.env src/bootstrap.ts",
+    "dev": "PI_HARNESS_DATABASE_PATH=../../.pi-harness/harness.sqlite tsx watch --env-file-if-exists=../../.env src/bootstrap.ts",
     "start": "node --env-file-if-exists=../../.env dist/bootstrap.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit"
