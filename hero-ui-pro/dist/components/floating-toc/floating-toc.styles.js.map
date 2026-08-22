@@ -1,0 +1,1 @@
+{"version":3,"file":"floating-toc.styles.js","sourceRoot":"","sources":["../../../src/components/floating-toc/floating-toc.styles.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,EAAE,EAAE,MAAM,mBAAmB,CAAC;AAEvC,MAAM,CAAC,MAAM,mBAAmB,GAAG,EAAE,CAAC;IACpC,KAAK,EAAE;QACL,GAAG,EAAE,mBAAmB;QACxB,OAAO,EAAE,uBAAuB;QAChC,IAAI,EAAE,oBAAoB;QAC1B,OAAO,EAAE,uBAAuB;KACjC;CACF,CAAC,CAAC"}

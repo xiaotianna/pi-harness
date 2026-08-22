@@ -1,5 +1,7 @@
 node_modules/
 dist/
+!hero-ui-pro/dist/
+!hero-ui-pro/dist/**
 coverage/
 *.tsbuildinfo
 

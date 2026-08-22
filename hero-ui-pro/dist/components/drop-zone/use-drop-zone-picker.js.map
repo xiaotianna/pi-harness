@@ -1,0 +1,1 @@
+{"version":3,"file":"use-drop-zone-picker.js","sourceRoot":"","sources":["../../../src/components/drop-zone/use-drop-zone-picker.ts"],"names":[],"mappings":"AAAA,YAAY,CAAC;AAEb,OAAO,EAAE,UAAU,EAAE,MAAM,OAAO,CAAC;AACnC,OAAO,EAAE,eAAe,EAAE,MAAM,qBAAqB,CAAC;AAEtD,MAAM,UAAU,wBAAwB;IACtC,MAAM,EAAE,cAAc,EAAE,GAAG,UAAU,CAAC,eAAe,CAAC,CAAC;IACvD,OAAO,EAAE,cAAc,EAAE,CAAC;AAC5B,CAAC"}

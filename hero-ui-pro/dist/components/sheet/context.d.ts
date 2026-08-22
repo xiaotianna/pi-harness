@@ -1,0 +1,40 @@
+import React from 'react';
+import type { SheetPlacement } from './types';
+interface SheetContextValue {
+    sheetRef: React.RefObject<HTMLDivElement | null>;
+    overlayRef: React.RefObject<HTMLDivElement | null>;
+    onPress: (event: React.PointerEvent<HTMLDivElement>) => void;
+    onRelease: (event: React.PointerEvent<HTMLDivElement> | null) => void;
+    onDrag: (event: React.PointerEvent<HTMLDivElement>) => void;
+    onNestedDrag: (event: React.PointerEvent<HTMLDivElement>, percentageDragged: number) => void;
+    onNestedOpenChange: (o: boolean) => void;
+    onNestedRelease: (event: React.PointerEvent<HTMLDivElement>, open: boolean) => void;
+    isDismissable: boolean;
+    isOpen: boolean;
+    isDragging: boolean;
+    keyboardIsOpen: React.MutableRefObject<boolean>;
+    snapPointsOffset: number[] | null;
+    snapPoints?: (number | string)[] | null;
+    activeSnapPointIndex?: number | null;
+    isModal: boolean;
+    shouldFade: boolean;
+    activeSnapPoint?: number | string | null;
+    setActiveSnapPoint: (o: number | string | null) => void;
+    closeSheet: () => void;
+    setIsOpen: (open: boolean) => void;
+    openProp?: boolean;
+    onOpenChange?: (o: boolean) => void;
+    placement: SheetPlacement;
+    shouldScaleBackground: boolean;
+    setBackgroundColorOnScale: boolean;
+    noBodyStyles: boolean;
+    isHandleOnly?: boolean;
+    container?: HTMLElement | null;
+    shouldAutoFocus?: boolean;
+    shouldAnimate?: React.RefObject<boolean>;
+    isDetached: boolean;
+}
+export declare const SheetContext: React.Context<SheetContextValue>;
+export declare const useSheetContext: () => SheetContextValue;
+export {};
+//# sourceMappingURL=context.d.ts.map

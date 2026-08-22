@@ -1,44 +1,59 @@
 packages:
   - apps/*
+  - hero-ui-pro
   - packages/*
 
 catalogMode: strict
 cleanupUnusedCatalogs: true
 
 catalog:
-  "@agile-avocation/ui-pro": 1.0.0-beta.8
   "@biomejs/biome": ^2.2.0
   "@earendil-works/pi-agent-core": ^0.82.1
   "@earendil-works/pi-ai": ^0.82.1
   "@fastify/cors": ^11.0.0
   "@heroui/react": ^3.0.0
   "@heroui/styles": ^3.0.0
+  "@internationalized/date": 3.12.3
+  "@internationalized/number": 3.6.7
+  "@number-flow/react": ^0.6.2
+  "@react-aria/i18n": ^3.13.1
+  "@react-aria/ssr": ^3.10.1
   "@react-aria/utils": ^3.34.1
+  "@react-stately/utils": 3.12.1
   "@tailwindcss/vite": ^4.1.0
   "@tanstack/react-query": ^5.85.0
   "@tanstack/react-router": ^1.130.0
   "@tanstack/react-virtual": ^3.13.0
   "@tiptap/core": ^3.29.0
+  "@tiptap/extension-link": ^3.29.0
+  "@tiptap/extension-underline": ^3.29.0
+  "@tiptap/extensions": ^3.29.0
   "@tiptap/pm": ^3.29.0
   "@tiptap/react": ^3.29.0
   "@tiptap/starter-kit": ^3.29.0
+  "@tiptap/suggestion": ^3.29.0
   "@types/node": ^24.0.0
   "@types/react": ^19.1.0
   "@types/react-dom": ^19.1.0
   "@vitejs/plugin-react": ^5.0.0
   chokidar: ^4.0.0
   clsx: ^2.1.1
+  embla-carousel: ^8.6.0
+  embla-carousel-react: ^8.6.0
   execa: ^9.6.0
   fastify: ^5.6.0
   lucide-react: ^0.500.0
+  maplibre-gl: ^6.0.0
   motion: ^12.23.0
   pino: ^10.0.0
   react: ^19.1.0
+  react-aria: ^3.50.0
   react-dom: ^19.1.0
   marked: ^18.0.9
   react-aria-components: ^1.20.0
   react-markdown: ^10.1.0
   react-resizable-panels: ^4.12.2
+  recharts: ^3.10.0
   remark-breaks: ^4.0.0
   remark-gfm: ^4.0.1
   shiki: ^4.4.1

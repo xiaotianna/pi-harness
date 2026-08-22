@@ -14,16 +14,6 @@ export default defineConfig({
         find: /^@\//,
         replacement: resolvePackageFile("./src/"),
       },
-      {
-        find: /^@agile-avocation\/ui-pro$/,
-        replacement: resolvePackageFile("./node_modules/@agile-avocation/ui-pro/dist/index.js"),
-      },
-      {
-        find: /^@agile-avocation\/ui-pro\/css$/,
-        replacement: resolvePackageFile(
-          "./node_modules/@agile-avocation/ui-pro/dist/css/index.css",
-        ),
-      },
     ],
   },
   server: {

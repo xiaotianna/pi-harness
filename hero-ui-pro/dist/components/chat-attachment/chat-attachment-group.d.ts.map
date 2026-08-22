@@ -1,0 +1,1 @@
+{"version":3,"file":"chat-attachment-group.d.ts","sourceRoot":"","sources":["../../../src/components/chat-attachment/chat-attachment-group.tsx"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,qBAAqB,EAAE,SAAS,EAAE,MAAM,OAAO,CAAC;AAK9D,MAAM,WAAW,4BAA6B,SAAQ,qBAAqB,CAAC,KAAK,CAAC;IAChF,QAAQ,EAAE,SAAS,CAAC;CACrB;AAED,eAAO,MAAM,uBAAuB,GAAI,mCAIrC,4BAA4B,4CAW9B,CAAC"}

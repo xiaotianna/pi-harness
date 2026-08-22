@@ -1,0 +1,40 @@
+import type { ComponentProps } from 'react';
+import { KanbanCard, KanbanCardList, KanbanColumn, KanbanColumnActions, KanbanColumnBody, KanbanColumnCount, KanbanColumnHeader, KanbanColumnIndicator, KanbanColumnTitle, KanbanDragHandle, KanbanDropIndicator, KanbanRoot, KanbanScrollShadow } from './kanban';
+export { kanbanVariants } from './kanban.styles';
+export { useKanban, useKanbanCardPlaceholder, useKanbanColumn, } from './use-kanban';
+declare const Kanban: (({ children, className, size, ...props }: import("./kanban").KanbanRootProps) => import("react/jsx-runtime").JSX.Element) & {
+    Card: <T extends object>({ children, className, ...props }: import("./kanban").KanbanCardProps<T>) => import("react/jsx-runtime").JSX.Element;
+    CardList: <T extends object>({ children, className, renderEmptyState, selectionMode, ...props }: import("./kanban").KanbanCardListProps<T>) => import("react/jsx-runtime").JSX.Element;
+    Column: ({ children, className, ...props }: import("./kanban").KanbanColumnProps) => import("react/jsx-runtime").JSX.Element;
+    ColumnActions: ({ children, className, ...props }: import("./kanban").KanbanColumnActionsProps) => import("react/jsx-runtime").JSX.Element;
+    ColumnBody: ({ children, className, ...props }: import("./kanban").KanbanColumnBodyProps) => import("react/jsx-runtime").JSX.Element;
+    ColumnCount: ({ children, className, ...props }: import("./kanban").KanbanColumnCountProps) => import("react/jsx-runtime").JSX.Element;
+    ColumnHeader: ({ children, className, ...props }: import("./kanban").KanbanColumnHeaderProps) => import("react/jsx-runtime").JSX.Element;
+    ColumnIndicator: ({ children, className, ...props }: import("./kanban").KanbanColumnIndicatorProps) => import("react/jsx-runtime").JSX.Element;
+    ColumnTitle: ({ children, className, ...props }: import("./kanban").KanbanColumnTitleProps) => import("react/jsx-runtime").JSX.Element;
+    DragHandle: ({ children, className, ...props }: import("./kanban").KanbanDragHandleProps) => import("react/jsx-runtime").JSX.Element;
+    DropIndicator: ({ className, height, style, ...props }: import("./kanban").KanbanDropIndicatorProps) => import("react/jsx-runtime").JSX.Element;
+    Root: ({ children, className, size, ...props }: import("./kanban").KanbanRootProps) => import("react/jsx-runtime").JSX.Element;
+    ScrollShadow: ({ children, className, ...props }: import("./kanban").KanbanScrollShadowProps) => import("react/jsx-runtime").JSX.Element;
+};
+export { Kanban, KanbanCard, KanbanCardList, KanbanColumn, KanbanColumnActions, KanbanColumnBody, KanbanColumnCount, KanbanColumnHeader, KanbanColumnIndicator, KanbanColumnTitle, KanbanDragHandle, KanbanDropIndicator, KanbanRoot, KanbanScrollShadow, };
+export type { KanbanCardListProps, KanbanCardProps, KanbanColumnActionsProps, KanbanColumnBodyProps, KanbanColumnCountProps, KanbanColumnHeaderProps, KanbanColumnIndicatorProps, KanbanColumnProps, KanbanColumnTitleProps, KanbanDragHandleProps, KanbanDropIndicatorProps, KanbanRootProps as KanbanProps, KanbanRootProps, KanbanScrollShadowProps, } from './kanban';
+export type { KanbanVariants } from './kanban.styles';
+export type { UseKanbanCardPlaceholderOptions, UseKanbanCardPlaceholderReturn, UseKanbanColumnOptions, UseKanbanColumnReturn, UseKanbanOptions, UseKanbanReturn, } from './use-kanban';
+export type Kanban<T extends object = object> = {
+    Props: ComponentProps<typeof KanbanRoot>;
+    RootProps: ComponentProps<typeof KanbanRoot>;
+    ColumnProps: ComponentProps<typeof KanbanColumn>;
+    ColumnActionsProps: ComponentProps<typeof KanbanColumnActions>;
+    ColumnBodyProps: ComponentProps<typeof KanbanColumnBody>;
+    ColumnHeaderProps: ComponentProps<typeof KanbanColumnHeader>;
+    ColumnIndicatorProps: ComponentProps<typeof KanbanColumnIndicator>;
+    ColumnTitleProps: ComponentProps<typeof KanbanColumnTitle>;
+    ColumnCountProps: ComponentProps<typeof KanbanColumnCount>;
+    CardListProps: ComponentProps<typeof KanbanCardList<T>>;
+    CardProps: ComponentProps<typeof KanbanCard<T>>;
+    DropIndicatorProps: ComponentProps<typeof KanbanDropIndicator>;
+    DragHandleProps: ComponentProps<typeof KanbanDragHandle>;
+    ScrollShadowProps: ComponentProps<typeof KanbanScrollShadow>;
+};
+//# sourceMappingURL=index.d.ts.map

@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agile-avocation/ui-pro": "catalog:",
+    "@agile-avocation/ui-pro": "workspace:*",
     "@heroui/react": "catalog:",
     "@heroui/styles": "catalog:",
     "@react-aria/utils": "catalog:",

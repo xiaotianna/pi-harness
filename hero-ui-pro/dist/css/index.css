@@ -1,0 +1,5 @@
+@import "./components/index.css";
+/* Themes are opt-in — import separately, e.g.:
+   @import "@agile-avocation/ui-pro/themes/brutalism";
+   then set data-theme="brutalism-light" | "brutalism-dark" on <html>
+*/
