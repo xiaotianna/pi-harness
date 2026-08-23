@@ -1,3 +1,4 @@
+import { ModelId } from "../../models";
 import type { ChatThread } from "./chat";
 import { ChatMessageType } from "./chat-message";
 
@@ -242,7 +243,7 @@ export const AGENT_SESSION_THREAD: ChatThread = {
       type: ChatMessageType.ASSISTANT,
     },
   ],
-  modelId: "gpt-5.4",
+  modelId: ModelId.OPENAI_GPT_5_4,
   preview: "从读取上下文、工具调用、审批、写入到最终交付的完整 Agent 会话。",
   searchModeId: "deep-search",
   title: "实现 Agent 会话时间线",

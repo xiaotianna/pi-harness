@@ -1,3 +1,4 @@
+import { ModelId } from "../../models";
 import type { ChatThread } from "./chat";
 import { ChatMessageType } from "./chat-message";
 
@@ -162,7 +163,7 @@ export const SHOWCASE_THREAD: ChatThread = {
       type: ChatMessageType.SOURCES,
     },
   ],
-  modelId: "gpt-5.4",
+  modelId: ModelId.OPENAI_GPT_5_4,
   preview: "展示 Markdown、思维链、工具调用、信息来源、附件、加载状态和消息操作。",
   searchModeId: "deep-search",
   title: "Pro AI 组件展示",

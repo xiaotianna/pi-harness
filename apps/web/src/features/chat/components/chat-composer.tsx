@@ -13,13 +13,18 @@ import {
   PencilLine,
   Plus,
   Search,
-  Sparkles,
   SquareTerminal,
   WandSparkles,
 } from "lucide-react";
 import type { ChangeEvent } from "react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { CHAT_MODELS, CHAT_WORKSPACES } from "../data/chat";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  getEnabledModelProviders,
+  type ModelIdValue,
+  ModelProviderIcon,
+  useModelSettingsStore,
+} from "../../models";
+import { CHAT_WORKSPACES } from "../data/chat";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
 import { ChatAttachmentList } from "./chat-attachment-list";
 import {
@@ -55,7 +60,7 @@ function revokeAttachmentUrls(items: readonly PendingAttachment[]) {
 
 export interface ChatComposerProps {
   className?: string;
-  modelId?: string;
+  modelId?: ModelIdValue;
   placeholder?: string;
   presentation?: "dock" | "hero";
 }
@@ -120,13 +125,24 @@ const CONTEXT_MENU_ITEMS = [
 
 export function ChatComposer({
   className,
-  modelId = CHAT_MODELS[0]?.id ?? "gpt-5.4",
+  modelId,
   placeholder = "输入任何问题",
   presentation = "dock",
 }: ChatComposerProps) {
+  const defaultModelId = useModelSettingsStore((state) => state.defaultModelId);
+  const enabledProviderIds = useModelSettingsStore((state) => state.enabledProviderIds);
+  const availableModelProviders = useMemo(
+    () => getEnabledModelProviders(enabledProviderIds),
+    [enabledProviderIds],
+  );
+  const availableModels = useMemo(
+    () => availableModelProviders.flatMap((provider) => provider.models),
+    [availableModelProviders],
+  );
+  const initialModelId = modelId ?? defaultModelId;
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
-  const [selectedModelId, setSelectedModelId] = useState(modelId);
+  const [selectedModelId, setSelectedModelId] = useState<ModelIdValue>(initialModelId);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [status, setStatus] = useState<ChatStatus>("ready");
   const [hasEditorContent, setHasEditorContent] = useState(false);
@@ -148,8 +164,15 @@ export function ChatComposer({
   }, [attachments]);
 
   useEffect(() => {
-    setSelectedModelId(modelId);
-  }, [modelId]);
+    setSelectedModelId(initialModelId);
+  }, [initialModelId]);
+
+  useEffect(() => {
+    if (availableModels.some((model) => model.id === selectedModelId)) return;
+
+    const fallbackModelId = availableModels[0]?.id;
+    if (fallbackModelId) setSelectedModelId(fallbackModelId);
+  }, [availableModels, selectedModelId]);
 
   useEffect(() => {
     return () => {
@@ -186,7 +209,10 @@ export function ChatComposer({
   const canSend = hasEditorContent || attachments.length > 0;
   const sendLabel = isGenerating ? "停止生成" : "发送消息";
   const isHero = presentation === "hero";
-  const selectedModel = CHAT_MODELS.find((model) => model.id === selectedModelId) ?? CHAT_MODELS[0];
+  const selectedModelProvider = availableModelProviders.find((provider) =>
+    provider.models.some((model) => model.id === selectedModelId),
+  );
+  const selectedModel = selectedModelProvider?.models.find((model) => model.id === selectedModelId);
   const selectedWorkspace = CHAT_WORKSPACES.find(
     (workspace) => workspace.id === selectedWorkspaceId,
   );
@@ -466,23 +492,41 @@ export function ChatComposer({
                 size="sm"
                 variant="ghost"
               >
-                <Sparkles className="size-4" />
-                <span>{selectedModel?.label ?? "自动选择"}</span>
+                {selectedModelProvider ? (
+                  <ModelProviderIcon isColor providerId={selectedModelProvider.id} size={16} />
+                ) : null}
+                <span>{selectedModel?.label ?? "暂无可用模型"}</span>
                 <ChevronDown className="size-3.5" />
               </Button>
               <Dropdown.Popover className="min-w-52" placement="bottom start">
-                <Dropdown.Menu
-                  aria-label="选择模型"
-                  selectedKeys={new Set([selectedModelId])}
-                  selectionMode="single"
-                  onAction={(key) => setSelectedModelId(String(key))}
-                >
-                  {CHAT_MODELS.map((model) => (
-                    <Dropdown.Item key={model.id} id={model.id} textValue={model.label}>
-                      <Sparkles className="size-4 text-muted" />
-                      <Label>{model.label}</Label>
-                      <Dropdown.ItemIndicator />
-                    </Dropdown.Item>
+                <Dropdown.Menu aria-label="选择模型 Provider">
+                  {availableModelProviders.map((provider) => (
+                    <Dropdown.SubmenuTrigger key={provider.id}>
+                      <Dropdown.Item id={`provider-${provider.id}`} textValue={provider.name}>
+                        <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                        <Label>{provider.name}</Label>
+                        <Dropdown.SubmenuIndicator />
+                      </Dropdown.Item>
+                      <Dropdown.Popover className="min-w-60">
+                        <Dropdown.Menu
+                          aria-label={`${provider.name} 模型`}
+                          selectedKeys={new Set([selectedModelId])}
+                          selectionMode="single"
+                          onAction={(key) => {
+                            const model = provider.models.find((item) => item.id === key);
+                            if (model) setSelectedModelId(model.id);
+                          }}
+                        >
+                          {provider.models.map((model) => (
+                            <Dropdown.Item key={model.id} id={model.id} textValue={model.label}>
+                              <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                              <Label>{model.label}</Label>
+                              <Dropdown.ItemIndicator />
+                            </Dropdown.Item>
+                          ))}
+                        </Dropdown.Menu>
+                      </Dropdown.Popover>
+                    </Dropdown.SubmenuTrigger>
                   ))}
                 </Dropdown.Menu>
               </Dropdown.Popover>

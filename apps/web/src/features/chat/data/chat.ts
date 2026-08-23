@@ -1,5 +1,6 @@
 import { Compass, Images, MessageCirclePlus } from "lucide-react";
 import type { ComponentType } from "react";
+import { ModelId, type ModelIdValue } from "../../models";
 import { AGENT_SESSION_THREAD } from "./agent-session-thread";
 import { ChatMessageType } from "./chat-message";
 
@@ -40,11 +41,6 @@ export type ChatNavItem = {
   shortcut?: string;
 };
 
-export type ChatModel = {
-  id: string;
-  label: string;
-};
-
 export type ChatSearchMode = {
   id: string;
   label: string;
@@ -56,7 +52,7 @@ export type ChatThread = {
   title: string;
   preview: string;
   updatedAt: string;
-  modelId: string;
+  modelId: ModelIdValue;
   searchModeId: string;
   user: {
     avatar: string;
@@ -99,13 +95,6 @@ export const CHAT_NAV_ITEMS: readonly ChatNavItem[] = [
   { href: "/new", icon: MessageCirclePlus, id: "new", label: "新对话" },
   { href: "/library", icon: Images, id: "library", label: "资料库" },
   { href: "/explore", icon: Compass, id: "explore", label: "探索" },
-] as const;
-
-export const CHAT_MODELS: readonly ChatModel[] = [
-  { id: "gpt-5.4", label: "GPT-5.4" },
-  { id: "claude-4.6-opus", label: "Claude 4.6 Opus" },
-  { id: "claude-4.6-sonnet", label: "Claude 4.6 Sonnet" },
-  { id: "gemini-3.1-pro", label: "Gemini 3.1 Pro" },
 ] as const;
 
 export const CHAT_SEARCH_MODES: readonly ChatSearchMode[] = [
@@ -179,7 +168,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
         type: ChatMessageType.ASSISTANT,
       },
     ],
-    modelId: "gpt-5.4",
+    modelId: ModelId.OPENAI_GPT_5_4,
     preview: "使用简单食材和一口锅完成的快手晚餐。",
     searchModeId: "deep-search",
     title: "快手晚餐食谱",
@@ -218,7 +207,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
         type: ChatMessageType.ASSISTANT,
       },
     ],
-    modelId: "gpt-5.4",
+    modelId: ModelId.OPENAI_GPT_5_4,
     preview: "包含发布时间线和关键指标的第三季度分析仪表盘发布计划。",
     searchModeId: "deep-search",
     title: "第三季度发布计划",
@@ -256,7 +245,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
         type: ChatMessageType.ASSISTANT,
       },
     ],
-    modelId: "claude-4.6-sonnet",
+    modelId: ModelId.ANTHROPIC_CLAUDE_SONNET_4_6,
     preview: "聚焦产品经理工作流和更快决策的首页文案。",
     searchModeId: "quick-search",
     title: "改写首页价值主张",
@@ -293,7 +282,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
         type: ChatMessageType.ASSISTANT,
       },
     ],
-    modelId: "gemini-3.1-pro",
+    modelId: ModelId.OPENROUTER_GEMINI_3_1_PRO,
     preview: "面向团队的产品、设计和工程更新摘要。",
     searchModeId: "quick-search",
     title: "团队每周更新摘要",
