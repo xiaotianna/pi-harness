@@ -53,6 +53,7 @@ export type ChatThread = {
   preview: string;
   updatedAt: string;
   modelId: ModelIdValue;
+  providerId: string;
   searchModeId: string;
   user: {
     avatar: string;
@@ -169,6 +170,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
       },
     ],
     modelId: ModelId.OPENAI_GPT_5_4,
+    providerId: "openai",
     preview: "使用简单食材和一口锅完成的快手晚餐。",
     searchModeId: "deep-search",
     title: "快手晚餐食谱",
@@ -208,6 +210,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
       },
     ],
     modelId: ModelId.OPENAI_GPT_5_4,
+    providerId: "openai",
     preview: "包含发布时间线和关键指标的第三季度分析仪表盘发布计划。",
     searchModeId: "deep-search",
     title: "第三季度发布计划",
@@ -246,6 +249,7 @@ export const CHAT_THREADS: readonly ChatThread[] = [
       },
     ],
     modelId: ModelId.ANTHROPIC_CLAUDE_SONNET_4_6,
+    providerId: "anthropic",
     preview: "聚焦产品经理工作流和更快决策的首页文案。",
     searchModeId: "quick-search",
     title: "改写首页价值主张",
@@ -282,7 +286,8 @@ export const CHAT_THREADS: readonly ChatThread[] = [
         type: ChatMessageType.ASSISTANT,
       },
     ],
-    modelId: ModelId.OPENROUTER_GEMINI_3_1_PRO,
+    modelId: ModelId.GOOGLE_GEMINI_3_1_PRO,
+    providerId: "google",
     preview: "面向团队的产品、设计和工程更新摘要。",
     searchModeId: "quick-search",
     title: "团队每周更新摘要",

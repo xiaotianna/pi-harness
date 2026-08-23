@@ -31,6 +31,28 @@ export interface AuthSessionRepository {
   findSessionUser(tokenHash: string, now: number): AuthUser | null;
 }
 
+export interface CustomProviderRecord {
+  baseUrl: string;
+  createdAt: number;
+  enabled: boolean;
+  id: string;
+  modelIds: readonly string[];
+  name: string;
+  protocol: string;
+  requiresApiKey: boolean;
+  updatedAt: number;
+}
+
+export interface ProviderSettingRepository {
+  createCustom(provider: CustomProviderRecord): void;
+  deleteCustom(providerId: string): boolean;
+  findCustom(providerId: string): CustomProviderRecord | null;
+  listBuiltInEnabled(): ReadonlyMap<string, boolean>;
+  listCustom(): readonly CustomProviderRecord[];
+  setBuiltInEnabled(providerId: string, enabled: boolean, updatedAt: number): void;
+  updateCustom(provider: CustomProviderRecord): boolean;
+}
+
 interface DatabaseRow {
   [key: string]: unknown;
 }
@@ -58,6 +80,25 @@ function mapAuthUser(row: DatabaseRow): AuthUser {
     displayName: readNullableString(row, "display_name"),
     avatarUrl: readRequiredString(row, "avatar_url"),
     profileUrl: readRequiredString(row, "profile_url"),
+  };
+}
+
+function mapCustomProvider(row: DatabaseRow): CustomProviderRecord {
+  const modelIds = JSON.parse(readRequiredString(row, "model_ids_json")) as unknown;
+  if (!Array.isArray(modelIds) || !modelIds.every((value) => typeof value === "string")) {
+    throw new Error("Invalid database value for model_ids_json");
+  }
+
+  return {
+    baseUrl: readRequiredString(row, "base_url"),
+    createdAt: Number(row.created_at),
+    enabled: row.enabled === 1,
+    id: readRequiredString(row, "provider_id"),
+    modelIds,
+    name: readRequiredString(row, "name"),
+    protocol: readRequiredString(row, "protocol"),
+    requiresApiKey: row.requires_api_key === 1,
+    updatedAt: Number(row.updated_at),
   };
 }
 
@@ -176,9 +217,97 @@ class SqliteAuthSessionRepository implements AuthSessionRepository {
   }
 }
 
+class SqliteProviderSettingRepository implements ProviderSettingRepository {
+  public constructor(private readonly database: DatabaseSync) {}
+
+  public createCustom(provider: CustomProviderRecord): void {
+    this.database
+      .prepare(
+        `INSERT INTO provider_settings (
+           provider_id, kind, name, protocol, base_url, model_ids_json,
+           requires_api_key, enabled, created_at, updated_at
+         ) VALUES (?, 'custom', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        provider.id,
+        provider.name,
+        provider.protocol,
+        provider.baseUrl,
+        JSON.stringify(provider.modelIds),
+        Number(provider.requiresApiKey),
+        Number(provider.enabled),
+        provider.createdAt,
+        provider.updatedAt,
+      );
+  }
+
+  public deleteCustom(providerId: string): boolean {
+    return (
+      this.database
+        .prepare("DELETE FROM provider_settings WHERE provider_id = ? AND kind = 'custom'")
+        .run(providerId).changes > 0
+    );
+  }
+
+  public findCustom(providerId: string): CustomProviderRecord | null {
+    const row = this.database
+      .prepare("SELECT * FROM provider_settings WHERE provider_id = ? AND kind = 'custom'")
+      .get(providerId) as DatabaseRow | undefined;
+    return row ? mapCustomProvider(row) : null;
+  }
+
+  public listBuiltInEnabled(): ReadonlyMap<string, boolean> {
+    const rows = this.database
+      .prepare("SELECT provider_id, enabled FROM provider_settings WHERE kind = 'builtin'")
+      .all() as DatabaseRow[];
+    return new Map(rows.map((row) => [readRequiredString(row, "provider_id"), row.enabled === 1]));
+  }
+
+  public listCustom(): readonly CustomProviderRecord[] {
+    const rows = this.database
+      .prepare("SELECT * FROM provider_settings WHERE kind = 'custom' ORDER BY created_at")
+      .all() as DatabaseRow[];
+    return rows.map(mapCustomProvider);
+  }
+
+  public setBuiltInEnabled(providerId: string, enabled: boolean, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO provider_settings (
+           provider_id, kind, model_ids_json, requires_api_key, enabled, created_at, updated_at
+         ) VALUES (?, 'builtin', '[]', 1, ?, ?, ?)
+         ON CONFLICT(provider_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+      )
+      .run(providerId, Number(enabled), updatedAt, updatedAt);
+  }
+
+  public updateCustom(provider: CustomProviderRecord): boolean {
+    return (
+      this.database
+        .prepare(
+          `UPDATE provider_settings SET
+             name = ?, protocol = ?, base_url = ?, model_ids_json = ?,
+             requires_api_key = ?, enabled = ?, updated_at = ?
+           WHERE provider_id = ? AND kind = 'custom'`,
+        )
+        .run(
+          provider.name,
+          provider.protocol,
+          provider.baseUrl,
+          JSON.stringify(provider.modelIds),
+          Number(provider.requiresApiKey),
+          Number(provider.enabled),
+          provider.updatedAt,
+          provider.id,
+        ).changes > 0
+    );
+  }
+}
+
 export interface HarnessDatabase {
   authSessions: AuthSessionRepository;
   close(): void;
+  providerSettings: ProviderSettingRepository;
 }
 
 /** 打开 daemon 数据库，并在接收请求前执行尚未应用的 migration。 */
@@ -192,5 +321,6 @@ export function openHarnessDatabase(databasePath: string): HarnessDatabase {
   return {
     authSessions: new SqliteAuthSessionRepository(database),
     close: () => database.close(),
+    providerSettings: new SqliteProviderSettingRepository(database),
   };
 }

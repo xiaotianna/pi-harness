@@ -35,4 +35,26 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX auth_sessions_expires_at_idx ON auth_sessions(expires_at);
     `,
   },
+  {
+    version: "002-provider-settings.sql",
+    sql: `
+      CREATE TABLE provider_settings (
+        provider_id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('builtin', 'custom')),
+        name TEXT,
+        protocol TEXT,
+        base_url TEXT,
+        model_ids_json TEXT NOT NULL DEFAULT '[]',
+        requires_api_key INTEGER NOT NULL DEFAULT 1 CHECK (requires_api_key IN (0, 1)),
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (
+          (kind = 'builtin' AND name IS NULL AND protocol IS NULL AND base_url IS NULL)
+          OR
+          (kind = 'custom' AND name IS NOT NULL AND protocol IS NOT NULL AND base_url IS NOT NULL)
+        )
+      ) STRICT;
+    `,
+  },
 ];

@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 
@@ -27,6 +27,7 @@ export interface GitHubOAuthConfig {
 }
 
 export interface HarnessConfig {
+  credentialsPath: string;
   databasePath: string;
   githubOAuth: GitHubOAuthConfig | null;
   host: string;
@@ -93,8 +94,12 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
   const env = input as HarnessEnvironment;
   const port = parsePort(env.PI_HARNESS_PORT);
 
+  const databasePath =
+    env.PI_HARNESS_DATABASE_PATH ?? join(homedir(), ".pi-harness", "harness.sqlite");
+
   return {
-    databasePath: env.PI_HARNESS_DATABASE_PATH ?? join(homedir(), ".pi-harness", "harness.sqlite"),
+    credentialsPath: join(dirname(databasePath), "credentials.json"),
+    databasePath,
     githubOAuth: resolveGitHubOAuth(env, port),
     host: env.PI_HARNESS_HOST ?? DEFAULT_HOST,
     logLevel: env.PI_HARNESS_LOG_LEVEL ?? "info",

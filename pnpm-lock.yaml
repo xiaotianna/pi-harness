@@ -215,6 +215,9 @@ importers:
       '@fastify/cors':
         specifier: 'catalog:'
         version: 11.3.0
+      '@pi-harness/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       fastify:
         specifier: 'catalog:'
         version: 5.11.2

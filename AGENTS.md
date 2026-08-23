@@ -8,7 +8,7 @@ PI Harness 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 
 
 ## 架构原则
 
-- 采用 `React Web + Fastify Local Daemon + pi-agent-core + pi-ai + SQLite`。
+- 采用 `React Web + Fastify Local Daemon + pi-agent-core + pi-ai + SQLite + Session JSONL`。
 - 项目是 pnpm workspace 管理的 TypeScript Monorepo，但运行时保持模块化单体，不拆微服务。
 - Web 仅负责页面呈现和用户交互；文件系统、Shell、模型凭据、Agent 状态与持久化只能存在于 daemon。
 - daemon 默认只监听 `127.0.0.1`，不得默认绑定 `0.0.0.0`。
@@ -38,6 +38,7 @@ PI Harness 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 
 - react-resizable-panels
 - `@tanstack/react-virtual`
 - SQLite，通过 `node:sqlite`
+- Session JSONL，通过 `node:fs` 按会话顺序追加
 - pino
 - execa
 - chokidar
@@ -70,14 +71,14 @@ PI Harness 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 
 
 ```text
 apps/
-├── daemon/                 # 本地后端进程、HTTP API、SSE、配置与 SQLite
+├── daemon/                 # 本地后端进程、HTTP API、SSE、配置与持久化
 │   └── src/
 │       ├── config/         # daemon 运行时配置与环境变量校验
 │       ├── routes/         # Fastify 路径与 schema 声明
 │       ├── controllers/    # HTTP 请求、Cookie 与重定向处理
 │       ├── dto/            # HTTP 请求参数模型与 TypeBox schema
 │       ├── services/       # OAuth、会话等应用服务
-│       ├── storage/        # 当前 daemon 私有的 SQLite 与 migrations
+│       ├── storage/        # 当前 daemon 私有的 SQLite、migrations 与 session JSONL
 │       ├── utils/          # 小型无状态基础工具
 │       ├── vo/             # HTTP 响应模型与 TypeBox schema
 │       └── server/         # Fastify 实例装配
@@ -92,8 +93,8 @@ apps/
 
 packages/
 ├── agent-runtime/          # AgentManager、Agent 创建、上下文和事件适配
-├── providers/              # pi-ai Provider 注册和 CredentialStore
-├── tools/                  # 文件、搜索、编辑、Shell 工具
+├── providers/              # 创建 pi-ai Models、按需加载内置 Provider 和导出自定义 Provider 能力
+├── tools/                  # tools：文件、Shell、Planner、Todos；skills：发现、加载与选择
 └── policy/                 # 路径保护、命令策略和用户审批
 ```
 
@@ -178,10 +179,13 @@ export const sessionQueryKeys = {
 - 每个 session 对应一个 `Agent` 实例；一个 session 同时只能存在一个活动 run。
 - 同一 workspace 默认只允许一个写入型 run，避免多个 Agent 同时覆盖本地文件。
 - Provider 按需注册，优先使用 `@earendil-works/pi-ai/providers/<provider>`，不要默认导入所有 Provider。
+- `pi-ai Models` 是唯一的 Provider/Model 运行时注册表，不创建只转发其方法的自定义 Registry 类。
+- 用户自定义 Provider 由 daemon 校验配置后，通过 `pi-ai createProvider()` 和已有 lazy API 实现创建；`packages/providers` 不重复定义配置 DTO 或校验逻辑。
+- 自定义 Provider 的非敏感配置保存在 SQLite，凭据通过 daemon 的独立 `CredentialStore` 保存，不得混入 `provider_settings`。
 - Provider API Key 和 OAuth credential 只能保存在 daemon，禁止发送到 Web 或写入日志。
 - Web 只能获得 Provider 是否已认证等脱敏状态。
-- Agent 恢复时从 SQLite 读取 session 和完整消息 JSON，再注入 `Agent`。
-- 通过 `Agent.subscribe()` 适配事件；只持久化完整消息、工具结果、审批、文件变化和 run 状态，不持久化每个 token delta。
+- Agent 恢复时从 SQLite 读取 session 元数据，从该 session 的 JSONL 读取完整消息后注入 `Agent`。
+- 通过 `Agent.subscribe()` 适配事件；完整消息、工具结果、审批、文件变化和 run 状态只追加到 session JSONL，不持久化每个 token delta。
 - `message.delta` 只用于实时 SSE；重连后由 session 快照恢复完整消息。
 - 使用 `beforeToolCall` 接入权限与审批，使用 `afterToolCall` 记录审计结果。
 - 使用 `transformContext` 处理工具输出截断和上下文裁剪，不在 route 中修改消息上下文。
@@ -213,13 +217,25 @@ export const sessionQueryKeys = {
 - 保持 HTTP route 薄层，不在 handler 内直接创建 Agent、执行 SQL 或读写文件。
 - daemon 必须校验 Host 和 Origin，并限制为本地来源。涉及状态变更的请求应使用同源校验和自定义请求头防止跨站调用。
 
-## SQLite 规范
+## 持久化规范
+
+### Session JSONL
+
+- 每个 session 对应一个 `<sessionId>.jsonl`，文件位于 SQLite 同级数据目录的 `sessions/` 下。
+- JSONL 是对话、run、工具调用、审批和文件变更的唯一事实来源，SQLite 不存副本。
+- 每行保存一个完整的 `HarnessEvent`；`message.completed.data` 保存完整 `AgentMessage`。
+- `message.delta` 和 `tool.updated` 只通过 SSE 发送，不写入 JSONL。
+- 同一 session 只允许串行追加，`seq` 必须严格递增；写入前必须校验 session ID 和目标路径。
+- 恢复时逐行校验 JSON 和事件结构。只可丢弃崩溃留下的不完整末行；中间行损坏必须报错。
+
+### SQLite
 
 - 使用显式 migration，不在应用启动时根据 TypeScript 类型隐式修改表结构。
 - SQL 访问集中在 repository，不允许 React、route 或工具直接执行 SQL。
 - 表名和列名使用 `snake_case`，TypeScript 字段使用 `camelCase`，映射集中处理。
-- 消息 payload 按完整 `AgentMessage` JSON 保存，避免过早拆分 Pi 消息内部结构。
-- 多表状态变更使用事务，例如 run 完成、消息落库和 session 更新时间更新。
+- SQLite 只保存认证、workspace、session 元数据、Provider 和应用设置等需要结构化查询的数据。
+- `sessions` 表只保存轻量索引，不建立 `messages`、`runs`、`tool_calls`、`approvals` 或 `file_changes` 副本表。
+- 会话写入先追加 JSONL，再更新 SQLite 索引；索引失败不得删除已持久化的会话记录。
 - migration 必须向前兼容已有本地数据；破坏性迁移需要明确的数据转换步骤。
 - 不在数据库中明文保存不必要的密钥。凭据存储与普通应用数据分离。
 

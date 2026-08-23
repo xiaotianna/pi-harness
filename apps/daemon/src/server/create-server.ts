@@ -3,12 +3,17 @@ import Fastify from "fastify";
 import { type HarnessConfig, loadHarnessConfig } from "../config/index.js";
 import { registerAuthRoutes } from "../routes/auth-routes.js";
 import { registerHealthRoutes } from "../routes/health-routes.js";
+import { registerProviderRoutes } from "../routes/provider-routes.js";
+import { ProviderService } from "../services/provider-service.js";
 import { openHarnessDatabase } from "../storage/database.js";
+import { FileCredentialStore } from "../storage/provider-credential-store.js";
 
 const LOCAL_WEB_ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
 
 export async function createServer(config: HarnessConfig = loadHarnessConfig()) {
   const database = openHarnessDatabase(config.databasePath);
+  const credentials = await FileCredentialStore.open(config.credentialsPath);
+  const providers = await ProviderService.create(database.providerSettings, credentials);
   const allowedHosts = new Set([
     new URL(config.webUrl).host,
     `${config.host}:${config.port}`,
@@ -46,11 +51,13 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   });
 
   server.addHook("onClose", async () => {
+    await providers.close();
     database.close();
   });
 
   await registerAuthRoutes(server, config, database.authSessions);
   await registerHealthRoutes(server);
+  await registerProviderRoutes(server, config, providers);
 
   return server;
 }

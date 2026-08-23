@@ -167,13 +167,13 @@ export function MemorySettingsPanel() {
             </Tabs.Tab>
           </Tabs.List>
         </Tabs.ListContainer>
-        <Tabs.Panel className="pt-4" id="all">
+        <Tabs.Panel className="p-0" id="all">
           <MemoryList items={MEMORY_ITEMS} />
         </Tabs.Panel>
-        <Tabs.Panel className="pt-4" id="preference">
+        <Tabs.Panel className="p-0" id="preference">
           <MemoryList items={preferenceMemories} />
         </Tabs.Panel>
-        <Tabs.Panel className="pt-4" id="project">
+        <Tabs.Panel className="p-0" id="project">
           <MemoryList items={projectMemories} />
         </Tabs.Panel>
       </Tabs>

@@ -2,9 +2,11 @@
 
 import type { ChatStatus } from "@agile-avocation/ui-pro";
 import { PromptInput } from "@agile-avocation/ui-pro";
-import { Button, Dropdown, Label, Separator, Tooltip } from "@heroui/react";
+import { Button, Description, Dropdown, Label, Separator, Tooltip } from "@heroui/react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ChevronDown,
+  CircleAlert,
   Code2,
   Folder,
   FolderOpen,
@@ -19,9 +21,9 @@ import {
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
-  getEnabledModelProviders,
-  type ModelIdValue,
+  createModelSelectionKey,
   ModelProviderIcon,
+  providerQueryOptions,
   useModelSettingsStore,
 } from "../../models";
 import { CHAT_WORKSPACES } from "../data/chat";
@@ -60,9 +62,11 @@ function revokeAttachmentUrls(items: readonly PendingAttachment[]) {
 
 export interface ChatComposerProps {
   className?: string;
-  modelId?: ModelIdValue;
+  conversationId?: string;
+  modelId?: string;
   placeholder?: string;
   presentation?: "dock" | "hero";
+  providerId?: string;
 }
 
 const COMPOSER_SHORTCUTS = [
@@ -125,24 +129,46 @@ const CONTEXT_MENU_ITEMS = [
 
 export function ChatComposer({
   className,
+  conversationId,
   modelId,
   placeholder = "输入任何问题",
   presentation = "dock",
+  providerId,
 }: ChatComposerProps) {
-  const defaultModelId = useModelSettingsStore((state) => state.defaultModelId);
-  const enabledProviderIds = useModelSettingsStore((state) => state.enabledProviderIds);
-  const availableModelProviders = useMemo(
-    () => getEnabledModelProviders(enabledProviderIds),
-    [enabledProviderIds],
+  const defaultModelKey = useModelSettingsStore((state) => state.defaultModelKey);
+  const conversationModelKey = useModelSettingsStore((state) =>
+    conversationId ? state.conversationModelKeys[conversationId] : undefined,
   );
-  const availableModels = useMemo(
-    () => availableModelProviders.flatMap((provider) => provider.models),
+  const setConversationModelKey = useModelSettingsStore((state) => state.setConversationModelKey);
+  const providersQuery = useQuery(providerQueryOptions());
+  const availableModelProviders = useMemo(
+    () =>
+      (providersQuery.data ?? []).filter(
+        (provider) => provider.enabled && provider.isConfigured && provider.models.length > 0,
+      ),
+    [providersQuery.data],
+  );
+  const availableModelKeys = useMemo(
+    () =>
+      availableModelProviders.flatMap((provider) =>
+        provider.models.map((model) => createModelSelectionKey(provider.id, model.id)),
+      ),
     [availableModelProviders],
   );
-  const initialModelId = modelId ?? defaultModelId;
+  const initialConversationModelKey = useMemo(() => {
+    if (providerId && modelId) {
+      const modelKey = createModelSelectionKey(providerId, modelId);
+      if (availableModelKeys.includes(modelKey)) return modelKey;
+    }
+    if (!modelId) return null;
+    const provider = availableModelProviders.find((item) =>
+      item.models.some((model) => model.id === modelId),
+    );
+    return provider ? createModelSelectionKey(provider.id, modelId) : null;
+  }, [availableModelKeys, availableModelProviders, modelId, providerId]);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [draftModelKey, setDraftModelKey] = useState<string | null>(null);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
-  const [selectedModelId, setSelectedModelId] = useState<ModelIdValue>(initialModelId);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [status, setStatus] = useState<ChatStatus>("ready");
   const [hasEditorContent, setHasEditorContent] = useState(false);
@@ -164,17 +190,6 @@ export function ChatComposer({
   }, [attachments]);
 
   useEffect(() => {
-    setSelectedModelId(initialModelId);
-  }, [initialModelId]);
-
-  useEffect(() => {
-    if (availableModels.some((model) => model.id === selectedModelId)) return;
-
-    const fallbackModelId = availableModels[0]?.id;
-    if (fallbackModelId) setSelectedModelId(fallbackModelId);
-  }, [availableModels, selectedModelId]);
-
-  useEffect(() => {
     return () => {
       clearTimers();
       revokeAttachmentUrls(attachmentsRef.current);
@@ -191,7 +206,7 @@ export function ChatComposer({
     const trimmed = value.trim();
     const hasAttachments = attachments.length > 0;
 
-    if (status !== "ready" || (!trimmed && !hasAttachments)) return;
+    if (status !== "ready" || selectedModelKey === null || (!trimmed && !hasAttachments)) return;
 
     revokeAttachmentUrls(attachments);
     editorRef.current?.clear();
@@ -206,13 +221,23 @@ export function ChatComposer({
   };
 
   const isGenerating = status === "submitted" || status === "streaming";
-  const canSend = hasEditorContent || attachments.length > 0;
+  const preferredModelKey =
+    conversationModelKey ?? draftModelKey ?? initialConversationModelKey ?? defaultModelKey;
+  const selectedModelKey =
+    preferredModelKey && availableModelKeys.includes(preferredModelKey)
+      ? preferredModelKey
+      : (availableModelKeys[0] ?? null);
   const sendLabel = isGenerating ? "停止生成" : "发送消息";
   const isHero = presentation === "hero";
   const selectedModelProvider = availableModelProviders.find((provider) =>
-    provider.models.some((model) => model.id === selectedModelId),
+    provider.models.some(
+      (model) => createModelSelectionKey(provider.id, model.id) === selectedModelKey,
+    ),
   );
-  const selectedModel = selectedModelProvider?.models.find((model) => model.id === selectedModelId);
+  const selectedModel = selectedModelProvider?.models.find(
+    (model) => createModelSelectionKey(selectedModelProvider.id, model.id) === selectedModelKey,
+  );
+  const canSend = selectedModel !== undefined && (hasEditorContent || attachments.length > 0);
   const selectedWorkspace = CHAT_WORKSPACES.find(
     (workspace) => workspace.id === selectedWorkspaceId,
   );
@@ -272,6 +297,14 @@ export function ChatComposer({
     setHasEditorContent(!isEmpty);
   }, []);
 
+  const handleModelChange = (modelKey: string) => {
+    if (conversationId) {
+      setConversationModelKey(conversationId, modelKey);
+    } else {
+      setDraftModelKey(modelKey);
+    }
+  };
+
   return (
     <PromptInput
       className={className}
@@ -282,7 +315,7 @@ export function ChatComposer({
       onSubmit={handleSubmit}
     >
       {attachments.length ? (
-        <div className="relative rounded-t-[28px] bg-default pb-7">
+        <div className="relative rounded-t-[32px] bg-default pb-7">
           <div className="relative flex h-8 items-center">
             {isAttachmentDrawerExpanded ? (
               <Button
@@ -338,7 +371,7 @@ export function ChatComposer({
         </div>
       ) : null}
       <PromptInput.Shell
-        className={`relative z-10 overflow-visible! rounded-[28px] bg-field shadow-field ${
+        className={`relative z-10 overflow-visible! rounded-[32px] bg-field shadow-field ${
           attachments.length ? "-mt-6" : ""
         }`}
       >
@@ -466,13 +499,14 @@ export function ChatComposer({
                   >
                     {CHAT_WORKSPACES.map((workspace) => (
                       <Dropdown.Item
+                        className="ps-2 pe-7"
                         key={workspace.id}
                         id={workspace.id}
                         textValue={workspace.name}
                       >
                         <Folder className="size-4 text-muted" />
                         <Label>{workspace.name}</Label>
-                        <Dropdown.ItemIndicator />
+                        <Dropdown.ItemIndicator className="start-auto end-2" />
                       </Dropdown.Item>
                     ))}
                     <Separator className="my-1" />
@@ -495,39 +529,57 @@ export function ChatComposer({
                 {selectedModelProvider ? (
                   <ModelProviderIcon isColor providerId={selectedModelProvider.id} size={16} />
                 ) : null}
-                <span>{selectedModel?.label ?? "暂无可用模型"}</span>
+                <span>
+                  {selectedModel?.name ?? (providersQuery.isPending ? "加载模型…" : "选择模型")}
+                </span>
                 <ChevronDown className="size-3.5" />
               </Button>
               <Dropdown.Popover className="min-w-52" placement="bottom start">
                 <Dropdown.Menu aria-label="选择模型 Provider">
-                  {availableModelProviders.map((provider) => (
-                    <Dropdown.SubmenuTrigger key={provider.id}>
-                      <Dropdown.Item id={`provider-${provider.id}`} textValue={provider.name}>
-                        <ModelProviderIcon isColor providerId={provider.id} size={16} />
-                        <Label>{provider.name}</Label>
-                        <Dropdown.SubmenuIndicator />
-                      </Dropdown.Item>
-                      <Dropdown.Popover className="min-w-60">
-                        <Dropdown.Menu
-                          aria-label={`${provider.name} 模型`}
-                          selectedKeys={new Set([selectedModelId])}
-                          selectionMode="single"
-                          onAction={(key) => {
-                            const model = provider.models.find((item) => item.id === key);
-                            if (model) setSelectedModelId(model.id);
-                          }}
-                        >
-                          {provider.models.map((model) => (
-                            <Dropdown.Item key={model.id} id={model.id} textValue={model.label}>
-                              <ModelProviderIcon isColor providerId={provider.id} size={16} />
-                              <Label>{model.label}</Label>
-                              <Dropdown.ItemIndicator />
-                            </Dropdown.Item>
-                          ))}
-                        </Dropdown.Menu>
-                      </Dropdown.Popover>
-                    </Dropdown.SubmenuTrigger>
-                  ))}
+                  {availableModelProviders.length === 0 ? (
+                    <Dropdown.Item isDisabled id="no-models" textValue="暂无可用模型">
+                      <CircleAlert className="size-4 text-muted" />
+                      <div className="flex flex-col">
+                        <Label>{providersQuery.isPending ? "正在加载模型" : "暂无可用模型"}</Label>
+                        <Description>请先在设置中连接并启用 Provider</Description>
+                      </div>
+                    </Dropdown.Item>
+                  ) : (
+                    availableModelProviders.map((provider) => (
+                      <Dropdown.SubmenuTrigger key={provider.id}>
+                        <Dropdown.Item id={`provider-${provider.id}`} textValue={provider.name}>
+                          <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                          <Label>{provider.name}</Label>
+                          <Dropdown.SubmenuIndicator />
+                        </Dropdown.Item>
+                        <Dropdown.Popover className="min-w-60">
+                          <Dropdown.Menu
+                            aria-label={`${provider.name} 模型`}
+                            selectedKeys={
+                              selectedModelKey ? new Set([selectedModelKey]) : new Set()
+                            }
+                            selectionMode="single"
+                            onAction={(key) => {
+                              if (typeof key === "string") handleModelChange(key);
+                            }}
+                          >
+                            {provider.models.map((model) => (
+                              <Dropdown.Item
+                                className="ps-2 pe-7"
+                                key={createModelSelectionKey(provider.id, model.id)}
+                                id={createModelSelectionKey(provider.id, model.id)}
+                                textValue={model.name}
+                              >
+                                <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                                <Label>{model.name}</Label>
+                                <Dropdown.ItemIndicator className="start-auto end-2" />
+                              </Dropdown.Item>
+                            ))}
+                          </Dropdown.Menu>
+                        </Dropdown.Popover>
+                      </Dropdown.SubmenuTrigger>
+                    ))
+                  )}
                 </Dropdown.Menu>
               </Dropdown.Popover>
             </Dropdown>

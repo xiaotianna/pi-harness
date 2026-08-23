@@ -1,3 +1,4 @@
+import { Toast } from "@heroui/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { PropsWithChildren } from "react";
 import { ThemeProvider } from "../features/settings";
@@ -7,6 +8,7 @@ export function AppProviders({ children }: PropsWithChildren) {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <Toast.Provider placement="top" />
     </ThemeProvider>
   );
 }

@@ -56,7 +56,12 @@ export function ChatPage({ thread }: ChatPageProps) {
           className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
         />
         <div className="mx-auto w-full max-w-[714px]">
-          <ChatComposer className="w-full" modelId={thread.modelId} />
+          <ChatComposer
+            className="w-full"
+            conversationId={thread.id}
+            modelId={thread.modelId}
+            providerId={thread.providerId}
+          />
         </div>
       </div>
     </div>
