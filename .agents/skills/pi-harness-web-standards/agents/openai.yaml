@@ -1,0 +1,4 @@
+interface:
+  display_name: "PI Harness 前端规范"
+  short_description: "约束 PI Harness 前端架构、组件、状态、交互与验证"
+  default_prompt: "使用 $pi-harness-web-standards 按项目规范实现或评审 PI Harness 前端功能。"

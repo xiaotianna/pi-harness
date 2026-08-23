@@ -6,10 +6,18 @@ const ProviderModelVoSchema = Type.Object({
 });
 
 export const ProviderOAuthStatus = {
+  AWAITING_INPUT: "awaiting_input",
   AWAITING_USER: "awaiting_user",
   COMPLETED: "completed",
   FAILED: "failed",
   STARTING: "starting",
+} as const;
+
+export const ProviderOAuthPromptType = {
+  MANUAL_CODE: "manual_code",
+  SECRET: "secret",
+  SELECT: "select",
+  TEXT: "text",
 } as const;
 
 const ProviderOAuthStartingVoSchema = Type.Object({
@@ -23,6 +31,30 @@ const ProviderOAuthAwaitingUserVoSchema = Type.Object({
   message: Type.String({ minLength: 1, maxLength: 500 }),
   providerId: Type.String({ minLength: 1 }),
   status: Type.Literal(ProviderOAuthStatus.AWAITING_USER),
+  userCode: Type.Union([Type.String({ minLength: 1, maxLength: 100 }), Type.Null()]),
+});
+
+const ProviderOAuthAwaitingInputVoSchema = Type.Object({
+  authorizationUrl: Type.Union([Type.String({ minLength: 1, maxLength: 4_096 }), Type.Null()]),
+  message: Type.String({ minLength: 1, maxLength: 500 }),
+  options: Type.Array(
+    Type.Object({
+      description: Type.Union([Type.String({ minLength: 1, maxLength: 500 }), Type.Null()]),
+      id: Type.String({ minLength: 1, maxLength: 200 }),
+      label: Type.String({ minLength: 1, maxLength: 200 }),
+    }),
+    { maxItems: 50 },
+  ),
+  placeholder: Type.Union([Type.String({ minLength: 1, maxLength: 500 }), Type.Null()]),
+  promptId: Type.String({ minLength: 1, maxLength: 100 }),
+  promptType: Type.Union([
+    Type.Literal(ProviderOAuthPromptType.TEXT),
+    Type.Literal(ProviderOAuthPromptType.SECRET),
+    Type.Literal(ProviderOAuthPromptType.SELECT),
+    Type.Literal(ProviderOAuthPromptType.MANUAL_CODE),
+  ]),
+  providerId: Type.String({ minLength: 1 }),
+  status: Type.Literal(ProviderOAuthStatus.AWAITING_INPUT),
   userCode: Type.Union([Type.String({ minLength: 1, maxLength: 100 }), Type.Null()]),
 });
 
@@ -41,6 +73,7 @@ const ProviderOAuthFailedVoSchema = Type.Object({
 export const ProviderOAuthStateVoSchema = Type.Union([
   ProviderOAuthStartingVoSchema,
   ProviderOAuthAwaitingUserVoSchema,
+  ProviderOAuthAwaitingInputVoSchema,
   ProviderOAuthCompletedVoSchema,
   ProviderOAuthFailedVoSchema,
 ]);

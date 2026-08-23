@@ -5,6 +5,7 @@ import type {
   CustomProviderConnectionTestDto,
   ProviderConnectionTestDto,
   ProviderCredentialDto,
+  ProviderOAuthPromptAnswerDto,
   ProviderParamsDto,
   UpdateProviderDto,
 } from "../dto/provider-dto.js";
@@ -105,6 +106,26 @@ export class ProviderController {
     }
   };
 
+  public answerOAuthPrompt = async (
+    request: FastifyRequest<{
+      Body: ProviderOAuthPromptAnswerDto;
+      Params: ProviderParamsDto;
+    }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    try {
+      this.providers.answerOAuthPrompt(
+        request.params.providerId,
+        request.body.promptId,
+        request.body.value,
+      );
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
   public cancelOAuth = async (
     request: FastifyRequest<{ Params: ProviderParamsDto }>,
     reply: FastifyReply,
@@ -167,9 +188,11 @@ export class ProviderController {
       const status =
         error.code === "PROVIDER_NOT_FOUND" || error.code === "PROVIDER_OAUTH_NOT_STARTED"
           ? 404
-          : error.code === "PROVIDER_CONNECTION_FAILED"
-            ? 502
-            : 400;
+          : error.code === "PROVIDER_OAUTH_PROMPT_NOT_FOUND"
+            ? 409
+            : error.code === "PROVIDER_CONNECTION_FAILED"
+              ? 502
+              : 400;
       return reply.status(status).send({ code: error.code, message: error.message });
     }
 

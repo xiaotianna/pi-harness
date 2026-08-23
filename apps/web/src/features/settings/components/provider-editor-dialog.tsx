@@ -6,22 +6,19 @@ import {
   FieldError,
   Form,
   Input,
-  InputGroup,
   Label,
   ListBox,
   Modal,
   Select,
   Switch,
-  Tabs,
   TextField,
-  Tooltip,
   toast,
 } from "@heroui/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Eye, EyeOff } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import {
+  answerProviderOAuthPrompt,
   cancelProviderOAuth,
   createProvider,
   deleteProvider,
@@ -37,6 +34,13 @@ import {
   startProviderOAuth,
   updateProvider,
 } from "../../models";
+import {
+  getDefaultProviderAuthenticationMethod,
+  getStoredProviderAuthenticationMethod,
+  ProviderAuthenticationMethod,
+  type ProviderAuthenticationMethod as ProviderAuthenticationMethodValue,
+  ProviderAuthenticationSection,
+} from "./provider-authentication-section";
 
 const PROTOCOLS = [
   { id: "openai-responses", label: "OpenAI Responses" },
@@ -57,8 +61,8 @@ export interface ProviderEditorDialogProps {
 export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEditorDialogProps) {
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState("");
-  const [authenticationMethod, setAuthenticationMethod] = useState<"api-key" | "oauth">("api-key");
-  const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
+  const [authenticationMethod, setAuthenticationMethod] =
+    useState<ProviderAuthenticationMethodValue>(ProviderAuthenticationMethod.API_KEY);
   const [baseUrl, setBaseUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -66,11 +70,12 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
   const [oauthState, setOAuthState] = useState<ProviderOAuthState | null>(null);
   const [protocol, setProtocol] = useState<ProviderInput["protocol"]>("openai-responses");
   const [requiresApiKey, setRequiresApiKey] = useState(true);
+  const storedAuthenticationMethod = getStoredProviderAuthenticationMethod(provider);
+
   useEffect(() => {
     if (!isOpen) return;
     setApiKey("");
-    setAuthenticationMethod(provider?.authSource === "OAuth" ? "oauth" : "api-key");
-    setIsApiKeyVisible(false);
+    setAuthenticationMethod(getDefaultProviderAuthenticationMethod(provider));
     setBaseUrl(provider?.baseUrl ?? "");
     setError(null);
     setName(provider?.name ?? "");
@@ -78,7 +83,7 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
     const nextProtocol = provider?.protocol ?? null;
     setProtocol(isProtocol(nextProtocol) ? nextProtocol : "openai-responses");
     setRequiresApiKey(provider?.requiresApiKey ?? true);
-  }, [isOpen, provider]);
+  }, [isOpen, provider, storedAuthenticationMethod]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -160,6 +165,15 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
     },
   });
 
+  const answerOAuthPromptMutation = useMutation({
+    mutationFn: async (input: { promptId: string; providerId: string; value: string }) => {
+      await answerProviderOAuthPrompt(input.providerId, input.promptId, input.value);
+      return getProviderOAuthState(input.providerId);
+    },
+    onError: (mutationError) => toast.danger(mutationError.message),
+    onSuccess: setOAuthState,
+  });
+
   const cancelOAuthMutation = useMutation({
     mutationFn: cancelProviderOAuth,
     onError: (mutationError) => toast.danger(mutationError.message),
@@ -168,6 +182,7 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
 
   const isOAuthActive =
     oauthState?.status === ProviderOAuthStatus.STARTING ||
+    oauthState?.status === ProviderOAuthStatus.AWAITING_INPUT ||
     oauthState?.status === ProviderOAuthStatus.AWAITING_USER;
 
   useEffect(() => {
@@ -176,6 +191,7 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
       !provider ||
       !isOAuthActive ||
       pollOAuthMutation.isPending ||
+      answerOAuthPromptMutation.isPending ||
       cancelOAuthMutation.isPending
     ) {
       return;
@@ -183,6 +199,7 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
     const timeoutId = window.setTimeout(() => pollOAuthMutation.mutate(provider.id), 1_000);
     return () => window.clearTimeout(timeoutId);
   }, [
+    answerOAuthPromptMutation.isPending,
     cancelOAuthMutation.isPending,
     isOAuthActive,
     isOpen,
@@ -207,44 +224,12 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
     isOAuthActive ||
     (provider?.kind === "builtin" && !apiKey.trim()) ||
     (provider?.kind !== "builtin" && (!name.trim() || !baseUrl.trim()));
-
-  const apiKeyField = requiresApiKey ? (
-    <TextField
-      fullWidth
-      name="apiKey"
-      value={apiKey || (provider?.authSource === "OAuth" ? "" : provider?.credentialPreview) || ""}
-      onChange={setApiKey}
-    >
-      <Label>API Key</Label>
-      <InputGroup fullWidth variant="secondary">
-        <InputGroup.Input
-          autoComplete="off"
-          placeholder="输入 API Key"
-          type={isApiKeyVisible ? "text" : "password"}
-          onFocus={(event) => {
-            if (!apiKey && provider?.authSource !== "OAuth" && provider?.credentialPreview) {
-              event.currentTarget.select();
-            }
-          }}
-        />
-        <InputGroup.Suffix>
-          <Tooltip delay={0}>
-            <Button
-              isIconOnly
-              aria-label={isApiKeyVisible ? "隐藏 API Key" : "显示 API Key"}
-              size="sm"
-              type="button"
-              variant="tertiary"
-              onPress={() => setIsApiKeyVisible((isVisible) => !isVisible)}
-            >
-              {isApiKeyVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </Button>
-            <Tooltip.Content>{isApiKeyVisible ? "隐藏 API Key" : "显示 API Key"}</Tooltip.Content>
-          </Tooltip>
-        </InputGroup.Suffix>
-      </InputGroup>
-    </TextField>
-  ) : null;
+  const shouldShowSaveAction =
+    provider?.kind !== "builtin" ||
+    (provider.requiresApiKey &&
+      (storedAuthenticationMethod === ProviderAuthenticationMethod.API_KEY ||
+        (storedAuthenticationMethod === null &&
+          authenticationMethod === ProviderAuthenticationMethod.API_KEY)));
 
   return (
     <>
@@ -255,7 +240,7 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
         }}
       >
         <Modal.Container>
-          <Modal.Dialog className="sm:max-w-lg">
+          <Modal.Dialog className={provider?.kind === "builtin" ? "sm:max-w-md" : "sm:max-w-lg"}>
             <Modal.Header>
               <Modal.Heading>{provider ? `配置 ${provider.name}` : "添加 Provider"}</Modal.Heading>
             </Modal.Header>
@@ -278,7 +263,7 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
                         onChange={setName}
                       >
                         <Label>名称</Label>
-                        <Input placeholder="例如：本地 Ollama" />
+                        <Input placeholder="例如：OpenAI" />
                         <FieldError />
                       </TextField>
                       <Select
@@ -335,101 +320,35 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
                     </>
                   ) : null}
 
-                  {provider?.supportsOAuth ? (
-                    <Tabs
-                      key={authenticationMethod}
-                      selectedKey={authenticationMethod}
-                      variant="primary"
-                      onSelectionChange={(key) => {
-                        if (key === "api-key" || key === "oauth") setAuthenticationMethod(key);
-                      }}
-                    >
-                      <Tabs.ListContainer>
-                        <Tabs.List aria-label="认证方式">
-                          <Tabs.Tab id="api-key">
-                            API Key
-                            <Tabs.Indicator />
-                          </Tabs.Tab>
-                          <Tabs.Tab id="oauth">
-                            OAuth
-                            <Tabs.Indicator />
-                          </Tabs.Tab>
-                        </Tabs.List>
-                      </Tabs.ListContainer>
-                      <Tabs.Panel className="px-0" id="api-key">
-                        {apiKeyField}
-                      </Tabs.Panel>
-                      <Tabs.Panel className="px-0" id="oauth">
-                        <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center">
-                          {oauthState?.status === ProviderOAuthStatus.AWAITING_USER ? (
-                            oauthState.userCode ? (
-                              <TextField
-                                isReadOnly
-                                fullWidth
-                                value={oauthState.userCode}
-                                variant="secondary"
-                              >
-                                <Label>设备码</Label>
-                                <Input />
-                              </TextField>
-                            ) : null
-                          ) : null}
-                          {isOAuthActive ? (
-                            <>
-                              <p aria-live="polite" className="text-sm text-muted">
-                                {oauthState.message}
-                              </p>
-                              <div className="flex items-center gap-2">
-                                {oauthState.status === ProviderOAuthStatus.AWAITING_USER ? (
-                                  <Button
-                                    type="button"
-                                    onPress={() =>
-                                      window.open(
-                                        oauthState.authorizationUrl,
-                                        "_blank",
-                                        "noopener,noreferrer",
-                                      )
-                                    }
-                                  >
-                                    <ExternalLink className="size-4" />
-                                    打开授权页面
-                                  </Button>
-                                ) : null}
-                                <Button
-                                  isDisabled={cancelOAuthMutation.isPending}
-                                  type="button"
-                                  variant="ghost"
-                                  onPress={() => cancelOAuthMutation.mutate(provider.id)}
-                                >
-                                  取消登录
-                                </Button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              {oauthState?.status === ProviderOAuthStatus.FAILED ? (
-                                <p className="text-sm text-danger" role="alert">
-                                  {oauthState.message}
-                                </p>
-                              ) : null}
-                              <Button
-                                isPending={startOAuthMutation.isPending}
-                                type="button"
-                                variant="secondary"
-                                onPress={() => startOAuthMutation.mutate(provider.id)}
-                              >
-                                {provider.authSource === "OAuth"
-                                  ? "重新登录 OAuth"
-                                  : "使用 OAuth 登录"}
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </Tabs.Panel>
-                    </Tabs>
-                  ) : (
-                    apiKeyField
-                  )}
+                  <ProviderAuthenticationSection
+                    apiKey={apiKey}
+                    authenticationMethod={authenticationMethod}
+                    isOAuthActive={isOAuthActive}
+                    isOAuthAnswering={answerOAuthPromptMutation.isPending}
+                    isOAuthCancelling={cancelOAuthMutation.isPending}
+                    isOAuthStarting={startOAuthMutation.isPending}
+                    key={`${provider?.id ?? "new"}:${isOpen}`}
+                    oauthState={oauthState}
+                    provider={provider}
+                    requiresApiKey={requiresApiKey}
+                    onApiKeyChange={setApiKey}
+                    onAnswerOAuth={(promptId, value) => {
+                      if (provider) {
+                        answerOAuthPromptMutation.mutate({
+                          promptId,
+                          providerId: provider.id,
+                          value,
+                        });
+                      }
+                    }}
+                    onAuthenticationMethodChange={setAuthenticationMethod}
+                    onCancelOAuth={() => {
+                      if (provider) cancelOAuthMutation.mutate(provider.id);
+                    }}
+                    onStartOAuth={() => {
+                      if (provider) startOAuthMutation.mutate(provider.id);
+                    }}
+                  />
                 </div>
                 {error ? (
                   <p className="text-sm text-danger" role="alert">
@@ -438,35 +357,37 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
                 ) : null}
               </Form>
             </Modal.Body>
-            <Modal.Footer className="justify-between">
-              <div className="flex gap-2">
-                {provider?.canDelete ? (
-                  <Button type="button" variant="danger" onPress={() => setIsDeleteOpen(true)}>
-                    删除 Provider
+            {isOAuthActive ? null : (
+              <Modal.Footer className="justify-between">
+                <div className="flex gap-2">
+                  {provider?.canDelete ? (
+                    <Button type="button" variant="danger" onPress={() => setIsDeleteOpen(true)}>
+                      删除 Provider
+                    </Button>
+                  ) : null}
+                  {provider?.hasStoredCredential ? (
+                    <Button
+                      isDisabled={removeCredentialMutation.isPending}
+                      type="button"
+                      variant="tertiary"
+                      onPress={() => removeCredentialMutation.mutate()}
+                    >
+                      移除凭据
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="tertiary" onPress={handleClose}>
+                    取消
                   </Button>
-                ) : null}
-                {provider?.hasStoredCredential ? (
-                  <Button
-                    isDisabled={removeCredentialMutation.isPending || isOAuthActive}
-                    type="button"
-                    variant="tertiary"
-                    onPress={() => removeCredentialMutation.mutate()}
-                  >
-                    移除凭据
-                  </Button>
-                ) : null}
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="tertiary" onPress={handleClose}>
-                  取消
-                </Button>
-                {!provider?.supportsOAuth || authenticationMethod === "api-key" ? (
-                  <Button form="provider-form" isDisabled={isSaveDisabled} type="submit">
-                    {saveMutation.isPending ? "保存中…" : "保存"}
-                  </Button>
-                ) : null}
-              </div>
-            </Modal.Footer>
+                  {shouldShowSaveAction ? (
+                    <Button form="provider-form" isDisabled={isSaveDisabled} type="submit">
+                      {saveMutation.isPending ? "保存中…" : "保存"}
+                    </Button>
+                  ) : null}
+                </div>
+              </Modal.Footer>
+            )}
           </Modal.Dialog>
         </Modal.Container>
       </Modal.Backdrop>

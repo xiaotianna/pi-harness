@@ -45,6 +45,12 @@ export const ProviderCredentialDtoSchema = Type.Object({
 });
 export type ProviderCredentialDto = Static<typeof ProviderCredentialDtoSchema>;
 
+export const ProviderOAuthPromptAnswerDtoSchema = Type.Object({
+  promptId: Type.String({ minLength: 1, maxLength: 100 }),
+  value: Type.String({ maxLength: 8_192 }),
+});
+export type ProviderOAuthPromptAnswerDto = Static<typeof ProviderOAuthPromptAnswerDtoSchema>;
+
 export const ProviderConnectionTestDtoSchema = Type.Object({
   apiKey: Type.Optional(Type.String({ minLength: 1, maxLength: 8_192 })),
   modelId: Type.String({ minLength: 1, maxLength: 200 }),

@@ -1,4 +1,5 @@
 export {
+  answerProviderOAuthPrompt,
   type CustomProviderConnectionTestInput,
   cancelProviderOAuth,
   createProvider,
@@ -9,6 +10,7 @@ export {
   type ModelProvider,
   ProviderApiError,
   type ProviderInput,
+  ProviderOAuthPromptType,
   type ProviderOAuthState,
   ProviderOAuthStatus,
   type ProviderUpdate,

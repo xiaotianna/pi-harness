@@ -11,6 +11,8 @@ import {
   ProviderConnectionTestDtoSchema,
   type ProviderCredentialDto,
   ProviderCredentialDtoSchema,
+  type ProviderOAuthPromptAnswerDto,
+  ProviderOAuthPromptAnswerDtoSchema,
   type ProviderParamsDto,
   ProviderParamsDtoSchema,
   type UpdateProviderDto,
@@ -120,6 +122,18 @@ export async function registerProviderRoutes(
       },
     },
     controller.getOAuthState,
+  );
+
+  server.post<{ Body: ProviderOAuthPromptAnswerDto; Params: ProviderParamsDto }>(
+    "/api/providers/:providerId/oauth/prompt",
+    {
+      schema: {
+        body: ProviderOAuthPromptAnswerDtoSchema,
+        params: ProviderParamsDtoSchema,
+        response: { 204: Type.Null(), 409: ApiErrorVoSchema, ...mutationErrors },
+      },
+    },
+    controller.answerOAuthPrompt,
   );
 
   server.delete<{ Params: ProviderParamsDto }>(

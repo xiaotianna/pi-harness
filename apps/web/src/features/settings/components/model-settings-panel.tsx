@@ -34,6 +34,16 @@ function getProviderChipClassName(isConfigured: boolean): string {
     : "[--chip-bg:var(--default-soft)] [--chip-fg:var(--default-soft-foreground)]";
 }
 
+function getProviderAuthenticationStatus(provider: ModelProvider): string {
+  if (provider.authSource === "stored credential") return "已保存凭据";
+  if (provider.authSource === "OAuth") return "OAuth 已登录";
+  if (provider.authSource) return provider.authSource;
+  if (provider.requiresApiKey && provider.supportsOAuth) return "尚未配置 API Key 或 OAuth";
+  if (provider.requiresApiKey) return "尚未配置 API Key";
+  if (provider.supportsOAuth) return "尚未配置 OAuth";
+  return "无需配置凭据";
+}
+
 export function ModelSettingsPanel() {
   const queryClient = useQueryClient();
   const providersQuery = useQuery(providerQueryOptions());
@@ -233,16 +243,7 @@ export function ModelSettingsPanel() {
               <div className="flex items-center justify-between gap-4">
                 <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
                   <KeyRound aria-hidden className="size-3.5 shrink-0" />
-                  <span className="truncate">
-                    {provider.authSource === "stored credential"
-                      ? "已保存凭据"
-                      : provider.authSource === "OAuth"
-                        ? "OAuth 已登录"
-                        : (provider.authSource ??
-                          (provider.supportsOAuth
-                            ? "尚未配置 API Key 或 OAuth"
-                            : "尚未配置 API Key"))}
-                  </span>
+                  <span className="truncate">{getProviderAuthenticationStatus(provider)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="tertiary" onPress={() => setModelsProvider(provider)}>

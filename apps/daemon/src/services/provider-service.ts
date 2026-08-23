@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   type Api,
+  type AuthPrompt,
   anthropicMessagesApi,
   BUILT_IN_PROVIDER_IDS,
   type CredentialStore,
@@ -34,17 +35,26 @@ const ProviderErrorCode = {
   MODEL_NOT_FOUND: "PROVIDER_MODEL_NOT_FOUND",
   NOT_FOUND: "PROVIDER_NOT_FOUND",
   OAUTH_NOT_STARTED: "PROVIDER_OAUTH_NOT_STARTED",
+  OAUTH_PROMPT_NOT_FOUND: "PROVIDER_OAUTH_PROMPT_NOT_FOUND",
   OAUTH_NOT_SUPPORTED: "PROVIDER_OAUTH_NOT_SUPPORTED",
 } as const;
 
 const CONNECTION_TEST_TIMEOUT_MS = 15_000;
+const MAX_PROVIDER_ERROR_DETAIL_LENGTH = 300;
 const OAUTH_LOGIN_TIMEOUT_MS = 15 * 60 * 1_000;
 
 interface ProviderOAuthSession {
   readonly controller: AbortController;
   readonly signal: AbortSignal;
+  pendingPrompt: ProviderOAuthPromptWaiter | null;
   state: ProviderOAuthStateVo;
   task: Promise<void>;
+}
+
+interface ProviderOAuthPromptWaiter {
+  readonly answer: (value: string) => void;
+  readonly cancel: () => void;
+  readonly id: string;
 }
 
 export class ProviderServiceError extends Error {
@@ -102,6 +112,74 @@ function readOAuthAuthorizationUrl(value: string): string {
   const url = new URL(value);
   if (url.protocol !== "https:") throw new Error("OAuth authorization URL must use HTTPS");
   return url.href;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizeProviderErrorDetail(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [已隐藏]")
+    .replace(/\b(?:sk|pk)-[A-Za-z0-9._-]{8,}\b/g, "[已隐藏]")
+    .replace(
+      /((?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|authorization|cookie)\s*[:=]\s*)\S+/gi,
+      "$1[已隐藏]",
+    )
+    .trim()
+    .slice(0, MAX_PROVIDER_ERROR_DETAIL_LENGTH);
+}
+
+function readProviderResponseError(
+  message: string,
+): { detail: string | null; status: number } | null {
+  const match = /^(\d{3})\s+([\s\S]+)$/.exec(message.trim());
+  const statusText = match?.[1];
+  const bodyText = match?.[2];
+  if (!statusText || !bodyText) return null;
+
+  const status = Number(statusText);
+  if (!Number.isInteger(status) || status < 400 || status > 599) return null;
+
+  let detail: string | null = null;
+  try {
+    const body = JSON.parse(bodyText) as unknown;
+    if (isRecord(body) && isRecord(body.error) && typeof body.error.message === "string") {
+      detail = sanitizeProviderErrorDetail(body.error.message);
+    }
+  } catch {
+    // 非 JSON 响应不直接暴露，避免把上游返回的未知内容发送到 Web。
+  }
+
+  return { detail: detail || null, status };
+}
+
+function formatConnectionFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  const responseError = readProviderResponseError(message);
+  if (responseError) {
+    const detail = responseError.detail ? `：${responseError.detail}` : "";
+    switch (responseError.status) {
+      case 401:
+        return `凭据无效或当前账号无权访问该模型（HTTP 401）${detail}`;
+      case 402:
+        return `当前账号的会员权益或计费状态不可用（HTTP 402）${detail}`;
+      case 403:
+        return `当前账号没有访问该模型的权限（HTTP 403）${detail}`;
+      case 404:
+        return `模型或 Provider 服务地址不存在（HTTP 404）${detail}`;
+      case 429:
+        return `请求过于频繁或当前额度已用尽（HTTP 429）${detail}`;
+      default:
+        return `Provider 请求失败（HTTP ${responseError.status}）${detail}`;
+    }
+  }
+
+  if (/connection error|fetch failed|network/i.test(message)) {
+    return "无法连接 Provider，请检查网络和服务地址";
+  }
+  return "连接测试失败，请检查凭据、模型 ID 和服务地址";
 }
 
 function readProtocol(value: string): CustomProviderProtocol {
@@ -182,7 +260,9 @@ async function testFirstResponseChunk(
     );
 
     for await (const event of stream) {
-      if (event.type === "error") throw new Error();
+      if (event.type === "error") {
+        throw new Error(event.error.errorMessage ?? "Provider 请求失败");
+      }
       if (event.type === "done") {
         receivedResponse = true;
         return;
@@ -199,11 +279,11 @@ async function testFirstResponseChunk(
       }
     }
     throw new Error();
-  } catch {
+  } catch (error: unknown) {
     if (receivedResponse) return;
     throw new ProviderServiceError(
       ProviderErrorCode.CONNECTION_FAILED,
-      timeoutSignal.aborted ? "连接测试超时" : "连接测试失败，请检查凭据、模型 ID 和服务地址",
+      timeoutSignal.aborted ? "连接测试超时" : formatConnectionFailure(error),
     );
   } finally {
     controller.abort();
@@ -368,6 +448,7 @@ export class ProviderService {
     const current = this.oauthSessions.get(providerId);
     if (
       current?.state.status === ProviderOAuthStatus.STARTING ||
+      current?.state.status === ProviderOAuthStatus.AWAITING_INPUT ||
       current?.state.status === ProviderOAuthStatus.AWAITING_USER
     ) {
       return current.state;
@@ -376,6 +457,7 @@ export class ProviderService {
     const controller = new AbortController();
     const session: ProviderOAuthSession = {
       controller,
+      pendingPrompt: null,
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(OAUTH_LOGIN_TIMEOUT_MS)]),
       state: {
         message: "正在准备 OAuth 登录…",
@@ -395,6 +477,27 @@ export class ProviderService {
       throw new ProviderServiceError(ProviderErrorCode.OAUTH_NOT_STARTED, "OAuth 登录尚未开始");
     }
     return session.state;
+  }
+
+  public answerOAuthPrompt(providerId: string, promptId: string, value: string): void {
+    const session = this.oauthSessions.get(providerId);
+    if (!session) {
+      throw new ProviderServiceError(ProviderErrorCode.OAUTH_NOT_STARTED, "OAuth 登录尚未开始");
+    }
+    const pendingPrompt = session.pendingPrompt;
+    if (!pendingPrompt || pendingPrompt.id !== promptId) {
+      throw new ProviderServiceError(
+        ProviderErrorCode.OAUTH_PROMPT_NOT_FOUND,
+        "OAuth 输入请求已失效，请按当前界面重试",
+      );
+    }
+
+    session.state = {
+      message: "正在继续 OAuth 登录…",
+      providerId,
+      status: ProviderOAuthStatus.STARTING,
+    };
+    pendingPrompt.answer(value);
   }
 
   public async cancelOAuth(providerId: string): Promise<void> {
@@ -486,22 +589,15 @@ export class ProviderService {
           session.state =
             session.state.status === ProviderOAuthStatus.AWAITING_USER
               ? { ...session.state, message: "正在完成 OAuth 登录…" }
-              : {
-                  message: "正在准备 OAuth 登录…",
-                  providerId,
-                  status: ProviderOAuthStatus.STARTING,
-                };
+              : session.state.status === ProviderOAuthStatus.AWAITING_INPUT
+                ? session.state
+                : {
+                    message: "正在准备 OAuth 登录…",
+                    providerId,
+                    status: ProviderOAuthStatus.STARTING,
+                  };
         },
-        prompt: (prompt) =>
-          new Promise<string>((_resolve, reject) => {
-            const cancel = () => reject(new Error("OAuth login cancelled"));
-            if (session.signal.aborted || prompt.signal?.aborted) {
-              cancel();
-              return;
-            }
-            session.signal.addEventListener("abort", cancel, { once: true });
-            prompt.signal?.addEventListener("abort", cancel, { once: true });
-          }),
+        prompt: (prompt) => this.requestOAuthPrompt(providerId, session, prompt),
       });
       session.state = {
         message: "OAuth 登录成功",
@@ -521,6 +617,76 @@ export class ProviderService {
     } finally {
       session.controller.abort();
     }
+  }
+
+  private requestOAuthPrompt(
+    providerId: string,
+    session: ProviderOAuthSession,
+    prompt: AuthPrompt,
+  ): Promise<string> {
+    if (session.pendingPrompt) {
+      throw new ProviderServiceError(
+        ProviderErrorCode.INVALID_CONFIG,
+        "OAuth 登录同时请求了多个输入",
+      );
+    }
+
+    const promptId = randomUUID();
+    const previousState = session.state;
+    const authorizationUrl =
+      previousState.status === ProviderOAuthStatus.AWAITING_USER ||
+      previousState.status === ProviderOAuthStatus.AWAITING_INPUT
+        ? previousState.authorizationUrl
+        : null;
+    const userCode =
+      previousState.status === ProviderOAuthStatus.AWAITING_USER ||
+      previousState.status === ProviderOAuthStatus.AWAITING_INPUT
+        ? previousState.userCode
+        : null;
+
+    session.state = {
+      authorizationUrl,
+      message: prompt.message,
+      options:
+        prompt.type === "select"
+          ? prompt.options.map((option) => ({
+              description: option.description ?? null,
+              id: option.id,
+              label: option.label,
+            }))
+          : [],
+      placeholder: prompt.type === "select" ? null : (prompt.placeholder ?? null),
+      promptId,
+      promptType: prompt.type,
+      providerId,
+      status: ProviderOAuthStatus.AWAITING_INPUT,
+      userCode,
+    };
+
+    return new Promise<string>((resolve, reject) => {
+      let isSettled = false;
+      const cleanup = () => {
+        session.signal.removeEventListener("abort", cancel);
+        prompt.signal?.removeEventListener("abort", cancel);
+      };
+      const settle = (callback: () => void) => {
+        if (isSettled) return;
+        isSettled = true;
+        cleanup();
+        if (session.pendingPrompt?.id === promptId) session.pendingPrompt = null;
+        callback();
+      };
+      const answer = (value: string) => settle(() => resolve(value));
+      const cancel = () => settle(() => reject(new Error("OAuth login cancelled")));
+
+      session.pendingPrompt = { answer, cancel, id: promptId };
+      if (session.signal.aborted || prompt.signal?.aborted) {
+        cancel();
+        return;
+      }
+      session.signal.addEventListener("abort", cancel, { once: true });
+      prompt.signal?.addEventListener("abort", cancel, { once: true });
+    });
   }
 
   private throwNotFound(): never {

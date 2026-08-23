@@ -21,10 +21,18 @@ const ProviderSchema = Type.Object({
 const ProviderListSchema = Type.Array(ProviderSchema);
 
 export const ProviderOAuthStatus = {
+  AWAITING_INPUT: "awaiting_input",
   AWAITING_USER: "awaiting_user",
   COMPLETED: "completed",
   FAILED: "failed",
   STARTING: "starting",
+} as const;
+
+export const ProviderOAuthPromptType = {
+  MANUAL_CODE: "manual_code",
+  SECRET: "secret",
+  SELECT: "select",
+  TEXT: "text",
 } as const;
 
 const ProviderOAuthStateSchema = Type.Union([
@@ -38,6 +46,28 @@ const ProviderOAuthStateSchema = Type.Union([
     message: Type.String(),
     providerId: Type.String(),
     status: Type.Literal(ProviderOAuthStatus.AWAITING_USER),
+    userCode: Type.Union([Type.String(), Type.Null()]),
+  }),
+  Type.Object({
+    authorizationUrl: Type.Union([Type.String(), Type.Null()]),
+    message: Type.String(),
+    options: Type.Array(
+      Type.Object({
+        description: Type.Union([Type.String(), Type.Null()]),
+        id: Type.String(),
+        label: Type.String(),
+      }),
+    ),
+    placeholder: Type.Union([Type.String(), Type.Null()]),
+    promptId: Type.String(),
+    promptType: Type.Union([
+      Type.Literal(ProviderOAuthPromptType.TEXT),
+      Type.Literal(ProviderOAuthPromptType.SECRET),
+      Type.Literal(ProviderOAuthPromptType.SELECT),
+      Type.Literal(ProviderOAuthPromptType.MANUAL_CODE),
+    ]),
+    providerId: Type.String(),
+    status: Type.Literal(ProviderOAuthStatus.AWAITING_INPUT),
     userCode: Type.Union([Type.String(), Type.Null()]),
   }),
   Type.Object({
@@ -179,6 +209,17 @@ export async function getProviderOAuthState(providerId: string): Promise<Provide
   return readProviderOAuthState(
     await request(`/api/providers/${encodeURIComponent(providerId)}/oauth`),
   );
+}
+
+export async function answerProviderOAuthPrompt(
+  providerId: string,
+  promptId: string,
+  value: string,
+): Promise<void> {
+  await request(`/api/providers/${encodeURIComponent(providerId)}/oauth/prompt`, {
+    body: JSON.stringify({ promptId, value }),
+    method: "POST",
+  });
 }
 
 export async function cancelProviderOAuth(providerId: string): Promise<void> {
