@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { realpath, stat } from "node:fs/promises";
 import {
   type AgentManager,
   buildSystemPrompt,
@@ -7,7 +6,7 @@ import {
   type RunId,
   type SessionId,
 } from "@pi-harness/agent-runtime";
-import type { SessionRecord, SessionRepository } from "../storage/database.js";
+import type { SessionRecord, SessionRepository, WorkspaceRepository } from "../storage/database.js";
 import type { SessionEventSnapshot, SessionEventStore } from "../storage/session-event-store.js";
 import type { ProviderService } from "./provider-service.js";
 
@@ -38,7 +37,7 @@ export interface CreateSessionInput {
   modelId: string;
   providerId: string;
   title?: string;
-  workspaceRoot: string;
+  workspaceId: string;
 }
 
 export interface RunAccepted {
@@ -71,20 +70,6 @@ function normalizeTitle(value: string | undefined): string {
   return title ? title : DEFAULT_SESSION_TITLE;
 }
 
-async function resolveWorkspaceRoot(input: string): Promise<string> {
-  try {
-    const root = await realpath(input);
-    const metadata = await stat(root);
-    if (!metadata.isDirectory()) throw new Error("Workspace is not a directory");
-    return root;
-  } catch {
-    throw new SessionServiceError(
-      SessionErrorCode.WORKSPACE_INVALID,
-      "Workspace 不存在或不是可访问的目录",
-    );
-  }
-}
-
 export class SessionService {
   private readonly activeSessionIds = new Set<SessionId>();
   private readonly activeProviderBySession = new Map<SessionId, string>();
@@ -92,6 +77,7 @@ export class SessionService {
 
   public constructor(
     private readonly sessions: SessionRepository,
+    private readonly workspaces: WorkspaceRepository,
     private readonly eventStore: SessionEventStore,
     private readonly providers: ProviderService,
     private readonly agents: AgentManager,
@@ -99,7 +85,10 @@ export class SessionService {
   ) {}
 
   public async create(input: CreateSessionInput): Promise<SessionRecord> {
-    const workspaceRoot = await resolveWorkspaceRoot(input.workspaceRoot);
+    const workspace = this.workspaces.find(input.workspaceId);
+    if (!workspace || workspace.removedAt !== null) {
+      throw new SessionServiceError(SessionErrorCode.WORKSPACE_INVALID, "Workspace 不存在");
+    }
     await this.providers.resolveRunModel(input.providerId, input.modelId);
     const createdAt = Date.now();
     return this.sessions.create({
@@ -108,7 +97,7 @@ export class SessionService {
       modelId: input.modelId,
       providerId: input.providerId,
       title: normalizeTitle(input.title),
-      workspaceRoot,
+      workspaceId: input.workspaceId,
     });
   }
 

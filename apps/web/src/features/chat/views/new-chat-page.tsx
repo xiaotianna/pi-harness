@@ -6,38 +6,36 @@ import { SparklesText } from "@/components/ui/sparkles-text";
 import { ChatComposer } from "@/features/chat/components/chat-composer";
 import { authSessionQueryOptions } from "../../auth";
 import { createSession, type Session, startSessionRun } from "../api/session-api";
-import { sessionListQueryOptions, sessionQueryKeys } from "../api/session-queries";
-import { CHAT_WORKSPACES } from "../data/chat";
-import { sessionsToWorkspaces } from "../utils/session-messages";
+import { sessionQueryKeys } from "../api/session-queries";
+import { workspaceListQueryOptions } from "../api/workspace-queries";
+import { useAddWorkspace } from "../hooks/use-add-workspace";
 
 export function NewChatPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const sessionQuery = useQuery(authSessionQueryOptions());
-  const sessionsQuery = useQuery(sessionListQueryOptions());
+  const workspacesQuery = useQuery(workspaceListQueryOptions());
+  const addWorkspaceMutation = useAddWorkspace();
   const username = sessionQuery.data?.authenticated ? sessionQuery.data.user.username : "";
-  const workspaces =
-    sessionsQuery.data && sessionsQuery.data.length > 0
-      ? sessionsToWorkspaces(sessionsQuery.data)
-      : CHAT_WORKSPACES;
+  const workspaces = workspacesQuery.data ?? [];
   const createMutation = useMutation({
     mutationFn: async ({
       modelId,
       prompt,
       providerId,
-      workspaceRoot,
+      workspaceId,
     }: {
       modelId: string;
       prompt: string;
       providerId: string;
-      workspaceRoot?: string;
+      workspaceId?: string;
     }) => {
-      if (!workspaceRoot) throw new Error("请选择工作区");
+      if (!workspaceId) throw new Error("请选择工作区");
       const session = await createSession({
         modelId,
         providerId,
         title: prompt.slice(0, 60),
-        workspaceRoot,
+        workspaceId,
       });
       queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (current) => [
         session,
@@ -65,9 +63,11 @@ export function NewChatPage() {
           </div>
           <ChatComposer
             className="w-full"
+            isAddingWorkspace={addWorkspaceMutation.isPending}
             presentation="hero"
             status={createMutation.isPending ? "submitted" : "ready"}
             workspaces={workspaces}
+            onAddWorkspace={() => addWorkspaceMutation.mutateAsync()}
             onSubmitMessage={(input) => createMutation.mutateAsync(input).then(() => undefined)}
           />
         </div>

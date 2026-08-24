@@ -1,13 +1,15 @@
 "use client";
 
 import { Sidebar } from "@agile-avocation/ui-pro";
-import { Dropdown, Kbd, Tooltip } from "@heroui/react";
+import { Dropdown, Kbd, Separator, Tooltip } from "@heroui/react";
 import { Archive, Ellipsis, Folder, FolderOpen, Pencil, Plus, Trash2 } from "lucide-react";
-import { memo } from "react";
+import type { DragEvent, KeyboardEvent } from "react";
+import { memo, useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { UserMenu } from "../../auth";
 import type { ChatNavItem, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
 import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
+import { useChatSidebarStore } from "../state/chat-sidebar-store";
 
 export interface ChatSidebarProps {
   threads: readonly ChatThread[];
@@ -15,11 +17,15 @@ export interface ChatSidebarProps {
   pathname: string;
   basePath: string;
   disableNavigation?: boolean;
+  isAddingWorkspace?: boolean;
+  onAddWorkspace?: (() => void) | undefined;
   onArchive?: ((thread: ChatThread) => void) | undefined;
   onAction?: ((id: ChatNavItemId) => void) | undefined;
   onNewThread: () => void;
   onRename?: ((thread: ChatThread) => void) | undefined;
   onRemoveWorkspace?: ((workspace: ChatWorkspace) => void) | undefined;
+  onReorderWorkspaces?: ((workspaceIds: readonly string[]) => void) | undefined;
+  onRevealWorkspace?: ((workspace: ChatWorkspace) => void) | undefined;
   onRenameWorkspace?: ((workspace: ChatWorkspace) => void) | undefined;
   onSettings: () => void;
 }
@@ -27,11 +33,15 @@ export interface ChatSidebarProps {
 export const ChatSidebar = memo(function ChatSidebar({
   basePath,
   disableNavigation = false,
+  isAddingWorkspace = false,
+  onAddWorkspace,
   onArchive,
   onAction,
   onNewThread,
   onRename,
   onRemoveWorkspace,
+  onReorderWorkspaces,
+  onRevealWorkspace,
   onRenameWorkspace,
   onSettings,
   pathname,
@@ -41,11 +51,15 @@ export const ChatSidebar = memo(function ChatSidebar({
   const contentProps = {
     basePath,
     disableNavigation,
+    isAddingWorkspace,
+    onAddWorkspace,
     onArchive,
     onAction,
     onNewThread,
     onRename,
     onRemoveWorkspace,
+    onReorderWorkspaces,
+    onRevealWorkspace,
     onRenameWorkspace,
     onSettings,
     pathname,
@@ -74,11 +88,15 @@ function SidebarContents({
   basePath,
   disableNavigation,
   idPrefix = "",
+  isAddingWorkspace = false,
+  onAddWorkspace,
   onArchive,
   onAction,
   onNewThread,
   onRename,
   onRemoveWorkspace,
+  onReorderWorkspaces,
+  onRevealWorkspace,
   onRenameWorkspace,
   onSettings,
   pathname,
@@ -86,6 +104,118 @@ function SidebarContents({
   workspaces,
 }: SidebarContentsProps) {
   const activePage = resolveChatActivePage(pathname, basePath, threads);
+  const collapsedWorkspaceIds = useChatSidebarStore((state) => state.collapsedWorkspaceIds);
+  const setCollapsedWorkspaceIds = useChatSidebarStore((state) => state.setCollapsedWorkspaceIds);
+  const [draggedWorkspaceId, setDraggedWorkspaceId] = useState<string | null>(null);
+  const [workspaceDropTarget, setWorkspaceDropTarget] = useState<{
+    id: string;
+    position: "after" | "before";
+  } | null>(null);
+  const canReorderWorkspaces = workspaces.length > 1 && Boolean(onReorderWorkspaces);
+
+  const clearWorkspaceDrag = () => {
+    setDraggedWorkspaceId(null);
+    setWorkspaceDropTarget(null);
+  };
+
+  const handleWorkspaceDragStart = (event: DragEvent<HTMLDivElement>) => {
+    const item =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-workspace-id]")
+        : null;
+    const workspaceId = item?.dataset.workspaceId;
+    if (!canReorderWorkspaces || !workspaceId) {
+      event.preventDefault();
+      return;
+    }
+
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", workspaceId);
+    const preview = item
+      .querySelector<HTMLElement>("[data-slot='sidebar-menu-item-content']")
+      ?.cloneNode(true);
+    if (preview instanceof HTMLElement) {
+      preview.querySelector("[data-slot='sidebar-menu-trigger']")?.remove();
+      preview.querySelector("[data-slot='sidebar-menu-actions']")?.remove();
+      preview.classList.add("sidebar__workspace-drag-preview");
+      preview.style.width = `${Math.min(item.offsetWidth, 320)}px`;
+      document.body.append(preview);
+      event.dataTransfer.setDragImage(preview, 20, preview.offsetHeight / 2);
+      requestAnimationFrame(() => preview.remove());
+    }
+    setDraggedWorkspaceId(workspaceId);
+  };
+
+  const handleWorkspaceDragOver = (event: DragEvent<HTMLDivElement>) => {
+    const item =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-workspace-id]")
+        : null;
+    const workspaceId = item?.dataset.workspaceId;
+    if (!item || !workspaceId || !draggedWorkspaceId || workspaceId === draggedWorkspaceId) return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const position = event.clientY < item.getBoundingClientRect().top + item.offsetHeight / 2;
+    setWorkspaceDropTarget({ id: workspaceId, position: position ? "before" : "after" });
+  };
+
+  const handleWorkspaceDrop = (event: DragEvent<HTMLDivElement>) => {
+    const item =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-workspace-id]")
+        : null;
+    const targetId = item?.dataset.workspaceId;
+    if (!item || !targetId || !draggedWorkspaceId || targetId === draggedWorkspaceId) {
+      clearWorkspaceDrag();
+      return;
+    }
+
+    event.preventDefault();
+    const reordered = workspaces.filter((workspace) => workspace.id !== draggedWorkspaceId);
+    const targetIndex = reordered.findIndex((workspace) => workspace.id === targetId);
+    if (targetIndex < 0) {
+      clearWorkspaceDrag();
+      return;
+    }
+    const draggedWorkspace = workspaces.find((workspace) => workspace.id === draggedWorkspaceId);
+    if (!draggedWorkspace) {
+      clearWorkspaceDrag();
+      return;
+    }
+    const isAfter = event.clientY >= item.getBoundingClientRect().top + item.offsetHeight / 2;
+    reordered.splice(isAfter ? targetIndex + 1 : targetIndex, 0, draggedWorkspace);
+    if (!reordered.every((workspace, index) => workspace.id === workspaces[index]?.id)) {
+      onReorderWorkspaces?.(reordered.map((workspace) => workspace.id));
+    }
+    clearWorkspaceDrag();
+  };
+
+  const handleWorkspaceKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    const item =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-workspace-id]")
+        : null;
+    const workspaceId = item?.dataset.workspaceId;
+    const currentIndex = workspaces.findIndex((workspace) => workspace.id === workspaceId);
+    const targetIndex = currentIndex + (event.key === "ArrowUp" ? -1 : 1);
+    if (
+      !onReorderWorkspaces ||
+      currentIndex < 0 ||
+      targetIndex < 0 ||
+      targetIndex >= workspaces.length
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    const reordered = [...workspaces];
+    const [workspace] = reordered.splice(currentIndex, 1);
+    if (!workspace) return;
+    reordered.splice(targetIndex, 0, workspace);
+    onReorderWorkspaces(reordered.map((item) => item.id));
+  };
 
   return (
     <>
@@ -106,22 +236,41 @@ function SidebarContents({
           </Sidebar.Menu>
         </Sidebar.Group>
         <Sidebar.Separator />
-        <Sidebar.Group>
+        <Sidebar.Group
+          onDragEnd={clearWorkspaceDrag}
+          onDragOver={handleWorkspaceDragOver}
+          onDragStart={handleWorkspaceDragStart}
+          onDrop={handleWorkspaceDrop}
+        >
           <Sidebar.GroupLabel className="flex items-center justify-between text-sm font-normal">
             <span>工作区</span>
             <Tooltip delay={0}>
-              <Sidebar.MenuAction aria-label="新建工作区" className="-my-1">
+              <Sidebar.MenuAction
+                aria-label="添加工作区"
+                className="-my-1"
+                isDisabled={isAddingWorkspace || !onAddWorkspace}
+                {...(onAddWorkspace ? { onPress: onAddWorkspace } : {})}
+              >
                 <Plus className="!size-3.5 text-muted" />
               </Sidebar.MenuAction>
-              <Tooltip.Content placement="right">新建工作区</Tooltip.Content>
+              <Tooltip.Content placement="right">添加工作区</Tooltip.Content>
             </Tooltip>
           </Sidebar.GroupLabel>
           <Sidebar.Menu
             aria-label="工作区"
-            defaultExpandedKeys={workspaces.map(
-              (workspace) => `${idPrefix}workspace-${workspace.id}`,
+            expandedKeys={workspaces.flatMap((workspace) =>
+              collapsedWorkspaceIds.includes(workspace.id)
+                ? []
+                : [`${idPrefix}workspace-${workspace.id}`],
             )}
             showGuideLines={false}
+            onExpandedChange={(expandedKeys) =>
+              setCollapsedWorkspaceIds(
+                workspaces.flatMap((workspace) =>
+                  expandedKeys.has(`${idPrefix}workspace-${workspace.id}`) ? [] : [workspace.id],
+                ),
+              )
+            }
           >
             {workspaces.map((workspace) => (
               <ChatSidebarWorkspaceItem
@@ -132,11 +281,18 @@ function SidebarContents({
                 onArchive={onArchive}
                 onNewThread={onNewThread}
                 onRemove={onRemoveWorkspace}
+                onReveal={onRevealWorkspace}
                 onRename={onRename}
                 onRenameWorkspace={onRenameWorkspace}
                 pathname={pathname}
+                dropPosition={
+                  workspaceDropTarget?.id === workspace.id ? workspaceDropTarget.position : null
+                }
+                isDraggable={canReorderWorkspaces}
+                isDragging={draggedWorkspaceId === workspace.id}
                 threads={threads.filter((thread) => thread.workspaceId === workspace.id)}
                 workspace={workspace}
+                onKeyDown={handleWorkspaceKeyDown}
               />
             ))}
           </Sidebar.Menu>
@@ -200,33 +356,65 @@ interface ChatSidebarWorkspaceItemProps {
   basePath: string;
   disableNavigation: boolean;
   idPrefix: string;
+  isDraggable: boolean;
+  isDragging: boolean;
   onArchive?: ((thread: ChatThread) => void) | undefined;
   onNewThread: () => void;
   onRemove?: ((workspace: ChatWorkspace) => void) | undefined;
+  onReveal?: ((workspace: ChatWorkspace) => void) | undefined;
   onRename?: ((thread: ChatThread) => void) | undefined;
   onRenameWorkspace?: ((workspace: ChatWorkspace) => void) | undefined;
   pathname: string;
+  dropPosition: "after" | "before" | null;
   threads: readonly ChatThread[];
   workspace: ChatWorkspace;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
 }
 
 function ChatSidebarWorkspaceItem({
   basePath,
   disableNavigation,
+  dropPosition,
   idPrefix,
+  isDraggable,
+  isDragging,
   onArchive,
   onNewThread,
   onRemove,
+  onReveal,
   onRename,
   onRenameWorkspace,
+  onKeyDown,
   pathname,
   threads,
   workspace,
 }: ChatSidebarWorkspaceItemProps) {
+  const revealLabel =
+    typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
+      ? "在 Finder 中显示"
+      : typeof navigator !== "undefined" && /Win/.test(navigator.platform)
+        ? "在文件资源管理器中显示"
+        : "在文件管理器中显示";
+
   return (
     <Sidebar.MenuItem
+      data-dragging={isDragging || undefined}
+      data-drop-position={dropPosition ?? undefined}
       data-workspace-item
+      data-workspace-id={workspace.id}
       id={`${idPrefix}workspace-${workspace.id}`}
+      render={(props) => (
+        // biome-ignore lint/a11y/noStaticElementInteractions: React Aria supplies the TreeItem row semantics through these props.
+        <div
+          {...props}
+          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+          draggable={isDraggable}
+          onKeyDown={(event) => {
+            onKeyDown(event);
+            if (!event.defaultPrevented) props.onKeyDown?.(event);
+          }}
+        />
+      )}
       textValue={workspace.name}
     >
       <Sidebar.MenuTrigger className="order-first">
@@ -236,9 +424,9 @@ function ChatSidebarWorkspaceItem({
         <Folder className="sidebar__workspace-folder-closed" />
         <FolderOpen className="sidebar__workspace-folder-open" />
       </Sidebar.MenuIcon>
-      <Sidebar.MenuLabel>{workspace.name}</Sidebar.MenuLabel>
+      <Sidebar.MenuLabel className="pe-16">{workspace.name}</Sidebar.MenuLabel>
       <Sidebar.MenuActions className="absolute end-2 w-16 justify-end">
-        {onRenameWorkspace || onRemove ? (
+        {onRenameWorkspace || onReveal || onRemove ? (
           <Dropdown>
             <Tooltip delay={0}>
               <Dropdown.Trigger
@@ -253,20 +441,30 @@ function ChatSidebarWorkspaceItem({
               <Dropdown.Menu
                 aria-label={`${workspace.name}操作`}
                 onAction={(key) => {
-                  if (key === "rename") onRenameWorkspace?.(workspace);
+                  if (key === "edit") onRenameWorkspace?.(workspace);
+                  if (key === "reveal") onReveal?.(workspace);
                   if (key === "remove") onRemove?.(workspace);
                 }}
               >
                 {onRenameWorkspace ? (
-                  <Dropdown.Item id="rename" textValue="重命名工作区">
+                  <Dropdown.Item id="edit" textValue="编辑">
                     <Pencil className="size-4 text-muted" />
-                    重命名工作区
+                    编辑
                   </Dropdown.Item>
                 ) : null}
+                {onReveal ? (
+                  <Dropdown.Item id="reveal" textValue={revealLabel}>
+                    <FolderOpen className="size-4 text-muted" />
+                    {revealLabel}
+                  </Dropdown.Item>
+                ) : null}
+                {onRemove && (onRenameWorkspace || onReveal) ? (
+                  <Separator className="my-1" />
+                ) : null}
                 {onRemove ? (
-                  <Dropdown.Item className="text-danger" id="remove" textValue="移除工作区">
+                  <Dropdown.Item className="text-danger" id="remove" textValue="移除项目">
                     <Trash2 className="size-4 text-danger" />
-                    移除工作区
+                    移除项目
                   </Dropdown.Item>
                 ) : null}
               </Dropdown.Menu>
@@ -281,18 +479,28 @@ function ChatSidebarWorkspaceItem({
         </Tooltip>
       </Sidebar.MenuActions>
       <Sidebar.Submenu>
-        {threads.map((thread) => (
-          <ChatSidebarThreadItem
-            key={thread.id}
-            basePath={basePath}
-            disableNavigation={disableNavigation}
-            idPrefix={idPrefix}
-            onArchive={onArchive}
-            onRename={onRename}
-            pathname={pathname}
-            thread={thread}
-          />
-        ))}
+        {threads.length === 0 ? (
+          <Sidebar.MenuItem
+            id={`${idPrefix}workspace-${workspace.id}-empty`}
+            isDisabled
+            textValue="暂无对话"
+          >
+            <Sidebar.MenuLabel>暂无对话</Sidebar.MenuLabel>
+          </Sidebar.MenuItem>
+        ) : (
+          threads.map((thread) => (
+            <ChatSidebarThreadItem
+              key={thread.id}
+              basePath={basePath}
+              disableNavigation={disableNavigation}
+              idPrefix={idPrefix}
+              onArchive={onArchive}
+              onRename={onRename}
+              pathname={pathname}
+              thread={thread}
+            />
+          ))
+        )}
       </Sidebar.Submenu>
     </Sidebar.MenuItem>
   );

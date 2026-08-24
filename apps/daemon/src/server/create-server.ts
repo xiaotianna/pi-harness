@@ -6,9 +6,11 @@ import { registerAuthRoutes } from "../routes/auth-routes.js";
 import { registerHealthRoutes } from "../routes/health-routes.js";
 import { registerProviderRoutes } from "../routes/provider-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
+import { registerWorkspaceRoutes } from "../routes/workspace-routes.js";
 import { ProviderService } from "../services/provider-service.js";
 import { SessionEventService } from "../services/session-event-service.js";
 import { SessionService } from "../services/session-service.js";
+import { WorkspaceService } from "../services/workspace-service.js";
 import { SessionEventBroker } from "../sse/session-event-broker.js";
 import { openHarnessDatabase } from "../storage/database.js";
 import { FileCredentialStore } from "../storage/provider-credential-store.js";
@@ -29,6 +31,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   const broker = new SessionEventBroker();
   const sessionEvents = new SessionEventService(database.sessions, eventStore, broker);
   const agents = new AgentManager(sessionEvents.handle);
+  const workspaces = new WorkspaceService(database.workspaces);
   let sessions: SessionService | undefined;
   const providers = await ProviderService.create(
     database.providerSettings,
@@ -38,6 +41,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   );
   sessions = new SessionService(
     database.sessions,
+    database.workspaces,
     eventStore,
     providers,
     agents,
@@ -76,6 +80,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   });
 
   server.addHook("onClose", async () => {
+    workspaces.close();
     await sessions.close();
     await providers.close();
     broker.clear();
@@ -86,6 +91,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   await registerHealthRoutes(server);
   await registerProviderRoutes(server, config, providers);
   await registerSessionRoutes(server, config, sessions, broker);
+  await registerWorkspaceRoutes(server, config, workspaces);
 
   return server;
 }

@@ -91,4 +91,22 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         ON sessions(archived_at, updated_at DESC);
     `,
   },
+  {
+    version: "005-workspace-metadata.sql",
+    sql: `
+      ALTER TABLE workspaces ADD COLUMN display_name TEXT;
+      ALTER TABLE workspaces ADD COLUMN removed_at INTEGER;
+      CREATE INDEX workspaces_removed_updated_at_idx
+        ON workspaces(removed_at, updated_at DESC);
+    `,
+  },
+  {
+    version: "006-workspace-order.sql",
+    sql: `
+      ALTER TABLE workspaces ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+      DROP INDEX workspaces_removed_updated_at_idx;
+      CREATE INDEX workspaces_removed_sort_order_idx
+        ON workspaces(removed_at, sort_order, updated_at DESC);
+    `,
+  },
 ];

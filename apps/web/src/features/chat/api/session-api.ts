@@ -1,6 +1,7 @@
 import { type HarnessEvent, HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
+import { apiRequest } from "../../../api/request";
 
 const SessionSchema = Type.Object({
   createdAt: Type.Integer({ minimum: 0 }),
@@ -42,7 +43,7 @@ export interface CreateSessionInput {
   modelId: string;
   providerId: string;
   title?: string;
-  workspaceRoot: string;
+  workspaceId: string;
 }
 
 export interface UpdateSessionInput {
@@ -51,45 +52,6 @@ export interface UpdateSessionInput {
 }
 
 const EVENT_TYPES = new Set<string>(Object.values(HarnessEventType));
-
-export class SessionApiError extends Error {
-  public constructor(
-    public readonly status: number,
-    public readonly code: string | null,
-    message: string,
-  ) {
-    super(message);
-    this.name = "SessionApiError";
-  }
-}
-
-async function request(url: string, init?: RequestInit): Promise<Response> {
-  const response = await fetch(url, {
-    ...init,
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json",
-      ...(init?.body === undefined ? {} : { "Content-Type": "application/json" }),
-      ...(init?.method === undefined || init.method === "GET"
-        ? {}
-        : { "X-PI-Harness-Request": "1" }),
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      code?: unknown;
-      message?: unknown;
-    } | null;
-    throw new SessionApiError(
-      response.status,
-      typeof body?.code === "string" ? body.code : null,
-      typeof body?.message === "string" ? body.message : `请求失败，状态码：${response.status}`,
-    );
-  }
-  return response;
-}
 
 function parseEvent(value: unknown): HarnessEvent {
   if (!Value.Check(HarnessEventSchema, value) || !EVENT_TYPES.has(value.type)) {
@@ -106,7 +68,7 @@ async function readSession(response: Response): Promise<Session> {
 
 export async function listSessions(signal?: AbortSignal): Promise<readonly Session[]> {
   const body = (await (
-    await request("/api/sessions", signal ? { signal } : undefined)
+    await apiRequest("/api/sessions", signal ? { signal } : undefined)
   ).json()) as unknown;
   if (!Value.Check(SessionListSchema, body)) throw new Error("daemon 返回了无效的 Session 列表");
   return body;
@@ -114,7 +76,7 @@ export async function listSessions(signal?: AbortSignal): Promise<readonly Sessi
 
 export async function createSession(input: CreateSessionInput): Promise<Session> {
   return readSession(
-    await request("/api/sessions", { body: JSON.stringify(input), method: "POST" }),
+    await apiRequest("/api/sessions", { body: JSON.stringify(input), method: "POST" }),
   );
 }
 
@@ -123,7 +85,10 @@ export async function getSessionSnapshot(
   signal?: AbortSignal,
 ): Promise<SessionSnapshot> {
   const body = (await (
-    await request(`/api/sessions/${encodeURIComponent(sessionId)}`, signal ? { signal } : undefined)
+    await apiRequest(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      signal ? { signal } : undefined,
+    )
   ).json()) as unknown;
   if (!Value.Check(SessionSnapshotSchema, body)) {
     throw new Error("daemon 返回了无效的 Session 快照");
@@ -136,7 +101,7 @@ export async function updateSession(
   input: UpdateSessionInput,
 ): Promise<Session> {
   return readSession(
-    await request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    await apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}`, {
       body: JSON.stringify(input),
       method: "PATCH",
     }),
@@ -149,7 +114,7 @@ export async function updateSessionModel(
   modelId: string,
 ): Promise<Session> {
   return readSession(
-    await request(`/api/sessions/${encodeURIComponent(sessionId)}/model`, {
+    await apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}/model`, {
       body: JSON.stringify({ modelId, providerId }),
       method: "PATCH",
     }),
@@ -158,7 +123,7 @@ export async function updateSessionModel(
 
 export async function startSessionRun(sessionId: string, prompt: string): Promise<RunAccepted> {
   const body = (await (
-    await request(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
+    await apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
       body: JSON.stringify({ prompt }),
       method: "POST",
     })
@@ -168,7 +133,7 @@ export async function startSessionRun(sessionId: string, prompt: string): Promis
 }
 
 export async function abortSessionRun(sessionId: string, runId: string): Promise<void> {
-  await request(
+  await apiRequest(
     `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}`,
     { method: "DELETE" },
   );

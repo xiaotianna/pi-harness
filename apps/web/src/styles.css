@@ -4,6 +4,10 @@
 @source "../node_modules/@agile-avocation/ui-pro/dist/**/*.{js,mjs}";
 @source "./**/*.{ts,tsx}";
 
+:root {
+  --tooltip-close-delay: 0ms;
+}
+
 *,
 ::before,
 ::after,
@@ -107,6 +111,80 @@
 
 .sidebar__menu-item[data-workspace-item] [data-slot="sidebar-menu-item-content"] {
   gap: calc(var(--spacing, 0.25rem) * 2);
+}
+
+.sidebar__menu-item[data-workspace-item][draggable="true"]
+  > [data-slot="sidebar-menu-item-content"] {
+  cursor: grab;
+}
+
+.sidebar__menu-item[data-workspace-item][data-dragging="true"]
+  > [data-slot="sidebar-menu-item-content"] {
+  opacity: 0.5;
+}
+
+.sidebar__menu-item[data-workspace-item][data-drop-position]::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset-inline: calc(var(--spacing, 0.25rem) * 2);
+  height: 2px;
+  border-radius: 9999px;
+  background: var(--accent);
+}
+
+.sidebar__menu-item[data-workspace-item][data-drop-position]::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset-inline-start: calc(var(--spacing, 0.25rem) * 1);
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--accent);
+  border-radius: 9999px;
+  background: var(--background);
+}
+
+.sidebar__menu-item[data-workspace-item][data-drop-position="before"]::after {
+  top: -1px;
+}
+
+.sidebar__menu-item[data-workspace-item][data-drop-position="before"]::before {
+  top: -4px;
+}
+
+.sidebar__menu-item[data-workspace-item][data-drop-position="after"]::after {
+  bottom: -1px;
+}
+
+.sidebar__menu-item[data-workspace-item][data-drop-position="after"]::before {
+  bottom: -4px;
+}
+
+.sidebar__workspace-drag-preview {
+  position: fixed;
+  inset-block-start: -1000px;
+  inset-inline-start: -1000px;
+  min-height: calc(var(--spacing, 0.25rem) * 9);
+  padding-inline: calc(var(--spacing, 0.25rem) * 3);
+  border-radius: calc(var(--radius) * 2);
+  background: var(--overlay);
+  color: var(--overlay-foreground);
+  box-shadow: var(--overlay-shadow);
+  opacity: 0.96;
+  pointer-events: none;
+}
+
+.sidebar__workspace-drag-preview [data-slot="sidebar-menu-icon"] {
+  color: var(--muted);
+}
+
+.sidebar__workspace-drag-preview [data-slot="sidebar-menu-label"] {
+  min-width: 0;
+  padding-inline-end: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .sidebar__workspace-folder-open {

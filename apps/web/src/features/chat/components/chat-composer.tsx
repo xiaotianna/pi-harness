@@ -26,7 +26,7 @@ import {
   providerQueryOptions,
   useModelSettingsStore,
 } from "../../models";
-import { CHAT_WORKSPACES, type ChatWorkspace } from "../data/chat";
+import type { ChatWorkspace } from "../data/chat";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
 import { ChatAttachmentList } from "./chat-attachment-list";
 import {
@@ -63,7 +63,9 @@ function revokeAttachmentUrls(items: readonly PendingAttachment[]) {
 export interface ChatComposerProps {
   className?: string;
   conversationId?: string;
+  isAddingWorkspace?: boolean;
   modelId?: string;
+  onAddWorkspace?: () => Promise<ChatWorkspace | null>;
   onModelChange?: (selection: ChatComposerModelSelection) => Promise<void>;
   onStopRun?: () => Promise<void>;
   onSubmitMessage?: (input: ChatComposerSubmitInput) => Promise<void>;
@@ -81,7 +83,7 @@ export interface ChatComposerModelSelection {
 
 export interface ChatComposerSubmitInput extends ChatComposerModelSelection {
   prompt: string;
-  workspaceRoot?: string;
+  workspaceId?: string;
 }
 
 const COMPOSER_SHORTCUTS = [
@@ -145,7 +147,9 @@ const CONTEXT_MENU_ITEMS = [
 export function ChatComposer({
   className,
   conversationId,
+  isAddingWorkspace = false,
   modelId,
+  onAddWorkspace,
   onModelChange,
   onStopRun,
   onSubmitMessage,
@@ -153,7 +157,7 @@ export function ChatComposer({
   presentation = "dock",
   providerId,
   status: statusProp,
-  workspaces = CHAT_WORKSPACES,
+  workspaces = [],
 }: ChatComposerProps) {
   const defaultModelKey = useModelSettingsStore((state) => state.defaultModelKey);
   const conversationModelKey = useModelSettingsStore((state) =>
@@ -250,7 +254,7 @@ export function ChatComposer({
       modelId: selectedModel.id,
       prompt: trimmed,
       providerId: selectedModelProvider.id,
-      ...(selectedWorkspace ? { workspaceRoot: selectedWorkspace.path } : {}),
+      ...(selectedWorkspace ? { workspaceId: selectedWorkspace.id } : {}),
     })
       .then(clearComposer)
       .catch((error: unknown) => {
@@ -361,6 +365,22 @@ export function ChatComposer({
       .then(() => setConversationModelKey(conversationId, modelKey))
       .catch((error: unknown) => {
         toast.danger(error instanceof Error ? error.message : "切换模型失败");
+      });
+  };
+
+  const handleWorkspaceAction = (key: unknown) => {
+    if (key !== "add-workspace") {
+      setSelectedWorkspaceId(String(key));
+      return;
+    }
+
+    if (!onAddWorkspace) return;
+    void onAddWorkspace()
+      .then((workspace) => {
+        if (workspace) setSelectedWorkspaceId(workspace.id);
+      })
+      .catch((error: unknown) => {
+        toast.danger(error instanceof Error ? error.message : "添加工作区失败");
       });
   };
 
@@ -549,14 +569,15 @@ export function ChatComposer({
                   <span className="truncate">{selectedWorkspace?.name ?? "选择工作区"}</span>
                   <ChevronDown className="size-3.5 shrink-0" />
                 </Button>
-                <Dropdown.Popover className="min-w-52" placement="bottom start">
+                <Dropdown.Popover
+                  className="w-80 max-w-[calc(100vw-2rem)]"
+                  placement="bottom start"
+                >
                   <Dropdown.Menu
                     aria-label="选择工作区"
                     selectedKeys={selectedWorkspaceId ? new Set([selectedWorkspaceId]) : new Set()}
                     selectionMode="single"
-                    onAction={(key) => {
-                      if (key !== "add-workspace") setSelectedWorkspaceId(String(key));
-                    }}
+                    onAction={handleWorkspaceAction}
                   >
                     {workspaces.map((workspace) => (
                       <Dropdown.Item
@@ -566,12 +587,16 @@ export function ChatComposer({
                         textValue={workspace.name}
                       >
                         <Folder className="size-4 text-muted" />
-                        <Label>{workspace.name}</Label>
+                        <Label className="min-w-0 flex-1 truncate">{workspace.name}</Label>
                         <Dropdown.ItemIndicator className="start-auto end-2" />
                       </Dropdown.Item>
                     ))}
                     <Separator className="my-1" />
-                    <Dropdown.Item id="add-workspace" textValue="添加工作区">
+                    <Dropdown.Item
+                      id="add-workspace"
+                      isDisabled={isAddingWorkspace}
+                      textValue="添加工作区"
+                    >
                       <Plus className="size-4 text-muted" />
                       <Label>添加工作区...</Label>
                     </Dropdown.Item>

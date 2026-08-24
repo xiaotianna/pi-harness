@@ -65,13 +65,22 @@ export interface SessionRecord {
   workspaceRoot: string;
 }
 
+export interface WorkspaceRecord {
+  createdAt: number;
+  id: string;
+  name: string | null;
+  removedAt: number | null;
+  rootPath: string;
+  updatedAt: number;
+}
+
 export interface CreateSessionRecord {
   createdAt: number;
   id: string;
   modelId: string;
   providerId: string;
   title: string;
-  workspaceRoot: string;
+  workspaceId: string;
 }
 
 export interface SessionRepository {
@@ -82,6 +91,15 @@ export interface SessionRepository {
   updateIndex(sessionId: string, lastSeq: number, updatedAt: number): boolean;
   updateModel(sessionId: string, providerId: string, modelId: string, updatedAt: number): boolean;
   updateTitle(sessionId: string, title: string, updatedAt: number): boolean;
+}
+
+export interface WorkspaceRepository {
+  create(rootPath: string, createdAt: number): WorkspaceRecord;
+  find(workspaceId: string): WorkspaceRecord | null;
+  list(): readonly WorkspaceRecord[];
+  remove(workspaceId: string, removedAt: number): boolean;
+  reorder(workspaceIds: readonly string[], updatedAt: number): void;
+  updateName(workspaceId: string, name: string, updatedAt: number): WorkspaceRecord | null;
 }
 
 interface DatabaseRow {
@@ -107,6 +125,14 @@ function readNullableString(row: DatabaseRow, key: string): string | null {
 function readRequiredNumber(row: DatabaseRow, key: string): number {
   const value = row[key];
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    throw new Error(`Invalid database value for ${key}`);
+  }
+  return value;
+}
+
+function readNullableNumber(row: DatabaseRow, key: string): number | null {
+  const value = row[key];
+  if (value !== null && (typeof value !== "number" || !Number.isSafeInteger(value))) {
     throw new Error(`Invalid database value for ${key}`);
   }
   return value;
@@ -152,6 +178,17 @@ function mapSession(row: DatabaseRow): SessionRecord {
     updatedAt: readRequiredNumber(row, "updated_at"),
     workspaceId: readRequiredString(row, "workspace_id"),
     workspaceRoot: readRequiredString(row, "workspace_root"),
+  };
+}
+
+function mapWorkspace(row: DatabaseRow): WorkspaceRecord {
+  return {
+    createdAt: readRequiredNumber(row, "created_at"),
+    id: readRequiredString(row, "id"),
+    name: readNullableString(row, "display_name"),
+    removedAt: readNullableNumber(row, "removed_at"),
+    rootPath: readRequiredString(row, "root_path"),
+    updatedAt: readRequiredNumber(row, "updated_at"),
   };
 }
 
@@ -361,45 +398,24 @@ class SqliteSessionRepository implements SessionRepository {
   public constructor(private readonly database: DatabaseSync) {}
 
   public create(session: CreateSessionRecord): SessionRecord {
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const existingWorkspace = this.database
-        .prepare("SELECT id FROM workspaces WHERE root_path = ?")
-        .get(session.workspaceRoot) as DatabaseRow | undefined;
-      const workspaceId = existingWorkspace
-        ? readRequiredString(existingWorkspace, "id")
-        : randomUUID();
-
-      this.database
-        .prepare(
-          `INSERT INTO workspaces (id, root_path, created_at, updated_at)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(root_path) DO UPDATE SET updated_at = excluded.updated_at`,
-        )
-        .run(workspaceId, session.workspaceRoot, session.createdAt, session.createdAt);
-      this.database
-        .prepare(
-          `INSERT INTO sessions (
-             id, workspace_id, provider_id, model_id, title, last_seq, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
-        )
-        .run(
-          session.id,
-          workspaceId,
-          session.providerId,
-          session.modelId,
-          session.title,
-          session.createdAt,
-          session.createdAt,
-        );
-      const created = this.find(session.id);
-      if (!created) throw new Error("Created session could not be read");
-      this.database.exec("COMMIT");
-      return created;
-    } catch (error: unknown) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
+    this.database
+      .prepare(
+        `INSERT INTO sessions (
+           id, workspace_id, provider_id, model_id, title, last_seq, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+      )
+      .run(
+        session.id,
+        session.workspaceId,
+        session.providerId,
+        session.modelId,
+        session.title,
+        session.createdAt,
+        session.createdAt,
+      );
+    const created = this.find(session.id);
+    if (!created) throw new Error("Created session could not be read");
+    return created;
   }
 
   public find(sessionId: string): SessionRecord | null {
@@ -420,7 +436,7 @@ class SqliteSessionRepository implements SessionRepository {
         `SELECT sessions.*, workspaces.root_path AS workspace_root
          FROM sessions
          INNER JOIN workspaces ON workspaces.id = sessions.workspace_id
-         WHERE sessions.archived_at IS NULL
+         WHERE sessions.archived_at IS NULL AND workspaces.removed_at IS NULL
          ORDER BY sessions.updated_at DESC`,
       )
       .all() as DatabaseRow[];
@@ -473,11 +489,99 @@ class SqliteSessionRepository implements SessionRepository {
   }
 }
 
+class SqliteWorkspaceRepository implements WorkspaceRepository {
+  public constructor(private readonly database: DatabaseSync) {}
+
+  public create(rootPath: string, createdAt: number): WorkspaceRecord {
+    const existing = this.database
+      .prepare("SELECT id FROM workspaces WHERE root_path = ?")
+      .get(rootPath) as DatabaseRow | undefined;
+    const workspaceId = existing ? readRequiredString(existing, "id") : randomUUID();
+
+    this.database
+      .prepare(
+        `INSERT INTO workspaces (id, root_path, created_at, updated_at, removed_at, sort_order)
+         SELECT ?, ?, ?, ?, NULL, COALESCE(MIN(sort_order), 0) - 1
+         FROM workspaces
+         WHERE removed_at IS NULL
+         ON CONFLICT(root_path) DO UPDATE SET
+           removed_at = NULL,
+           sort_order = excluded.sort_order,
+           updated_at = excluded.updated_at`,
+      )
+      .run(workspaceId, rootPath, createdAt, createdAt);
+
+    const workspace = this.find(workspaceId);
+    if (!workspace) throw new Error("Created workspace could not be read");
+    return workspace;
+  }
+
+  public find(workspaceId: string): WorkspaceRecord | null {
+    const row = this.database.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
+      | DatabaseRow
+      | undefined;
+    return row ? mapWorkspace(row) : null;
+  }
+
+  public list(): readonly WorkspaceRecord[] {
+    const rows = this.database
+      .prepare(
+        `SELECT * FROM workspaces
+         WHERE removed_at IS NULL
+         ORDER BY sort_order, updated_at DESC`,
+      )
+      .all() as DatabaseRow[];
+    return rows.map(mapWorkspace);
+  }
+
+  public remove(workspaceId: string, removedAt: number): boolean {
+    return (
+      this.database
+        .prepare(
+          "UPDATE workspaces SET removed_at = ?, updated_at = ? WHERE id = ? AND removed_at IS NULL",
+        )
+        .run(removedAt, removedAt, workspaceId).changes > 0
+    );
+  }
+
+  public reorder(workspaceIds: readonly string[], updatedAt: number): void {
+    const update = this.database.prepare(
+      `UPDATE workspaces
+       SET sort_order = ?, updated_at = ?
+       WHERE id = ? AND removed_at IS NULL`,
+    );
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      for (const [sortOrder, workspaceId] of workspaceIds.entries()) {
+        if (update.run(sortOrder, updatedAt, workspaceId).changes !== 1) {
+          throw new Error("Workspace order changed while it was being saved");
+        }
+      }
+      this.database.exec("COMMIT");
+    } catch (error: unknown) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public updateName(workspaceId: string, name: string, updatedAt: number): WorkspaceRecord | null {
+    const updated =
+      this.database
+        .prepare(
+          "UPDATE workspaces SET display_name = ?, updated_at = ? WHERE id = ? AND removed_at IS NULL",
+        )
+        .run(name, updatedAt, workspaceId).changes > 0;
+    return updated ? this.find(workspaceId) : null;
+  }
+}
+
 export interface HarnessDatabase {
   authSessions: AuthSessionRepository;
   close(): void;
   providerSettings: ProviderSettingRepository;
   sessions: SessionRepository;
+  workspaces: WorkspaceRepository;
 }
 
 /** 打开 daemon 数据库，并在接收请求前执行尚未应用的 migration。 */
@@ -493,5 +597,6 @@ export function openHarnessDatabase(databasePath: string): HarnessDatabase {
     close: () => database.close(),
     providerSettings: new SqliteProviderSettingRepository(database),
     sessions: new SqliteSessionRepository(database),
+    workspaces: new SqliteWorkspaceRepository(database),
   };
 }

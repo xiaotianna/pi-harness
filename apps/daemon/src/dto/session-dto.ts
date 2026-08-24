@@ -19,7 +19,7 @@ export const CreateSessionDtoSchema = Type.Object({
   modelId: IdentifierSchema,
   providerId: IdentifierSchema,
   title: Type.Optional(Type.String({ maxLength: 200 })),
-  workspaceRoot: Type.String({ maxLength: 4096, minLength: 1 }),
+  workspaceId: Type.String({ format: "uuid" }),
 });
 
 export type CreateSessionDto = Static<typeof CreateSessionDtoSchema>;

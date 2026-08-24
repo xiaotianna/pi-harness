@@ -6,9 +6,9 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { ApiRequestError } from "../api/request";
 import { authSessionQueryOptions } from "../features/auth/api/auth-queries";
 import { isAuthErrorCode } from "../features/auth/constants/auth-errors";
-import { SessionApiError } from "../features/chat/api/session-api";
 import {
   sessionListQueryOptions,
   sessionSnapshotQueryOptions,
@@ -116,7 +116,7 @@ const chatThreadRoute = createRoute({
     try {
       return await queryClient.ensureQueryData(sessionSnapshotQueryOptions(params.chatId));
     } catch (error: unknown) {
-      if (error instanceof SessionApiError && error.status === 404) throw notFound();
+      if (error instanceof ApiRequestError && error.status === 404) throw notFound();
       throw error;
     }
   },

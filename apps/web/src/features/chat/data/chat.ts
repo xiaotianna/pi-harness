@@ -109,15 +109,6 @@ export const SUGGESTED_PROMPTS: readonly string[] = [
   "比较三种定价模式，并为按量计费的 SaaS 推荐一种。",
 ] as const;
 
-export const CHAT_WORKSPACES: readonly ChatWorkspace[] = [
-  {
-    createdAt: "2026-08-14T11:21:00+08:00",
-    id: "pi-harness",
-    name: "pi-workbench",
-    path: "/Users/lantianyu/Desktop/pi-workbench",
-  },
-] as const;
-
 export const LIBRARY_ITEMS: readonly LibraryItem[] = [
   {
     description: "包含上下文读取、工具调用、审批、写入和最终交付的 Agent 会话。",

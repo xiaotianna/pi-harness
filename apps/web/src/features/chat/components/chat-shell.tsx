@@ -10,9 +10,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SettingsDialog } from "../../settings";
 import { updateSession } from "../api/session-api";
 import { sessionListQueryOptions, sessionQueryKeys } from "../api/session-queries";
-import type { ChatActivePage, ChatNavItemId, ChatThread } from "../data/chat";
-import { CHAT_NAV_ITEMS, CHAT_WORKSPACES, resolveChatActivePage } from "../data/chat";
-import { sessionsToWorkspaces, sessionToChatThread } from "../utils/session-messages";
+import {
+  removeWorkspace,
+  reorderWorkspaces,
+  revealWorkspace,
+  updateWorkspace,
+} from "../api/workspace-api";
+import { workspaceListQueryOptions, workspaceQueryKeys } from "../api/workspace-queries";
+import type { ChatActivePage, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
+import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
+import { useAddWorkspace } from "../hooks/use-add-workspace";
+import { sessionToChatThread } from "../utils/session-messages";
 import { ChatNavbar } from "./chat-navbar";
 import { ChatSearchDialog } from "./chat-search-dialog";
 import { ChatRenameDialog, type ChatRenameTarget } from "./chat-shell-dialogs";
@@ -34,6 +42,8 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const shouldReduceMotion = useReducedMotion();
   const sessionsQuery = useQuery(sessionListQueryOptions());
+  const workspacesQuery = useQuery(workspaceListQueryOptions());
+  const addWorkspaceMutation = useAddWorkspace();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -45,13 +55,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     () => (sessionsQuery.data ?? []).map((session) => sessionToChatThread(session)),
     [sessionsQuery.data],
   );
-  const workspaces = useMemo(
-    () =>
-      sessionsQuery.data && sessionsQuery.data.length > 0
-        ? sessionsToWorkspaces(sessionsQuery.data)
-        : CHAT_WORKSPACES,
-    [sessionsQuery.data],
-  );
+  const workspaces = workspacesQuery.data ?? [];
 
   const navigate = useCallback(
     (href: string) => {
@@ -111,6 +115,12 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     navigate("/new");
   }, [navigate]);
 
+  const handleAddWorkspace = useCallback(() => {
+    void addWorkspaceMutation.mutateAsync().catch((error: unknown) => {
+      toast.danger(error instanceof Error ? error.message : "添加工作区失败");
+    });
+  }, [addWorkspaceMutation]);
+
   const refreshSessions = useCallback(
     () => queryClient.invalidateQueries({ queryKey: sessionQueryKeys.list() }),
     [queryClient],
@@ -120,16 +130,82 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     setRenameTarget({ kind: "thread", value: thread });
   }, []);
 
+  const handleEditWorkspace = useCallback((workspace: ChatWorkspace) => {
+    setRenameTarget({ kind: "workspace", value: workspace });
+  }, []);
+
   const handleRename = useCallback(
     (target: ChatRenameTarget, title: string) => {
-      if (target.kind !== "thread") return;
+      if (target.kind === "workspace") {
+        void updateWorkspace(target.value.id, title)
+          .then((workspace) => {
+            queryClient.setQueryData<readonly ChatWorkspace[]>(
+              workspaceQueryKeys.list(),
+              (current) =>
+                (current ?? []).map((item) => (item.id === workspace.id ? workspace : item)),
+            );
+          })
+          .catch((error: unknown) => {
+            toast.danger(error instanceof Error ? error.message : "编辑工作区失败");
+          });
+        return;
+      }
       void updateSession(target.value.id, { title })
         .then(refreshSessions)
         .catch((error: unknown) => {
           toast.danger(error instanceof Error ? error.message : "重命名对话失败");
         });
     },
-    [refreshSessions],
+    [queryClient, refreshSessions],
+  );
+
+  const handleRevealWorkspace = useCallback((workspace: ChatWorkspace) => {
+    void revealWorkspace(workspace.id).catch((error: unknown) => {
+      toast.danger(error instanceof Error ? error.message : "无法显示工作区目录");
+    });
+  }, []);
+
+  const handleRemoveWorkspace = useCallback(
+    (workspace: ChatWorkspace) => {
+      void removeWorkspace(workspace.id)
+        .then(() =>
+          Promise.all([
+            queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.list() }),
+            queryClient.invalidateQueries({ queryKey: sessionQueryKeys.list() }),
+          ]),
+        )
+        .then(() => {
+          if (activePage.kind === "thread" && activePage.thread.workspaceId === workspace.id) {
+            navigate("/new");
+          }
+        })
+        .catch((error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "移除项目失败");
+        });
+    },
+    [activePage, navigate, queryClient],
+  );
+
+  const handleReorderWorkspaces = useCallback(
+    (workspaceIds: readonly string[]) => {
+      const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+      const reordered = workspaceIds.flatMap((workspaceId) => {
+        const workspace = workspaceById.get(workspaceId);
+        return workspace ? [workspace] : [];
+      });
+      if (reordered.length !== workspaces.length) return;
+
+      queryClient.setQueryData(workspaceQueryKeys.list(), reordered);
+      void reorderWorkspaces(workspaceIds)
+        .then((savedWorkspaces) => {
+          queryClient.setQueryData(workspaceQueryKeys.list(), savedWorkspaces);
+        })
+        .catch((error: unknown) => {
+          void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.list() });
+          toast.danger(error instanceof Error ? error.message : "调整工作区顺序失败");
+        });
+    },
+    [queryClient, workspaces],
   );
 
   const handleArchive = useCallback(
@@ -200,9 +276,15 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         <ChatSidebar
           basePath={basePath}
           disableNavigation={disableNavigation}
+          isAddingWorkspace={addWorkspaceMutation.isPending}
+          onAddWorkspace={handleAddWorkspace}
           onArchive={handleArchive}
           onNewThread={handleNewThread}
           onRename={handleRenameThread}
+          onRemoveWorkspace={handleRemoveWorkspace}
+          onReorderWorkspaces={handleReorderWorkspaces}
+          onRenameWorkspace={handleEditWorkspace}
+          onRevealWorkspace={handleRevealWorkspace}
           onSettings={handleSettingsOpen}
           pathname={pathname || "/new"}
           threads={threads}

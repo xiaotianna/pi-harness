@@ -12,7 +12,6 @@ import {
   type ChatMessage,
   ChatMessageType,
   type ChatThread,
-  type ChatWorkspace,
 } from "../data/chat";
 
 const TERMINAL_RUN_EVENTS = new Set<HarnessEvent["type"]>([
@@ -140,17 +139,6 @@ export function sessionToChatThread(session: Session, preview = ""): ChatThread 
     user: { avatar: "", email: "", name: "" },
     workspaceId: session.workspaceId,
   };
-}
-
-export function sessionsToWorkspaces(sessions: readonly Session[]): readonly ChatWorkspace[] {
-  return [...new Map(sessions.map((session) => [session.workspaceId, session])).values()].map(
-    (session) => ({
-      createdAt: new Date(session.createdAt).toISOString(),
-      id: session.workspaceId,
-      name: session.workspaceRoot.split("/").filter(Boolean).at(-1) ?? session.workspaceRoot,
-      path: session.workspaceRoot,
-    }),
-  );
 }
 
 export function updateSnapshotWithEvents(
