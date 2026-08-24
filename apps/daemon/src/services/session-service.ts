@@ -137,6 +137,7 @@ export class SessionService {
   }
 
   public async startRun(sessionId: SessionId, promptInput: string): Promise<RunAccepted> {
+    // 1. Session 是否空闲
     this.assertSessionIdle(sessionId);
     const prompt = promptInput.trim();
     if (!prompt) {
@@ -147,13 +148,16 @@ export class SessionService {
     try {
       const session = this.getRequiredSession(sessionId);
       this.activeProviderBySession.set(sessionId, session.providerId);
+      // 2. 从 JSONL 恢复事件和完整消息
       const snapshot = await this.eventStore.load(sessionId);
       this.reconcileIndex(session, snapshot);
+      // 3. 获取模型和流函数
       const { model, streamFn } = await this.providers.resolveRunModel(
         session.providerId,
         session.modelId,
       );
       const runId = randomUUID();
+      // 4. 生成 runId 并启动
       const task = this.agents.startRun({
         initialSeq: Math.max(session.lastSeq, snapshot.lastPersistedSeq),
         messages: snapshot.messages,

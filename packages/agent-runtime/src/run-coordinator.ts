@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Agent, AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, type Api, type Model } from "@earendil-works/pi-ai";
 import { adaptAgentEvent } from "./event-adapter.js";
 import type { HarnessEvent, RunId, SessionId } from "./harness-event.js";
 
@@ -22,6 +22,7 @@ interface ActiveRun {
   runId: RunId;
 }
 
+// 一个 Session 对应一个 RunCoordinator，它管理这个 Session 当前正在执行的 Run。
 export class RunCoordinator {
   private activeRun: ActiveRun | null = null;
   private nextSeq: number;
@@ -34,6 +35,7 @@ export class RunCoordinator {
     private readonly onEvent: HarnessEventListener,
   ) {
     this.nextSeq = initialSeq + 1;
+    // 构造时会订阅 pi Agent 事件
     this.unsubscribe = agent.subscribe(async (event) => {
       const activeRun = this.activeRun;
       if (activeRun === null) return;
@@ -68,6 +70,8 @@ export class RunCoordinator {
     }
 
     this.agent.state.model = input.model;
+    // ponytail: 暂用模型支持的中档推理；开放用户配置时改由 run input 传入。
+    this.agent.state.thinkingLevel = clampThinkingLevel(input.model, "medium");
     this.agent.state.systemPrompt = input.systemPrompt;
     this.agent.streamFunction = input.streamFn;
     this.activeRun = {

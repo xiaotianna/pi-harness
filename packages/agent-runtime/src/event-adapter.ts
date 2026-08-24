@@ -11,8 +11,11 @@ import {
   type ToolUpdatedData,
 } from "./harness-event.js";
 
+// 运行错误码（在data.code中）
 const RunErrorCode = {
+  // 用户主动中止
   ABORTED: "RUN_ABORTED",
+  // 模型调用或agent执行失败
   FAILED: "RUN_FAILED",
 } as const;
 
@@ -29,6 +32,7 @@ export interface AgentEventAdapterContext {
   providerId: string;
 }
 
+// 检查agent运行的最后一条消息，判断run最终是成功、失败还是被中止，并返回HarnessEventDraft
 function readRunOutcome(messages: AgentMessage[]): HarnessEventDraft<RunFailureData | null> {
   const lastMessage = messages.at(-1);
   if (lastMessage?.role !== "assistant") {
@@ -58,6 +62,7 @@ function readRunOutcome(messages: AgentMessage[]): HarnessEventDraft<RunFailureD
   return { data: null, type: HarnessEventType.RUN_COMPLETED };
 }
 
+// 把 Pi Agent 的 message_update 增量事件，转换成项目自己的 message.delta 事件
 function adaptMessageDelta(event: Extract<AgentEvent, { type: "message_update" }>) {
   const update = event.assistantMessageEvent;
   switch (update.type) {
@@ -93,7 +98,15 @@ function adaptMessageDelta(event: Extract<AgentEvent, { type: "message_update" }
   }
 }
 
-/** Pi 原始事件只在本函数内出现，对外只返回稳定的 HarnessEvent 草稿。 */
+/** Pi 原始事件只在本函数内出现，对外只返回稳定的 HarnessEvent 草稿。
+| Pi 原始事件 | 项目事件 |
+|---|---|
+| `agent_start` | `run.started` |
+| `message_start` | `message.started` |
+| `message_update` | `message.delta` |
+| `message_end` | `message.completed` |
+| `agent_end` | `run.completed/failed/aborted` |
+*/
 export function adaptAgentEvent(
   event: AgentEvent,
   context: AgentEventAdapterContext,

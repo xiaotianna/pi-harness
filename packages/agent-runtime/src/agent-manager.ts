@@ -27,6 +27,8 @@ function createUserMessage(text: string): AgentMessage {
   };
 }
 
+// Session 注册表
+// 核心：Map<SessionId, RunCoordinator>
 export class AgentManager {
   private readonly runtimes = new Map<SessionId, RunCoordinator>();
 
