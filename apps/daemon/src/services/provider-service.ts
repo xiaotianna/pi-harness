@@ -31,13 +31,21 @@ import {
 const ProviderErrorCode = {
   BUILT_IN_READ_ONLY: "BUILT_IN_PROVIDER_READ_ONLY",
   CONNECTION_FAILED: "PROVIDER_CONNECTION_FAILED",
+  DISABLED: "PROVIDER_DISABLED",
+  IN_USE: "PROVIDER_IN_USE",
   INVALID_CONFIG: "INVALID_PROVIDER_CONFIG",
   MODEL_NOT_FOUND: "PROVIDER_MODEL_NOT_FOUND",
   NOT_FOUND: "PROVIDER_NOT_FOUND",
+  NOT_CONFIGURED: "PROVIDER_NOT_CONFIGURED",
   OAUTH_NOT_STARTED: "PROVIDER_OAUTH_NOT_STARTED",
   OAUTH_PROMPT_NOT_FOUND: "PROVIDER_OAUTH_PROMPT_NOT_FOUND",
   OAUTH_NOT_SUPPORTED: "PROVIDER_OAUTH_NOT_SUPPORTED",
 } as const;
+
+export interface ResolvedRunModel {
+  model: Model<Api>;
+  streamFn: MutableModels["streamSimple"];
+}
 
 const CONNECTION_TEST_TIMEOUT_MS = 15_000;
 const MAX_PROVIDER_ERROR_DETAIL_LENGTH = 300;
@@ -292,17 +300,20 @@ async function testFirstResponseChunk(
 
 export class ProviderService {
   private readonly builtInIds = new Set(BUILT_IN_PROVIDER_IDS);
+  private readonly mutatingProviderIds = new Set<string>();
   private readonly oauthSessions = new Map<string, ProviderOAuthSession>();
 
   private constructor(
     private readonly settings: ProviderSettingRepository,
     private readonly credentials: CredentialStore,
     private readonly models: MutableModels,
+    private readonly isProviderInUse: (providerId: string) => boolean,
   ) {}
 
   public static async create(
     settings: ProviderSettingRepository,
     credentials: CredentialStore,
+    isProviderInUse: (providerId: string) => boolean = () => false,
   ): Promise<ProviderService> {
     const builtIns = await Promise.all(BUILT_IN_PROVIDER_IDS.map(loadBuiltInProvider));
     const custom = settings.listCustom().map(createCustomProvider);
@@ -310,6 +321,7 @@ export class ProviderService {
       settings,
       credentials,
       createHarnessModels([...builtIns, ...custom], credentials),
+      isProviderInUse,
     );
   }
 
@@ -365,6 +377,7 @@ export class ProviderService {
   }
 
   public async updateProvider(providerId: string, input: UpdateProviderDto): Promise<ProviderVo> {
+    this.assertProviderNotInUse(providerId);
     const custom = this.settings.findCustom(providerId);
     if (!custom) {
       if (!this.builtInIds.has(providerId)) this.throwNotFound();
@@ -400,19 +413,23 @@ export class ProviderService {
   }
 
   public async deleteProvider(providerId: string): Promise<void> {
-    if (this.builtInIds.has(providerId)) {
-      throw new ProviderServiceError(
-        ProviderErrorCode.BUILT_IN_READ_ONLY,
-        "内置 Provider 不能删除",
-      );
-    }
-    if (!this.settings.findCustom(providerId)) this.throwNotFound();
-    await this.credentials.delete(providerId);
-    this.settings.deleteCustom(providerId);
-    this.models.deleteProvider(providerId);
+    this.assertProviderNotInUse(providerId);
+    await this.withProviderMutation(providerId, async () => {
+      if (this.builtInIds.has(providerId)) {
+        throw new ProviderServiceError(
+          ProviderErrorCode.BUILT_IN_READ_ONLY,
+          "内置 Provider 不能删除",
+        );
+      }
+      if (!this.settings.findCustom(providerId)) this.throwNotFound();
+      await this.credentials.delete(providerId);
+      this.settings.deleteCustom(providerId);
+      this.models.deleteProvider(providerId);
+    });
   }
 
   public async saveApiKey(providerId: string, apiKey: string): Promise<void> {
+    this.assertProviderNotInUse(providerId);
     const provider = this.models.getProvider(providerId);
     if (!provider) this.throwNotFound();
     if (!provider.auth.apiKey) {
@@ -425,17 +442,23 @@ export class ProviderService {
     if (!key) {
       throw new ProviderServiceError(ProviderErrorCode.INVALID_CONFIG, "API Key 不能为空");
     }
-    await this.cancelOAuth(providerId);
-    await this.credentials.modify(providerId, async () => ({ type: "api_key", key }));
+    await this.withProviderMutation(providerId, async () => {
+      await this.cancelOAuth(providerId);
+      await this.credentials.modify(providerId, async () => ({ type: "api_key", key }));
+    });
   }
 
   public async deleteCredential(providerId: string): Promise<void> {
+    this.assertProviderNotInUse(providerId);
     if (!this.models.getProvider(providerId)) this.throwNotFound();
-    await this.cancelOAuth(providerId);
-    await this.models.logout(providerId);
+    await this.withProviderMutation(providerId, async () => {
+      await this.cancelOAuth(providerId);
+      await this.models.logout(providerId);
+    });
   }
 
   public startOAuth(providerId: string): ProviderOAuthStateVo {
+    this.assertProviderNotInUse(providerId);
     const provider = this.models.getProvider(providerId);
     if (!provider) this.throwNotFound();
     if (!provider.auth.oauth) {
@@ -560,6 +583,37 @@ export class ProviderService {
     await testFirstResponseChunk(models, model, apiKey);
   }
 
+  /** 为新 run 解析模型与流函数；认证材料始终留在 Models/CredentialStore 内。 */
+  public async resolveRunModel(providerId: string, modelId: string): Promise<ResolvedRunModel> {
+    if (this.mutatingProviderIds.has(providerId) || this.isOAuthActive(providerId)) {
+      throw new ProviderServiceError(
+        ProviderErrorCode.IN_USE,
+        "Provider 正在更新认证状态，请稍后重试",
+      );
+    }
+    const provider = this.models.getProvider(providerId);
+    if (!provider) this.throwNotFound();
+
+    const custom = this.settings.findCustom(providerId);
+    const enabled = custom?.enabled ?? this.settings.listBuiltInEnabled().get(providerId) ?? true;
+    if (!enabled) {
+      throw new ProviderServiceError(ProviderErrorCode.DISABLED, "Provider 已停用");
+    }
+
+    const model = this.models.getModel(providerId, modelId);
+    if (!model) {
+      throw new ProviderServiceError(ProviderErrorCode.MODEL_NOT_FOUND, "模型不存在");
+    }
+    if (!(await this.models.checkAuth(providerId))) {
+      throw new ProviderServiceError(ProviderErrorCode.NOT_CONFIGURED, "请先配置 Provider 凭据");
+    }
+
+    return {
+      model,
+      streamFn: this.models.streamSimple.bind(this.models),
+    };
+  }
+
   private async runOAuth(providerId: string, session: ProviderOAuthSession): Promise<void> {
     try {
       await this.models.login(providerId, "oauth", {
@@ -616,6 +670,39 @@ export class ProviderService {
       };
     } finally {
       session.controller.abort();
+    }
+  }
+
+  private assertProviderNotInUse(providerId: string): void {
+    if (this.isProviderInUse(providerId) || this.mutatingProviderIds.has(providerId)) {
+      throw new ProviderServiceError(
+        ProviderErrorCode.IN_USE,
+        "Provider 正被活动会话使用，请等待运行结束后重试",
+      );
+    }
+  }
+
+  private isOAuthActive(providerId: string): boolean {
+    const status = this.oauthSessions.get(providerId)?.state.status;
+    return (
+      status === ProviderOAuthStatus.STARTING ||
+      status === ProviderOAuthStatus.AWAITING_INPUT ||
+      status === ProviderOAuthStatus.AWAITING_USER
+    );
+  }
+
+  private async withProviderMutation<T>(
+    providerId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (this.mutatingProviderIds.has(providerId)) {
+      throw new ProviderServiceError(ProviderErrorCode.IN_USE, "Provider 正在更新，请稍后重试");
+    }
+    this.mutatingProviderIds.add(providerId);
+    try {
+      return await operation();
+    } finally {
+      this.mutatingProviderIds.delete(providerId);
     }
   }
 

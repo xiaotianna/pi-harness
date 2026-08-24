@@ -57,4 +57,30 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: "003-workspaces-sessions.sql",
+    sql: `
+      CREATE TABLE workspaces (
+        id TEXT PRIMARY KEY,
+        root_path TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        last_seq INTEGER NOT NULL DEFAULT 0 CHECK (last_seq >= 0),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT
+      ) STRICT;
+
+      CREATE INDEX sessions_workspace_id_idx ON sessions(workspace_id);
+      CREATE INDEX sessions_updated_at_idx ON sessions(updated_at DESC);
+    `,
+  },
 ];

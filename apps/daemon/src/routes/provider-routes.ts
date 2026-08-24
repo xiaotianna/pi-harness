@@ -36,7 +36,9 @@ export async function registerProviderRoutes(
     400: ApiErrorVoSchema,
     403: ApiErrorVoSchema,
     404: ApiErrorVoSchema,
+    409: ApiErrorVoSchema,
     500: ApiErrorVoSchema,
+    502: ApiErrorVoSchema,
   };
 
   server.get(
@@ -130,7 +132,7 @@ export async function registerProviderRoutes(
       schema: {
         body: ProviderOAuthPromptAnswerDtoSchema,
         params: ProviderParamsDtoSchema,
-        response: { 204: Type.Null(), 409: ApiErrorVoSchema, ...mutationErrors },
+        response: { 204: Type.Null(), ...mutationErrors },
       },
     },
     controller.answerOAuthPrompt,
@@ -152,7 +154,7 @@ export async function registerProviderRoutes(
     {
       schema: {
         body: CustomProviderConnectionTestDtoSchema,
-        response: { 204: Type.Null(), 502: ApiErrorVoSchema, ...mutationErrors },
+        response: { 204: Type.Null(), ...mutationErrors },
       },
     },
     controller.testCustomConnection,
@@ -164,7 +166,7 @@ export async function registerProviderRoutes(
       schema: {
         body: ProviderConnectionTestDtoSchema,
         params: ProviderParamsDtoSchema,
-        response: { 204: Type.Null(), 502: ApiErrorVoSchema, ...mutationErrors },
+        response: { 204: Type.Null(), ...mutationErrors },
       },
     },
     controller.testConnection,

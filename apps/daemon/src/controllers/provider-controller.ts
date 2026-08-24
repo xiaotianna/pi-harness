@@ -10,6 +10,7 @@ import type {
   UpdateProviderDto,
 } from "../dto/provider-dto.js";
 import { type ProviderService, ProviderServiceError } from "../services/provider-service.js";
+import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
 import type { ProviderOAuthStateVo, ProviderVo } from "../vo/provider-vo.js";
 
 export class ProviderController {
@@ -24,7 +25,7 @@ export class ProviderController {
     request: FastifyRequest<{ Body: CreateProviderDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply | ProviderVo> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       return await this.providers.createProvider(request.body);
     } catch (error: unknown) {
@@ -36,7 +37,7 @@ export class ProviderController {
     request: FastifyRequest<{ Body: UpdateProviderDto; Params: ProviderParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply | ProviderVo> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       return await this.providers.updateProvider(request.params.providerId, request.body);
     } catch (error: unknown) {
@@ -48,7 +49,7 @@ export class ProviderController {
     request: FastifyRequest<{ Params: ProviderParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       await this.providers.deleteProvider(request.params.providerId);
       return reply.status(204).send();
@@ -61,7 +62,7 @@ export class ProviderController {
     request: FastifyRequest<{ Body: ProviderCredentialDto; Params: ProviderParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       await this.providers.saveApiKey(request.params.providerId, request.body.apiKey);
       return reply.status(204).send();
@@ -74,7 +75,7 @@ export class ProviderController {
     request: FastifyRequest<{ Params: ProviderParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       await this.providers.deleteCredential(request.params.providerId);
       return reply.status(204).send();
@@ -87,7 +88,7 @@ export class ProviderController {
     request: FastifyRequest<{ Params: ProviderParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply | ProviderOAuthStateVo> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       return this.providers.startOAuth(request.params.providerId);
     } catch (error: unknown) {
@@ -113,7 +114,7 @@ export class ProviderController {
     }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       this.providers.answerOAuthPrompt(
         request.params.providerId,
@@ -130,7 +131,7 @@ export class ProviderController {
     request: FastifyRequest<{ Params: ProviderParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       await this.providers.cancelOAuth(request.params.providerId);
       return reply.status(204).send();
@@ -143,7 +144,7 @@ export class ProviderController {
     request: FastifyRequest<{ Body: ProviderConnectionTestDto; Params: ProviderParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       await this.providers.testConnection(
         request.params.providerId,
@@ -160,7 +161,7 @@ export class ProviderController {
     request: FastifyRequest<{ Body: CustomProviderConnectionTestDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
-    if (!this.isMutationAllowed(request)) return this.rejectMutation(reply);
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       await this.providers.testCustomConnection(request.body);
       return reply.status(204).send();
@@ -169,26 +170,12 @@ export class ProviderController {
     }
   };
 
-  private isMutationAllowed(request: FastifyRequest): boolean {
-    return (
-      request.headers.origin === this.config.webUrl &&
-      request.headers["x-pi-harness-request"] === "1"
-    );
-  }
-
-  private rejectMutation(reply: FastifyReply): FastifyReply {
-    return reply.status(403).send({
-      code: "INVALID_REQUEST_ORIGIN",
-      message: "The request origin is not allowed",
-    });
-  }
-
   private sendError(request: FastifyRequest, reply: FastifyReply, error: unknown): FastifyReply {
     if (error instanceof ProviderServiceError) {
       const status =
         error.code === "PROVIDER_NOT_FOUND" || error.code === "PROVIDER_OAUTH_NOT_STARTED"
           ? 404
-          : error.code === "PROVIDER_OAUTH_PROMPT_NOT_FOUND"
+          : error.code === "PROVIDER_OAUTH_PROMPT_NOT_FOUND" || error.code === "PROVIDER_IN_USE"
             ? 409
             : error.code === "PROVIDER_CONNECTION_FAILED"
               ? 502

@@ -33,6 +33,7 @@ export interface HarnessConfig {
   host: string;
   logLevel: string;
   port: number;
+  sessionsPath: string;
   webUrl: string;
 }
 
@@ -104,6 +105,7 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
     host: env.PI_HARNESS_HOST ?? DEFAULT_HOST,
     logLevel: env.PI_HARNESS_LOG_LEVEL ?? "info",
     port,
+    sessionsPath: join(dirname(databasePath), "sessions"),
     webUrl: parseLoopbackUrl("PI_HARNESS_WEB_URL", env.PI_HARNESS_WEB_URL ?? DEFAULT_WEB_URL),
   };
 }

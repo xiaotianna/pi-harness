@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@fastify/cors": "catalog:",
+    "@pi-harness/agent-runtime": "workspace:*",
     "@pi-harness/providers": "workspace:*",
     "fastify": "catalog:",
     "pino": "catalog:",

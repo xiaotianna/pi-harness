@@ -53,6 +53,35 @@ export interface ProviderSettingRepository {
   updateCustom(provider: CustomProviderRecord): boolean;
 }
 
+export interface SessionRecord {
+  createdAt: number;
+  id: string;
+  lastSeq: number;
+  modelId: string;
+  providerId: string;
+  title: string;
+  updatedAt: number;
+  workspaceId: string;
+  workspaceRoot: string;
+}
+
+export interface CreateSessionRecord {
+  createdAt: number;
+  id: string;
+  modelId: string;
+  providerId: string;
+  title: string;
+  workspaceRoot: string;
+}
+
+export interface SessionRepository {
+  create(session: CreateSessionRecord): SessionRecord;
+  find(sessionId: string): SessionRecord | null;
+  list(): readonly SessionRecord[];
+  updateIndex(sessionId: string, lastSeq: number, updatedAt: number): boolean;
+  updateModel(sessionId: string, providerId: string, modelId: string, updatedAt: number): boolean;
+}
+
 interface DatabaseRow {
   [key: string]: unknown;
 }
@@ -68,6 +97,14 @@ function readRequiredString(row: DatabaseRow, key: string): string {
 function readNullableString(row: DatabaseRow, key: string): string | null {
   const value = row[key];
   if (value !== null && typeof value !== "string") {
+    throw new Error(`Invalid database value for ${key}`);
+  }
+  return value;
+}
+
+function readRequiredNumber(row: DatabaseRow, key: string): number {
+  const value = row[key];
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     throw new Error(`Invalid database value for ${key}`);
   }
   return value;
@@ -99,6 +136,20 @@ function mapCustomProvider(row: DatabaseRow): CustomProviderRecord {
     protocol: readRequiredString(row, "protocol"),
     requiresApiKey: row.requires_api_key === 1,
     updatedAt: Number(row.updated_at),
+  };
+}
+
+function mapSession(row: DatabaseRow): SessionRecord {
+  return {
+    createdAt: readRequiredNumber(row, "created_at"),
+    id: readRequiredString(row, "id"),
+    lastSeq: readRequiredNumber(row, "last_seq"),
+    modelId: readRequiredString(row, "model_id"),
+    providerId: readRequiredString(row, "provider_id"),
+    title: readRequiredString(row, "title"),
+    updatedAt: readRequiredNumber(row, "updated_at"),
+    workspaceId: readRequiredString(row, "workspace_id"),
+    workspaceRoot: readRequiredString(row, "workspace_root"),
   };
 }
 
@@ -304,10 +355,110 @@ class SqliteProviderSettingRepository implements ProviderSettingRepository {
   }
 }
 
+class SqliteSessionRepository implements SessionRepository {
+  public constructor(private readonly database: DatabaseSync) {}
+
+  public create(session: CreateSessionRecord): SessionRecord {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingWorkspace = this.database
+        .prepare("SELECT id FROM workspaces WHERE root_path = ?")
+        .get(session.workspaceRoot) as DatabaseRow | undefined;
+      const workspaceId = existingWorkspace
+        ? readRequiredString(existingWorkspace, "id")
+        : randomUUID();
+
+      this.database
+        .prepare(
+          `INSERT INTO workspaces (id, root_path, created_at, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(root_path) DO UPDATE SET updated_at = excluded.updated_at`,
+        )
+        .run(workspaceId, session.workspaceRoot, session.createdAt, session.createdAt);
+      this.database
+        .prepare(
+          `INSERT INTO sessions (
+             id, workspace_id, provider_id, model_id, title, last_seq, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+        )
+        .run(
+          session.id,
+          workspaceId,
+          session.providerId,
+          session.modelId,
+          session.title,
+          session.createdAt,
+          session.createdAt,
+        );
+      const created = this.find(session.id);
+      if (!created) throw new Error("Created session could not be read");
+      this.database.exec("COMMIT");
+      return created;
+    } catch (error: unknown) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public find(sessionId: string): SessionRecord | null {
+    const row = this.database
+      .prepare(
+        `SELECT sessions.*, workspaces.root_path AS workspace_root
+         FROM sessions
+         INNER JOIN workspaces ON workspaces.id = sessions.workspace_id
+         WHERE sessions.id = ?`,
+      )
+      .get(sessionId) as DatabaseRow | undefined;
+    return row ? mapSession(row) : null;
+  }
+
+  public list(): readonly SessionRecord[] {
+    const rows = this.database
+      .prepare(
+        `SELECT sessions.*, workspaces.root_path AS workspace_root
+         FROM sessions
+         INNER JOIN workspaces ON workspaces.id = sessions.workspace_id
+         ORDER BY sessions.updated_at DESC`,
+      )
+      .all() as DatabaseRow[];
+    return rows.map(mapSession);
+  }
+
+  public updateIndex(sessionId: string, lastSeq: number, updatedAt: number): boolean {
+    return (
+      this.database
+        .prepare(
+          `UPDATE sessions
+           SET last_seq = ?, updated_at = ?
+           WHERE id = ? AND last_seq < ?`,
+        )
+        .run(lastSeq, updatedAt, sessionId, lastSeq).changes > 0
+    );
+  }
+
+  public updateModel(
+    sessionId: string,
+    providerId: string,
+    modelId: string,
+    updatedAt: number,
+  ): boolean {
+    return (
+      this.database
+        .prepare(
+          `UPDATE sessions
+           SET provider_id = ?, model_id = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(providerId, modelId, updatedAt, sessionId).changes > 0
+    );
+  }
+}
+
 export interface HarnessDatabase {
   authSessions: AuthSessionRepository;
   close(): void;
   providerSettings: ProviderSettingRepository;
+  sessions: SessionRepository;
 }
 
 /** 打开 daemon 数据库，并在接收请求前执行尚未应用的 migration。 */
@@ -322,5 +473,6 @@ export function openHarnessDatabase(databasePath: string): HarnessDatabase {
     authSessions: new SqliteAuthSessionRepository(database),
     close: () => database.close(),
     providerSettings: new SqliteProviderSettingRepository(database),
+    sessions: new SqliteSessionRepository(database),
   };
 }
