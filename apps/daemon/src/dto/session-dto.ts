@@ -24,6 +24,16 @@ export const CreateSessionDtoSchema = Type.Object({
 
 export type CreateSessionDto = Static<typeof CreateSessionDtoSchema>;
 
+export const UpdateSessionDtoSchema = Type.Object(
+  {
+    archived: Type.Optional(Type.Boolean()),
+    title: Type.Optional(Type.String({ maxLength: 200, minLength: 1 })),
+  },
+  { minProperties: 1 },
+);
+
+export type UpdateSessionDto = Static<typeof UpdateSessionDtoSchema>;
+
 export const UpdateSessionModelDtoSchema = Type.Object({
   modelId: IdentifierSchema,
   providerId: IdentifierSchema,

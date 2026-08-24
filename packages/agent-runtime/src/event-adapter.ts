@@ -10,6 +10,7 @@ import {
   type ToolStartedData,
   type ToolUpdatedData,
 } from "./harness-event.js";
+import { stripAutoFollowUpMarker } from "./utils/auto-follow-up.js";
 
 // 运行错误码（在data.code中）
 const RunErrorCode = {
@@ -20,10 +21,18 @@ const RunErrorCode = {
 } as const;
 
 function sanitizeAgentMessage(message: AgentMessage): AgentMessage {
-  if (message.role !== "assistant" || message.errorMessage === undefined) return message;
+  if (message.role !== "assistant") return message;
   return {
     ...message,
-    errorMessage: message.stopReason === "aborted" ? "Agent run was aborted" : "Agent run failed",
+    content: message.content.map((part) =>
+      part.type === "text" ? { ...part, text: stripAutoFollowUpMarker(part.text) } : part,
+    ),
+    ...(message.errorMessage === undefined
+      ? {}
+      : {
+          errorMessage:
+            message.stopReason === "aborted" ? "Agent run was aborted" : "Agent run failed",
+        }),
   };
 }
 

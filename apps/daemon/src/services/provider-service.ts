@@ -15,6 +15,7 @@ import {
   openAIResponsesApi,
   type Provider,
 } from "@pi-harness/providers";
+import { isPlainObject } from "es-toolkit";
 import {
   type CreateProviderDto,
   type CustomProviderConnectionTestDto,
@@ -122,10 +123,6 @@ function readOAuthAuthorizationUrl(value: string): string {
   return url.href;
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function sanitizeProviderErrorDetail(value: string): string {
   return value
     .replace(/\s+/g, " ")
@@ -153,7 +150,11 @@ function readProviderResponseError(
   let detail: string | null = null;
   try {
     const body = JSON.parse(bodyText) as unknown;
-    if (isRecord(body) && isRecord(body.error) && typeof body.error.message === "string") {
+    if (
+      isPlainObject(body) &&
+      isPlainObject(body.error) &&
+      typeof body.error.message === "string"
+    ) {
       detail = sanitizeProviderErrorDetail(body.error.message);
     }
   } catch {

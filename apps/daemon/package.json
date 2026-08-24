@@ -16,6 +16,7 @@
     "@fastify/cors": "catalog:",
     "@pi-harness/agent-runtime": "workspace:*",
     "@pi-harness/providers": "workspace:*",
+    "es-toolkit": "catalog:",
     "fastify": "catalog:",
     "pino": "catalog:",
     "typebox": "catalog:"

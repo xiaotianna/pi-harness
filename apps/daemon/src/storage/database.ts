@@ -78,8 +78,10 @@ export interface SessionRepository {
   create(session: CreateSessionRecord): SessionRecord;
   find(sessionId: string): SessionRecord | null;
   list(): readonly SessionRecord[];
+  setArchived(sessionId: string, archivedAt: number | null, updatedAt: number): boolean;
   updateIndex(sessionId: string, lastSeq: number, updatedAt: number): boolean;
   updateModel(sessionId: string, providerId: string, modelId: string, updatedAt: number): boolean;
+  updateTitle(sessionId: string, title: string, updatedAt: number): boolean;
 }
 
 interface DatabaseRow {
@@ -418,10 +420,19 @@ class SqliteSessionRepository implements SessionRepository {
         `SELECT sessions.*, workspaces.root_path AS workspace_root
          FROM sessions
          INNER JOIN workspaces ON workspaces.id = sessions.workspace_id
+         WHERE sessions.archived_at IS NULL
          ORDER BY sessions.updated_at DESC`,
       )
       .all() as DatabaseRow[];
     return rows.map(mapSession);
+  }
+
+  public setArchived(sessionId: string, archivedAt: number | null, updatedAt: number): boolean {
+    return (
+      this.database
+        .prepare("UPDATE sessions SET archived_at = ?, updated_at = ? WHERE id = ?")
+        .run(archivedAt, updatedAt, sessionId).changes > 0
+    );
   }
 
   public updateIndex(sessionId: string, lastSeq: number, updatedAt: number): boolean {
@@ -450,6 +461,14 @@ class SqliteSessionRepository implements SessionRepository {
            WHERE id = ?`,
         )
         .run(providerId, modelId, updatedAt, sessionId).changes > 0
+    );
+  }
+
+  public updateTitle(sessionId: string, title: string, updatedAt: number): boolean {
+    return (
+      this.database
+        .prepare("UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?")
+        .run(title, updatedAt, sessionId).changes > 0
     );
   }
 }

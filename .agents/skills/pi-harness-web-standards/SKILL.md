@@ -31,6 +31,7 @@ description: PI Harness 前端工程规范，约束 apps/web 的架构边界、�
 ## 文件、命名与导出
 
 - 文件和目录使用 `kebab-case`；React 组件、类型和接口使用 `PascalCase`；函数与变量使用 `camelCase`；全局常量使用 `UPPER_SNAKE_CASE`。
+- 新增常量、枚举、类型、协议或工具函数前先全仓搜索；已有实现必须复用。受模块或浏览器边界限制时，让原所有者提供最小且边界安全的公开导出，不在 Web 复制定义；API 边界必需的运行时校验 Schema 除外。
 - 优先使用具名导出，仅在框架约定需要时使用默认导出。
 - 使用显式 `type` 导入；保持 TypeScript strict、`noUncheckedIndexedAccess` 和 `exactOptionalPropertyTypes` 兼容。
 - 不使用 `any`。把外部值视为 `unknown`，完成最小验证后再进入业务逻辑。
@@ -38,6 +39,9 @@ description: PI Harness 前端工程规范，约束 apps/web 的架构边界、�
 - 默认使用 `as const` 对象加联合类型，不使用 TypeScript `enum`。
 - 不向可选属性无意义地显式传入 `undefined`；需要时使用条件展开保持精确可选属性语义。
 - 让函数和组件保持单一职责；副作用留在 API、Hook 或边界模块，不创建无意义转发 wrapper。
+- 与业务无关的通用辅助能力使用项目已有的第三方库实现，并在 `shared/utils` 或所属 feature 的 `utils` 统一适配，不在页面、组件或业务文件中重复手写。
+- 业务相关的判断、解析和转换辅助函数放入所属 feature 或 `shared` 的 `utils`，不混入组件、事件协议或页面。
+- 模型和 Agent 使用的 Prompt、Prompt 片段及其协议标记放入所属模块的 `prompts` 目录，调用方只负责组合或引用。
 
 ## 组件与 Hook 复用
 

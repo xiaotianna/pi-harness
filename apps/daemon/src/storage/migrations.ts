@@ -83,4 +83,12 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX sessions_updated_at_idx ON sessions(updated_at DESC);
     `,
   },
+  {
+    version: "004-session-archive.sql",
+    sql: `
+      ALTER TABLE sessions ADD COLUMN archived_at INTEGER;
+      CREATE INDEX sessions_archived_updated_at_idx
+        ON sessions(archived_at, updated_at DESC);
+    `,
+  },
 ];

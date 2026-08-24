@@ -70,6 +70,7 @@
 ### 其他前端依赖
 
 - 使用 TanStack Router 管理路由，TanStack Query 管理服务端数据，Zustand 管理共享 UI 状态。
+- `HarnessEventType`、`HarnessEvent` 和 `MessageDeltaKind` 从浏览器安全的 `@pi-harness/agent-runtime/harness-event` 子路径复用，内部消息判断从 `@pi-harness/agent-runtime/agent-message` 复用；不要导入 `agent-runtime` 主入口或在 Web 重复定义事件协议。
 - 使用 Motion 表达业务状态变化，使用 Lucide React 作为普通图标库。
 - 使用 `@tanstack/react-virtual` 处理长列表，使用项目既有 AppLayout 或 `react-resizable-panels` 处理可调面板。
 - 使用 Tailwind CSS v4 和主题 token；不要为同一职责增加第二套依赖。

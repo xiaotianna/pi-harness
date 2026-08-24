@@ -114,6 +114,9 @@ catalogs:
     embla-carousel-react:
       specifier: ^8.6.0
       version: 8.6.0
+    es-toolkit:
+      specifier: ^1.50.0
+      version: 1.50.0
     execa:
       specifier: ^9.6.0
       version: 9.6.1
@@ -221,6 +224,9 @@ importers:
       '@pi-harness/providers':
         specifier: workspace:*
         version: link:../../packages/providers
+      es-toolkit:
+        specifier: 'catalog:'
+        version: 1.50.0
       fastify:
         specifier: 'catalog:'
         version: 5.11.2
@@ -258,6 +264,9 @@ importers:
       '@lobehub/ui':
         specifier: 'catalog:'
         version: 5.32.5(@lobehub/fluent-emoji@4.1.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@lobehub/icons@5.16.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@shikijs/themes@4.4.3)(@types/mdast@4.0.4)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(antd@6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(micromark-util-types@2.0.2)(micromark@4.0.2)(motion@12.43.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@pi-harness/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@react-aria/utils':
         specifier: 'catalog:'
         version: 3.34.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -288,6 +297,9 @@ importers:
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
+      es-toolkit:
+        specifier: 'catalog:'
+        version: 1.50.0
       icons:
         specifier: link:@lobehub/ui/icons
         version: link:@lobehub/ui/icons
@@ -497,6 +509,9 @@ importers:
       '@pi-harness/tools':
         specifier: workspace:*
         version: link:../tools
+      es-toolkit:
+        specifier: 'catalog:'
+        version: 1.50.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

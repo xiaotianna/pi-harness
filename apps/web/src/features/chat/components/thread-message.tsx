@@ -12,6 +12,7 @@ import {
 import { ChatTool, ChatToolGroup } from "@agile-avocation/ui-pro/chat-tool";
 import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
 import { Markdown } from "@agile-avocation/ui-pro/markdown";
+import { Alert } from "@heroui/react";
 import { memo, type ReactNode } from "react";
 import {
   ImageGeneration,
@@ -24,6 +25,7 @@ import {
 import {
   type ChatAssistantMessage,
   type ChatCodeMessage,
+  type ChatErrorMessage,
   type ChatImageGenerationMessage,
   type ChatLoadingMessage,
   type ChatMessage,
@@ -88,29 +90,37 @@ function UserThreadMessage({ message }: { message: ChatUserMessage }) {
       <ChatMessagePrimitive.Bubble>
         <ChatMessagePrimitive.Content>{message.content}</ChatMessagePrimitive.Content>
       </ChatMessagePrimitive.Bubble>
+      <MessageActions content={message.content} variant="minimal" />
     </ChatMessagePrimitive.User>
   );
 }
 
 function AssistantThreadMessage({ message }: { message: ChatAssistantMessage }) {
   return (
-    <ChatMessagePrimitive.Assistant className="!py-0">
+    <ChatMessagePrimitive.Assistant>
       <ChatMessagePrimitive.Body>
         <ChatMessagePrimitive.Content>
           <Markdown>{message.content}</Markdown>
         </ChatMessagePrimitive.Content>
-
-        {message.image ? (
-          <ChatMessagePrimitive.Media>
-            <img
-              alt={message.image.alt}
-              className="size-[341px] rounded-2xl object-cover"
-              src={message.image.src}
-            />
-          </ChatMessagePrimitive.Media>
+        {message.actions ? (
+          <MessageActions content={message.content} variant={message.actions} />
         ) : null}
+      </ChatMessagePrimitive.Body>
+    </ChatMessagePrimitive.Assistant>
+  );
+}
 
-        {message.actions ? <MessageActions variant={message.actions} /> : null}
+function ErrorThreadMessage({ message }: { message: ChatErrorMessage }) {
+  return (
+    <ChatMessagePrimitive.Assistant className="!py-0">
+      <ChatMessagePrimitive.Body>
+        <Alert className="max-w-xl bg-danger-soft" role="alert" status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>回复生成失败</Alert.Title>
+            <Alert.Description>{message.content}</Alert.Description>
+          </Alert.Content>
+        </Alert>
       </ChatMessagePrimitive.Body>
     </ChatMessagePrimitive.Assistant>
   );
@@ -323,6 +333,9 @@ const MESSAGE_RENDER_STRATEGIES = {
   )),
   [ChatMessageType.CODE]: createMessageRenderStrategy(ChatMessageType.CODE, (message) => (
     <CodeThreadMessage message={message} />
+  )),
+  [ChatMessageType.ERROR]: createMessageRenderStrategy(ChatMessageType.ERROR, (message) => (
+    <ErrorThreadMessage message={message} />
   )),
   [ChatMessageType.IMAGE_GENERATION]: createMessageRenderStrategy(
     ChatMessageType.IMAGE_GENERATION,

@@ -5,6 +5,7 @@ import type {
   SessionParamsDto,
   SessionRunParamsDto,
   StartRunDto,
+  UpdateSessionDto,
   UpdateSessionModelDto,
 } from "../dto/session-dto.js";
 import { ProviderServiceError } from "../services/provider-service.js";
@@ -55,6 +56,18 @@ export class SessionController {
         request.body.providerId,
         request.body.modelId,
       );
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public update = async (
+    request: FastifyRequest<{ Body: UpdateSessionDto; Params: SessionParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | SessionVo> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      return this.sessions.update(request.params.sessionId, request.body);
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     }

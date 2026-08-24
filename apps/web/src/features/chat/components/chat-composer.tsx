@@ -2,7 +2,7 @@
 
 import type { ChatStatus } from "@agile-avocation/ui-pro";
 import { PromptInput } from "@agile-avocation/ui-pro";
-import { Button, Description, Dropdown, Label, Separator, Tooltip } from "@heroui/react";
+import { Button, Description, Dropdown, Label, Separator, Tooltip, toast } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ChevronDown,
@@ -26,7 +26,7 @@ import {
   providerQueryOptions,
   useModelSettingsStore,
 } from "../../models";
-import { CHAT_WORKSPACES } from "../data/chat";
+import { CHAT_WORKSPACES, type ChatWorkspace } from "../data/chat";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
 import { ChatAttachmentList } from "./chat-attachment-list";
 import {
@@ -64,9 +64,24 @@ export interface ChatComposerProps {
   className?: string;
   conversationId?: string;
   modelId?: string;
+  onModelChange?: (selection: ChatComposerModelSelection) => Promise<void>;
+  onStopRun?: () => Promise<void>;
+  onSubmitMessage?: (input: ChatComposerSubmitInput) => Promise<void>;
   placeholder?: string;
   presentation?: "dock" | "hero";
   providerId?: string;
+  status?: ChatStatus;
+  workspaces?: readonly ChatWorkspace[];
+}
+
+export interface ChatComposerModelSelection {
+  modelId: string;
+  providerId: string;
+}
+
+export interface ChatComposerSubmitInput extends ChatComposerModelSelection {
+  prompt: string;
+  workspaceRoot?: string;
 }
 
 const COMPOSER_SHORTCUTS = [
@@ -131,9 +146,14 @@ export function ChatComposer({
   className,
   conversationId,
   modelId,
+  onModelChange,
+  onStopRun,
+  onSubmitMessage,
   placeholder = "输入任何问题",
   presentation = "dock",
   providerId,
+  status: statusProp,
+  workspaces = CHAT_WORKSPACES,
 }: ChatComposerProps) {
   const defaultModelKey = useModelSettingsStore((state) => state.defaultModelKey);
   const conversationModelKey = useModelSettingsStore((state) =>
@@ -170,20 +190,14 @@ export function ChatComposer({
   const [draftModelKey, setDraftModelKey] = useState<string | null>(null);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-  const [status, setStatus] = useState<ChatStatus>("ready");
+  const [internalStatus, setInternalStatus] = useState<ChatStatus>("ready");
   const [hasEditorContent, setHasEditorContent] = useState(false);
   const attachmentsRef = useRef<PendingAttachment[]>([]);
   const attachmentDrawerId = useId();
   const editorRef = useRef<ChatComposerEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const timersRef = useRef<number[]>([]);
-
-  const clearTimers = useCallback(() => {
-    timersRef.current.forEach((timer) => {
-      window.clearTimeout(timer);
-    });
-    timersRef.current = [];
-  }, []);
+  const isSubmittingRef = useRef(false);
+  const status = statusProp ?? internalStatus;
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -191,14 +205,18 @@ export function ChatComposer({
 
   useEffect(() => {
     return () => {
-      clearTimers();
       revokeAttachmentUrls(attachmentsRef.current);
     };
-  }, [clearTimers]);
+  }, []);
 
   const handleStop = () => {
-    clearTimers();
-    setStatus("ready");
+    if (!onStopRun) {
+      setInternalStatus("ready");
+      return;
+    }
+    void onStopRun().catch((error: unknown) => {
+      toast.danger(error instanceof Error ? error.message : "停止 Run 失败");
+    });
   };
 
   const handleSubmit = () => {
@@ -206,23 +224,46 @@ export function ChatComposer({
     const trimmed = value.trim();
     const hasAttachments = attachments.length > 0;
 
-    if (status !== "ready" || selectedModelKey === null || (!trimmed && !hasAttachments)) return;
+    if (
+      status !== "ready" ||
+      selectedModelKey === null ||
+      isSubmittingRef.current ||
+      (!trimmed && !hasAttachments) ||
+      (isHero && !selectedWorkspace)
+    ) {
+      return;
+    }
 
-    revokeAttachmentUrls(attachments);
-    editorRef.current?.clear();
-    setAttachments([]);
-    setStatus("submitted");
-    clearTimers();
+    const clearComposer = () => {
+      revokeAttachmentUrls(attachments);
+      editorRef.current?.clear();
+      setAttachments([]);
+    };
 
-    timersRef.current.push(
-      window.setTimeout(() => setStatus("streaming"), 350),
-      window.setTimeout(() => setStatus("ready"), 1600),
-    );
+    if (!onSubmitMessage || !selectedModelProvider || !selectedModel) {
+      clearComposer();
+      return;
+    }
+
+    isSubmittingRef.current = true;
+    void onSubmitMessage({
+      modelId: selectedModel.id,
+      prompt: trimmed,
+      providerId: selectedModelProvider.id,
+      ...(selectedWorkspace ? { workspaceRoot: selectedWorkspace.path } : {}),
+    })
+      .then(clearComposer)
+      .catch((error: unknown) => {
+        toast.danger(error instanceof Error ? error.message : "发送消息失败");
+      })
+      .finally(() => {
+        isSubmittingRef.current = false;
+      });
   };
 
   const isGenerating = status === "submitted" || status === "streaming";
   const preferredModelKey =
-    conversationModelKey ?? draftModelKey ?? initialConversationModelKey ?? defaultModelKey;
+    initialConversationModelKey ?? conversationModelKey ?? draftModelKey ?? defaultModelKey;
   const selectedModelKey =
     preferredModelKey && availableModelKeys.includes(preferredModelKey)
       ? preferredModelKey
@@ -237,10 +278,12 @@ export function ChatComposer({
   const selectedModel = selectedModelProvider?.models.find(
     (model) => createModelSelectionKey(selectedModelProvider.id, model.id) === selectedModelKey,
   );
-  const canSend = selectedModel !== undefined && (hasEditorContent || attachments.length > 0);
-  const selectedWorkspace = CHAT_WORKSPACES.find(
-    (workspace) => workspace.id === selectedWorkspaceId,
-  );
+  const canSend =
+    selectedModel !== undefined &&
+    (onSubmitMessage ? hasEditorContent : hasEditorContent || attachments.length > 0) &&
+    (!isHero || workspaces.length > 0);
+  const selectedWorkspace =
+    workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? workspaces[0];
 
   const handleFilesSelected = (files: File[]) => {
     setIsAttachmentDrawerExpanded(true);
@@ -298,16 +341,33 @@ export function ChatComposer({
   }, []);
 
   const handleModelChange = (modelKey: string) => {
-    if (conversationId) {
-      setConversationModelKey(conversationId, modelKey);
-    } else {
+    if (!conversationId) {
       setDraftModelKey(modelKey);
+      return;
     }
+
+    const provider = availableModelProviders.find((item) =>
+      item.models.some((model) => createModelSelectionKey(item.id, model.id) === modelKey),
+    );
+    const model = provider?.models.find(
+      (item) => createModelSelectionKey(provider.id, item.id) === modelKey,
+    );
+    if (!onModelChange || !provider || !model) {
+      setConversationModelKey(conversationId, modelKey);
+      return;
+    }
+
+    void onModelChange({ modelId: model.id, providerId: provider.id })
+      .then(() => setConversationModelKey(conversationId, modelKey))
+      .catch((error: unknown) => {
+        toast.danger(error instanceof Error ? error.message : "切换模型失败");
+      });
   };
 
   return (
     <PromptInput
       className={className}
+      lockInputOnRun={false}
       status={status}
       value={hasEditorContent ? "content" : ""}
       variant="primary"
@@ -390,7 +450,6 @@ export function ChatComposer({
             ref={editorRef}
             ariaLabel="消息输入框"
             contextMenuItems={CONTEXT_MENU_ITEMS}
-            isDisabled={isGenerating}
             maxHeight={80}
             minHeight={56}
             onEmptyChange={handleEditorEmptyChange}
@@ -407,13 +466,15 @@ export function ChatComposer({
                   isIconOnly
                   aria-label="添加文件等内容"
                   className="size-8 min-w-8 p-0"
-                  isDisabled={isGenerating}
+                  isDisabled={isGenerating || onSubmitMessage !== undefined}
                   size="sm"
                   variant="ghost"
                 >
                   <Plus className="size-4" />
                 </Button>
-                <Tooltip.Content placement="top">添加文件等内容</Tooltip.Content>
+                <Tooltip.Content placement="top">
+                  {onSubmitMessage ? "当前仅支持文本消息" : "添加文件等内容"}
+                </Tooltip.Content>
               </Tooltip>
               <Dropdown.Popover className="min-w-48" placement="bottom start">
                 <Dropdown.Menu
@@ -497,7 +558,7 @@ export function ChatComposer({
                       if (key !== "add-workspace") setSelectedWorkspaceId(String(key));
                     }}
                   >
-                    {CHAT_WORKSPACES.map((workspace) => (
+                    {workspaces.map((workspace) => (
                       <Dropdown.Item
                         className="ps-2 pe-7"
                         key={workspace.id}
@@ -521,7 +582,9 @@ export function ChatComposer({
             <Dropdown>
               <Button
                 aria-label="选择模型"
-                className="gap-2 px-2"
+                className={`gap-2 px-2 ${
+                  isGenerating ? "pointer-events-auto! cursor-[var(--cursor-disabled)]!" : ""
+                }`}
                 isDisabled={isGenerating}
                 size="sm"
                 variant="ghost"

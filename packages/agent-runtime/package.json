@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./agent-message": "./src/utils/agent-message.ts",
+    "./harness-event": "./src/harness-event.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -14,7 +16,8 @@
     "@earendil-works/pi-ai": "catalog:",
     "@pi-harness/policy": "workspace:*",
     "@pi-harness/providers": "workspace:*",
-    "@pi-harness/tools": "workspace:*"
+    "@pi-harness/tools": "workspace:*",
+    "es-toolkit": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

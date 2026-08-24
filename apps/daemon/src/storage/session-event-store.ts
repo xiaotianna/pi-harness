@@ -6,6 +6,7 @@ import {
   HarnessEventType,
   type SessionId,
 } from "@pi-harness/agent-runtime";
+import { isError, isPlainObject } from "es-toolkit";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 
@@ -34,12 +35,8 @@ export interface SessionEventSnapshot {
   messages: readonly AgentMessage[];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isAgentMessage(value: unknown): value is AgentMessage {
-  if (!isRecord(value) || typeof value.timestamp !== "number") return false;
+  if (!isPlainObject(value) || typeof value.timestamp !== "number") return false;
   if (value.role === "user")
     return typeof value.content === "string" || Array.isArray(value.content);
   if (value.role === "assistant") {
@@ -114,7 +111,7 @@ export class SessionEventStore {
     try {
       source = await readFile(path, "utf8");
     } catch (error: unknown) {
-      if (isRecord(error) && error.code === "ENOENT") {
+      if (isError(error) && "code" in error && error.code === "ENOENT") {
         if (!this.lastSeqBySession.has(sessionId)) this.lastSeqBySession.set(sessionId, 0);
         return { events: [], lastPersistedSeq: 0, messages: [] };
       }

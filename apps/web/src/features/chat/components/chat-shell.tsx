@@ -1,26 +1,21 @@
 "use client";
 
 import { AppLayout } from "@agile-avocation/ui-pro";
+import { toast } from "@heroui/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useRouterState } from "@tanstack/react-router";
 import { useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SettingsDialog } from "../../settings";
-import type { ChatActivePage, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
-import {
-  CHAT_NAV_ITEMS,
-  CHAT_THREADS,
-  CHAT_WORKSPACES,
-  DEFAULT_CHAT_THREAD_ID,
-  resolveChatActivePage,
-} from "../data/chat";
+import { updateSession } from "../api/session-api";
+import { sessionListQueryOptions, sessionQueryKeys } from "../api/session-queries";
+import type { ChatActivePage, ChatNavItemId, ChatThread } from "../data/chat";
+import { CHAT_NAV_ITEMS, CHAT_WORKSPACES, resolveChatActivePage } from "../data/chat";
+import { sessionsToWorkspaces, sessionToChatThread } from "../utils/session-messages";
 import { ChatNavbar } from "./chat-navbar";
 import { ChatSearchDialog } from "./chat-search-dialog";
-import {
-  ChatRenameDialog,
-  type ChatRenameTarget,
-  RemoveWorkspaceDialog,
-} from "./chat-shell-dialogs";
+import { ChatRenameDialog, type ChatRenameTarget } from "./chat-shell-dialogs";
 import { ChatSidebar } from "./chat-sidebar";
 import { WorkspaceInspector } from "./workspace-inspector";
 
@@ -35,19 +30,28 @@ const INSPECTOR_MIN_WIDTH = 500;
 
 export function ChatShell({ basePath = "", children, disableNavigation = false }: ChatShellProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const shouldReduceMotion = useReducedMotion();
+  const sessionsQuery = useQuery(sessionListQueryOptions());
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<ChatRenameTarget | null>(null);
   const [isDesktopLayout, setIsDesktopLayout] = useState(
     () => window.matchMedia("(min-width: 1025px)").matches,
   );
-  const [threads, setThreads] = useState<ChatThread[]>(() => [...CHAT_THREADS]);
-  const [workspaces, setWorkspaces] = useState<ChatWorkspace[]>(() => [...CHAT_WORKSPACES]);
-  const [archivedThreads, setArchivedThreads] = useState<ChatThread[]>([]);
-  const [renamingTarget, setRenamingTarget] = useState<ChatRenameTarget | null>(null);
-  const [removingWorkspace, setRemovingWorkspace] = useState<ChatWorkspace | null>(null);
+  const threads = useMemo<ChatThread[]>(
+    () => (sessionsQuery.data ?? []).map((session) => sessionToChatThread(session)),
+    [sessionsQuery.data],
+  );
+  const workspaces = useMemo(
+    () =>
+      sessionsQuery.data && sessionsQuery.data.length > 0
+        ? sessionsToWorkspaces(sessionsQuery.data)
+        : CHAT_WORKSPACES,
+    [sessionsQuery.data],
+  );
 
   const navigate = useCallback(
     (href: string) => {
@@ -63,56 +67,6 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   );
   const isThreadPage = activePage.kind === "thread";
   const isInspectorVisible = isThreadPage && isInspectorOpen;
-
-  const handleRename = useCallback((thread: ChatThread) => {
-    setRenamingTarget({ kind: "thread", value: thread });
-  }, []);
-
-  const handleRenameWorkspace = useCallback((workspace: ChatWorkspace) => {
-    setRenamingTarget({ kind: "workspace", value: workspace });
-  }, []);
-
-  const handleRenameCommit = useCallback((target: ChatRenameTarget, value: string) => {
-    if (target.kind === "thread") {
-      setThreads((current) =>
-        current.map((thread) =>
-          thread.id === target.value.id ? { ...thread, title: value } : thread,
-        ),
-      );
-    } else {
-      setWorkspaces((current) =>
-        current.map((workspace) =>
-          workspace.id === target.value.id ? { ...workspace, name: value } : workspace,
-        ),
-      );
-    }
-  }, []);
-
-  const handleArchive = useCallback(
-    (thread: ChatThread) => {
-      setThreads((current) => current.filter((item) => item.id !== thread.id));
-      setArchivedThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]);
-
-      if (activePage.kind === "thread" && activePage.thread.id === thread.id) {
-        router.history.push(`${basePath}/new`);
-      }
-    },
-    [activePage, basePath, router],
-  );
-
-  const handleRemoveWorkspace = useCallback(
-    (workspace: ChatWorkspace) => {
-      setWorkspaces((current) => current.filter((item) => item.id !== workspace.id));
-      setThreads((current) => current.filter((thread) => thread.workspaceId !== workspace.id));
-
-      if (activePage.kind === "thread" && activePage.thread.workspaceId === workspace.id) {
-        router.history.push(`${basePath}/new`);
-      }
-
-      setRemovingWorkspace(null);
-    },
-    [activePage, basePath, router],
-  );
 
   const handleNavAction = useCallback(
     (id: ChatNavItemId) => {
@@ -153,17 +107,44 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     setIsSettingsOpen(true);
   }, []);
 
-  const handleRenameClose = useCallback(() => {
-    setRenamingTarget(null);
-  }, []);
-
-  const handleRemoveWorkspaceClose = useCallback(() => {
-    setRemovingWorkspace(null);
-  }, []);
-
   const handleNewThread = useCallback(() => {
     navigate("/new");
   }, [navigate]);
+
+  const refreshSessions = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: sessionQueryKeys.list() }),
+    [queryClient],
+  );
+
+  const handleRenameThread = useCallback((thread: ChatThread) => {
+    setRenameTarget({ kind: "thread", value: thread });
+  }, []);
+
+  const handleRename = useCallback(
+    (target: ChatRenameTarget, title: string) => {
+      if (target.kind !== "thread") return;
+      void updateSession(target.value.id, { title })
+        .then(refreshSessions)
+        .catch((error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "重命名对话失败");
+        });
+    },
+    [refreshSessions],
+  );
+
+  const handleArchive = useCallback(
+    (thread: ChatThread) => {
+      void updateSession(thread.id, { archived: true })
+        .then(refreshSessions)
+        .then(() => {
+          if (activePage.kind === "thread" && activePage.thread.id === thread.id) navigate("/new");
+        })
+        .catch((error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "归档对话失败");
+        });
+    },
+    [activePage, navigate, refreshSessions],
+  );
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 1025px)");
@@ -221,11 +202,9 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
           disableNavigation={disableNavigation}
           onArchive={handleArchive}
           onNewThread={handleNewThread}
-          onRename={handleRename}
-          onRemoveWorkspace={setRemovingWorkspace}
-          onRenameWorkspace={handleRenameWorkspace}
+          onRename={handleRenameThread}
           onSettings={handleSettingsOpen}
-          pathname={pathname || `/${DEFAULT_CHAT_THREAD_ID}`}
+          pathname={pathname || "/new"}
           threads={threads}
           workspaces={workspaces}
           onAction={handleNavAction}
@@ -239,25 +218,17 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         onOpenChange={setIsSearchOpen}
         onSelect={handleThreadSelect}
       />
+      {renameTarget ? (
+        <ChatRenameDialog
+          target={renameTarget}
+          onClose={() => setRenameTarget(null)}
+          onRename={handleRename}
+        />
+      ) : null}
       <SettingsDialog
-        archivedConversations={archivedThreads}
+        archivedConversations={[]}
         isOpen={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
-      />
-      <ChatRenameDialog
-        key={
-          renamingTarget
-            ? `${renamingTarget.kind}-${renamingTarget.value.id}`
-            : "closed-rename-dialog"
-        }
-        target={renamingTarget}
-        onClose={handleRenameClose}
-        onRename={handleRenameCommit}
-      />
-      <RemoveWorkspaceDialog
-        workspace={removingWorkspace}
-        onClose={handleRemoveWorkspaceClose}
-        onRemove={handleRemoveWorkspace}
       />
     </AppLayout>
   );

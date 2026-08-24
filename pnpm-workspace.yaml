@@ -40,6 +40,7 @@ catalog:
   clsx: ^2.1.1
   embla-carousel: ^8.6.0
   embla-carousel-react: ^8.6.0
+  es-toolkit: ^1.50.0
   execa: ^9.6.0
   fastify: ^5.6.0
   lucide-react: ^0.500.0

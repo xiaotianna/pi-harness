@@ -3,6 +3,7 @@ import type { ToolPartState } from "@agile-avocation/ui-pro/chat-tool";
 export const ChatMessageType = {
   ASSISTANT: "assistant",
   CODE: "code",
+  ERROR: "error",
   IMAGE_GENERATION: "image-generation",
   LOADING: "loading",
   ORBS: "orbs",
@@ -72,6 +73,11 @@ export type ChatAssistantMessage = ChatMessageBase & {
   content: string;
   image?: ChatMessageImage;
   type: typeof ChatMessageType.ASSISTANT;
+};
+
+export type ChatErrorMessage = ChatMessageBase & {
+  content: string;
+  type: typeof ChatMessageType.ERROR;
 };
 
 export type ChatReasoningMessage = ChatMessageBase & {
@@ -156,6 +162,7 @@ export type ChatTaskListMessage = ChatMessageBase & {
 export type ChatMessage =
   | ChatAssistantMessage
   | ChatCodeMessage
+  | ChatErrorMessage
   | ChatImageGenerationMessage
   | ChatLoadingMessage
   | ChatOrbsMessage

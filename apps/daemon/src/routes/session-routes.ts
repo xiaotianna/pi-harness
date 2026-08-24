@@ -14,6 +14,8 @@ import {
   SessionRunParamsDtoSchema,
   type StartRunDto,
   StartRunDtoSchema,
+  type UpdateSessionDto,
+  UpdateSessionDtoSchema,
   type UpdateSessionModelDto,
   UpdateSessionModelDtoSchema,
 } from "../dto/session-dto.js";
@@ -69,6 +71,18 @@ export async function registerSessionRoutes(
       },
     },
     controller.get,
+  );
+
+  server.patch<{ Body: UpdateSessionDto; Params: SessionParamsDto }>(
+    "/api/sessions/:sessionId",
+    {
+      schema: {
+        body: UpdateSessionDtoSchema,
+        params: SessionParamsDtoSchema,
+        response: { 200: SessionVoSchema, ...errors },
+      },
+    },
+    controller.update,
   );
 
   server.patch<{ Body: UpdateSessionModelDto; Params: SessionParamsDto }>(

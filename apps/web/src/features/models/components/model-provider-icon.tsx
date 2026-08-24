@@ -54,7 +54,7 @@ const COLOR_PROVIDER_ICONS: Readonly<Record<string, IconType>> = {
   "moonshotai-cn": Moonshot,
   opencode: OpenCode,
   openai: OpenAI,
-  "openai-codex": Codex.Color,
+  "openai-codex": Codex,
   openrouter: OpenRouter.Color,
   "qwen-token-plan": Qwen.Color,
   "qwen-token-plan-cn": Qwen.Color,

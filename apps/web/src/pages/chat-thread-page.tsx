@@ -1,10 +1,9 @@
-import type { ChatThread } from "../features/chat/data/chat";
 import { ChatPage } from "../features/chat/views/chat-page";
 
 export interface ChatThreadPageProps {
-  thread: ChatThread;
+  sessionId: string;
 }
 
-export function ChatThreadPage({ thread }: ChatThreadPageProps) {
-  return <ChatPage thread={thread} />;
+export function ChatThreadPage({ sessionId }: ChatThreadPageProps) {
+  return <ChatPage sessionId={sessionId} />;
 }

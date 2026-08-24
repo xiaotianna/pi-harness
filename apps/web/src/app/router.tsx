@@ -8,8 +8,12 @@ import {
 } from "@tanstack/react-router";
 import { authSessionQueryOptions } from "../features/auth/api/auth-queries";
 import { isAuthErrorCode } from "../features/auth/constants/auth-errors";
+import { SessionApiError } from "../features/chat/api/session-api";
+import {
+  sessionListQueryOptions,
+  sessionSnapshotQueryOptions,
+} from "../features/chat/api/session-queries";
 import { ChatShell } from "../features/chat/components/chat-shell";
-import { DEFAULT_CHAT_THREAD_ID, getChatThread } from "../features/chat/data/chat";
 import { ChatThreadPage } from "../pages/chat-thread-page";
 import { ExplorePage } from "../pages/explore-page";
 import { LibraryPage } from "../pages/library-page";
@@ -43,9 +47,14 @@ async function fetchCurrentAuthSession() {
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  beforeLoad: () => {
+  beforeLoad: async () => {
+    const authSession = await fetchCurrentAuthSession();
+    if (!authSession.authenticated) throw redirect({ replace: true, to: "/login" });
+    const sessions = await queryClient.fetchQuery(sessionListQueryOptions());
+    const session = sessions[0];
+    if (!session) throw redirect({ replace: true, to: "/new" });
     throw redirect({
-      params: { chatId: DEFAULT_CHAT_THREAD_ID },
+      params: { chatId: session.id },
       replace: true,
       to: "/$chatId",
     });
@@ -103,22 +112,21 @@ const exploreRoute = createRoute({
 const chatThreadRoute = createRoute({
   getParentRoute: () => chatLayoutRoute,
   path: "/$chatId",
-  loader: ({ params }) => {
-    const thread = getChatThread(params.chatId);
-
-    if (!thread) {
-      throw notFound();
+  loader: async ({ params }) => {
+    try {
+      return await queryClient.ensureQueryData(sessionSnapshotQueryOptions(params.chatId));
+    } catch (error: unknown) {
+      if (error instanceof SessionApiError && error.status === 404) throw notFound();
+      throw error;
     }
-
-    return thread;
   },
   component: ChatThreadRoute,
 });
 
 function ChatThreadRoute() {
-  const thread = chatThreadRoute.useLoaderData();
+  const snapshot = chatThreadRoute.useLoaderData();
 
-  return <ChatThreadPage thread={thread} />;
+  return <ChatThreadPage sessionId={snapshot.session.id} />;
 }
 
 function LoginRoute() {

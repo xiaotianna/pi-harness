@@ -90,8 +90,7 @@ export const HarnessEventType = {
   CONTEXT_COMPACTED: "context.compacted",
 } as const;
 
-export type HarnessEventType =
-  (typeof HarnessEventType)[keyof typeof HarnessEventType];
+export type HarnessEventType = (typeof HarnessEventType)[keyof typeof HarnessEventType];
 
 // 消息的增量chunk片段类型
 export const MessageDeltaKind = {
@@ -103,8 +102,7 @@ export const MessageDeltaKind = {
   TOOL_CALL: "tool_call",
 } as const;
 
-export type MessageDeltaKind =
-  (typeof MessageDeltaKind)[keyof typeof MessageDeltaKind];
+export type MessageDeltaKind = (typeof MessageDeltaKind)[keyof typeof MessageDeltaKind];
 
 /**
  * 事件核心：HarnessEvent 和 HarnessEventDraft

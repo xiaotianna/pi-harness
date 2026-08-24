@@ -14,6 +14,7 @@ import type { ProviderService } from "./provider-service.js";
 const SessionErrorCode = {
   BUSY: "SESSION_BUSY",
   EMPTY_PROMPT: "EMPTY_RUN_PROMPT",
+  EMPTY_TITLE: "EMPTY_SESSION_TITLE",
   NOT_FOUND: "SESSION_NOT_FOUND",
   RUN_NOT_FOUND: "RUN_NOT_FOUND",
   WORKSPACE_INVALID: "WORKSPACE_INVALID",
@@ -42,6 +43,11 @@ export interface CreateSessionInput {
 
 export interface RunAccepted {
   runId: RunId;
+}
+
+export interface UpdateSessionInput {
+  archived?: boolean;
+  title?: string;
 }
 
 export interface SessionSnapshot {
@@ -133,6 +139,31 @@ export class SessionService {
     if (!this.sessions.updateModel(sessionId, providerId, modelId, Date.now())) {
       throw new SessionServiceError(SessionErrorCode.NOT_FOUND, "Session 不存在");
     }
+    return this.getRequiredSession(sessionId);
+  }
+
+  public update(sessionId: SessionId, input: UpdateSessionInput): SessionRecord {
+    this.assertSessionIdle(sessionId);
+    this.getRequiredSession(sessionId);
+    const updatedAt = Date.now();
+
+    if (input.title !== undefined) {
+      const title = input.title.trim();
+      if (!title) {
+        throw new SessionServiceError(SessionErrorCode.EMPTY_TITLE, "Session 标题不能为空");
+      }
+      if (!this.sessions.updateTitle(sessionId, title, updatedAt)) {
+        throw new SessionServiceError(SessionErrorCode.NOT_FOUND, "Session 不存在");
+      }
+    }
+
+    if (
+      input.archived !== undefined &&
+      !this.sessions.setArchived(sessionId, input.archived ? updatedAt : null, updatedAt)
+    ) {
+      throw new SessionServiceError(SessionErrorCode.NOT_FOUND, "Session 不存在");
+    }
+
     return this.getRequiredSession(sessionId);
   }
 

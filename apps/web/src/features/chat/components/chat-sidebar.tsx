@@ -7,7 +7,7 @@ import { memo } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { UserMenu } from "../../auth";
 import type { ChatNavItem, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
-import { CHAT_NAV_ITEMS, DEFAULT_CHAT_THREAD_ID, resolveChatActivePage } from "../data/chat";
+import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
 
 export interface ChatSidebarProps {
   threads: readonly ChatThread[];
@@ -15,12 +15,12 @@ export interface ChatSidebarProps {
   pathname: string;
   basePath: string;
   disableNavigation?: boolean;
-  onArchive: (thread: ChatThread) => void;
+  onArchive?: ((thread: ChatThread) => void) | undefined;
   onAction?: ((id: ChatNavItemId) => void) | undefined;
   onNewThread: () => void;
-  onRename: (thread: ChatThread) => void;
-  onRemoveWorkspace: (workspace: ChatWorkspace) => void;
-  onRenameWorkspace: (workspace: ChatWorkspace) => void;
+  onRename?: ((thread: ChatThread) => void) | undefined;
+  onRemoveWorkspace?: ((workspace: ChatWorkspace) => void) | undefined;
+  onRenameWorkspace?: ((workspace: ChatWorkspace) => void) | undefined;
   onSettings: () => void;
 }
 
@@ -85,7 +85,7 @@ function SidebarContents({
   threads,
   workspaces,
 }: SidebarContentsProps) {
-  const activePage = resolveChatActivePage(pathname, basePath);
+  const activePage = resolveChatActivePage(pathname, basePath, threads);
 
   return (
     <>
@@ -200,11 +200,11 @@ interface ChatSidebarWorkspaceItemProps {
   basePath: string;
   disableNavigation: boolean;
   idPrefix: string;
-  onArchive: (thread: ChatThread) => void;
+  onArchive?: ((thread: ChatThread) => void) | undefined;
   onNewThread: () => void;
-  onRemove: (workspace: ChatWorkspace) => void;
-  onRename: (thread: ChatThread) => void;
-  onRenameWorkspace: (workspace: ChatWorkspace) => void;
+  onRemove?: ((workspace: ChatWorkspace) => void) | undefined;
+  onRename?: ((thread: ChatThread) => void) | undefined;
+  onRenameWorkspace?: ((workspace: ChatWorkspace) => void) | undefined;
   pathname: string;
   threads: readonly ChatThread[];
   workspace: ChatWorkspace;
@@ -238,35 +238,41 @@ function ChatSidebarWorkspaceItem({
       </Sidebar.MenuIcon>
       <Sidebar.MenuLabel>{workspace.name}</Sidebar.MenuLabel>
       <Sidebar.MenuActions className="absolute end-2 w-16 justify-end">
-        <Dropdown>
-          <Tooltip delay={0}>
-            <Dropdown.Trigger
-              aria-label={`更多操作：${workspace.name}`}
-              className="sidebar__menu-action"
-            >
-              <Ellipsis />
-            </Dropdown.Trigger>
-            <Tooltip.Content placement="right">更多操作</Tooltip.Content>
-          </Tooltip>
-          <Dropdown.Popover placement="bottom start">
-            <Dropdown.Menu
-              aria-label={`${workspace.name}操作`}
-              onAction={(key) => {
-                if (key === "rename") onRenameWorkspace(workspace);
-                if (key === "remove") onRemove(workspace);
-              }}
-            >
-              <Dropdown.Item id="rename" textValue="重命名工作区">
-                <Pencil className="size-4 text-muted" />
-                重命名工作区
-              </Dropdown.Item>
-              <Dropdown.Item className="text-danger" id="remove" textValue="移除工作区">
-                <Trash2 className="size-4 text-danger" />
-                移除工作区
-              </Dropdown.Item>
-            </Dropdown.Menu>
-          </Dropdown.Popover>
-        </Dropdown>
+        {onRenameWorkspace || onRemove ? (
+          <Dropdown>
+            <Tooltip delay={0}>
+              <Dropdown.Trigger
+                aria-label={`更多操作：${workspace.name}`}
+                className="sidebar__menu-action"
+              >
+                <Ellipsis />
+              </Dropdown.Trigger>
+              <Tooltip.Content placement="right">更多操作</Tooltip.Content>
+            </Tooltip>
+            <Dropdown.Popover placement="bottom start">
+              <Dropdown.Menu
+                aria-label={`${workspace.name}操作`}
+                onAction={(key) => {
+                  if (key === "rename") onRenameWorkspace?.(workspace);
+                  if (key === "remove") onRemove?.(workspace);
+                }}
+              >
+                {onRenameWorkspace ? (
+                  <Dropdown.Item id="rename" textValue="重命名工作区">
+                    <Pencil className="size-4 text-muted" />
+                    重命名工作区
+                  </Dropdown.Item>
+                ) : null}
+                {onRemove ? (
+                  <Dropdown.Item className="text-danger" id="remove" textValue="移除工作区">
+                    <Trash2 className="size-4 text-danger" />
+                    移除工作区
+                  </Dropdown.Item>
+                ) : null}
+              </Dropdown.Menu>
+            </Dropdown.Popover>
+          </Dropdown>
+        ) : null}
         <Tooltip delay={0}>
           <Sidebar.MenuAction aria-label={`在 ${workspace.name} 中新建对话`} onPress={onNewThread}>
             <Plus />
@@ -296,8 +302,8 @@ interface ChatSidebarThreadItemProps {
   basePath: string;
   disableNavigation: boolean;
   idPrefix: string;
-  onArchive: (thread: ChatThread) => void;
-  onRename: (thread: ChatThread) => void;
+  onArchive?: ((thread: ChatThread) => void) | undefined;
+  onRename?: ((thread: ChatThread) => void) | undefined;
   pathname: string;
   thread: ChatThread;
 }
@@ -312,12 +318,7 @@ function ChatSidebarThreadItem({
   thread,
 }: ChatSidebarThreadItemProps) {
   const fullHref = `${basePath}/${thread.id}`;
-  const isCurrent =
-    pathname === fullHref ||
-    pathname === thread.id ||
-    pathname === `/${thread.id}` ||
-    (thread.id === DEFAULT_CHAT_THREAD_ID &&
-      (pathname === basePath || pathname === `${basePath}/` || pathname === "/"));
+  const isCurrent = pathname === fullHref || pathname === thread.id || pathname === `/${thread.id}`;
 
   return (
     <Sidebar.MenuItem
@@ -329,37 +330,43 @@ function ChatSidebarThreadItem({
     >
       <Sidebar.MenuLabel>{thread.title}</Sidebar.MenuLabel>
       <Sidebar.MenuChip>{formatChatTimestamp(thread.updatedAt)}</Sidebar.MenuChip>
-      <Sidebar.MenuActions className="absolute end-2 w-12 justify-end">
-        <Dropdown>
-          <Tooltip delay={0}>
-            <Dropdown.Trigger
-              aria-label={`更多操作：${thread.title}`}
-              className="sidebar__menu-action"
-            >
-              <Ellipsis />
-            </Dropdown.Trigger>
-            <Tooltip.Content placement="right">更多操作</Tooltip.Content>
-          </Tooltip>
-          <Dropdown.Popover placement="bottom start">
-            <Dropdown.Menu
-              aria-label={`${thread.title}操作`}
-              onAction={(key) => {
-                if (key === "rename") onRename(thread);
-                if (key === "archive") onArchive(thread);
-              }}
-            >
-              <Dropdown.Item id="rename" textValue="重命名">
-                <Pencil className="size-4 text-muted" />
-                重命名
-              </Dropdown.Item>
-              <Dropdown.Item id="archive" textValue="归档">
-                <Archive className="size-4 text-muted" />
-                归档
-              </Dropdown.Item>
-            </Dropdown.Menu>
-          </Dropdown.Popover>
-        </Dropdown>
-      </Sidebar.MenuActions>
+      {onRename || onArchive ? (
+        <Sidebar.MenuActions className="absolute end-2 w-12 justify-end">
+          <Dropdown>
+            <Tooltip delay={0}>
+              <Dropdown.Trigger
+                aria-label={`更多操作：${thread.title}`}
+                className="sidebar__menu-action"
+              >
+                <Ellipsis />
+              </Dropdown.Trigger>
+              <Tooltip.Content placement="right">更多操作</Tooltip.Content>
+            </Tooltip>
+            <Dropdown.Popover placement="bottom start">
+              <Dropdown.Menu
+                aria-label={`${thread.title}操作`}
+                onAction={(key) => {
+                  if (key === "rename") onRename?.(thread);
+                  if (key === "archive") onArchive?.(thread);
+                }}
+              >
+                {onRename ? (
+                  <Dropdown.Item id="rename" textValue="重命名">
+                    <Pencil className="size-4 text-muted" />
+                    重命名
+                  </Dropdown.Item>
+                ) : null}
+                {onArchive ? (
+                  <Dropdown.Item id="archive" textValue="归档">
+                    <Archive className="size-4 text-muted" />
+                    归档
+                  </Dropdown.Item>
+                ) : null}
+              </Dropdown.Menu>
+            </Dropdown.Popover>
+          </Dropdown>
+        </Sidebar.MenuActions>
+      ) : null}
     </Sidebar.MenuItem>
   );
 }
