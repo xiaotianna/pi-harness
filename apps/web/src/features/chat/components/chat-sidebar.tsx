@@ -10,6 +10,7 @@ import { UserMenu } from "../../auth";
 import type { ChatNavItem, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
 import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
 import { useChatSidebarStore } from "../state/chat-sidebar-store";
+import { useNewChatStore } from "../state/new-chat-store";
 
 export interface ChatSidebarProps {
   threads: readonly ChatThread[];
@@ -21,7 +22,7 @@ export interface ChatSidebarProps {
   onAddWorkspace?: (() => void) | undefined;
   onArchive?: ((thread: ChatThread) => void) | undefined;
   onAction?: ((id: ChatNavItemId) => void) | undefined;
-  onNewThread: () => void;
+  onNewThread: (workspace: ChatWorkspace) => void;
   onRename?: ((thread: ChatThread) => void) | undefined;
   onRemoveWorkspace?: ((workspace: ChatWorkspace) => void) | undefined;
   onReorderWorkspaces?: ((workspaceIds: readonly string[]) => void) | undefined;
@@ -106,12 +107,20 @@ function SidebarContents({
   const activePage = resolveChatActivePage(pathname, basePath, threads);
   const collapsedWorkspaceIds = useChatSidebarStore((state) => state.collapsedWorkspaceIds);
   const setCollapsedWorkspaceIds = useChatSidebarStore((state) => state.setCollapsedWorkspaceIds);
+  const newChatWorkspaceId = useNewChatStore((state) => state.workspaceId);
   const [draggedWorkspaceId, setDraggedWorkspaceId] = useState<string | null>(null);
   const [workspaceDropTarget, setWorkspaceDropTarget] = useState<{
     id: string;
     position: "after" | "before";
   } | null>(null);
   const canReorderWorkspaces = workspaces.length > 1 && Boolean(onReorderWorkspaces);
+  const activeWorkspaceId =
+    activePage.kind === "thread"
+      ? activePage.thread.workspaceId
+      : activePage.kind === "new"
+        ? (workspaces.find((workspace) => workspace.id === newChatWorkspaceId)?.id ??
+          workspaces[0]?.id)
+        : undefined;
 
   const clearWorkspaceDrag = () => {
     setDraggedWorkspaceId(null);
@@ -290,6 +299,7 @@ function SidebarContents({
                 }
                 isDraggable={canReorderWorkspaces}
                 isDragging={draggedWorkspaceId === workspace.id}
+                isCurrent={activeWorkspaceId === workspace.id}
                 threads={threads.filter((thread) => thread.workspaceId === workspace.id)}
                 workspace={workspace}
                 onKeyDown={handleWorkspaceKeyDown}
@@ -358,8 +368,9 @@ interface ChatSidebarWorkspaceItemProps {
   idPrefix: string;
   isDraggable: boolean;
   isDragging: boolean;
+  isCurrent: boolean;
   onArchive?: ((thread: ChatThread) => void) | undefined;
-  onNewThread: () => void;
+  onNewThread: (workspace: ChatWorkspace) => void;
   onRemove?: ((workspace: ChatWorkspace) => void) | undefined;
   onReveal?: ((workspace: ChatWorkspace) => void) | undefined;
   onRename?: ((thread: ChatThread) => void) | undefined;
@@ -378,6 +389,7 @@ function ChatSidebarWorkspaceItem({
   idPrefix,
   isDraggable,
   isDragging,
+  isCurrent,
   onArchive,
   onNewThread,
   onRemove,
@@ -420,7 +432,7 @@ function ChatSidebarWorkspaceItem({
       <Sidebar.MenuTrigger className="order-first">
         <Sidebar.MenuIndicator />
       </Sidebar.MenuTrigger>
-      <Sidebar.MenuIcon className="order-first">
+      <Sidebar.MenuIcon className="order-first" data-current-workspace={isCurrent || undefined}>
         <Folder className="sidebar__workspace-folder-closed" />
         <FolderOpen className="sidebar__workspace-folder-open" />
       </Sidebar.MenuIcon>
@@ -472,7 +484,10 @@ function ChatSidebarWorkspaceItem({
           </Dropdown>
         ) : null}
         <Tooltip delay={0}>
-          <Sidebar.MenuAction aria-label={`在 ${workspace.name} 中新建对话`} onPress={onNewThread}>
+          <Sidebar.MenuAction
+            aria-label={`在 ${workspace.name} 中新建对话`}
+            onPress={() => onNewThread(workspace)}
+          >
             <Plus />
           </Sidebar.MenuAction>
           <Tooltip.Content placement="right">新对话</Tooltip.Content>

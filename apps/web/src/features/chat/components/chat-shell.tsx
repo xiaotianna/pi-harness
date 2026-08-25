@@ -20,6 +20,7 @@ import { workspaceListQueryOptions, workspaceQueryKeys } from "../api/workspace-
 import type { ChatActivePage, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
 import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
 import { useAddWorkspace } from "../hooks/use-add-workspace";
+import { useNewChatStore } from "../state/new-chat-store";
 import { sessionToChatThread } from "../utils/session-messages";
 import { ChatNavbar } from "./chat-navbar";
 import { ChatSearchDialog } from "./chat-search-dialog";
@@ -44,6 +45,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const sessionsQuery = useQuery(sessionListQueryOptions());
   const workspacesQuery = useQuery(workspaceListQueryOptions());
   const addWorkspaceMutation = useAddWorkspace();
+  const setNewChatWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -111,9 +113,13 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     setIsSettingsOpen(true);
   }, []);
 
-  const handleNewThread = useCallback(() => {
-    navigate("/new");
-  }, [navigate]);
+  const handleNewThread = useCallback(
+    (workspace: ChatWorkspace) => {
+      setNewChatWorkspaceId(workspace.id);
+      navigate("/new");
+    },
+    [navigate, setNewChatWorkspaceId],
+  );
 
   const handleAddWorkspace = useCallback(() => {
     void addWorkspaceMutation.mutateAsync().catch((error: unknown) => {

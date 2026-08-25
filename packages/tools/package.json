@@ -13,6 +13,7 @@
     "@earendil-works/pi-agent-core": "catalog:",
     "@pi-harness/policy": "workspace:*",
     "chokidar": "catalog:",
+    "diff": "catalog:",
     "execa": "catalog:",
     "typebox": "catalog:"
   },

@@ -30,7 +30,11 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   await eventStore.initialize();
   const broker = new SessionEventBroker();
   const sessionEvents = new SessionEventService(database.sessions, eventStore, broker);
-  const agents = new AgentManager(sessionEvents.handle);
+  const agents = new AgentManager(sessionEvents.handle, [
+    config.credentialsPath,
+    config.databasePath,
+    config.sessionsPath,
+  ]);
   const workspaces = new WorkspaceService(database.workspaces);
   let sessions: SessionService | undefined;
   const providers = await ProviderService.create(

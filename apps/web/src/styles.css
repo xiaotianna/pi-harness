@@ -189,8 +189,11 @@
 
 .sidebar__workspace-folder-open {
   display: none;
+  fill: color-mix(in oklab, currentcolor 14%, transparent);
+}
+
+.sidebar__menu-icon[data-current-workspace] {
   color: var(--accent);
-  fill: color-mix(in oklab, var(--accent) 14%, transparent);
 }
 
 .sidebar__menu-item[data-workspace-item][data-expanded] .sidebar__workspace-folder-closed {

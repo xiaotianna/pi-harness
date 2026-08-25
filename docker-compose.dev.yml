@@ -1,0 +1,10 @@
+services:
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    environment:
+      SEARXNG_SECRET: pi-harness-local-development-only
+    ports:
+      - "127.0.0.1:8888:8080"
+    volumes:
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped

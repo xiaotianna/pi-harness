@@ -15,6 +15,7 @@ export interface RestoreAgentInput {
   sessionId: SessionId;
   streamFn: StreamFn;
   systemPrompt: string;
+  workspaceRoot: string;
 }
 
 export interface StartSessionRunInput extends RestoreAgentInput, StartRunInput {}
@@ -32,7 +33,10 @@ function createUserMessage(text: string): AgentMessage {
 export class AgentManager {
   private readonly runtimes = new Map<SessionId, RunCoordinator>();
 
-  public constructor(private readonly onEvent: HarnessEventListener) {}
+  public constructor(
+    private readonly onEvent: HarnessEventListener,
+    private readonly protectedPaths: readonly string[] = [],
+  ) {}
 
   public isProviderActive(providerId: string): boolean {
     return [...this.runtimes.values()].some((runtime) => runtime.activeProviderId === providerId);
@@ -70,7 +74,7 @@ export class AgentManager {
     const current = this.runtimes.get(input.sessionId);
     if (current !== undefined) return current;
 
-    const agent = createAgent(input);
+    const agent = createAgent({ ...input, protectedPaths: this.protectedPaths });
     const runtime = new RunCoordinator(input.sessionId, agent, input.initialSeq, this.onEvent);
     this.runtimes.set(input.sessionId, runtime);
     return runtime;

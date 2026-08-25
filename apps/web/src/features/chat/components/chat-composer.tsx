@@ -27,6 +27,7 @@ import {
   useModelSettingsStore,
 } from "../../models";
 import type { ChatWorkspace } from "../data/chat";
+import { useNewChatStore } from "../state/new-chat-store";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
 import { ChatAttachmentList } from "./chat-attachment-list";
 import {
@@ -193,9 +194,10 @@ export function ChatComposer({
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [draftModelKey, setDraftModelKey] = useState<string | null>(null);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [internalStatus, setInternalStatus] = useState<ChatStatus>("ready");
   const [hasEditorContent, setHasEditorContent] = useState(false);
+  const selectedWorkspaceId = useNewChatStore((state) => state.workspaceId);
+  const setSelectedWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
   const attachmentsRef = useRef<PendingAttachment[]>([]);
   const attachmentDrawerId = useId();
   const editorRef = useRef<ChatComposerEditorHandle>(null);
@@ -486,15 +488,12 @@ export function ChatComposer({
                   isIconOnly
                   aria-label="添加文件等内容"
                   className="size-8 min-w-8 p-0"
-                  isDisabled={isGenerating || onSubmitMessage !== undefined}
                   size="sm"
                   variant="ghost"
                 >
                   <Plus className="size-4" />
                 </Button>
-                <Tooltip.Content placement="top">
-                  {onSubmitMessage ? "当前仅支持文本消息" : "添加文件等内容"}
-                </Tooltip.Content>
+                <Tooltip.Content placement="top">添加文件等内容</Tooltip.Content>
               </Tooltip>
               <Dropdown.Popover className="min-w-48" placement="bottom start">
                 <Dropdown.Menu
@@ -503,7 +502,11 @@ export function ChatComposer({
                     if (key === "attach") fileInputRef.current?.click();
                   }}
                 >
-                  <Dropdown.Item id="attach" textValue="添加附件">
+                  <Dropdown.Item
+                    id="attach"
+                    isDisabled={isGenerating || onSubmitMessage !== undefined}
+                    textValue="添加附件"
+                  >
                     <Paperclip className="size-4 text-muted" />
                     <Label>添加附件</Label>
                   </Dropdown.Item>
@@ -575,7 +578,7 @@ export function ChatComposer({
                 >
                   <Dropdown.Menu
                     aria-label="选择工作区"
-                    selectedKeys={selectedWorkspaceId ? new Set([selectedWorkspaceId]) : new Set()}
+                    selectedKeys={selectedWorkspace ? new Set([selectedWorkspace.id]) : new Set()}
                     selectionMode="single"
                     onAction={handleWorkspaceAction}
                   >

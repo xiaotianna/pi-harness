@@ -108,6 +108,9 @@ catalogs:
     clsx:
       specifier: ^2.1.1
       version: 2.1.1
+    diff:
+      specifier: ^8.0.0
+      version: 8.0.4
     embla-carousel:
       specifier: ^8.6.0
       version: 8.6.0
@@ -557,6 +560,9 @@ importers:
       chokidar:
         specifier: 'catalog:'
         version: 4.0.3
+      diff:
+        specifier: 'catalog:'
+        version: 8.0.4
       execa:
         specifier: 'catalog:'
         version: 9.6.1

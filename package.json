@@ -12,6 +12,7 @@
     "dev": "pnpm --parallel --filter @pi-harness/daemon --filter @pi-harness/web dev",
     "dev:daemon": "pnpm --filter @pi-harness/daemon dev",
     "dev:web": "pnpm --filter @pi-harness/web dev",
+    "dev:docker": "docker compose -f docker-compose.dev.yml up -d",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "check": "biome check .",

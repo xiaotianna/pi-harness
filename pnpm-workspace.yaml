@@ -38,6 +38,7 @@ catalog:
   antd: ^6.6.1
   chokidar: ^4.0.0
   clsx: ^2.1.1
+  diff: ^8.0.0
   embla-carousel: ^8.6.0
   embla-carousel-react: ^8.6.0
   es-toolkit: ^1.50.0

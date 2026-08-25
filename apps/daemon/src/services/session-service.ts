@@ -189,6 +189,7 @@ export class SessionService {
         sessionId,
         streamFn,
         systemPrompt: buildSystemPrompt(),
+        workspaceRoot: session.workspaceRoot,
       });
       this.trackBackgroundTask(task, { providerId: session.providerId, runId, sessionId });
       return { runId };
