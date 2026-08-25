@@ -36,7 +36,6 @@ catalog:
   "@types/react-dom": ^19.1.0
   "@vitejs/plugin-react": ^5.0.0
   antd: ^6.6.1
-  chokidar: ^4.0.0
   clsx: ^2.1.1
   diff: ^8.0.0
   embla-carousel: ^8.6.0

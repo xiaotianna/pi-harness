@@ -1,10 +1,13 @@
 import { glob, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { truncateHead } from "@earendil-works/pi-agent-core";
+import { isPathWithin, PathPolicyError } from "@pi-harness/policy";
 import { Type } from "typebox";
 import { resolveToolPath, type WorkspaceToolContext } from "../lib/tool-context.js";
 
 const MAX_ENTRIES = 500;
+const IGNORED_DIRECTORY_NAMES = new Set([".git", ".pi-harness", "node_modules"]);
 
 const ListFilesParameters = Type.Object({
   path: Type.Optional(Type.String({ description: "要列举的目录，默认为 workspace 根目录" })),
@@ -22,6 +25,10 @@ function validatePattern(pattern: string): void {
   if (isAbsolute(pattern) || pattern.split(/[\\/]/).includes("..")) {
     throw new Error("glob pattern 不能访问目标目录外部");
   }
+}
+
+function hasIgnoredDirectory(path: string): boolean {
+  return path.split(sep).some((segment) => IGNORED_DIRECTORY_NAMES.has(segment));
 }
 
 /**
@@ -45,12 +52,21 @@ export function createListFilesTool(
       const directory = await resolveToolPath(context, requestedPath);
       if (!(await stat(directory)).isDirectory()) throw new Error("list_files 的 path 必须是目录");
       const workspaceRoot = await resolveToolPath(context, ".");
+      if (hasIgnoredDirectory(relative(workspaceRoot, directory))) {
+        throw new Error("list_files 不列举受忽略的目录");
+      }
       const entries: string[] = [];
       let truncated = false;
 
       for await (const entry of glob(pattern, {
         cwd: directory,
-        exclude: ["**/.git/**", "**/.pi-harness/**", "**/node_modules/**"],
+        exclude: (entry) => {
+          const absolutePath = resolve(entry.parentPath, entry.name);
+          return (
+            hasIgnoredDirectory(relative(directory, absolutePath)) ||
+            (context.protectedPaths ?? []).some((path) => isPathWithin(resolve(path), absolutePath))
+          );
+        },
         withFileTypes: true,
       })) {
         if (signal?.aborted) throw new Error("目录列举已取消");
@@ -61,14 +77,22 @@ export function createListFilesTool(
         const absolutePath = resolve(entry.parentPath, entry.name);
         const workspacePath = relative(workspaceRoot, absolutePath);
         if (workspacePath === ".." || workspacePath.startsWith(`..${sep}`)) continue;
+        try {
+          await resolveToolPath(context, absolutePath);
+        } catch (error: unknown) {
+          if (error instanceof PathPolicyError) continue;
+          throw error;
+        }
         entries.push(`${workspacePath}${entry.isDirectory() ? "/" : ""}`);
       }
 
       entries.sort((left, right) => left.localeCompare(right));
-      const suffix = truncated ? `\n\n[结果已限制为 ${MAX_ENTRIES} 项]` : "";
+      const output = truncateHead(entries.join("\n"));
+      truncated ||= output.truncated;
+      const suffix = truncated ? `\n\n[结果已截断]` : "";
       return {
-        content: [{ type: "text", text: entries.length ? entries.join("\n") + suffix : "(empty)" }],
-        details: { count: entries.length, path: requestedPath, pattern, truncated },
+        content: [{ type: "text", text: entries.length ? output.content + suffix : "(empty)" }],
+        details: { count: output.outputLines, path: requestedPath, pattern, truncated },
       };
     },
   };

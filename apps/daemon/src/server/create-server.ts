@@ -31,6 +31,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   await eventStore.initialize();
   const broker = new SessionEventBroker();
   const sessionEvents = new SessionEventService(database.sessions, eventStore, broker);
+  await sessionEvents.recoverInterruptedRuns();
   const interactions = new HumanInteractionService();
   const agents = new AgentManager(sessionEvents.handle, interactions.request, [
     config.credentialsPath,

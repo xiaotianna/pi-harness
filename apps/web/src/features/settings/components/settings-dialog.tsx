@@ -82,38 +82,11 @@ function GeneralSettingsPanel() {
 
   return (
     <section aria-label="通用设置" className="w-full max-w-[720px]">
-      <SettingsRow
-        description="对此后新建的会话生效。运行中的会话保持它开始时的预设。"
-        title="Agent 预设"
-      >
-        <Select
-          aria-label="Agent 预设"
-          className="min-w-40 max-w-56"
-          defaultSelectedKey="standard"
-          variant="secondary"
-        >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              <ListBox.Item id="standard" textValue="标准模式">
-                <Label>标准模式</Label>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            </ListBox>
-          </Select.Popover>
-        </Select>
-      </SettingsRow>
-
-      <Separator />
-
       <SettingsRow description="选择新会话的默认权限模式。" title="权限">
         <Select
           aria-label="默认权限"
           className="min-w-40 max-w-56"
-          defaultSelectedKey="workspace-write"
+          defaultSelectedKey="read-only"
           variant="secondary"
         >
           <Select.Trigger>
@@ -122,8 +95,16 @@ function GeneralSettingsPanel() {
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
-              <ListBox.Item id="workspace-write" textValue="Workspace Write">
-                <Label>Workspace Write</Label>
+              <ListBox.Item id="read-only" textValue="只读">
+                <Label>只读</Label>
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="workspace-write" textValue="工作区写入">
+                <Label>工作区写入</Label>
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="danger-full-access" textValue="完全访问">
+                <Label>完全访问</Label>
                 <ListBox.ItemIndicator />
               </ListBox.Item>
             </ListBox>
@@ -133,11 +114,14 @@ function GeneralSettingsPanel() {
 
       <Separator />
 
-      <SettingsRow title="语言">
+      <SettingsRow
+        description="仅在 Agent 运行时生效；Cmd/Ctrl+Enter 使用另一行为。"
+        title="繁忙时 Enter 键行为"
+      >
         <Select
-          aria-label="界面语言"
+          aria-label="繁忙时 Enter 键行为"
           className="min-w-40 max-w-56"
-          defaultSelectedKey="zh-CN"
+          defaultSelectedKey="queue"
           variant="secondary"
         >
           <Select.Trigger>
@@ -146,8 +130,12 @@ function GeneralSettingsPanel() {
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
-              <ListBox.Item id="zh-CN" textValue="中文">
-                <Label>中文</Label>
+              <ListBox.Item id="queue" textValue="排队发送">
+                <Label>排队发送</Label>
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="steer" textValue="插话发送">
+                <Label>插话发送</Label>
                 <ListBox.ItemIndicator />
               </ListBox.Item>
             </ListBox>
@@ -188,33 +176,6 @@ function GeneralSettingsPanel() {
           </ToggleButton>
         </ToggleButtonGroup>
       </div>
-
-      <Separator />
-
-      <SettingsRow
-        description="仅在 Agent 运行时生效；Cmd/Ctrl+Enter 使用另一行为。"
-        title="繁忙时 Enter 键行为"
-      >
-        <Select
-          aria-label="繁忙时 Enter 键行为"
-          className="min-w-40 max-w-56"
-          defaultSelectedKey="queue"
-          variant="secondary"
-        >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              <ListBox.Item id="queue" textValue="排队发送">
-                <Label>排队发送</Label>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            </ListBox>
-          </Select.Popover>
-        </Select>
-      </SettingsRow>
     </section>
   );
 }

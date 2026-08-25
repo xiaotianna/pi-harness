@@ -5,6 +5,7 @@ import { createPatch } from "diff";
 import { Type } from "typebox";
 import { resolveToolPath, type WorkspaceToolContext } from "../lib/tool-context.js";
 import {
+  assertTextFileSize,
   type FileChangeDetails,
   MAX_FILE_BYTES,
   readTextFile,
@@ -50,6 +51,7 @@ export function createWriteFileTool(
     parameters: WriteFileParameters,
     executionMode: "sequential",
     async execute(_toolCallId, input, signal) {
+      assertTextFileSize(input.content);
       let path = await resolveToolPath(context, input.path, true);
       const { before, mode } = await readPreviousContent(path, signal);
       if (before === input.content) throw new Error("写入前后内容相同");

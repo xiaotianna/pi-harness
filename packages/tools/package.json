@@ -12,8 +12,8 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "catalog:",
     "@pi-harness/policy": "workspace:*",
-    "chokidar": "catalog:",
     "diff": "catalog:",
+    "es-toolkit": "catalog:",
     "execa": "catalog:",
     "typebox": "catalog:"
   },

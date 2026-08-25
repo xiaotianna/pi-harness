@@ -4,6 +4,7 @@ import { createPatch } from "diff";
 import { Type } from "typebox";
 import { resolveToolPath, type WorkspaceToolContext } from "../lib/tool-context.js";
 import {
+  assertTextFileSize,
   type FileChangeDetails,
   readTextFile,
   writeTextFileAtomic,
@@ -44,6 +45,7 @@ export function createEditFileTool(
         matchIndex + input.oldText.length,
       )}`;
       if (after === before) throw new Error("修改前后内容相同");
+      assertTextFileSize(after);
       await writeTextFileAtomic(path, after, metadata.mode, signal);
       const diff = createPatch(input.path, before, after, "before", "after");
 

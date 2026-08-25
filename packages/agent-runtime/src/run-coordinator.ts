@@ -49,6 +49,7 @@ interface ActiveRun {
 // 一个 Session 对应一个 RunCoordinator，它管理 run 的生命周期、事件转换与发布
 export class RunCoordinator {
   private activeRun: ActiveRun | null = null;
+  private readonly executionGuard: ToolRegistry["executionGuard"];
   private nextSeq: number;
   private readonly pendingFileChanges = new Map<string, FileChangedData>();
   private readonly unsubscribe: () => void;
@@ -63,6 +64,7 @@ export class RunCoordinator {
     private readonly protectedPaths: readonly string[],
     private readonly requestToolApproval: ToolApprovalRequester,
   ) {
+    this.executionGuard = toolRegistry.executionGuard;
     this.nextSeq = initialSeq + 1;
     this.agent.beforeToolCall = (context, signal) => this.handleBeforeToolCall(context, signal);
     this.agent.afterToolCall = (context) => this.handleAfterToolCall(context);
@@ -105,6 +107,17 @@ export class RunCoordinator {
     if (policy.decision === ToolPolicyDecision.DENY) {
       return { block: true, reason: policy.reason };
     }
+
+    const toolCallFingerprint = this.executionGuard.createFingerprint(
+      context.toolCall.name,
+      context.args,
+      policy.fingerprint,
+    );
+    const blockReason = this.executionGuard.getBlockReason(
+      context.toolCall.id,
+      toolCallFingerprint,
+    );
+    if (blockReason !== null) return { block: true, reason: blockReason };
 
     const approvalId = randomUUID();
     const request = {
@@ -188,7 +201,31 @@ export class RunCoordinator {
       );
 
       // 决定是否执行工具，返回 undefined，表示不阻止工具，继续执行。
-      if (decision === ApprovalDecision.APPROVED) return undefined;
+      if (decision === ApprovalDecision.APPROVED) {
+        const currentPolicy = await evaluateToolCall({
+          arguments: context.args,
+          policy: this.toolRegistry.get(context.toolCall.name)?.policy,
+          protectedPaths: this.protectedPaths,
+          workspaceRoot: this.workspaceRoot,
+        });
+        if (
+          currentPolicy.decision !== ToolPolicyDecision.ASK ||
+          currentPolicy.fingerprint !== policy.fingerprint ||
+          currentPolicy.summary !== policy.summary ||
+          currentPolicy.target !== policy.target
+        ) {
+          return { block: true, reason: "审批期间工具目标已变化，请重新发起审批" };
+        }
+        const currentBlockReason = this.executionGuard.getBlockReason(
+          context.toolCall.id,
+          toolCallFingerprint,
+        );
+        if (currentBlockReason !== null) {
+          return { block: true, reason: currentBlockReason };
+        }
+        this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+        return undefined;
+      }
       return {
         block: true,
         reason: decision === ApprovalDecision.EXPIRED ? "工具审批已超时" : "用户拒绝了工具审批",
@@ -254,6 +291,7 @@ export class RunCoordinator {
     this.agent.state.thinkingLevel = clampThinkingLevel(input.model, "medium");
     this.agent.state.systemPrompt = input.systemPrompt;
     this.agent.streamFunction = input.streamFn;
+    this.executionGuard.reset();
     this.activeRun = {
       handleAutoFollowUp: createAutoFollowUpHandler((message) => this.agent.followUp(message)),
       modelId: input.modelId,
@@ -264,6 +302,7 @@ export class RunCoordinator {
     try {
       await this.agent.prompt(input.prompt);
     } finally {
+      this.executionGuard.reset();
       this.pendingFileChanges.clear();
       this.activeRun = null;
     }

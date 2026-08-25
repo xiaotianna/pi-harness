@@ -4,8 +4,6 @@ export {
   type RestoreAgentInput,
   type StartSessionRunInput,
 } from "./agent-manager.js";
-export { type CreateAgentInput, createAgent } from "./create-agent.js";
-export { type AgentEventAdapterContext, adaptAgentEvent } from "./event-adapter.js";
 export {
   ApprovalDecision,
   type ApprovalDecision as ApprovalDecisionValue,
@@ -31,10 +29,9 @@ export {
   type ToolUpdatedData,
 } from "./harness-event.js";
 export { buildSystemPrompt } from "./prompts/system-prompt.js";
-export {
-  type HarnessEventListener,
-  RunCoordinator,
-  type StartRunInput,
+export type {
+  HarnessEventListener,
+  StartRunInput,
 } from "./run-coordinator.js";
 export type {
   ToolApprovalHandle,

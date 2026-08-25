@@ -76,9 +76,10 @@ export function createRunCommandTool(
 
       if (result.isCanceled) throw new Error("命令已取消");
       if (result.timedOut)
-        throw new Error(`命令执行超过 ${input.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms`);
+        throw new Error(`TOOL_TIMEOUT: 命令执行超过 ${input.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms`);
+      if (result.isMaxBuffer) throw new Error("TOOL_OUTPUT_LIMIT: 命令输出超过 1MB 限制");
       if (result.failed) {
-        throw new Error(`${result.shortMessage || "命令执行失败"}\n\n${output.content}`.trim());
+        throw new Error(`TOOL_COMMAND_FAILED: ${output.content || "命令执行失败"}`);
       }
 
       return {

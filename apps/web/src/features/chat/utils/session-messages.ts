@@ -72,6 +72,21 @@ function readToolError(value: unknown): string {
   return typeof result === "string" && result ? result : "工具执行失败";
 }
 
+function readApprovalPreview(tool: ChatMessageTool): string | null {
+  if (!isPlainObject(tool.input)) return null;
+  if (
+    tool.toolName === "edit_file" &&
+    typeof tool.input.oldText === "string" &&
+    typeof tool.input.newText === "string"
+  ) {
+    return `原文本：\n${tool.input.oldText}\n\n替换为：\n${tool.input.newText || "(空内容)"}`;
+  }
+  if (tool.toolName === "write_file" && typeof tool.input.content === "string") {
+    return `完整写入内容：\n${tool.input.content || "(空内容)"}`;
+  }
+  return null;
+}
+
 export function findActiveRunId(events: readonly HarnessEvent[]): string | null {
   let activeRunId: string | null = null;
   for (const event of events) {
@@ -121,16 +136,13 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     ) {
       const tool = toolsByCallId.get(event.data.toolCallId);
       if (tool) {
+        const preview = readApprovalPreview(tool);
         tool.approval = {
           approvalId: event.data.approvalId,
+          ...(preview === null ? {} : { preview }),
           risk: event.data.risk,
           runId: event.runId,
           summary: event.data.summary,
-          target: event.data.target,
-        };
-        tool.input = {
-          operation: event.data.summary,
-          risk: event.data.risk,
           target: event.data.target,
         };
         tool.state = "requires-action";

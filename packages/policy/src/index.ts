@@ -12,3 +12,4 @@ export {
   type ToolPolicyDecision as ToolPolicyDecisionValue,
   type ToolPolicyResult,
 } from "./tool-policy.js";
+export { isPathWithin } from "./utils/path.js";

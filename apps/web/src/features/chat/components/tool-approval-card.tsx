@@ -23,11 +23,10 @@ export function ToolApprovalCard({
 
   const resolveApproval = (decision: ApprovalResponseDecision) => {
     setPendingDecision(decision);
-    void onResolve(approval, decision)
-      .catch((error: unknown) =>
-        toast.danger(error instanceof Error ? error.message : "处理工具审批失败"),
-      )
-      .finally(() => setPendingDecision(null));
+    void onResolve(approval, decision).catch((error: unknown) => {
+      setPendingDecision(null);
+      toast.danger(error instanceof Error ? error.message : "处理工具审批失败");
+    });
   };
 
   return (
@@ -49,6 +48,11 @@ export function ToolApprovalCard({
         <p className="line-clamp-2 text-xs text-muted">
           目标：{approval.target} · {approval.risk}
         </p>
+        {approval.preview ? (
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-surface-secondary p-3 font-mono text-xs text-muted">
+            {approval.preview}
+          </pre>
+        ) : null}
       </Card.Content>
       <Card.Footer className="justify-end gap-2">
         <Button

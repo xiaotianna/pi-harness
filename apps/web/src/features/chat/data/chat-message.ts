@@ -33,6 +33,7 @@ export type ChatMessageReasoningStep = {
 export type ChatMessageTool = {
   approval?: {
     approvalId: string;
+    preview?: string;
     risk: string;
     runId: string;
     summary: string;
