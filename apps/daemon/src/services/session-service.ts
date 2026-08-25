@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   type AgentManager,
+  type ApprovalResponseDecision,
   buildSystemPrompt,
   type HarnessEvent,
   type RunId,
@@ -8,6 +9,7 @@ import {
 } from "@pi-harness/agent-runtime";
 import type { SessionRecord, SessionRepository, WorkspaceRepository } from "../storage/database.js";
 import type { SessionEventSnapshot, SessionEventStore } from "../storage/session-event-store.js";
+import type { HumanInteractionService, PendingToolApproval } from "./human-interaction-service.js";
 import type { ProviderService } from "./provider-service.js";
 
 const SessionErrorCode = {
@@ -81,6 +83,7 @@ export class SessionService {
     private readonly eventStore: SessionEventStore,
     private readonly providers: ProviderService,
     private readonly agents: AgentManager,
+    private readonly interactions: HumanInteractionService,
     private readonly onBackgroundError: SessionBackgroundErrorHandler,
   ) {}
 
@@ -207,8 +210,24 @@ export class SessionService {
     }
   }
 
+  public getPendingApproval(sessionId: SessionId, runId: RunId): PendingToolApproval | null {
+    this.getRequiredSession(sessionId);
+    return this.interactions.getCurrent(sessionId, runId);
+  }
+
+  public resolveApproval(
+    sessionId: SessionId,
+    runId: RunId,
+    approvalId: string,
+    decision: ApprovalResponseDecision,
+  ): void {
+    this.getRequiredSession(sessionId);
+    this.interactions.resolve(sessionId, runId, approvalId, decision);
+  }
+
   public async close(): Promise<void> {
     await this.agents.close();
+    this.interactions.close();
     await Promise.all([...this.backgroundTasks]);
     this.activeSessionIds.clear();
     this.activeProviderBySession.clear();

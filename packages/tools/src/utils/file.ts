@@ -11,6 +11,17 @@ export interface FileChangeDetails {
   path: string;
 }
 
+export function isFileChangeDetails(value: unknown): value is FileChangeDetails {
+  if (typeof value !== "object" || value === null) return false;
+  const details = value as Record<string, unknown>;
+  return (
+    typeof details.after === "string" &&
+    (details.before === null || typeof details.before === "string") &&
+    typeof details.diff === "string" &&
+    typeof details.path === "string"
+  );
+}
+
 export async function readTextFile(path: string, signal?: AbortSignal): Promise<string> {
   const metadata = await stat(path);
   if (!metadata.isFile() || metadata.size > MAX_FILE_BYTES) {

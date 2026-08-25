@@ -6,6 +6,10 @@ import { SessionEventsController } from "../controllers/session-events-controlle
 import {
   type CreateSessionDto,
   CreateSessionDtoSchema,
+  type ResolveApprovalDto,
+  ResolveApprovalDtoSchema,
+  type SessionApprovalParamsDto,
+  SessionApprovalParamsDtoSchema,
   type SessionEventsQueryDto,
   SessionEventsQueryDtoSchema,
   type SessionParamsDto,
@@ -23,6 +27,7 @@ import type { SessionService } from "../services/session-service.js";
 import type { SessionEventBroker } from "../sse/session-event-broker.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
+  PendingToolApprovalVoSchema,
   RunAcceptedVoSchema,
   SessionListVoSchema,
   SessionSnapshotVoSchema,
@@ -118,6 +123,29 @@ export async function registerSessionRoutes(
       },
     },
     controller.abortRun,
+  );
+
+  server.get<{ Params: SessionRunParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/approvals/current",
+    {
+      schema: {
+        params: SessionRunParamsDtoSchema,
+        response: { 200: Type.Union([PendingToolApprovalVoSchema, Type.Null()]), ...errors },
+      },
+    },
+    controller.getPendingApproval,
+  );
+
+  server.post<{ Body: ResolveApprovalDto; Params: SessionApprovalParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/approvals/:approvalId",
+    {
+      schema: {
+        body: ResolveApprovalDtoSchema,
+        params: SessionApprovalParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.resolveApproval,
   );
 
   server.get<{ Params: SessionParamsDto; Querystring: SessionEventsQueryDto }>(

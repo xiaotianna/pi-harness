@@ -3,6 +3,19 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 export type SessionId = string;
 export type RunId = string;
 
+// 工具审批结果
+export const ApprovalDecision = {
+  APPROVED: "approved", // 用户批准
+  REJECTED: "rejected", // 用户拒绝
+  EXPIRED: "expired", // 审批超时
+} as const;
+
+export type ApprovalDecision = (typeof ApprovalDecision)[keyof typeof ApprovalDecision];
+// 审批最终返回的只有批准和拒绝
+export type ApprovalResponseDecision =
+  | typeof ApprovalDecision.APPROVED
+  | typeof ApprovalDecision.REJECTED;
+
 /**
  * HarnessEventType 是 pi harness（当前项目）对外公开的事件名称
  * 它描述一个 Session 中发生了什么，daemon 会据此持久化或通过 SSE 通知
@@ -156,6 +169,14 @@ export interface RunFailureData {
   message: string;
 }
 
+// 一次run因交互而暂停或恢复时，携带的数据
+export interface RunInteractionData {
+  // 用于关联“等待审批”和“审批完成“事件
+  interactionId: string;
+  // 交互类型，表示是工具审批
+  kind: "tool_approval";
+}
+
 // message.delta
 export interface MessageDeltaData {
   contentIndex: number;
@@ -181,6 +202,55 @@ export interface ToolUpdatedData extends ToolStartedData {
 export interface ToolCompletedData {
   isError: boolean;
   result: unknown;
+  toolCallId: string;
+  toolName: string;
+}
+
+/**
+ * 审批流程：
+ *  ApprovalRequestedData
+            ↓ 用户批准
+    ApprovalResolvedData
+            ↓ 工具修改文件
+    FileChangedData
+ */
+// 工具执行前，需要用户审批时发送
+export interface ApprovalRequestedData {
+  // 本次审批唯一id
+  approvalId: string;
+  // 审批过期时间
+  expiresAt: number;
+  // 风险说明，例如命令可能修改本地文件（packages/policy/src/tool-policy.ts中声明提示信息）
+  risk: string;
+  // 本次操作的简要描述，供审批界面展示
+  summary: string;
+  // 操作目标，例如文件路径或命令目标
+  target: string;
+  // 模型每次调用工具时产生的唯一标识，用来追踪“这一次具体的工具调用”
+  toolCallId: string;
+  // 调用工具名称
+  toolName: string;
+}
+
+// 审批得到结果后发送
+export interface ApprovalResolvedData {
+  approvalId: string;
+  // 审批结果，即 "approved"、"rejected" 或 "expired"
+  decision: ApprovalDecision;
+  toolCallId: string;
+  toolName: string;
+}
+
+// 文件被工具成功修改后发送
+export interface FileChangedData {
+  // 修改前的完整文件内容；新建文件时为 null
+  before: string | null;
+  // 修改后的完整文件内容
+  after: string;
+  // 修改前后的差异文本，供 Diff 面板展示
+  diff: string;
+  // 被修改文件的路径
+  path: string;
   toolCallId: string;
   toolName: string;
 }

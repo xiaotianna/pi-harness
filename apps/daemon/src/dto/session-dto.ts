@@ -1,3 +1,4 @@
+import { ApprovalDecision } from "@pi-harness/agent-runtime/harness-event";
 import { type Static, Type } from "typebox";
 
 const IdentifierSchema = Type.String({ maxLength: 256, minLength: 1 });
@@ -14,6 +15,23 @@ export const SessionRunParamsDtoSchema = Type.Object({
 });
 
 export type SessionRunParamsDto = Static<typeof SessionRunParamsDtoSchema>;
+
+export const SessionApprovalParamsDtoSchema = Type.Object({
+  approvalId: Type.String({ format: "uuid" }),
+  runId: Type.String({ format: "uuid" }),
+  sessionId: Type.String({ format: "uuid" }),
+});
+
+export type SessionApprovalParamsDto = Static<typeof SessionApprovalParamsDtoSchema>;
+
+export const ResolveApprovalDtoSchema = Type.Object({
+  decision: Type.Union([
+    Type.Literal(ApprovalDecision.APPROVED),
+    Type.Literal(ApprovalDecision.REJECTED),
+  ]),
+});
+
+export type ResolveApprovalDto = Static<typeof ResolveApprovalDtoSchema>;
 
 export const CreateSessionDtoSchema = Type.Object({
   modelId: IdentifierSchema,

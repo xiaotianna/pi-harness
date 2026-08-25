@@ -1,5 +1,6 @@
 import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { createWorkspaceToolRegistry } from "@pi-harness/tools";
 import { createAgent } from "./create-agent.js";
 import type { RunId, SessionId } from "./harness-event.js";
 import {
@@ -7,6 +8,7 @@ import {
   RunCoordinator,
   type StartRunInput,
 } from "./run-coordinator.js";
+import type { ToolApprovalRequester } from "./tool-approval.js";
 
 export interface RestoreAgentInput {
   initialSeq: number;
@@ -35,6 +37,7 @@ export class AgentManager {
 
   public constructor(
     private readonly onEvent: HarnessEventListener,
+    private readonly requestToolApproval: ToolApprovalRequester,
     private readonly protectedPaths: readonly string[] = [],
   ) {}
 
@@ -74,8 +77,21 @@ export class AgentManager {
     const current = this.runtimes.get(input.sessionId);
     if (current !== undefined) return current;
 
-    const agent = createAgent({ ...input, protectedPaths: this.protectedPaths });
-    const runtime = new RunCoordinator(input.sessionId, agent, input.initialSeq, this.onEvent);
+    const toolRegistry = createWorkspaceToolRegistry({
+      protectedPaths: this.protectedPaths,
+      workspaceRoot: input.workspaceRoot,
+    });
+    const agent = createAgent({ ...input, tools: toolRegistry.tools });
+    const runtime = new RunCoordinator(
+      input.sessionId,
+      agent,
+      toolRegistry,
+      input.initialSeq,
+      this.onEvent,
+      input.workspaceRoot,
+      this.protectedPaths,
+      this.requestToolApproval,
+    );
     this.runtimes.set(input.sessionId, runtime);
     return runtime;
   }

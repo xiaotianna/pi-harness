@@ -7,6 +7,12 @@ export {
 export { type CreateAgentInput, createAgent } from "./create-agent.js";
 export { type AgentEventAdapterContext, adaptAgentEvent } from "./event-adapter.js";
 export {
+  ApprovalDecision,
+  type ApprovalDecision as ApprovalDecisionValue,
+  type ApprovalRequestedData,
+  type ApprovalResolvedData,
+  type ApprovalResponseDecision,
+  type FileChangedData,
   type HarnessEvent,
   type HarnessEventDraft,
   HarnessEventType,
@@ -17,6 +23,7 @@ export {
   type MessageHarnessEvent,
   type RunFailureData,
   type RunId,
+  type RunInteractionData,
   type RunStartedData,
   type SessionId,
   type ToolCompletedData,
@@ -29,3 +36,8 @@ export {
   RunCoordinator,
   type StartRunInput,
 } from "./run-coordinator.js";
+export type {
+  ToolApprovalHandle,
+  ToolApprovalRequest,
+  ToolApprovalRequester,
+} from "./tool-approval.js";

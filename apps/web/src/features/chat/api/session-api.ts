@@ -1,4 +1,8 @@
-import { type HarnessEvent, HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
+import {
+  type ApprovalResponseDecision,
+  type HarnessEvent,
+  HarnessEventType,
+} from "@pi-harness/agent-runtime/harness-event";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
@@ -136,6 +140,18 @@ export async function abortSessionRun(sessionId: string, runId: string): Promise
   await apiRequest(
     `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}`,
     { method: "DELETE" },
+  );
+}
+
+export async function resolveToolApproval(
+  sessionId: string,
+  runId: string,
+  approvalId: string,
+  decision: ApprovalResponseDecision,
+): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}`,
+    { body: JSON.stringify({ decision }), method: "POST" },
   );
 }
 

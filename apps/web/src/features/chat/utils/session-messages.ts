@@ -1,6 +1,7 @@
 import type { ChatStatus } from "@agile-avocation/ui-pro";
 import { isInternalAgentMessage } from "@pi-harness/agent-runtime/agent-message";
 import {
+  ApprovalDecision,
   type HarnessEvent,
   HarnessEventType,
   MessageDeltaKind,
@@ -10,6 +11,7 @@ import type { Session, SessionSnapshot } from "../api/session-api";
 import {
   type ChatAssistantMessage,
   type ChatMessage,
+  type ChatMessageTool,
   ChatMessageType,
   type ChatThread,
 } from "../data/chat";
@@ -59,6 +61,17 @@ function readFailureMessage(event: HarnessEvent): string {
     : "Agent 运行失败";
 }
 
+function readToolResult(value: unknown): unknown {
+  if (!isPlainObject(value)) return value;
+  const text = readContentText(value.content);
+  return text || value;
+}
+
+function readToolError(value: unknown): string {
+  const result = readToolResult(value);
+  return typeof result === "string" && result ? result : "工具执行失败";
+}
+
 export function findActiveRunId(events: readonly HarnessEvent[]): string | null {
   let activeRunId: string | null = null;
   for (const event of events) {
@@ -76,8 +89,96 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   const messages: ChatMessage[] = [];
   const lastAssistantMessageByRunId = new Map<string, ChatAssistantMessage>();
   const streamingText = new Map<string, string>();
+  const toolsByCallId = new Map<string, ChatMessageTool>();
 
   for (const event of events) {
+    if (
+      event.type === HarnessEventType.TOOL_STARTED &&
+      isPlainObject(event.data) &&
+      typeof event.data.toolCallId === "string" &&
+      typeof event.data.toolName === "string"
+    ) {
+      const tool: ChatMessageTool = {
+        input: event.data.arguments,
+        state: "input-available",
+        toolCallId: event.data.toolCallId,
+        toolName: event.data.toolName,
+      };
+      toolsByCallId.set(event.data.toolCallId, tool);
+      messages.push({ id: `tool-${event.data.toolCallId}`, tool, type: ChatMessageType.TOOL });
+      continue;
+    }
+
+    if (
+      event.type === HarnessEventType.APPROVAL_REQUESTED &&
+      event.runId &&
+      isPlainObject(event.data) &&
+      typeof event.data.approvalId === "string" &&
+      typeof event.data.risk === "string" &&
+      typeof event.data.summary === "string" &&
+      typeof event.data.target === "string" &&
+      typeof event.data.toolCallId === "string"
+    ) {
+      const tool = toolsByCallId.get(event.data.toolCallId);
+      if (tool) {
+        tool.approval = {
+          approvalId: event.data.approvalId,
+          risk: event.data.risk,
+          runId: event.runId,
+          summary: event.data.summary,
+          target: event.data.target,
+        };
+        tool.input = {
+          operation: event.data.summary,
+          risk: event.data.risk,
+          target: event.data.target,
+        };
+        tool.state = "requires-action";
+      }
+      continue;
+    }
+
+    if (
+      event.type === HarnessEventType.APPROVAL_RESOLVED &&
+      isPlainObject(event.data) &&
+      typeof event.data.toolCallId === "string"
+    ) {
+      const tool = toolsByCallId.get(event.data.toolCallId);
+      if (tool) {
+        delete tool.approval;
+        if (event.data.decision === ApprovalDecision.APPROVED) {
+          tool.state = "input-available";
+        } else {
+          tool.errorText =
+            event.data.decision === ApprovalDecision.EXPIRED
+              ? "工具审批已超时"
+              : "用户拒绝了工具审批";
+          tool.state = "output-error";
+        }
+      }
+      continue;
+    }
+
+    if (
+      (event.type === HarnessEventType.TOOL_COMPLETED ||
+        event.type === HarnessEventType.TOOL_FAILED) &&
+      isPlainObject(event.data) &&
+      typeof event.data.toolCallId === "string"
+    ) {
+      const tool = toolsByCallId.get(event.data.toolCallId);
+      if (tool) {
+        delete tool.approval;
+        if (event.type === HarnessEventType.TOOL_FAILED) {
+          tool.errorText = readToolError(event.data.result);
+          tool.state = "output-error";
+        } else {
+          tool.output = readToolResult(event.data.result);
+          tool.state = "output-available";
+        }
+      }
+      continue;
+    }
+
     if (event.type === HarnessEventType.MESSAGE_DELTA && event.runId) {
       const delta = readDelta(event);
       if (delta) streamingText.set(event.runId, (streamingText.get(event.runId) ?? "") + delta);
@@ -114,7 +215,10 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   }
 
   const activeRunId = findActiveRunId(events);
-  if (activeRunId) {
+  const isAwaitingApproval = messages.some(
+    (message) => message.type === ChatMessageType.TOOL && message.tool.state === "requires-action",
+  );
+  if (activeRunId && !isAwaitingApproval) {
     const content = streamingText.get(activeRunId);
     messages.push(
       content

@@ -136,7 +136,9 @@ export const MOCK_AGENT_TRACE = {
       raw: {
         toolCallId: "call-turn-1-read-message",
         toolName: "read_file",
-        arguments: { path: "apps/web/src/features/chat/components/thread-message.tsx" },
+        arguments: {
+          path: "apps/web/src/features/chat/components/thread-message/thread-message.tsx",
+        },
       },
       source: "Tool · read_file",
       startMs: 1_490,

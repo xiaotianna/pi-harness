@@ -1,4 +1,5 @@
 import type { ToolPartState } from "@agile-avocation/ui-pro/chat-tool";
+import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness-event";
 
 export const ChatMessageType = {
   ASSISTANT: "assistant",
@@ -30,6 +31,13 @@ export type ChatMessageReasoningStep = {
 };
 
 export type ChatMessageTool = {
+  approval?: {
+    approvalId: string;
+    risk: string;
+    runId: string;
+    summary: string;
+    target: string;
+  };
   argsText?: string;
   errorText?: string;
   input?: unknown;
@@ -38,6 +46,11 @@ export type ChatMessageTool = {
   toolCallId?: string;
   toolName: string;
 };
+
+export type ResolveChatToolApproval = (
+  approval: NonNullable<ChatMessageTool["approval"]>,
+  decision: ApprovalResponseDecision,
+) => Promise<void>;
 
 export type ChatMessageSource =
   | {

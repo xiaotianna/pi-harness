@@ -54,6 +54,9 @@ export function ModelSettingsPanel() {
     provider: null,
   });
   const [modelsProvider, setModelsProvider] = useState<ModelProvider | null>(null);
+  const [pendingProviderIds, setPendingProviderIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const providers = providersQuery.data ?? [];
   const enabledProviders = useMemo(
     () => providers.filter((provider) => provider.enabled && provider.isConfigured),
@@ -82,11 +85,47 @@ export function ModelSettingsPanel() {
     }
   }, [availableModels.length, defaultModelKey, enabledProviders, setDefaultModelKey]);
 
-  const enabledMutation = useMutation({
-    mutationFn: ({ enabled, providerId }: { enabled: boolean; providerId: string }) =>
-      updateProvider(providerId, { enabled }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: providerQueryKeys.all });
+  const enabledMutation = useMutation<
+    ModelProvider,
+    Error,
+    { enabled: boolean; providerId: string },
+    ModelProvider | undefined
+  >({
+    mutationFn: ({ enabled, providerId }) => updateProvider(providerId, { enabled }),
+    onError: (_error, _variables, previousProvider) => {
+      if (!previousProvider) return;
+      queryClient.setQueryData<readonly ModelProvider[]>(providerQueryKeys.all, (current) =>
+        current?.map((provider) =>
+          provider.id === previousProvider.id ? previousProvider : provider,
+        ),
+      );
+    },
+    onMutate: ({ enabled, providerId }) => {
+      void queryClient.cancelQueries({ queryKey: providerQueryKeys.all });
+      const previousProvider = queryClient
+        .getQueryData<readonly ModelProvider[]>(providerQueryKeys.all)
+        ?.find((provider) => provider.id === providerId);
+      queryClient.setQueryData<readonly ModelProvider[]>(providerQueryKeys.all, (current) =>
+        current?.map((provider) =>
+          provider.id === providerId ? { ...provider, enabled } : provider,
+        ),
+      );
+      setPendingProviderIds((current) => new Set(current).add(providerId));
+      return previousProvider;
+    },
+    onSettled: (_data, _error, { providerId }) => {
+      setPendingProviderIds((current) => {
+        const next = new Set(current);
+        next.delete(providerId);
+        return next;
+      });
+    },
+    onSuccess: (updatedProvider) => {
+      queryClient.setQueryData<readonly ModelProvider[]>(providerQueryKeys.all, (current) =>
+        current?.map((provider) =>
+          provider.id === updatedProvider.id ? updatedProvider : provider,
+        ),
+      );
     },
   });
 
@@ -215,7 +254,7 @@ export function ModelSettingsPanel() {
               </Chip>
               <Switch
                 aria-label={`${provider.name} 可用状态`}
-                isDisabled={enabledMutation.isPending}
+                isDisabled={pendingProviderIds.has(provider.id)}
                 isSelected={provider.enabled}
                 size="sm"
                 onChange={(enabled) => enabledMutation.mutate({ enabled, providerId: provider.id })}

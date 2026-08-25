@@ -64,12 +64,19 @@ export interface OrbsProps {
 
 export function Orbs({ label }: OrbsProps) {
   return (
-    <div aria-label={label} className={styles.orbs} role="status">
-      <span />
-      <span />
-      <span />
-      <span className={styles.orbsLabel}>{label}</span>
-    </div>
+    <span aria-label={label} className={styles.orbs} role="status">
+      <span aria-hidden className={styles.orbLattice}>
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+      </span>
+    </span>
   );
 }
 

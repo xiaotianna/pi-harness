@@ -32,8 +32,8 @@
 |---|---|---|
 | 应用外壳与响应式导航 | `AppLayout`、`Navbar`、`Sidebar` | `features/chat/components/chat-shell.tsx`、`chat-navbar.tsx`、`chat-sidebar.tsx` |
 | 会话视口 | `ChatConversation` 复合组件 | `features/chat/views/chat-page.tsx` |
-| 用户与助手消息 | `ChatMessage`、`ChatAttachment`、`Markdown`、`CodeBlock`、`ChatSource` | `features/chat/components/thread-message.tsx` |
-| Tool 调用与分组 | `ChatTool`、`ChatToolGroup` | `features/chat/components/thread-message.tsx` |
+| 用户与助手消息 | `ChatMessage`、`ChatAttachment`、`Markdown`、`CodeBlock`、`ChatSource` | `features/chat/components/thread-message/` |
+| Tool 调用与分组 | `ChatTool`、`ChatToolGroup` | `features/chat/components/thread-message/` |
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor` | `features/chat/components/chat-composer.tsx` |
 | 文件选择 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发 | `features/chat/components/chat-composer.tsx` |
@@ -48,6 +48,8 @@
 | 普通工作流 | HeroUI `Modal` | `features/settings/components/provider-editor-dialog.tsx` |
 | 危险确认 | HeroUI `AlertDialog`，明确说明后果 | `features/chat/components/chat-shell-dialogs.tsx`、`features/auth/components/user-menu.tsx` |
 | 状态与反馈 | `Alert`、`Chip`、全局 `toast` | `features/auth/views/login-page.tsx`、`features/settings/components/model-settings-panel.tsx` |
+| AI 等待与生成状态 | AICSS `Orbs` S2 | `components/ai/aicss/aicss-components.tsx` |
+| 页面数据加载 | 骨架屏；不要用于 AI 处理状态 | `features/chat/views/chat-page.tsx` |
 | 折叠详情 | HeroUI `Disclosure` | `components/ai/aicss/aicss-components.tsx` |
 | 设置面板标题 | 复用 `SettingsPanelHeader` | `features/settings/components/settings-panel-header.tsx` |
 | 设置项行 | 复用 `SettingsRow` | `features/settings/components/settings-row.tsx` |

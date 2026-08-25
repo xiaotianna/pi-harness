@@ -89,32 +89,58 @@
 }
 
 .orbs {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 22px;
+  position: relative;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  overflow: hidden;
+  color: var(--foreground);
 }
 
-.orbs > span:not(.orbsLabel) {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--accent);
-  animation: orb 1.25s ease-in-out infinite;
+.orbLattice {
+  --orb-rest: 0.14;
+
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  grid-template-columns: repeat(3, 3px);
+  grid-auto-rows: 3px;
+  gap: 3px;
+  transform: scale(0.7142857143) translate(6.5px, 6.5px);
+  transform-origin: 0 0;
 }
 
-.orbs > span:nth-child(2) {
-  animation-delay: 120ms;
+.orbLattice > span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: var(--orb-rest);
+  animation: orb-wave 1.7s cubic-bezier(0.66, 0, 0.34, 1) infinite both;
 }
 
-.orbs > span:nth-child(3) {
-  animation-delay: 240ms;
+.orbLattice > span:nth-child(2),
+.orbLattice > span:nth-child(4) {
+  animation-delay: 375ms;
 }
 
-.orbsLabel {
-  margin-left: 3px;
-  color: var(--muted);
-  font-size: 13px;
+.orbLattice > span:nth-child(3),
+.orbLattice > span:nth-child(5),
+.orbLattice > span:nth-child(7) {
+  animation-delay: 750ms;
+}
+
+.orbLattice > span:nth-child(6),
+.orbLattice > span:nth-child(8) {
+  animation-delay: 1125ms;
+}
+
+.orbLattice > span:nth-child(9) {
+  animation-delay: 1500ms;
 }
 
 .webSearch {
@@ -318,16 +344,19 @@
   }
 }
 
-@keyframes orb {
-  0%,
-  65%,
-  100% {
-    transform: scale(0.72);
-    opacity: 0.35;
-  }
-  35% {
+@keyframes orb-wave {
+  0% {
     transform: scale(1);
+    opacity: var(--orb-rest);
+  }
+  28% {
+    transform: scale(1.18);
     opacity: 1;
+  }
+  56%,
+  100% {
+    transform: scale(1);
+    opacity: var(--orb-rest);
   }
 }
 
@@ -348,10 +377,18 @@
 
 @media (prefers-reduced-motion: reduce) {
   .shimmer,
-  .orbs > span:not(.orbsLabel),
   .imagePlaceholder,
   .tasks .in-progress svg {
     animation: none;
+  }
+
+  .orbLattice > span {
+    animation: none;
+    opacity: 0;
+  }
+
+  .orbLattice > span:nth-child(5) {
+    opacity: 1;
   }
 
   .chevron {

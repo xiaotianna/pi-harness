@@ -7,6 +7,7 @@ import { registerHealthRoutes } from "../routes/health-routes.js";
 import { registerProviderRoutes } from "../routes/provider-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerWorkspaceRoutes } from "../routes/workspace-routes.js";
+import { HumanInteractionService } from "../services/human-interaction-service.js";
 import { ProviderService } from "../services/provider-service.js";
 import { SessionEventService } from "../services/session-event-service.js";
 import { SessionService } from "../services/session-service.js";
@@ -30,7 +31,8 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   await eventStore.initialize();
   const broker = new SessionEventBroker();
   const sessionEvents = new SessionEventService(database.sessions, eventStore, broker);
-  const agents = new AgentManager(sessionEvents.handle, [
+  const interactions = new HumanInteractionService();
+  const agents = new AgentManager(sessionEvents.handle, interactions.request, [
     config.credentialsPath,
     config.databasePath,
     config.sessionsPath,
@@ -49,6 +51,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     eventStore,
     providers,
     agents,
+    interactions,
     (error, context) => {
       server.log.error({ err: error, ...context }, "Session run failed outside Agent events");
     },

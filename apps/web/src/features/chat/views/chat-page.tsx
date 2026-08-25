@@ -1,12 +1,15 @@
 "use client";
 
-import { ChatConversation } from "@agile-avocation/ui-pro";
+import { ChatConversation, ChatLoader } from "@agile-avocation/ui-pro";
+import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness-event";
 import { HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useLayoutEffect, useRef } from "react";
 import { AgentTraceView } from "../../trace";
 import {
   abortSessionRun,
+  resolveToolApproval,
   type Session,
   type SessionSnapshot,
   startSessionRun,
@@ -15,7 +18,9 @@ import {
 import { sessionQueryKeys, sessionSnapshotQueryOptions } from "../api/session-queries";
 import { ChatComposer } from "../components/chat-composer";
 import { ThreadMessageList } from "../components/thread-message-list";
+import { ToolApprovalCard } from "../components/tool-approval-card";
 import { ChatPageView } from "../constants/chat-page-view";
+import { ChatMessageType } from "../data/chat";
 import { useSessionEvents } from "../hooks/use-session-events";
 import { useChatPageViewStore } from "../state/chat-page-view-store";
 import {
@@ -28,6 +33,7 @@ const CHAT_VIEW_TRANSITION = {
   duration: 0.18,
   ease: [0.22, 1, 0.36, 1],
 } as const;
+const CHAT_AUTO_SCROLL_THRESHOLD_PX = 96;
 
 export interface ChatPageProps {
   sessionId: string;
@@ -37,12 +43,44 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const queryClient = useQueryClient();
   const snapshotQuery = useQuery(sessionSnapshotQueryOptions(sessionId));
   const snapshot = snapshotQuery.data;
+  const isSnapshotReady = snapshot !== undefined;
   useSessionEvents(sessionId, snapshot?.session.lastSeq ?? 0);
   const activeView = useChatPageViewStore((state) => state.activeView);
   const shouldReduceMotion = useReducedMotion();
   const transition = shouldReduceMotion ? { duration: 0 } : CHAT_VIEW_TRANSITION;
   const events = snapshot?.events ?? [];
   const messages = sessionEventsToMessages(events);
+  const pendingApprovalTool = messages
+    .flatMap((message) =>
+      message.type === ChatMessageType.TOOL
+        ? [message.tool]
+        : message.type === ChatMessageType.TOOL_GROUP
+          ? message.tools
+          : [],
+    )
+    .findLast((tool) => tool.approval !== undefined);
+  const pendingApproval = pendingApprovalTool?.approval;
+  const conversationRef = useRef<HTMLDivElement>(null);
+  const conversationContentRef = useRef<HTMLDivElement>(null);
+  const shouldFollowConversationRef = useRef(true);
+
+  useLayoutEffect(() => {
+    if (!isSnapshotReady || activeView !== ChatPageView.CONVERSATION) return;
+    const conversation = conversationRef.current;
+    const content = conversationContentRef.current;
+    if (!conversation || !content) return;
+
+    shouldFollowConversationRef.current = true;
+    conversation.scrollTop = conversation.scrollHeight;
+
+    const observer = new ResizeObserver(() => {
+      if (shouldFollowConversationRef.current) {
+        conversation.scrollTop = conversation.scrollHeight;
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [activeView, isSnapshotReady, sessionId]);
 
   const startMutation = useMutation({
     mutationFn: (prompt: string) => startSessionRun(sessionId, prompt),
@@ -62,6 +100,25 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       );
     },
   });
+  const approvalMutation = useMutation({
+    mutationFn: ({
+      approvalId,
+      decision,
+      runId,
+    }: {
+      approvalId: string;
+      decision: ApprovalResponseDecision;
+      runId: string;
+    }) => resolveToolApproval(sessionId, runId, approvalId, decision),
+  });
+
+  if (snapshotQuery.isPending) {
+    return (
+      <div className="h-[calc(100svh-var(--chat-navbar-height,64px))] overflow-hidden px-4 pt-8">
+        <ChatLoader.Skeleton className="mx-auto w-full max-w-[714px]" label="正在加载会话" />
+      </div>
+    );
+  }
 
   if (!snapshot) return null;
 
@@ -95,8 +152,20 @@ export function ChatPage({ sessionId }: ChatPageProps) {
             transition={transition}
           >
             {activeView === ChatPageView.CONVERSATION ? (
-              <ChatConversation className="h-full min-h-0">
-                <ChatConversation.Content className="flex flex-col">
+              <ChatConversation
+                ref={conversationRef}
+                className="h-full min-h-0"
+                resize="instant"
+                onScroll={(event) => {
+                  const conversation = event.currentTarget;
+                  shouldFollowConversationRef.current =
+                    conversation.scrollHeight -
+                      conversation.scrollTop -
+                      conversation.clientHeight <=
+                    CHAT_AUTO_SCROLL_THRESHOLD_PX;
+                }}
+              >
+                <ChatConversation.Content ref={conversationContentRef} className="flex flex-col">
                   <ThreadMessageList messages={messages} />
                 </ChatConversation.Content>
                 <ChatConversation.ScrollButton aria-label="滚动到底部" />
@@ -115,24 +184,51 @@ export function ChatPage({ sessionId }: ChatPageProps) {
           className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
         />
         <div className="mx-auto w-full max-w-[714px]">
-          <ChatComposer
-            className="w-full"
-            conversationId={snapshot.session.id}
-            modelId={snapshot.session.modelId}
-            providerId={snapshot.session.providerId}
-            status={status}
-            onModelChange={(selection) =>
-              modelMutation.mutateAsync(selection).then(() => undefined)
-            }
-            onStopRun={() =>
-              activeRunId
-                ? abortMutation.mutateAsync(activeRunId)
-                : Promise.reject(new Error("活动 Run 不存在"))
-            }
-            onSubmitMessage={(input) =>
-              startMutation.mutateAsync(input.prompt).then(() => undefined)
-            }
-          />
+          <div className="relative">
+            <div inert={pendingApproval !== undefined}>
+              <ChatComposer
+                className="w-full"
+                conversationId={snapshot.session.id}
+                modelId={snapshot.session.modelId}
+                providerId={snapshot.session.providerId}
+                status={status}
+                onModelChange={(selection) =>
+                  modelMutation.mutateAsync(selection).then(() => undefined)
+                }
+                onStopRun={() =>
+                  activeRunId
+                    ? abortMutation.mutateAsync(activeRunId)
+                    : Promise.reject(new Error("活动 Run 不存在"))
+                }
+                onSubmitMessage={(input) =>
+                  startMutation.mutateAsync(input.prompt).then(() => undefined)
+                }
+              />
+            </div>
+            <AnimatePresence initial={false}>
+              {pendingApproval && pendingApprovalTool ? (
+                <motion.div
+                  animate={{ opacity: 1, y: 0 }}
+                  className="absolute inset-x-0 bottom-0 z-20 min-h-full"
+                  exit={{ opacity: 0, y: 4 }}
+                  initial={{ opacity: 0, y: 4 }}
+                  transition={transition}
+                >
+                  <ToolApprovalCard
+                    approval={pendingApproval}
+                    toolName={pendingApprovalTool.toolName}
+                    onResolve={(approval, decision) =>
+                      approvalMutation.mutateAsync({
+                        approvalId: approval.approvalId,
+                        decision,
+                        runId: approval.runId,
+                      })
+                    }
+                  />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </div>

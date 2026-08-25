@@ -20,6 +20,7 @@ export type {
   ChatToolMessage,
   ChatUserMessage,
   ChatWebSearchMessage,
+  ResolveChatToolApproval,
 } from "./chat-message";
 export { ChatMessageType } from "./chat-message";
 

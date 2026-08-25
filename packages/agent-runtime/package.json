@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./agent-message": "./src/utils/agent-message.ts",
-    "./harness-event": "./src/harness-event.ts"
+    "./harness-event": "./src/harness-event.ts",
+    "./tool-approval": "./src/tool-approval.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

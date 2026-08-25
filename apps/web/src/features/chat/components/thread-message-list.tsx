@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { type ChatMessage, ChatMessageType } from "../data/chat";
-import { ThreadMessage } from "./thread-message";
+import { ThreadMessage } from "./thread-message/index";
 
 export interface ThreadMessageListProps {
   messages: readonly ChatMessage[];

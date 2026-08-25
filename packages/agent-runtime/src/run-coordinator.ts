@@ -1,9 +1,31 @@
 import { randomUUID } from "node:crypto";
-import type { Agent, AgentEvent, AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
+import type {
+  AfterToolCallContext,
+  Agent,
+  AgentEvent,
+  AgentMessage,
+  BeforeToolCallContext,
+  BeforeToolCallResult,
+  StreamFn,
+} from "@earendil-works/pi-agent-core";
 import { type Api, clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
+import { evaluateToolCall, ToolPolicyDecision } from "@pi-harness/policy";
+import { isFileChangeDetails, type ToolRegistry } from "@pi-harness/tools";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
 import { adaptAgentEvent } from "./event-adapter.js";
-import type { HarnessEvent, RunId, SessionId } from "./harness-event.js";
+import {
+  ApprovalDecision,
+  type ApprovalRequestedData,
+  type ApprovalResolvedData,
+  type FileChangedData,
+  type HarnessEvent,
+  type HarnessEventDraft,
+  HarnessEventType,
+  type RunId,
+  type RunInteractionData,
+  type SessionId,
+} from "./harness-event.js";
+import type { ToolApprovalRequester } from "./tool-approval.js";
 
 export interface StartRunInput {
   model: Model<Api>;
@@ -28,17 +50,165 @@ interface ActiveRun {
 export class RunCoordinator {
   private activeRun: ActiveRun | null = null;
   private nextSeq: number;
+  private readonly pendingFileChanges = new Map<string, FileChangedData>();
   private readonly unsubscribe: () => void;
 
   public constructor(
     private readonly sessionId: SessionId,
     private readonly agent: Agent,
+    private readonly toolRegistry: ToolRegistry,
     initialSeq: number,
     private readonly onEvent: HarnessEventListener,
+    private readonly workspaceRoot: string,
+    private readonly protectedPaths: readonly string[],
+    private readonly requestToolApproval: ToolApprovalRequester,
   ) {
     this.nextSeq = initialSeq + 1;
+    this.agent.beforeToolCall = (context, signal) => this.handleBeforeToolCall(context, signal);
+    this.agent.afterToolCall = (context) => this.handleAfterToolCall(context);
     // 构造时会订阅 pi Agent 事件
     this.unsubscribe = agent.subscribe((event) => this.handleAgentEvent(event));
+  }
+
+  private async emit(draft: HarnessEventDraft, runId: RunId): Promise<void> {
+    const event: HarnessEvent = {
+      data: draft.data,
+      id: randomUUID(),
+      runId,
+      seq: this.nextSeq,
+      sessionId: this.sessionId,
+      timestamp: Date.now(),
+      type: draft.type,
+    };
+    this.nextSeq += 1;
+    await this.onEvent(event);
+  }
+
+  // 工具调用前
+  private async handleBeforeToolCall(
+    context: BeforeToolCallContext,
+    signal?: AbortSignal,
+  ): Promise<BeforeToolCallResult | undefined> {
+    const activeRun = this.activeRun;
+    if (activeRun === null) return { block: true, reason: "当前没有活动 Run" };
+
+    // 在工具真正执行前，根据工具权限和参数，决定“直接允许、直接拒绝，还是请求用户审批”
+    const policy = await evaluateToolCall({
+      arguments: context.args, // 模型传给工具的参数
+      policy: this.toolRegistry.get(context.toolCall.name)?.policy, // 工具权限
+      protectedPaths: this.protectedPaths,
+      workspaceRoot: this.workspaceRoot,
+    });
+    // 继续执行
+    if (policy.decision === ToolPolicyDecision.ALLOW) return undefined;
+    // 阻止工具
+    if (policy.decision === ToolPolicyDecision.DENY) {
+      return { block: true, reason: policy.reason };
+    }
+
+    const approvalId = randomUUID();
+    const request = {
+      approvalId,
+      risk: policy.risk,
+      runId: activeRun.runId,
+      sessionId: this.sessionId,
+      summary: policy.summary,
+      target: policy.target,
+      toolCallId: context.toolCall.id,
+      toolName: context.toolCall.name,
+    };
+    const approval = this.requestToolApproval(request, signal);
+
+    try {
+      /**
+       * 这些emit的作用：记录并通知“Run 正在等待审批，以及审批已经结束”，根据emit的type参数来区分
+       * 执行时间线：
+       *  发送 approval.requested
+          发送 run.awaiting_input
+          等待 approval.result
+          发送 approval.resolved
+          发送 run.resumed
+          继续或阻止工具
+       */
+      // 表示产生了一项待处理审批，数据用于 Web 展示审批卡片
+      await this.emit(
+        {
+          data: {
+            approvalId,
+            expiresAt: approval.expiresAt,
+            risk: request.risk,
+            summary: request.summary,
+            target: request.target,
+            toolCallId: request.toolCallId,
+            toolName: request.toolName,
+          } satisfies ApprovalRequestedData,
+          type: HarnessEventType.APPROVAL_REQUESTED,
+        },
+        activeRun.runId,
+      );
+      // 表示当前 Run 进入“等待用户输入”状态
+      await this.emit(
+        {
+          data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+          type: HarnessEventType.RUN_AWAITING_INPUT,
+        },
+        activeRun.runId,
+      );
+
+      /**
+       * 核心：真正让工具调用暂停的是这句，而不是 emit()
+       * 原理：后端通过创建一个未完成的Promise（apps/daemon/src/services/human-interaction-service.ts）
+       *  const result = new Promise<ApprovalDecisionValue>((resolve, reject) => {
+            resolveResult = resolve;
+            rejectResult = reject;
+          });
+       *  当前runtime的状态不变，只有当后端的Proimise结束后，改变的状态传入到runtime中才能继续执行
+       */
+      const decision = await approval.result;
+      // 记录审批最终结果
+      await this.emit(
+        {
+          data: {
+            approvalId,
+            decision,
+            toolCallId: context.toolCall.id,
+            toolName: context.toolCall.name,
+          } satisfies ApprovalResolvedData,
+          type: HarnessEventType.APPROVAL_RESOLVED,
+        },
+        activeRun.runId,
+      );
+      // 表示 Run 已经离开等待状态
+      await this.emit(
+        {
+          data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+          type: HarnessEventType.RUN_RESUMED,
+        },
+        activeRun.runId,
+      );
+
+      // 决定是否执行工具，返回 undefined，表示不阻止工具，继续执行。
+      if (decision === ApprovalDecision.APPROVED) return undefined;
+      return {
+        block: true,
+        reason: decision === ApprovalDecision.EXPIRED ? "工具审批已超时" : "用户拒绝了工具审批",
+      };
+    } catch (error: unknown) {
+      approval.cancel();
+      throw error;
+    }
+  }
+
+  // 这个方法用于在工具执行成功后，捕获文件变更信息，暂存到 pendingFileChanges
+  // 主要是针对edit_file / write_file两个工具内部做的变更统计
+  private async handleAfterToolCall(context: AfterToolCallContext): Promise<undefined> {
+    if (context.isError || !isFileChangeDetails(context.result.details)) return undefined;
+    this.pendingFileChanges.set(context.toolCall.id, {
+      ...context.result.details,
+      toolCallId: context.toolCall.id,
+      toolName: context.toolCall.name,
+    });
+    return undefined;
   }
 
   /**
@@ -55,17 +225,14 @@ export class RunCoordinator {
     const draft = adaptAgentEvent(event, activeRun);
     if (draft === null) return;
 
-    const harnessEvent: HarnessEvent = {
-      data: draft.data,
-      id: randomUUID(),
-      runId: activeRun.runId,
-      seq: this.nextSeq,
-      sessionId: this.sessionId,
-      timestamp: Date.now(),
-      type: draft.type,
-    };
-    this.nextSeq += 1;
-    await this.onEvent(harnessEvent);
+    await this.emit(draft, activeRun.runId);
+    if (event.type === "tool_execution_end") {
+      const fileChange = this.pendingFileChanges.get(event.toolCallId);
+      if (fileChange !== undefined) {
+        this.pendingFileChanges.delete(event.toolCallId);
+        await this.emit({ data: fileChange, type: HarnessEventType.FILE_CHANGED }, activeRun.runId);
+      }
+    }
     activeRun.handleAutoFollowUp(event);
   }
 
@@ -97,6 +264,7 @@ export class RunCoordinator {
     try {
       await this.agent.prompt(input.prompt);
     } finally {
+      this.pendingFileChanges.clear();
       this.activeRun = null;
     }
   }

@@ -117,8 +117,10 @@ export const AGENT_SESSION_THREAD: ChatThread = {
           toolName: "search_text",
         },
         {
-          input: { path: "apps/web/src/features/chat/components/thread-message.tsx" },
-          output: { lines: 166 },
+          input: {
+            path: "apps/web/src/features/chat/components/thread-message/thread-message.tsx",
+          },
+          output: { lines: 17 },
           state: "output-available",
           toolCallId: "tool-read-file",
           toolName: "read_file",

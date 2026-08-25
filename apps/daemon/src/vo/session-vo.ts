@@ -38,3 +38,17 @@ export const RunAcceptedVoSchema = Type.Object({
 });
 
 export type RunAcceptedVo = Static<typeof RunAcceptedVoSchema>;
+
+export const PendingToolApprovalVoSchema = Type.Object({
+  approvalId: Type.String({ format: "uuid" }),
+  expiresAt: Type.Integer({ minimum: 0 }),
+  risk: Type.String({ minLength: 1 }),
+  runId: Type.String({ format: "uuid" }),
+  sessionId: Type.String({ format: "uuid" }),
+  summary: Type.String({ minLength: 1 }),
+  target: Type.String({ minLength: 1 }),
+  toolCallId: Type.String({ minLength: 1 }),
+  toolName: Type.String({ minLength: 1 }),
+});
+
+export type PendingToolApprovalVo = Static<typeof PendingToolApprovalVoSchema>;
