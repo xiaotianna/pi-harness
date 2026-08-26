@@ -6,6 +6,12 @@ export const WorkspaceParamsDtoSchema = Type.Object({
 
 export type WorkspaceParamsDto = Static<typeof WorkspaceParamsDtoSchema>;
 
+export const OpenWorkspacePathDtoSchema = Type.Object({
+  path: Type.String({ maxLength: 4_096, minLength: 1 }),
+});
+
+export type OpenWorkspacePathDto = Static<typeof OpenWorkspacePathDtoSchema>;
+
 export const ReorderWorkspacesDtoSchema = Type.Object({
   workspaceIds: Type.Array(Type.String({ format: "uuid" }), {
     maxItems: 1_000,

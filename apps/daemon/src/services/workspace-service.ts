@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";
+import { resolveWorkspacePath } from "@pi-harness/policy";
 import type { WorkspaceRecord, WorkspaceRepository } from "../storage/database.js";
 
 const PICKER_TIMEOUT_MS = 5 * 60 * 1_000;
@@ -11,6 +12,8 @@ const WorkspaceErrorCode = {
   PICKER_BUSY: "WORKSPACE_PICKER_BUSY",
   PICKER_FAILED: "WORKSPACE_PICKER_FAILED",
   PICKER_UNAVAILABLE: "WORKSPACE_PICKER_UNAVAILABLE",
+  OPEN_FAILED: "WORKSPACE_OPEN_FAILED",
+  OPEN_UNAVAILABLE: "WORKSPACE_OPEN_UNAVAILABLE",
   REVEAL_FAILED: "WORKSPACE_REVEAL_FAILED",
   REVEAL_UNAVAILABLE: "WORKSPACE_REVEAL_UNAVAILABLE",
 } as const;
@@ -117,6 +120,36 @@ function runReveal(rootPath: string, signal: AbortSignal): Promise<void> {
   });
 }
 
+function readOpenCommand(path: string): { args: readonly string[]; command: string } {
+  if (process.platform === "darwin") return { args: [path], command: "/usr/bin/open" };
+  if (process.platform === "win32") {
+    return {
+      args: ["-NoProfile", "-NonInteractive", "-Command", "Start-Process -FilePath $args[0]", path],
+      command: "powershell.exe",
+    };
+  }
+  if (process.platform === "linux") return { args: [path], command: "xdg-open" };
+  throw new WorkspaceServiceError(
+    WorkspaceErrorCode.OPEN_UNAVAILABLE,
+    "当前操作系统不支持打开本地文件",
+  );
+}
+
+function runOpen(path: string, signal: AbortSignal): Promise<void> {
+  const { args, command } = readOpenCommand(path);
+  return new Promise((resolve, reject) => {
+    execFile(
+      command,
+      [...args],
+      { maxBuffer: 4_096, signal, timeout: REVEAL_TIMEOUT_MS },
+      (error) => {
+        if (error) reject(error);
+        else resolve();
+      },
+    );
+  });
+}
+
 async function resolveWorkspaceRoot(input: string): Promise<string> {
   try {
     const rootPath = await realpath(input);
@@ -133,7 +166,10 @@ async function resolveWorkspaceRoot(input: string): Promise<string> {
 export class WorkspaceService {
   private activePickerController: AbortController | null = null;
 
-  public constructor(private readonly workspaces: WorkspaceRepository) {}
+  public constructor(
+    private readonly workspaces: WorkspaceRepository,
+    private readonly protectedPaths: readonly string[] = [],
+  ) {}
 
   public list(): readonly WorkspaceRecord[] {
     return this.workspaces.list();
@@ -158,6 +194,38 @@ export class WorkspaceService {
 
     this.workspaces.reorder(workspaceIds, Date.now());
     return this.workspaces.list();
+  }
+
+  public async openPath(workspaceId: string, path: string, signal: AbortSignal): Promise<void> {
+    const workspace = this.getRequired(workspaceId);
+    let target: string;
+    try {
+      target = await resolveWorkspacePath({
+        path,
+        protectedPaths: this.protectedPaths,
+        workspaceRoot: workspace.rootPath,
+      });
+      if (!(await stat(target)).isFile()) throw new Error("Target is not a file");
+    } catch {
+      throw new WorkspaceServiceError(
+        WorkspaceErrorCode.INVALID,
+        "文件不存在或不属于当前 Workspace",
+      );
+    }
+
+    try {
+      await runOpen(target, signal);
+    } catch (error: unknown) {
+      if (signal.aborted) return;
+      if (error instanceof WorkspaceServiceError) throw error;
+      if (isCommandUnavailable(error)) {
+        throw new WorkspaceServiceError(
+          WorkspaceErrorCode.OPEN_UNAVAILABLE,
+          "当前系统缺少可用的文件打开程序",
+        );
+      }
+      throw new WorkspaceServiceError(WorkspaceErrorCode.OPEN_FAILED, "无法打开本地文件");
+    }
   }
 
   public async reveal(workspaceId: string, signal: AbortSignal): Promise<void> {

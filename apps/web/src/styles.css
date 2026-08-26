@@ -21,6 +21,22 @@
   text-decoration-line: none;
 }
 
+.markdown a.markdown__local-link {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing, 0.25rem) * 1);
+  max-width: 100%;
+  color: var(--accent);
+  text-decoration-line: none;
+  text-underline-offset: 3px;
+}
+
+.markdown a.markdown__local-link:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 1px;
+}
+
 *,
 ::before,
 ::after,

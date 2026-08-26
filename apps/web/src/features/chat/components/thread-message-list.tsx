@@ -1,11 +1,15 @@
-import { Disclosure, Separator } from "@heroui/react";
+import { Disclosure, Separator, toast } from "@heroui/react";
 import { ChevronRight } from "lucide-react";
-import { memo, useState } from "react";
+import { type MouseEvent, memo, useState } from "react";
+import { AssistantMarkdownLinkProvider } from "../../../components/ai/assistant-markdown-link";
+import { openWorkspacePath } from "../api/workspace-api";
 import { type ChatMessage, ChatMessageType } from "../data/chat";
 import { ThreadMessage } from "./thread-message/index";
 
 export interface ThreadMessageListProps {
   messages: readonly ChatMessage[];
+  workspaceId?: string;
+  workspaceRoot?: string;
 }
 
 type ThreadMessageListItem =
@@ -83,31 +87,52 @@ function IntermediateTurn({ messages }: { messages: readonly ChatMessage[] }) {
 
 export const ThreadMessageList = memo(function ThreadMessageList({
   messages,
+  workspaceId,
+  workspaceRoot,
 }: ThreadMessageListProps) {
   const items = groupIntermediateMessages(messages);
 
-  return (
-    <div className="mx-auto flex w-full max-w-[714px] flex-col gap-2 px-4 pt-10 pb-12">
-      {items.map((item, index) => {
-        const message = item.kind === "message" ? item.message : item.messages[0];
-        const previousItem = items[index - 1];
-        const previousMessage =
-          previousItem?.kind === "message" ? previousItem.message : previousItem?.messages.at(-1);
-        const startsNewTurn =
-          index > 0 &&
-          (message?.type === ChatMessageType.USER ||
-            previousMessage?.type === ChatMessageType.USER);
+  const handleClickCapture = (event: MouseEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof Element)) return;
+    const path = event.target.closest<HTMLAnchorElement>("a[data-local-path]")?.dataset.localPath;
+    if (!path) return;
+    event.preventDefault();
+    if (!workspaceId) {
+      toast.danger("无法确定文件所属的 Workspace");
+      return;
+    }
+    void openWorkspacePath(workspaceId, path).catch((error: unknown) => {
+      toast.danger(error instanceof Error ? error.message : "无法打开本地文件");
+    });
+  };
 
-        return (
-          <div key={item.id} className={startsNewTurn ? "mt-6" : undefined}>
-            {item.kind === "message" ? (
-              <ThreadMessage message={item.message} />
-            ) : (
-              <IntermediateTurn messages={item.messages} />
-            )}
-          </div>
-        );
-      })}
-    </div>
+  return (
+    <AssistantMarkdownLinkProvider workspaceRoot={workspaceRoot}>
+      <div
+        className="mx-auto flex w-full max-w-[714px] flex-col gap-2 px-4 pt-10 pb-12"
+        onClickCapture={handleClickCapture}
+      >
+        {items.map((item, index) => {
+          const message = item.kind === "message" ? item.message : item.messages[0];
+          const previousItem = items[index - 1];
+          const previousMessage =
+            previousItem?.kind === "message" ? previousItem.message : previousItem?.messages.at(-1);
+          const startsNewTurn =
+            index > 0 &&
+            (message?.type === ChatMessageType.USER ||
+              previousMessage?.type === ChatMessageType.USER);
+
+          return (
+            <div key={item.id} className={startsNewTurn ? "mt-6" : undefined}>
+              {item.kind === "message" ? (
+                <ThreadMessage message={item.message} />
+              ) : (
+                <IntermediateTurn messages={item.messages} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </AssistantMarkdownLinkProvider>
   );
 });

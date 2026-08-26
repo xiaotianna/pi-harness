@@ -166,7 +166,11 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                 }}
               >
                 <ChatConversation.Content ref={conversationContentRef} className="flex flex-col">
-                  <ThreadMessageList messages={messages} />
+                  <ThreadMessageList
+                    messages={messages}
+                    workspaceId={snapshot.session.workspaceId}
+                    workspaceRoot={snapshot.session.workspaceRoot}
+                  />
                 </ChatConversation.Content>
                 <ChatConversation.ScrollButton aria-label="滚动到底部" />
                 <ChatConversation.ScrollAnchor />

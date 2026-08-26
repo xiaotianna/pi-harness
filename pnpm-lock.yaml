@@ -227,6 +227,9 @@ importers:
       '@pi-harness/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@pi-harness/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@pi-harness/providers':
         specifier: workspace:*
         version: link:../../packages/providers

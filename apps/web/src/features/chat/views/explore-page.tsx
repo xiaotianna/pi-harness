@@ -1,4 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { workspaceListQueryOptions } from "../api/workspace-queries";
 import { ThreadMessageList } from "../components/thread-message-list";
 import { type ChatMessage, ChatMessageType, ChatToolState } from "../data/chat";
 import mockSessionJsonl from "../data/explore-session.jsonl?raw";
@@ -7,6 +9,14 @@ const MOCK_TICK_MS = 40;
 const MOCK_TICKS_PER_MESSAGE = 48;
 const MARKDOWN_CHARS_PER_TICK = 4;
 const MOCK_TURN_ID = "explore-turn";
+const LOCAL_PATH_MOCKS = [
+  { label: "项目清单", path: "package.json" },
+  { label: "Web 全局样式", path: "apps/web/src/styles.css" },
+  {
+    label: "apps/web/src/features/chat/data/explore-session.jsonl",
+    path: "apps/web/src/features/chat/data/explore-session.jsonl",
+  },
+] as const;
 
 const MOCK_MESSAGES = mockSessionJsonl
   .trim()
@@ -22,8 +32,19 @@ const MOCK_ASSISTANT_MESSAGE = (() => {
 
 const MOCK_PROCESS_MESSAGES = MOCK_MESSAGES.slice(0, -1);
 const PROCESS_TICKS = MOCK_PROCESS_MESSAGES.length * MOCK_TICKS_PER_MESSAGE;
-const TOTAL_TICKS =
-  PROCESS_TICKS + Math.ceil(MOCK_ASSISTANT_MESSAGE.content.length / MARKDOWN_CHARS_PER_TICK);
+
+function addLocalPathMocks(workspaceRoot?: string): typeof MOCK_ASSISTANT_MESSAGE {
+  if (!workspaceRoot) return MOCK_ASSISTANT_MESSAGE;
+  const root = workspaceRoot === "/" ? "" : workspaceRoot.replace(/[\\/]$/, "");
+  const links = LOCAL_PATH_MOCKS.map(({ label, path }) => {
+    const absolutePath = `${root}/${path}`;
+    return `- [${label}](<${absolutePath}> "local-path")`;
+  }).join("\n");
+  return {
+    ...MOCK_ASSISTANT_MESSAGE,
+    content: `${MOCK_ASSISTANT_MESSAGE.content}\n\n## 本地文件\n\n${links}`,
+  };
+}
 
 function setActiveProcessState(
   message: ChatMessage,
@@ -68,12 +89,16 @@ function setActiveProcessState(
   return message;
 }
 
-function setCompletedTurnState(message: ChatMessage, completed: boolean): ChatMessage {
+function setCompletedTurnState(
+  message: ChatMessage,
+  completed: boolean,
+  totalTicks: number,
+): ChatMessage {
   return completed && message.type !== ChatMessageType.USER
     ? {
         ...message,
         isIntermediate: true,
-        turnDurationMs: TOTAL_TICKS * MOCK_TICK_MS,
+        turnDurationMs: totalTicks * MOCK_TICK_MS,
         turnId: MOCK_TURN_ID,
       }
     : message;
@@ -81,11 +106,15 @@ function setCompletedTurnState(message: ChatMessage, completed: boolean): ChatMe
 
 export function ExplorePage() {
   const [tick, setTick] = useState(0);
+  const workspace = useQuery(workspaceListQueryOptions()).data?.[0];
+  const mockAssistantMessage = addLocalPathMocks(workspace?.path);
+  const totalTicks =
+    PROCESS_TICKS + Math.ceil(mockAssistantMessage.content.length / MARKDOWN_CHARS_PER_TICK);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       setTick((currentTick) => {
-        if (currentTick >= TOTAL_TICKS) {
+        if (currentTick >= totalTicks) {
           window.clearInterval(interval);
           return currentTick;
         }
@@ -95,7 +124,7 @@ export function ExplorePage() {
     }, MOCK_TICK_MS);
 
     return () => window.clearInterval(interval);
-  }, []);
+  }, [totalTicks]);
 
   const visibleProcessCount = Math.min(
     MOCK_PROCESS_MESSAGES.length,
@@ -103,7 +132,7 @@ export function ExplorePage() {
   );
   const isProcessing = tick < PROCESS_TICKS;
   const replyLength = Math.max(0, tick - PROCESS_TICKS) * MARKDOWN_CHARS_PER_TICK;
-  const isReplyComplete = replyLength >= MOCK_ASSISTANT_MESSAGE.content.length;
+  const isReplyComplete = replyLength >= mockAssistantMessage.content.length;
   const messageProgress = ((tick % MOCK_TICKS_PER_MESSAGE) + 1) / MOCK_TICKS_PER_MESSAGE;
   const processMessages = MOCK_PROCESS_MESSAGES.slice(0, visibleProcessCount).map(
     (message, index) =>
@@ -114,6 +143,7 @@ export function ExplorePage() {
           messageProgress,
         ),
         isReplyComplete,
+        totalTicks,
       ),
   );
   const messages: ChatMessage[] = [
@@ -121,8 +151,8 @@ export function ExplorePage() {
     ...(replyLength > 0
       ? [
           {
-            ...MOCK_ASSISTANT_MESSAGE,
-            content: MOCK_ASSISTANT_MESSAGE.content.slice(0, replyLength),
+            ...mockAssistantMessage,
+            content: mockAssistantMessage.content.slice(0, replyLength),
             turnId: MOCK_TURN_ID,
             ...(isReplyComplete ? { actions: "minimal" as const } : {}),
           },
@@ -132,7 +162,12 @@ export function ExplorePage() {
 
   return (
     <div className="session-scrollbar session-scrollbars h-full min-h-0 overflow-y-auto">
-      <ThreadMessageList messages={messages} />
+      <ThreadMessageList
+        messages={messages}
+        {...(workspace === undefined
+          ? {}
+          : { workspaceId: workspace.id, workspaceRoot: workspace.path })}
+      />
     </div>
   );
 }

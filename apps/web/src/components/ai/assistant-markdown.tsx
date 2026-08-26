@@ -3,10 +3,11 @@ import {
   Markdown as MarkdownPrimitive,
   type MarkdownProps,
 } from "@agile-avocation/ui-pro/markdown";
-import { Checkbox, Link, Table } from "@heroui/react";
+import { Checkbox, Table } from "@heroui/react";
 import { Children, Fragment, isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 import { cn } from "../../shared/utils/cn";
+import { AssistantMarkdownLink } from "./assistant-markdown-link";
 import { ChartBlock } from "./chart-block";
 import { FlowDiagram } from "./flow-diagram";
 import { FormulaBlock } from "./formula-block";
@@ -18,23 +19,7 @@ function getLanguage(className?: string): string {
 }
 
 const ASSISTANT_MARKDOWN_COMPONENTS = {
-  a: ({ children, className, href, node: _node, title, ...props }) =>
-    href && /^https?:\/\//i.test(href) ? (
-      <Link
-        href={href}
-        rel="noopener noreferrer"
-        target="_blank"
-        {...(className === undefined ? {} : { className })}
-        {...(title === undefined ? {} : { title })}
-      >
-        {children}
-        <Link.Icon />
-      </Link>
-    ) : (
-      <a className={className} href={href} title={title} {...props}>
-        {children}
-      </a>
-    ),
+  a: AssistantMarkdownLink,
   code: ({ children, className, node, ...props }) => {
     const isInline =
       !node?.position?.start.line || node.position.start.line === node.position.end.line;

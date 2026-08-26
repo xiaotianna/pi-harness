@@ -3,6 +3,8 @@ import { Type } from "typebox";
 import type { HarnessConfig } from "../config/index.js";
 import { WorkspaceController } from "../controllers/workspace-controller.js";
 import {
+  type OpenWorkspacePathDto,
+  OpenWorkspacePathDtoSchema,
   type ReorderWorkspacesDto,
   ReorderWorkspacesDtoSchema,
   type UpdateWorkspaceDto,
@@ -81,6 +83,18 @@ export async function registerWorkspaceRoutes(
       },
     },
     controller.reveal,
+  );
+
+  server.post<{ Body: OpenWorkspacePathDto; Params: WorkspaceParamsDto }>(
+    "/api/workspaces/:workspaceId/open",
+    {
+      schema: {
+        body: OpenWorkspacePathDtoSchema,
+        params: WorkspaceParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.openPath,
   );
 
   server.delete<{ Params: WorkspaceParamsDto }>(

@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { HarnessConfig } from "../config/index.js";
 import type {
+  OpenWorkspacePathDto,
   ReorderWorkspacesDto,
   UpdateWorkspaceDto,
   WorkspaceParamsDto,
@@ -16,6 +17,29 @@ export class WorkspaceController {
   ) {}
 
   public list = async (): Promise<readonly WorkspaceVo[]> => this.workspaces.list();
+
+  public openPath = async (
+    request: FastifyRequest<{ Body: OpenWorkspacePathDto; Params: WorkspaceParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+
+    try {
+      await this.workspaces.openPath(
+        request.params.workspaceId,
+        request.body.path,
+        abortController.signal,
+      );
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
 
   public remove = async (
     request: FastifyRequest<{ Params: WorkspaceParamsDto }>,
@@ -101,9 +125,12 @@ export class WorkspaceController {
           : error.code === "WORKSPACE_PICKER_BUSY"
             ? 409
             : error.code === "WORKSPACE_PICKER_UNAVAILABLE" ||
+                error.code === "WORKSPACE_OPEN_UNAVAILABLE" ||
                 error.code === "WORKSPACE_REVEAL_UNAVAILABLE"
               ? 501
-              : error.code === "WORKSPACE_PICKER_FAILED" || error.code === "WORKSPACE_REVEAL_FAILED"
+              : error.code === "WORKSPACE_OPEN_FAILED" ||
+                  error.code === "WORKSPACE_PICKER_FAILED" ||
+                  error.code === "WORKSPACE_REVEAL_FAILED"
                 ? 500
                 : 400;
       return reply.status(status).send({ code: error.code, message: error.message });

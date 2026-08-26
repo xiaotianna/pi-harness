@@ -72,6 +72,13 @@ export async function revealWorkspace(workspaceId: string): Promise<void> {
   await apiRequest(`/api/workspaces/${encodeURIComponent(workspaceId)}/reveal`, { method: "POST" });
 }
 
+export async function openWorkspacePath(workspaceId: string, path: string): Promise<void> {
+  await apiRequest(`/api/workspaces/${encodeURIComponent(workspaceId)}/open`, {
+    body: JSON.stringify({ path }),
+    method: "POST",
+  });
+}
+
 export async function updateWorkspace(workspaceId: string, name: string): Promise<ChatWorkspace> {
   const response = await apiRequest(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
     body: JSON.stringify({ name }),

@@ -38,7 +38,11 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     config.databasePath,
     config.sessionsPath,
   ]);
-  const workspaces = new WorkspaceService(database.workspaces);
+  const workspaces = new WorkspaceService(database.workspaces, [
+    config.credentialsPath,
+    config.databasePath,
+    config.sessionsPath,
+  ]);
   let sessions: SessionService | undefined;
   const providers = await ProviderService.create(
     database.providerSettings,

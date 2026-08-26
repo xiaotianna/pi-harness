@@ -146,9 +146,9 @@
 
 - 状态：`active`
 - 范围：助手 Markdown 与会话滚动
-- 规则：助手回复使用 HeroUI Pro `Markdown` 的 memoized block 流式渲染，并通过统一的 `components` 映射配置 Markdown UI；相邻 memoized block 必须保留标题的标准顶部间距，不能因标题成为独立 block 的首元素而贴住前一段内容。绝对 `http://` 和 `https://` 链接使用 HeroUI `Link`，在文本后追加内置 `Link.Icon`，保持默认无下划线、hover 时显示下划线，并在新页面打开；相对路径、页面锚点和其他协议保留原生 Markdown 链接。GFM 表格使用 HeroUI `Table`，任务列表勾选框使用只读 HeroUI `Checkbox`；`chart` 使用图表组件，`formula` / `math` / `latex` 使用公式组件，`flow` 使用 JSON 步骤数据和 HeroUI `Surface` 卡片，`flowchart` / `mermaid` 使用 Mermaid DSL；Mermaid 的测量节点必须渲染在组件内部受 overflow 约束的容器中，流式源码变化需要先合并，停止变化后再绘制，不能在每次 token 更新时反复切换 loading 与图。结构化块解析或 Mermaid 渲染失败时回退为普通 `CodeBlock`。回复正文和 Thinking 共用该映射。会话内容增长时，距离底部不超过 96px 自动跟随；超过阈值后保持用户阅读位置，并保留显式滚动到底部操作。
-- 依据：用户基于 HeroUI Pro Markdown 文档确认恢复项目原组件，并明确要求 AI 输出根据底部距离阈值决定是否跟随滚动；随后要求表格和任务勾选框改用 HeroUI，并像 MDX 一样集中配置每类 Markdown 块的 UI 组件，又补充需要图表、公式和流程图 mock 及对应渲染组件，最终确认 `flow` 恢复 HeroUI 卡片，`flowchart` 与 `mermaid` 使用 Mermaid DSL；之后指出任务列表与后续标题之间缺少间距，并进一步确认 Mermaid 抖动来自流式源码变化时 loading 与图的反复切换；随后指定 HTTP(S) Markdown 链接使用 HeroUI Link 和内置外链箭头，并进一步纠正应保留官网默认的 hover 下划线交互且点击后打开新页面。
-- 原因：按块更新可保留项目既有 Markdown 视觉，但独立 block 会让标题错误命中首元素零上边距，需要在 block 边界恢复垂直节奏；Markdown block 的内容哈希 key 会让流式变化中的 Mermaid 组件反复挂载，立即绘制会在 loading 和不同高度的图之间切换，需要延后到源码稳定后再渲染；组件内测量容器同时避免临时 SVG 影响页面布局。HeroUI Pro Markdown 的通用 `a` 样式会覆盖 HeroUI Link 的默认下划线状态，需要只对 `.markdown .link` 恢复组件交互。集中映射能让所有 AI Markdown 消费者使用一致的 UI 组件；对未完成或非法结构回退为代码可以保留模型原始输出；滚动阈值兼顾持续查看最新输出与向上阅读历史消息。
+- 规则：助手回复使用 HeroUI Pro `Markdown` 的 memoized block 流式渲染，并通过统一的 `components` 映射配置 Markdown UI；相邻 memoized block 必须保留标题的标准顶部间距，不能因标题成为独立 block 的首元素而贴住前一段内容。绝对 `http://` 和 `https://` 链接使用 HeroUI `Link`，在文本后追加内置 `Link.Icon`，保持默认无下划线、hover 时显示下划线，并在新页面打开；页面锚点和其他协议保留原生 Markdown 链接。本地文件链接由独立的 `AssistantMarkdownLink` 处理，支持绝对路径、相对路径及行号后缀：使用接近正文高度、与文案垂直居中的主题蓝色文件图标，默认无下划线，hover 或键盘聚焦时显示虚线下划线，Tooltip 展示按当前 Workspace 补全的完整路径；链接显示内容取自 Markdown 的 `[]` 文案，与 `()` 中的真实路径分离，并允许长文案在可用宽度内换行。消息列表拦截点击并向 daemon 发送 `workspaceId` 和原始路径；daemon 必须复用路径策略解析真实路径、拒绝 Workspace 外路径和受保护目录，再用系统默认应用打开。GFM 表格使用 HeroUI `Table`，任务列表勾选框使用只读 HeroUI `Checkbox`；`chart` 使用图表组件，`formula` / `math` / `latex` 使用公式组件，`flow` 使用 JSON 步骤数据和 HeroUI `Surface` 卡片，`flowchart` / `mermaid` 使用 Mermaid DSL；Mermaid 的测量节点必须渲染在组件内部受 overflow 约束的容器中，流式源码变化需要先合并，停止变化后再绘制，不能在每次 token 更新时反复切换 loading 与图。结构化块解析或 Mermaid 渲染失败时回退为普通 `CodeBlock`。回复正文和 Thinking 共用该映射。会话内容增长时，距离底部不超过 96px 自动跟随；超过阈值后保持用户阅读位置，并保留显式滚动到底部操作。
+- 依据：用户基于 HeroUI Pro Markdown 文档确认恢复项目原组件，并明确要求 AI 输出根据底部距离阈值决定是否跟随滚动；随后要求表格和任务勾选框改用 HeroUI，并像 MDX 一样集中配置每类 Markdown 块的 UI 组件，又补充需要图表、公式和流程图 mock 及对应渲染组件，最终确认 `flow` 恢复 HeroUI 卡片，`flowchart` 与 `mermaid` 使用 Mermaid DSL；之后指出任务列表与后续标题之间缺少间距，并进一步确认 Mermaid 抖动来自流式源码变化时 loading 与图的反复切换；随后指定 HTTP(S) Markdown 链接使用 HeroUI Link 和内置外链箭头，并进一步纠正应保留官网默认的 hover 下划线交互且点击后打开新页面；后续要求本地路径点击后发送请求并由系统默认应用打开，并明确补充相对路径解析、文件图标、虚线 hover 下划线和完整路径 Tooltip；之后进一步明确链接文案不等于完整路径且长链接内容需要正常换行，本次补充文件图标应放大并与文案垂直居中。
+- 原因：按块更新可保留项目既有 Markdown 视觉，但独立 block 会让标题错误命中首元素零上边距，需要在 block 边界恢复垂直节奏；Markdown block 的内容哈希 key 会让流式变化中的 Mermaid 组件反复挂载，立即绘制会在 loading 和不同高度的图之间切换，需要延后到源码稳定后再渲染；组件内测量容器同时避免临时 SVG 影响页面布局。HeroUI Pro Markdown 的通用 `a` 样式会覆盖 HeroUI Link 的默认下划线状态，需要只对 `.markdown .link` 恢复组件交互。链接判断独立后，Markdown 主映射保持精简，相对路径展示可复用当前 Workspace 上下文；本地文件仍必须交给 daemon，并在执行系统命令前保持 Workspace 和受保护路径边界。集中映射能让所有 AI Markdown 消费者使用一致的 UI 组件；对未完成或非法结构回退为代码可以保留模型原始输出；滚动阈值兼顾持续查看最新输出与向上阅读历史消息。
 
 ### WEB-018
 
@@ -195,9 +195,9 @@
 
 - 状态：`active`
 - 范围：探索页 Agent 演示
-- 规则：探索页的完整回复演示复用正式 HarnessEvent 消息链路与渲染组件。Turn 运行中按 LLM 返回顺序流式展示每轮 thinking、text 和 Tool Call；Turn 进入终态后，把最后一条助手 text 之前的中间内容整体默认收起，只保持最终回复可见。终态聚合折叠条显示“已处理”、实际执行时长和展开箭头，摘要行下方使用贯穿可用宽度的半像素细分割线，并收紧分割线与最终回复的间距；不显示完成状态图标。该样式只用于整个 Turn 全部完成后的聚合区域。mock 覆盖当前工作区工具能力，最终回复展示常用 GFM、图表、公式，以及分别以 `# flow`、`# flowchart` 标题展示的 HeroUI Flow 和 Mermaid 流程图。
-- 依据：用户先要求探索页展示类似真实 AI 回复的多轮思考与工具调用，随后明确补充中间内容包含 thinking 与 text，运行时依次流式展示，Turn 完成后整体折叠并保留最后消息；之后指定终态聚合折叠条参考“已处理 + 执行时间 + 分割线”的样式，且不影响内部单项折叠，并进一步纠正分割线应位于摘要行下方而非箭头右侧；后续又指出分割线需要更细、与最终回复的间距应更紧凑，并要求补充图表、公式和流程图 mock，最终确认 `flow` 与 `flowchart` 分别展示 HeroUI 卡片和 Mermaid 流程图。
-- 原因：复用正式事件顺序和终态语义，可以让探索演示与真实 Agent Turn 保持一致，并避免过程内容长期挤占完成后的会话空间；执行时长为聚合摘要提供有用信息，分割线则清晰区分过程与最终答复。
+- 规则：探索页的完整回复演示复用正式 HarnessEvent 消息链路与渲染组件。Turn 运行中按 LLM 返回顺序流式展示每轮 thinking、text 和 Tool Call；Turn 进入终态后，把最后一条助手 text 之前的中间内容整体默认收起，只保持最终回复可见。终态聚合折叠条显示“已处理”、实际执行时长和展开箭头，摘要行下方使用贯穿可用宽度的半像素细分割线，并收紧分割线与最终回复的间距；不显示完成状态图标。该样式只用于整个 Turn 全部完成后的聚合区域。mock 覆盖当前工作区工具能力，最终回复展示常用 GFM、图表、公式、当前 Workspace 下的多个可打开绝对文件路径；本地文件链接使用简短普通文案展示，真实路径只放在 href 和 Tooltip 中。`# flow`、`# flowchart` 标题分别展示 HeroUI Flow 和 Mermaid 流程图。
+- 依据：用户先要求探索页展示类似真实 AI 回复的多轮思考与工具调用，随后明确补充中间内容包含 thinking 与 text，运行时依次流式展示，Turn 完成后整体折叠并保留最后消息；之后指定终态聚合折叠条参考“已处理 + 执行时间 + 分割线”的样式，且不影响内部单项折叠，并进一步纠正分割线应位于摘要行下方而非箭头右侧；后续又指出分割线需要更细、与最终回复的间距应更紧凑，并要求补充图表、公式和流程图 mock，最终确认 `flow` 与 `flowchart` 分别展示 HeroUI 卡片和 Mermaid 流程图；之后要求增加本地绝对路径 mock，并验证点击后可由系统默认应用打开；本次明确 mock 的链接显示文案应与真实路径分离并使用普通文本。
+- 原因：复用正式事件顺序和终态语义，可以让探索演示与真实 Agent Turn 保持一致，并避免过程内容长期挤占完成后的会话空间；执行时长为聚合摘要提供有用信息，分割线则清晰区分过程与最终答复；可点击绝对路径让探索页覆盖本地文件交互的完整链路。
 
 ### WEB-024
 
