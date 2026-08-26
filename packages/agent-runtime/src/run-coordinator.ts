@@ -214,7 +214,7 @@ export class RunCoordinator {
           currentPolicy.summary !== policy.summary ||
           currentPolicy.target !== policy.target
         ) {
-          return { block: true, reason: "审批期间工具目标已变化，请重新发起审批" };
+          return { block: true, reason: "审批期间工具目标已变化，请重新读取后再修改" };
         }
         const currentBlockReason = this.executionGuard.getBlockReason(
           context.toolCall.id,

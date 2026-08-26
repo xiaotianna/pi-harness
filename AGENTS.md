@@ -183,7 +183,7 @@ export const sessionQueryKeys = {
 ## Agent 与 Provider 规范
 
 - 每个 session 对应一个 `Agent` 实例；一个 session 同时只能存在一个活动 run。
-- 同一 workspace 默认只允许一个写入型 run，避免多个 Agent 同时覆盖本地文件。
+- 同一 workspace 的不同 session 可以并发运行。副作用工具执行前必须复查目标状态；目标已变化时阻止本次调用，由 Agent 重新读取后再修改。
 - Provider 按需注册，优先使用 `@earendil-works/pi-ai/providers/<provider>`，不要默认导入所有 Provider。
 - `pi-ai Models` 是唯一的 Provider/Model 运行时注册表，不创建只转发其方法的自定义 Registry 类。
 - 用户自定义 Provider 由 daemon 校验配置后，通过 `pi-ai createProvider()` 和已有 lazy API 实现创建；`packages/providers` 不重复定义配置 DTO 或校验逻辑。

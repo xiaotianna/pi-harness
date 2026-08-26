@@ -71,7 +71,7 @@ async function resolveTarget(
   try {
     const metadata = await stat(target, { bigint: true });
     return {
-      // 用于记录文件指纹，用户批准后重新计算。如果等待期间文件或目标发生变化，本次操作会被阻止，要求重新审批。
+      // 用户批准后重新计算；目标变化时阻止旧写入，由 Agent 重新读取后再修改和审批。
       fingerprint: [
         metadata.dev,
         metadata.ino,
