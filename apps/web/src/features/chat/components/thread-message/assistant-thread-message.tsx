@@ -1,5 +1,5 @@
 import { ChatMessage as ChatMessagePrimitive } from "@agile-avocation/ui-pro";
-import { Markdown } from "@agile-avocation/ui-pro/markdown";
+import { AssistantMarkdown } from "../../../../components/ai/assistant-markdown";
 import type { ChatAssistantMessage } from "../../data/chat";
 import { MessageActions } from "../message-actions";
 
@@ -8,7 +8,7 @@ export function AssistantThreadMessage({ message }: { message: ChatAssistantMess
     <ChatMessagePrimitive.Assistant>
       <ChatMessagePrimitive.Body>
         <ChatMessagePrimitive.Content>
-          <Markdown>{message.content}</Markdown>
+          <AssistantMarkdown>{message.content}</AssistantMarkdown>
         </ChatMessagePrimitive.Content>
         {message.actions ? (
           <MessageActions content={message.content} variant={message.actions} />

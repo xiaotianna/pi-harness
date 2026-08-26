@@ -228,7 +228,7 @@ function SidebarContents({
 
   return (
     <>
-      <Sidebar.Content className="pt-4">
+      <Sidebar.Header className="px-3 pt-4 pb-0">
         <Sidebar.Group>
           <Sidebar.Menu aria-label="对话操作">
             {CHAT_NAV_ITEMS.map((item) => (
@@ -245,12 +245,7 @@ function SidebarContents({
           </Sidebar.Menu>
         </Sidebar.Group>
         <Sidebar.Separator />
-        <Sidebar.Group
-          onDragEnd={clearWorkspaceDrag}
-          onDragOver={handleWorkspaceDragOver}
-          onDragStart={handleWorkspaceDragStart}
-          onDrop={handleWorkspaceDrop}
-        >
+        <Sidebar.Group>
           <Sidebar.GroupLabel className="flex items-center justify-between text-sm font-normal">
             <span>工作区</span>
             <Tooltip delay={0}>
@@ -265,6 +260,15 @@ function SidebarContents({
               <Tooltip.Content placement="right">添加工作区</Tooltip.Content>
             </Tooltip>
           </Sidebar.GroupLabel>
+        </Sidebar.Group>
+      </Sidebar.Header>
+      <Sidebar.Content className="session-scrollbar session-scrollbars pt-1" hideScrollBar={false}>
+        <Sidebar.Group
+          onDragEnd={clearWorkspaceDrag}
+          onDragOver={handleWorkspaceDragOver}
+          onDragStart={handleWorkspaceDragStart}
+          onDrop={handleWorkspaceDrop}
+        >
           <Sidebar.Menu
             aria-label="工作区"
             expandedKeys={workspaces.flatMap((workspace) =>

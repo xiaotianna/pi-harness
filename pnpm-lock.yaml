@@ -123,6 +123,9 @@ catalogs:
     fastify:
       specifier: ^5.6.0
       version: 5.11.2
+    katex:
+      specifier: ^0.18.4
+      version: 0.18.4
     lucide-react:
       specifier: ^0.500.0
       version: 0.500.0
@@ -132,6 +135,9 @@ catalogs:
     marked:
       specifier: ^18.0.9
       version: 18.0.9
+    mermaid:
+      specifier: ^11.16.1
+      version: 11.16.1
     motion:
       specifier: ^12.23.0
       version: 12.43.0
@@ -303,12 +309,18 @@ importers:
       icons:
         specifier: link:@lobehub/ui/icons
         version: link:@lobehub/ui/icons
+      katex:
+        specifier: 'catalog:'
+        version: 0.18.4
       lucide-react:
         specifier: 'catalog:'
         version: 0.500.0(react@19.2.8)
       marked:
         specifier: 'catalog:'
         version: 18.0.9
+      mermaid:
+        specifier: 'catalog:'
+        version: 11.16.1
       motion:
         specifier: 'catalog:'
         version: 12.43.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -327,6 +339,9 @@ importers:
       react-resizable-panels:
         specifier: 'catalog:'
         version: 4.12.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      recharts:
+        specifier: 'catalog:'
+        version: 3.10.1(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react-is@19.2.8)(react@19.2.8)(redux@5.0.1)
       remark-breaks:
         specifier: 'catalog:'
         version: 4.0.0

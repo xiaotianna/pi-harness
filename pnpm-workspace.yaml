@@ -43,9 +43,11 @@ catalog:
   es-toolkit: ^1.50.0
   execa: ^9.6.0
   fastify: ^5.6.0
+  katex: ^0.18.4
   lucide-react: ^0.500.0
   maplibre-gl: ^6.0.0
   marked: ^18.0.9
+  mermaid: ^11.16.1
   motion: ^12.23.0
   pino: ^10.0.0
   react: ^19.1.0

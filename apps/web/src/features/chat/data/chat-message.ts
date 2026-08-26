@@ -1,4 +1,3 @@
-import type { ToolPartState } from "@agile-avocation/ui-pro/chat-tool";
 import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness-event";
 
 export const ChatMessageType = {
@@ -30,6 +29,15 @@ export type ChatMessageReasoningStep = {
   label: string;
 };
 
+export const ChatToolState = {
+  INPUT_AVAILABLE: "input-available",
+  OUTPUT_AVAILABLE: "output-available",
+  OUTPUT_ERROR: "output-error",
+  REQUIRES_ACTION: "requires-action",
+} as const;
+
+export type ChatToolState = (typeof ChatToolState)[keyof typeof ChatToolState];
+
 export type ChatMessageTool = {
   approval?: {
     approvalId: string;
@@ -43,7 +51,7 @@ export type ChatMessageTool = {
   errorText?: string;
   input?: unknown;
   output?: unknown;
-  state: ToolPartState;
+  state: ChatToolState;
   toolCallId?: string;
   toolName: string;
 };
@@ -74,6 +82,9 @@ export type ChatMessageAttachment = {
 
 type ChatMessageBase = {
   id: string;
+  isIntermediate?: boolean;
+  turnDurationMs?: number;
+  turnId?: string;
 };
 
 export type ChatUserMessage = ChatMessageBase & {

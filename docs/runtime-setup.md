@@ -54,7 +54,7 @@
 
 执行内容：
 
-- `create-agent.ts` 注入恢复后的消息、Model、`streamFn`、`sessionId` 和最小 System Prompt。
+- `create-agent.ts` 注入恢复后的消息、Model、`streamFn`、`sessionId` 和由独立片段组合的 System Prompt。
 - 初始 `tools` 为空，thinking level 使用 `off`。
 - System Prompt 明确当前运行时没有文件和 Shell 工具，避免模型声称执行了本地操作。
 
@@ -62,6 +62,7 @@
 
 - `packages/agent-runtime/src/create-agent.ts`
 - `packages/agent-runtime/src/prompts/system-prompt.ts`
+- `packages/agent-runtime/src/prompts/rich-content-prompt.ts`
 
 ### 步骤 3：适配 HarnessEvent
 

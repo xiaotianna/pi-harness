@@ -1,4 +1,5 @@
 import { AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION } from "./auto-follow-up-prompt.js";
+import { RICH_CONTENT_SYSTEM_INSTRUCTION } from "./rich-content-prompt.js";
 
 const BASE_SYSTEM_PROMPT = `You are PI Harness, a local-first coding agent operating in the user's current workspace.
 Understand the request and relevant code before acting. Make the smallest correct change that fully addresses the request, reuse existing project patterns, and verify the result when practical.
@@ -6,7 +7,7 @@ Use only the tools provided for the current run, following their descriptions an
 Never claim that an action ran, succeeded, or changed state unless its tool result confirms it. If progress is blocked, explain the specific blocker and the minimum user action needed.
 Communicate clearly and concisely, leading with the outcome.`;
 
-/** 构造稳定的基础行为与自动续轮提示词；具体能力由当前 run 注入的工具决定。 */
+/** 组合稳定的独立提示词片段；具体工具能力由当前 run 注入。 */
 export function buildSystemPrompt(): string {
-  return `${BASE_SYSTEM_PROMPT}\n${AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION}`;
+  return `${BASE_SYSTEM_PROMPT}\n${RICH_CONTENT_SYSTEM_INSTRUCTION}\n${AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION}`;
 }

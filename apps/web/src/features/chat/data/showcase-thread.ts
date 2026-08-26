@@ -64,13 +64,13 @@ export const SHOWCASE_THREAD: ChatThread = {
       tools: [
         {
           argsText: '{"query":"HeroUI Pro 对话组件"}',
-          output: { hits: 12, top: "ChatTool" },
+          output: { hits: 12, top: "ToolCall" },
           state: "output-available",
           toolName: "searchDocs",
         },
         {
           argsText: '{"path":"/components/chat-tool"}',
-          output: { title: "ChatTool", words: 420 },
+          output: { title: "ToolCall", words: 420 },
           state: "output-available",
           toolName: "fetchPage",
         },

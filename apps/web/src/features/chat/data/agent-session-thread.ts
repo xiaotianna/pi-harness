@@ -44,7 +44,7 @@ export const AGENT_SESSION_THREAD: ChatThread = {
           label: "理解约束",
         },
         {
-          content: "检查现有 ChatMessage、ChainOfThought、ChatTool 与 PromptInput 的组合方式。",
+          content: "检查现有 ChatMessage、ReasoningPanel、ToolCall 与 PromptInput 的组合方式。",
           label: "检查实现",
         },
         {
@@ -63,25 +63,25 @@ export const AGENT_SESSION_THREAD: ChatThread = {
     {
       id: "agent-3c",
       isSearching: false,
-      query: "AIcss agent UI component patterns",
+      query: "assistant-ui Elements agent UI patterns",
       sources: [
         {
-          domain: "aicss.dev",
+          domain: "assistant-ui.com",
           status: "resolved",
-          title: "Thinking + Reasoning",
-          url: "https://www.aicss.dev/components/thinking-reasoning",
+          title: "Reasoning panel",
+          url: "https://www.assistant-ui.com/elements/reasoning-panel",
         },
         {
-          domain: "aicss.dev",
+          domain: "assistant-ui.com",
           status: "resolved",
-          title: "Web Search",
-          url: "https://www.aicss.dev/components/web-search",
+          title: "Chat Source",
+          url: "https://heroui.pro/docs/react/components/chat-source",
         },
         {
-          domain: "aicss.dev",
+          domain: "assistant-ui.com",
           status: "resolved",
-          title: "To-do List",
-          url: "https://www.aicss.dev/components/task-list",
+          title: "Todo list",
+          url: "https://www.assistant-ui.com/elements/todo-list",
         },
       ],
       type: ChatMessageType.WEB_SEARCH,
@@ -91,7 +91,7 @@ export const AGENT_SESSION_THREAD: ChatThread = {
       id: "agent-3d",
       items: [
         { label: "检查现有消息渲染入口", status: "completed" },
-        { label: "接入 AIcss 状态组件", status: "completed" },
+        { label: "接入 assistant-ui Elements", status: "completed" },
         { label: "实现右侧工作区面板", status: "in-progress" },
         { label: "核对组件来源文档", status: "pending" },
       ],
@@ -236,7 +236,7 @@ export const AGENT_SESSION_THREAD: ChatThread = {
 
 - 用户消息与附件使用 \`ChatMessage\`、\`ChatAttachment\`
 - 分析过程使用 \`ChainOfThought\`
-- 只读、失败、审批和写入过程使用 \`ChatTool\`、\`ChatToolGroup\`
+- 只读、失败、审批和写入过程使用 assistant-ui \`ToolCall\`
 - 代码、来源、流式状态与最终回答分别使用对应的 Pro AI 组件
 - 消息列表通过统一策略表选择渲染器，页面不再识别具体消息类型
 

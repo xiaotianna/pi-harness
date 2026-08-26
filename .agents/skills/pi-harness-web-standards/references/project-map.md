@@ -32,8 +32,8 @@
 |---|---|---|
 | 应用外壳与响应式导航 | `AppLayout`、`Navbar`、`Sidebar` | `features/chat/components/chat-shell.tsx`、`chat-navbar.tsx`、`chat-sidebar.tsx` |
 | 会话视口 | `ChatConversation` 复合组件 | `features/chat/views/chat-page.tsx` |
-| 用户与助手消息 | `ChatMessage`、`ChatAttachment`、`Markdown`、`CodeBlock`、`ChatSource` | `features/chat/components/thread-message/` |
-| Tool 调用与分组 | `ChatTool`、`ChatToolGroup` | `features/chat/components/thread-message/` |
+| 用户与助手消息 | `ChatMessage`、`ChatAttachment`、`AssistantMarkdown`、`CodeBlock`、`ChatSource`；Markdown 表格与任务项映射为 HeroUI `Table`、`Checkbox`，图表、公式、HeroUI Flow 和 Mermaid fenced block 映射为独立 AI 展示组件 | `components/ai/assistant-markdown.tsx`、`components/ai/chart-block.tsx`、`components/ai/formula-block.tsx`、`components/ai/flow-diagram.tsx`、`components/ai/mermaid-block.tsx`、`features/chat/components/thread-message/` |
+| Tool 调用与分组 | assistant-ui Element `ToolCall`；分组使用紧凑列表 | `components/ai/tool-call.tsx`、`features/chat/components/thread-message/` |
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor` | `features/chat/components/chat-composer.tsx` |
 | 文件选择 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发 | `features/chat/components/chat-composer.tsx` |
@@ -48,13 +48,13 @@
 | 普通工作流 | HeroUI `Modal` | `features/settings/components/provider-editor-dialog.tsx` |
 | 危险确认 | HeroUI `AlertDialog`，明确说明后果 | `features/chat/components/chat-shell-dialogs.tsx`、`features/auth/components/user-menu.tsx` |
 | 状态与反馈 | `Alert`、`Chip`、全局 `toast` | `features/auth/views/login-page.tsx`、`features/settings/components/model-settings-panel.tsx` |
-| AI 等待与生成状态 | AICSS `Orbs` S2 | `components/ai/aicss/aicss-components.tsx` |
+| AI 等待与生成状态 | assistant-ui Elements `GenerationLoader`、`ThinkingIndicator` | `components/ai/` |
 | 页面数据加载 | 骨架屏；不要用于 AI 处理状态 | `features/chat/views/chat-page.tsx` |
-| 折叠详情 | HeroUI `Disclosure` | `components/ai/aicss/aicss-components.tsx` |
+| 折叠详情 | HeroUI `Disclosure` | `components/ai/reasoning-panel.tsx` |
 | 设置面板标题 | 复用 `SettingsPanelHeader` | `features/settings/components/settings-panel-header.tsx` |
 | 设置项行 | 复用 `SettingsRow` | `features/settings/components/settings-row.tsx` |
 | Provider 品牌 | 复用 `ModelProviderIcon`，按 Provider ID 映射直接 SVG | `features/models/components/model-provider-icon.tsx` |
-| AI 过程展示 | 复用已有思考、搜索、图片和任务展示组件 | `components/ai/aicss/aicss-components.tsx` |
+| AI 过程展示 | 思考、图片和任务使用 assistant-ui Elements；Web Search 使用 HeroUI Pro `ChatSource` 的 Stacked Favicons + `ChatSources` Grouped | `components/ai/` |
 | Trace 类型 | 复用 `TraceKindChip` | `features/trace/components/trace-kind-chip.tsx` |
 | 长 Trace/事件列表 | `@tanstack/react-virtual` | `features/trace/components/trace-event-list.tsx` |
 | 业务状态动画 | Motion 加减少动效处理 | `features/chat/views/chat-page.tsx`、`workspace-inspector.tsx`、`features/trace/components/trace-detail-panel.tsx` |
@@ -67,13 +67,14 @@
 
 ### HeroUI Pro 兼容包
 
-使用 `@agile-avocation/ui-pro` 提供 AppLayout、Navbar、Sidebar、PromptInput、ChatConversation、ChatMessage、ChatMessageActions、Command、PromptSuggestion、Markdown、CodeBlock、ChatTool 和 ChatToolGroup 等复合场景。不得替换为 `@heroui-pro/react`。
+使用 `@agile-avocation/ui-pro` 提供 AppLayout、Navbar、Sidebar、PromptInput、ChatConversation、ChatMessage、ChatMessageActions、ChatSource、ChatSources、Command、PromptSuggestion、Markdown、CodeBlock 和图表等复合场景。不得替换为 `@heroui-pro/react`。
 
 ### 其他前端依赖
 
 - 使用 TanStack Router 管理路由，TanStack Query 管理服务端数据，Zustand 管理共享 UI 状态。
 - `HarnessEventType`、`HarnessEvent` 和 `MessageDeltaKind` 从浏览器安全的 `@pi-harness/agent-runtime/harness-event` 子路径复用，内部消息判断从 `@pi-harness/agent-runtime/agent-message` 复用；不要导入 `agent-runtime` 主入口或在 Web 重复定义事件协议。
 - 使用 Motion 表达业务状态变化，使用 Lucide React 作为普通图标库。
+- 使用 KaTeX 渲染公式 fenced block，使用 Mermaid 严格安全模式渲染流程图 DSL。
 - 使用 `@tanstack/react-virtual` 处理长列表，使用项目既有 AppLayout 或 `react-resizable-panels` 处理可调面板。
 - 使用 Tailwind CSS v4 和主题 token；不要为同一职责增加第二套依赖。
 

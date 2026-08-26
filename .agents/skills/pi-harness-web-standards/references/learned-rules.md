@@ -71,10 +71,10 @@
 ### WEB-008
 
 - 状态：`active`
-- 范围：Markdown 消息与消息操作
-- 规则：消息操作作为气泡下方独立操作行，不覆盖正文；有 hover 能力时默认隐藏，仅在悬停当前整条消息或键盘聚焦其操作时显示，触屏设备保持可见。同一 run 内只在用户可见的 AI turn 正常结束后，把操作挂到最后一条助手消息，不跟随每个 `message.completed` 或内部模型 turn 渲染。助手 Markdown 消息只组合 `ChatMessage.Assistant`、`ChatMessage.Body`、`ChatMessage.Content` 和 `Markdown`，不渲染头像或媒体；run 失败继续使用语义化错误提示呈现。
-- 依据：用户明确要求 Markdown 消息使用 HeroUI Pro `ChatMessage` 的核心消息部分，并连续纠正了消息操作的位置、显示时机，以及自动续轮时操作只能出现在最终 AI turn 结束处。
-- 原因：沿用 Pro 组件的消息级 hover 状态，避免操作覆盖正文或在非当前消息上持续造成视觉干扰；以 run 终态识别用户可见的 AI turn，可以避免把内部续轮的单条消息完成误当成最终回复，同时保留键盘与触屏可用性。
+- 范围：Markdown 消息、消息操作与失败状态
+- 规则：消息操作作为气泡下方独立操作行，不覆盖正文；有 hover 能力时默认隐藏，仅在悬停当前整条消息或键盘聚焦其操作时显示，触屏设备保持可见。同一 run 内只在用户可见的 AI turn 正常结束后，把操作挂到最后一条助手消息，不跟随每个 `message.completed` 或内部模型 turn 渲染。助手 Markdown 消息只组合 `ChatMessage.Assistant`、`ChatMessage.Body`、`ChatMessage.Content` 和 `Markdown`，不渲染头像或媒体。run 失败使用 assistant-ui `ErrorState` 的结构与 HeroUI danger 语义色呈现，占满消息内容区，只显示标题和错误详情。
+- 依据：用户明确要求 Markdown 消息使用 HeroUI Pro `ChatMessage` 的核心消息部分，并连续纠正了消息操作的位置、显示时机，以及自动续轮时操作只能出现在最终 AI turn 结束处；随后指定 run 失败状态使用 assistant-ui `ErrorState`，保留 HeroUI 色彩和精简内容，并要求宽度占满消息内容区。
+- 原因：沿用 Pro 组件的消息级 hover 状态，避免操作覆盖正文或在非当前消息上持续造成视觉干扰；以 run 终态识别用户可见的 AI turn，可以避免把内部续轮的单条消息完成误当成最终回复，同时保留键盘与触屏可用性；独立错误展示原语能保持失败反馈一致并充分利用消息空间。
 
 ### WEB-009
 
@@ -146,18 +146,18 @@
 
 - 状态：`active`
 - 范围：助手 Markdown 与会话滚动
-- 规则：助手回复使用 HeroUI Pro `Markdown` 的 memoized block 流式渲染。会话内容增长时，距离底部不超过 96px 自动跟随；超过阈值后保持用户阅读位置，并保留显式滚动到底部操作。
-- 依据：用户基于 HeroUI Pro Markdown 文档确认恢复项目原组件，并明确要求 AI 输出根据底部距离阈值决定是否跟随滚动。
-- 原因：按块更新可保留项目既有 Markdown 视觉；滚动阈值兼顾持续查看最新输出与向上阅读历史消息。
+- 规则：助手回复使用 HeroUI Pro `Markdown` 的 memoized block 流式渲染，并通过统一的 `components` 映射配置 Markdown UI；相邻 memoized block 必须保留标题的标准顶部间距，不能因标题成为独立 block 的首元素而贴住前一段内容。绝对 `http://` 和 `https://` 链接使用 HeroUI `Link`，在文本后追加内置 `Link.Icon`，保持默认无下划线、hover 时显示下划线，并在新页面打开；相对路径、页面锚点和其他协议保留原生 Markdown 链接。GFM 表格使用 HeroUI `Table`，任务列表勾选框使用只读 HeroUI `Checkbox`；`chart` 使用图表组件，`formula` / `math` / `latex` 使用公式组件，`flow` 使用 JSON 步骤数据和 HeroUI `Surface` 卡片，`flowchart` / `mermaid` 使用 Mermaid DSL；Mermaid 的测量节点必须渲染在组件内部受 overflow 约束的容器中，流式源码变化需要先合并，停止变化后再绘制，不能在每次 token 更新时反复切换 loading 与图。结构化块解析或 Mermaid 渲染失败时回退为普通 `CodeBlock`。回复正文和 Thinking 共用该映射。会话内容增长时，距离底部不超过 96px 自动跟随；超过阈值后保持用户阅读位置，并保留显式滚动到底部操作。
+- 依据：用户基于 HeroUI Pro Markdown 文档确认恢复项目原组件，并明确要求 AI 输出根据底部距离阈值决定是否跟随滚动；随后要求表格和任务勾选框改用 HeroUI，并像 MDX 一样集中配置每类 Markdown 块的 UI 组件，又补充需要图表、公式和流程图 mock 及对应渲染组件，最终确认 `flow` 恢复 HeroUI 卡片，`flowchart` 与 `mermaid` 使用 Mermaid DSL；之后指出任务列表与后续标题之间缺少间距，并进一步确认 Mermaid 抖动来自流式源码变化时 loading 与图的反复切换；随后指定 HTTP(S) Markdown 链接使用 HeroUI Link 和内置外链箭头，并进一步纠正应保留官网默认的 hover 下划线交互且点击后打开新页面。
+- 原因：按块更新可保留项目既有 Markdown 视觉，但独立 block 会让标题错误命中首元素零上边距，需要在 block 边界恢复垂直节奏；Markdown block 的内容哈希 key 会让流式变化中的 Mermaid 组件反复挂载，立即绘制会在 loading 和不同高度的图之间切换，需要延后到源码稳定后再渲染；组件内测量容器同时避免临时 SVG 影响页面布局。HeroUI Pro Markdown 的通用 `a` 样式会覆盖 HeroUI Link 的默认下划线状态，需要只对 `.markdown .link` 恢复组件交互。集中映射能让所有 AI Markdown 消费者使用一致的 UI 组件；对未完成或非法结构回退为代码可以保留模型原始输出；滚动阈值兼顾持续查看最新输出与向上阅读历史消息。
 
 ### WEB-018
 
-- 状态：`promoted`
+- 状态：`superseded`
 - 范围：加载状态语义
 - 规则：AI 等待与生成状态统一使用 AICSS `Orbs` S2；骨架屏只用于页面数据请求期间，不用于模型生成、工具执行或其他 AI 活动状态。
 - 依据：用户明确将 Orbs S2 声明为统一规范，并要求页面数据加载使用骨架屏。
 - 原因：区分 AI 活动与数据请求，避免同一种加载反馈表达不同语义。
-- 已提升至：`project-map.md` 的组件场景映射。
+- 替代规则：`WEB-022`
 
 ### WEB-019
 
@@ -182,6 +182,30 @@
 - 规则：列表项共用 mutation 时，开关的 pending、disabled 等可见状态必须按当前操作项 ID 限定；受控开关应立即乐观更新 Query 缓存，用服务端响应校准，失败时只回滚当前项，不通过整列表失效刷新完成切换。
 - 依据：用户指出切换某个 Provider 的 Switch 时其他 item 也会刷新，并在限定 disabled 状态后进一步反馈开关仍会闪烁。
 - 原因：受控开关若等待请求完成后重拉列表，会经历旧值回弹和新值再次切换；局部乐观更新可以保持即时反馈并避免无关控件闪动。
+
+### WEB-022
+
+- 状态：`active`
+- 范围：AI 状态与过程展示
+- 规则：AI 等待、思考、推理、工具调用、图片生成和任务列表使用直接放在 `components/ai` 下的 assistant-ui Elements；初始等待与生成状态只显示 Shimmer 状态文案，不显示九宫格 dot。Web Search 只使用 HeroUI Pro `ChatSource` 的 Stacked Favicons 与 `ChatSources` Grouped 展示，不叠加旧查询胶囊。每个组件独立成文件。`ReasoningPanel` 和 `ToolCall` 分别以 assistant-ui 官方 Element 的 API 与结构为准，基础折叠原语适配为 HeroUI `Disclosure`。Think 使用 100% 消息宽度；标题使用 `Thinking...` 加行内代码样式的当前状态，活动态只让 `Thinking...` 使用 Shimmer，状态文本保持静态；正文直接使用 Markdown 渲染，不增加圆点或“分析”等步骤标签，达到最大高度后在组件内部滚动，正文使用 muted 前景色且与标题左右边缘对齐。Think 流式输出期间保持展开，当前 Think 输出结束后立即自动收起，之后仅由用户手动重新展开。`ToolCall` 状态图标紧跟工具名，详情默认收起，整体限制为 `max-w-sm`。同一 LLM 消息返回两个及以上 Tool Call 时，外层只显示调用进度并折叠各工具详情；单个 Tool Call 直接展示。
+- 依据：用户明确要求前端 AI 组件独立放在 `components/ai` 下，并分别指定 assistant-ui 的 Reasoning panel、Tool call，以及 HeroUI Pro Chat Source 的 Stacked Favicons + Grouped 用于 Web Search；随后连续确认 ToolCall 的宽度、折叠和状态图标位置，并要求 Think 使用 Markdown、多工具调用使用外层进度折叠，进一步指定 Think 的 Shimmer 标题、状态样式、正文结构与内部滚动方式；之后又明确要求 Think 标题与正文对齐、正文弱化颜色，并在流式输出结束时自动收起；本次要求移除初始思考状态上方的 dot 动画。
+- 原因：保持 AI 展示组件职责清晰，让 Web Search 的触发与来源内容完全由指定的分组组件表达；按 LLM 单次返回的工具数量决定展示层级，可以保留执行进度并减少重复视觉噪声。Think 使用次级文字颜色和一致边缘可以降低过程内容的视觉权重，按流式状态自动折叠则避免已完成过程持续挤占会话空间。
+
+### WEB-023
+
+- 状态：`active`
+- 范围：探索页 Agent 演示
+- 规则：探索页的完整回复演示复用正式 HarnessEvent 消息链路与渲染组件。Turn 运行中按 LLM 返回顺序流式展示每轮 thinking、text 和 Tool Call；Turn 进入终态后，把最后一条助手 text 之前的中间内容整体默认收起，只保持最终回复可见。终态聚合折叠条显示“已处理”、实际执行时长和展开箭头，摘要行下方使用贯穿可用宽度的半像素细分割线，并收紧分割线与最终回复的间距；不显示完成状态图标。该样式只用于整个 Turn 全部完成后的聚合区域。mock 覆盖当前工作区工具能力，最终回复展示常用 GFM、图表、公式，以及分别以 `# flow`、`# flowchart` 标题展示的 HeroUI Flow 和 Mermaid 流程图。
+- 依据：用户先要求探索页展示类似真实 AI 回复的多轮思考与工具调用，随后明确补充中间内容包含 thinking 与 text，运行时依次流式展示，Turn 完成后整体折叠并保留最后消息；之后指定终态聚合折叠条参考“已处理 + 执行时间 + 分割线”的样式，且不影响内部单项折叠，并进一步纠正分割线应位于摘要行下方而非箭头右侧；后续又指出分割线需要更细、与最终回复的间距应更紧凑，并要求补充图表、公式和流程图 mock，最终确认 `flow` 与 `flowchart` 分别展示 HeroUI 卡片和 Mermaid 流程图。
+- 原因：复用正式事件顺序和终态语义，可以让探索演示与真实 Agent Turn 保持一致，并避免过程内容长期挤占完成后的会话空间；执行时长为聚合摘要提供有用信息，分割线则清晰区分过程与最终答复。
+
+### WEB-024
+
+- 状态：`active`
+- 范围：Session 与侧栏滚动容器
+- 规则：真实会话、探索页会话、侧栏目录/会话列表及其内层滚动区域统一使用透明轨道、浅色细圆角滑块的悬浮滚动条样式，滚动条颜色以低透明度 `muted` token 适配明暗主题，并使用稳定 scrollbar gutter，避免滚动条出现或消失引起内容宽度变化和页面跳动。侧栏固定区域包含“新会话”、分割线、“工作区”标题和添加按钮，只允许其下方具体工作区目录及会话树滚动。
+- 依据：用户明确要求 Session 滚动条统一改为悬浮样式以避免页面跳动，随后指出侧栏滚动条不可见，并要求“新会话”及其分割线不跟随列表滚动；之后以 Codex 滚动条为参照，指出当前滑块颜色过深、不符合项目风格，又进一步明确“工作区”标题和添加按钮也应固定，只有具体目录可以滚动。
+- 原因：浅色、低干扰的滚动条能保持可发现性而不抢占内容视觉层级，稳定 gutter 可保持内容区宽度不随溢出状态变化；固定主要操作和分组标题可让长目录列表中仍能随时识别当前列表并创建工作区或新会话。
 
 ## 维护规则
 

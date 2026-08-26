@@ -14,6 +14,7 @@ import {
   type ChatMessageTool,
   ChatMessageType,
   type ChatThread,
+  ChatToolState,
 } from "../data/chat";
 
 const TERMINAL_RUN_EVENTS = new Set<HarnessEvent["type"]>([
@@ -34,25 +35,102 @@ function readContentText(value: unknown): string {
     .join("");
 }
 
-function readCompletedMessage(event: HarnessEvent): ChatMessage | null {
-  if (!isPlainObject(event.data) || isInternalAgentMessage(event.data)) return null;
+function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatMessage[] {
+  if (!isPlainObject(event.data) || isInternalAgentMessage(event.data)) return [];
   const content = readContentText(event.data.content);
-  if (!content) return null;
+  if (!content && !Array.isArray(event.data.content)) return [];
   if (event.data.role === "user") {
-    return { content, id: event.id, type: ChatMessageType.USER };
+    return content ? [{ content, id: event.id, type: ChatMessageType.USER }] : [];
   }
-  if (event.data.role === "assistant") {
-    return { content, id: event.id, type: ChatMessageType.ASSISTANT };
+  if (event.data.role !== "assistant" || !Array.isArray(event.data.content)) return [];
+
+  const turn = event.runId === undefined ? {} : { turnId: event.runId };
+  const tools = event.data.content.flatMap<ChatMessageTool>((part) => {
+    if (
+      !isPlainObject(part) ||
+      part.type !== "toolCall" ||
+      typeof part.id !== "string" ||
+      typeof part.name !== "string"
+    ) {
+      return [];
+    }
+    return [
+      {
+        input: part.arguments,
+        state: ChatToolState.INPUT_AVAILABLE,
+        toolCallId: part.id,
+        toolName: part.name,
+      },
+    ];
+  });
+  const messages: ChatMessage[] = [];
+  let hasAddedTools = false;
+
+  for (const [index, part] of event.data.content.entries()) {
+    if (!isPlainObject(part)) continue;
+    if (part.type === "thinking" && typeof part.thinking === "string" && part.thinking.trim()) {
+      messages.push({
+        id: `${messageId}-thinking-${index}`,
+        steps: [{ content: part.thinking, label: "分析" }],
+        trigger: "已思考",
+        type: ChatMessageType.REASONING,
+        ...turn,
+      });
+      continue;
+    }
+    if (part.type === "text" && typeof part.text === "string" && part.text.trim()) {
+      messages.push({
+        content: part.text,
+        id: `${messageId}-text-${index}`,
+        type: ChatMessageType.ASSISTANT,
+        ...turn,
+      });
+      continue;
+    }
+    if (part.type !== "toolCall" || hasAddedTools || tools.length === 0) continue;
+    hasAddedTools = true;
+    const firstTool = tools[0];
+    if (tools.length === 1 && firstTool) {
+      messages.push({
+        id: `tool-${firstTool.toolCallId}`,
+        tool: firstTool,
+        type: ChatMessageType.TOOL,
+        ...turn,
+      });
+    } else {
+      messages.push({
+        active: true,
+        id: `${messageId}-tools`,
+        label: `已调用 ${tools.length} 个工具`,
+        tools,
+        type: ChatMessageType.TOOL_GROUP,
+        ...turn,
+      });
+    }
   }
-  return null;
+
+  return messages;
 }
 
-function readDelta(event: HarnessEvent): string {
-  return isPlainObject(event.data) &&
-    event.data.kind === MessageDeltaKind.TEXT &&
-    typeof event.data.delta === "string"
-    ? event.data.delta
-    : "";
+type StreamingContent = {
+  content: string;
+  kind: typeof MessageDeltaKind.TEXT | typeof MessageDeltaKind.THINKING;
+};
+
+function readDelta(event: HarnessEvent): (StreamingContent & { contentIndex: number }) | null {
+  if (
+    !isPlainObject(event.data) ||
+    (event.data.kind !== MessageDeltaKind.TEXT && event.data.kind !== MessageDeltaKind.THINKING) ||
+    typeof event.data.contentIndex !== "number" ||
+    typeof event.data.delta !== "string"
+  ) {
+    return null;
+  }
+  return {
+    content: event.data.delta,
+    contentIndex: event.data.contentIndex,
+    kind: event.data.kind,
+  };
 }
 
 function readFailureMessage(event: HarnessEvent): string {
@@ -87,6 +165,35 @@ function readApprovalPreview(tool: ChatMessageTool): string | null {
   return null;
 }
 
+function isToolActive(tool: ChatMessageTool): boolean {
+  return (
+    tool.state === ChatToolState.INPUT_AVAILABLE || tool.state === ChatToolState.REQUIRES_ACTION
+  );
+}
+
+function refreshToolGroupState(messages: readonly ChatMessage[], tool: ChatMessageTool): void {
+  const group = messages.find(
+    (message) => message.type === ChatMessageType.TOOL_GROUP && message.tools.includes(tool),
+  );
+  if (group?.type === ChatMessageType.TOOL_GROUP) {
+    group.active = group.tools.some(isToolActive);
+  }
+}
+
+function markRunIntermediateMessages(
+  messages: ChatMessage[],
+  runId: string,
+  durationMs?: number,
+  finalMessageId?: string,
+): void {
+  for (const message of messages) {
+    if (message.turnId !== runId || message.id === finalMessageId) continue;
+    message.isIntermediate = true;
+    if (durationMs !== undefined) message.turnDurationMs = durationMs;
+    if (message.type === ChatMessageType.REASONING) message.defaultExpanded = false;
+  }
+}
+
 export function findActiveRunId(events: readonly HarnessEvent[]): string | null {
   let activeRunId: string | null = null;
   for (const event of events) {
@@ -100,27 +207,59 @@ export function readSessionStatus(events: readonly HarnessEvent[]): ChatStatus {
   return findActiveRunId(events) === null ? "ready" : "streaming";
 }
 
+/**
+ * 将完成的jsonl数据转为页面渲染的消息
+ * 通过遍历，将工具调用的中间状态数据合并为最终状态
+ */
 export function sessionEventsToMessages(events: readonly HarnessEvent[]): readonly ChatMessage[] {
   const messages: ChatMessage[] = [];
+  const activeAssistantMessageIdByRunId = new Map<string, string>();
   const lastAssistantMessageByRunId = new Map<string, ChatAssistantMessage>();
-  const streamingText = new Map<string, string>();
+  const runStartedAtById = new Map<string, number>();
+  const streamingContentByRunId = new Map<string, Map<number, StreamingContent>>();
   const toolsByCallId = new Map<string, ChatMessageTool>();
 
   for (const event of events) {
+    if (event.type === HarnessEventType.RUN_STARTED && event.runId) {
+      runStartedAtById.set(event.runId, event.timestamp);
+      continue;
+    }
+
+    if (
+      event.type === HarnessEventType.MESSAGE_STARTED &&
+      event.runId &&
+      isPlainObject(event.data) &&
+      event.data.role === "assistant"
+    ) {
+      activeAssistantMessageIdByRunId.set(event.runId, event.id);
+      continue;
+    }
+
     if (
       event.type === HarnessEventType.TOOL_STARTED &&
       isPlainObject(event.data) &&
       typeof event.data.toolCallId === "string" &&
       typeof event.data.toolName === "string"
     ) {
-      const tool: ChatMessageTool = {
-        input: event.data.arguments,
-        state: "input-available",
-        toolCallId: event.data.toolCallId,
-        toolName: event.data.toolName,
-      };
-      toolsByCallId.set(event.data.toolCallId, tool);
-      messages.push({ id: `tool-${event.data.toolCallId}`, tool, type: ChatMessageType.TOOL });
+      const existingTool = toolsByCallId.get(event.data.toolCallId);
+      if (existingTool) {
+        existingTool.input = event.data.arguments;
+        existingTool.state = ChatToolState.INPUT_AVAILABLE;
+      } else {
+        const tool: ChatMessageTool = {
+          input: event.data.arguments,
+          state: ChatToolState.INPUT_AVAILABLE,
+          toolCallId: event.data.toolCallId,
+          toolName: event.data.toolName,
+        };
+        toolsByCallId.set(event.data.toolCallId, tool);
+        messages.push({
+          id: `tool-${event.data.toolCallId}`,
+          tool,
+          type: ChatMessageType.TOOL,
+          ...(event.runId === undefined ? {} : { turnId: event.runId }),
+        });
+      }
       continue;
     }
 
@@ -145,7 +284,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
           summary: event.data.summary,
           target: event.data.target,
         };
-        tool.state = "requires-action";
+        tool.state = ChatToolState.REQUIRES_ACTION;
       }
       continue;
     }
@@ -159,14 +298,15 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       if (tool) {
         delete tool.approval;
         if (event.data.decision === ApprovalDecision.APPROVED) {
-          tool.state = "input-available";
+          tool.state = ChatToolState.INPUT_AVAILABLE;
         } else {
           tool.errorText =
             event.data.decision === ApprovalDecision.EXPIRED
               ? "工具审批已超时"
               : "用户拒绝了工具审批";
-          tool.state = "output-error";
+          tool.state = ChatToolState.OUTPUT_ERROR;
         }
+        refreshToolGroupState(messages, tool);
       }
       continue;
     }
@@ -182,61 +322,131 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
         delete tool.approval;
         if (event.type === HarnessEventType.TOOL_FAILED) {
           tool.errorText = readToolError(event.data.result);
-          tool.state = "output-error";
+          tool.state = ChatToolState.OUTPUT_ERROR;
         } else {
           tool.output = readToolResult(event.data.result);
-          tool.state = "output-available";
+          tool.state = ChatToolState.OUTPUT_AVAILABLE;
         }
+        refreshToolGroupState(messages, tool);
       }
       continue;
     }
 
     if (event.type === HarnessEventType.MESSAGE_DELTA && event.runId) {
       const delta = readDelta(event);
-      if (delta) streamingText.set(event.runId, (streamingText.get(event.runId) ?? "") + delta);
+      if (delta) {
+        const contentByIndex = streamingContentByRunId.get(event.runId) ?? new Map();
+        const current = contentByIndex.get(delta.contentIndex);
+        contentByIndex.set(delta.contentIndex, {
+          content: current?.kind === delta.kind ? current.content + delta.content : delta.content,
+          kind: delta.kind,
+        });
+        streamingContentByRunId.set(event.runId, contentByIndex);
+      }
       continue;
     }
 
     if (event.type === HarnessEventType.MESSAGE_COMPLETED) {
-      const message = readCompletedMessage(event);
-      if (message) messages.push(message);
-      if (event.runId && message?.type === ChatMessageType.ASSISTANT) {
-        lastAssistantMessageByRunId.set(event.runId, message);
-        streamingText.delete(event.runId);
+      const messageId = event.runId ? activeAssistantMessageIdByRunId.get(event.runId) : undefined;
+      const completedMessages = readCompletedMessages(event, messageId ?? event.id);
+      for (const message of completedMessages) {
+        messages.push(message);
+        if (message.type === ChatMessageType.TOOL) {
+          if (message.tool.toolCallId) toolsByCallId.set(message.tool.toolCallId, message.tool);
+        } else if (message.type === ChatMessageType.TOOL_GROUP) {
+          for (const tool of message.tools) {
+            if (tool.toolCallId) toolsByCallId.set(tool.toolCallId, tool);
+          }
+        } else if (event.runId && message.type === ChatMessageType.ASSISTANT) {
+          lastAssistantMessageByRunId.set(event.runId, message);
+        }
+      }
+      if (event.runId && isPlainObject(event.data) && event.data.role === "assistant") {
+        activeAssistantMessageIdByRunId.delete(event.runId);
+        streamingContentByRunId.delete(event.runId);
       }
       continue;
     }
 
     if (event.type === HarnessEventType.RUN_COMPLETED && event.runId) {
       const message = lastAssistantMessageByRunId.get(event.runId);
-      if (message) message.actions = "full";
+      if (message) {
+        const startedAt = runStartedAtById.get(event.runId);
+        message.actions = "full";
+        markRunIntermediateMessages(
+          messages,
+          event.runId,
+          startedAt === undefined ? undefined : Math.max(0, event.timestamp - startedAt),
+          message.id,
+        );
+      }
     }
 
     if (event.type === HarnessEventType.RUN_FAILED && event.runId) {
+      const startedAt = runStartedAtById.get(event.runId);
+      markRunIntermediateMessages(
+        messages,
+        event.runId,
+        startedAt === undefined ? undefined : Math.max(0, event.timestamp - startedAt),
+      );
       messages.push({
         content: readFailureMessage(event),
         id: `failed-${event.id}`,
         type: ChatMessageType.ERROR,
+        turnId: event.runId,
       });
-      streamingText.delete(event.runId);
+      streamingContentByRunId.delete(event.runId);
     }
 
     if (event.type === HarnessEventType.RUN_ABORTED && event.runId) {
-      streamingText.delete(event.runId);
+      streamingContentByRunId.delete(event.runId);
     }
   }
 
   const activeRunId = findActiveRunId(events);
   const isAwaitingApproval = messages.some(
-    (message) => message.type === ChatMessageType.TOOL && message.tool.state === "requires-action",
+    (message) =>
+      (message.type === ChatMessageType.TOOL &&
+        message.tool.state === ChatToolState.REQUIRES_ACTION) ||
+      (message.type === ChatMessageType.TOOL_GROUP &&
+        message.tools.some((tool) => tool.state === ChatToolState.REQUIRES_ACTION)),
   );
   if (activeRunId && !isAwaitingApproval) {
-    const content = streamingText.get(activeRunId);
-    messages.push(
-      content
-        ? { content, id: `streaming-${activeRunId}`, type: ChatMessageType.ASSISTANT }
-        : { id: `loading-${activeRunId}`, label: "正在思考…", type: ChatMessageType.LOADING },
+    const messageId =
+      activeAssistantMessageIdByRunId.get(activeRunId) ?? `streaming-${activeRunId}`;
+    const content = [...(streamingContentByRunId.get(activeRunId)?.entries() ?? [])].sort(
+      ([left], [right]) => left - right,
     );
+    if (content.length === 0) {
+      messages.push({
+        id: `loading-${activeRunId}`,
+        label: "正在思考…",
+        turnId: activeRunId,
+        type: ChatMessageType.LOADING,
+      });
+    } else {
+      const lastContentIndex = content.at(-1)?.[0];
+      for (const [contentIndex, part] of content) {
+        messages.push(
+          part.kind === MessageDeltaKind.THINKING
+            ? {
+                defaultExpanded: true,
+                id: `${messageId}-thinking-${contentIndex}`,
+                isStreaming: contentIndex === lastContentIndex,
+                steps: [{ content: part.content, label: "分析" }],
+                trigger: "已思考",
+                turnId: activeRunId,
+                type: ChatMessageType.REASONING,
+              }
+            : {
+                content: part.content,
+                id: `${messageId}-text-${contentIndex}`,
+                turnId: activeRunId,
+                type: ChatMessageType.ASSISTANT,
+              },
+        );
+      }
+    }
   }
 
   return messages;

@@ -22,7 +22,7 @@ export type {
   ChatWebSearchMessage,
   ResolveChatToolApproval,
 } from "./chat-message";
-export { ChatMessageType } from "./chat-message";
+export { ChatMessageType, ChatToolState } from "./chat-message";
 
 import type { ChatMessage } from "./chat-message";
 
@@ -75,19 +75,6 @@ export type LibraryItem = {
   updatedAt: string;
   tags: readonly string[];
   threadId?: string;
-};
-
-export type ExplorePrompt = {
-  id: string;
-  title: string;
-  description: string;
-};
-
-export type ExploreCategory = {
-  id: string;
-  title: string;
-  subtitle: string;
-  prompts: readonly ExplorePrompt[];
 };
 
 export const CHAT_NAV_ITEMS: readonly ChatNavItem[] = [
@@ -172,75 +159,6 @@ export const LIBRARY_ITEMS: readonly LibraryItem[] = [
     tags: ["商业", "定价"],
     title: "定价模式比较",
     updatedAt: "本月早些时候",
-  },
-] as const;
-
-export const EXPLORE_CATEGORIES: readonly ExploreCategory[] = [
-  {
-    id: "work",
-    prompts: [
-      {
-        description: "把零散更新整理成可直接发给团队的每周进展说明。",
-        id: "explore-work-1",
-        title: "撰写团队每周更新",
-      },
-      {
-        description: "制作包含问题、方案和范围的单页产品简报。",
-        id: "explore-work-2",
-        title: "单页产品简报",
-      },
-      {
-        description: "为新功能发布起草一份可直接发送的版本说明。",
-        id: "explore-work-3",
-        title: "功能版本说明",
-      },
-    ],
-    subtitle: "进展说明、规格文档和规划助手。",
-    title: "工作",
-  },
-  {
-    id: "writing",
-    prompts: [
-      {
-        description: "为持审慎态度的管理者改写一段粗略文案。",
-        id: "explore-writing-1",
-        title: "面向管理者改写",
-      },
-      {
-        description: "把会议记录整理成包含决策和负责人的紧凑叙事摘要。",
-        id: "explore-writing-2",
-        title: "会议记录转叙事摘要",
-      },
-      {
-        description: "用具体、突出收益的表达，为产品团队精简营销文案。",
-        id: "explore-writing-3",
-        title: "优化营销文案",
-      },
-    ],
-    subtitle: "表达更清晰、更高效、更具体。",
-    title: "写作与编辑",
-  },
-  {
-    id: "planning",
-    prompts: [
-      {
-        description: "把产品简报转化为按周安排、包含负责人的发布清单。",
-        id: "explore-planning-1",
-        title: "从简报生成发布清单",
-      },
-      {
-        description: "为产品团队新成员制定包含明确里程碑的 30/60/90 天计划。",
-        id: "explore-planning-2",
-        title: "新成员 30/60/90 天计划",
-      },
-      {
-        description: "起草一份兼顾路线图和指标的季度规划议程。",
-        id: "explore-planning-3",
-        title: "季度规划议程",
-      },
-    ],
-    subtitle: "真正可用的结构化计划和议程。",
-    title: "规划与运营",
   },
 ] as const;
 

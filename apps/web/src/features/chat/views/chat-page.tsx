@@ -140,7 +140,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       : readSessionStatus(events);
 
   return (
-    <div className="flex h-[calc(100svh-var(--chat-navbar-height,64px))] flex-col overflow-hidden">
+    <div className="session-scrollbars flex h-[calc(100svh-var(--chat-navbar-height,64px))] flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">
         <AnimatePresence initial={false} mode="wait">
           <motion.div
@@ -154,7 +154,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
             {activeView === ChatPageView.CONVERSATION ? (
               <ChatConversation
                 ref={conversationRef}
-                className="h-full min-h-0"
+                className="session-scrollbar h-full min-h-0"
                 resize="instant"
                 onScroll={(event) => {
                   const conversation = event.currentTarget;

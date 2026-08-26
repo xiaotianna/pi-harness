@@ -52,31 +52,29 @@ const DIFF_LINE_MARKERS: Record<DiffLineType, string> = {
   [DiffLineType.REMOVED]: "-",
 };
 
-const README_DIFF = `# AIcss 组件映射
+const README_DIFF = `# AI 组件映射
 
-本目录承载 AI 对话中的状态展示，基础交互继续使用 HeroUI Pro。
+本目录承载 AI 对话中的状态展示，并适配项目已有的 HeroUI 与 HeroUI Pro。
 
-## 当前使用 AIcss 的组件
-
-| 本地导出 | AIcss 规范 | 项目用途 |
+| 本地组件 | 来源组件 | 项目用途 |
 | --- | --- | --- |
-| \`ThinkingState\` | Thinking State | 思考中的等待状态 |
-| \`ThinkingReasoning\` | Thinking + Reasoning | 可展开的推理过程 |
-| \`Orbs\` | Orbs | S3 资源生成进度 |
-| \`WebSearch\` | Web Search | 搜索过程与来源摘要 |
-| \`ImageGeneration\` | Image Generation | 图片生成状态 |
-| \`TaskList\` | To-do List | 多步骤任务进度 |
+| \`GenerationLoader\` | Loading state | 等待与生成状态 |
+| \`ThinkingIndicator\` | Thinking indicator | 当前思考状态 |
+| \`ReasoningPanel\` | Reasoning panel | 可展开的推理过程 |
+| \`WebSearch\` | Chat Source | Stacked Favicons + Grouped 来源摘要 |
+| \`ImageGeneration\` | Image generation | 图片生成状态 |
+| \`TodoList\` | Todo list | 多步骤任务进度 |
 
-## 不使用 AIcss 的消息组件
+## 现有消息组件
 
 - 用户与助手消息外壳、附件、Markdown、来源和消息操作使用 HeroUI Pro。
 - \`CodeBlock\` 使用 HeroUI Pro 的代码块组件。
-- 单个与分组工具调用使用 HeroUI Pro 的工具调用组件。
+- 单个与分组工具调用使用 assistant-ui Tool call。
 - 输入框继续使用 HeroUI Pro \`PromptInput\`。
 
 ## 实现约定
 
-- AIcss 免费组件按公开规范适配为受控 React 组件。
+- 每个 assistant-ui Element 独立成文件。
 - 颜色映射到 HeroUI 语义 token。
 - 动画遵循 prefers-reduced-motion。`;
 
@@ -95,10 +93,10 @@ const WORKSPACE_DIFF_FILES = [
   {
     additions: README_DIFF_LINES.length,
     deletions: 0,
-    id: "aicss-readme",
+    id: "assistant-ui-readme",
     lines: README_DIFF_LINES,
-    path: "apps/web/src/components/ai/aicss/README.md",
-    shortPath: "…components/ai/aicss/README.md",
+    path: "apps/web/src/components/ai/README.md",
+    shortPath: "…components/ai/README.md",
   },
   {
     additions: 3,
