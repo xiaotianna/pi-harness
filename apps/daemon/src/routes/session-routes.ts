@@ -125,6 +125,18 @@ export async function registerSessionRoutes(
     controller.abortRun,
   );
 
+  server.post<{ Body: StartRunDto; Params: SessionRunParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/follow-ups",
+    {
+      schema: {
+        body: StartRunDtoSchema,
+        params: SessionRunParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.followUpRun,
+  );
+
   server.get<{ Params: SessionRunParamsDto }>(
     "/api/sessions/:sessionId/runs/:runId/approvals/current",
     {

@@ -9,7 +9,7 @@ import type {
   StreamFn,
 } from "@earendil-works/pi-agent-core";
 import { type Api, clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
-import { evaluateToolCall, ToolPolicyDecision } from "@pi-harness/policy";
+import { type ApprovalPolicyValue, evaluateToolCall, ToolPolicyDecision } from "@pi-harness/policy";
 import { isFileChangeDetails, type ToolRegistry } from "@pi-harness/tools";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
 import { adaptAgentEvent } from "./event-adapter.js";
@@ -28,6 +28,7 @@ import {
 import type { ToolApprovalRequester } from "./tool-approval.js";
 
 export interface StartRunInput {
+  approvalPolicy: ApprovalPolicyValue;
   model: Model<Api>;
   modelId: string;
   prompt: string;
@@ -40,6 +41,7 @@ export interface StartRunInput {
 export type HarnessEventListener = (event: HarnessEvent) => Promise<void> | void;
 
 interface ActiveRun {
+  approvalPolicy: ApprovalPolicyValue;
   handleAutoFollowUp: ReturnType<typeof createAutoFollowUpHandler>;
   modelId: string;
   providerId: string;
@@ -96,16 +98,31 @@ export class RunCoordinator {
 
     // 在工具真正执行前，根据工具权限和参数，决定“直接允许、直接拒绝，还是请求用户审批”
     const policy = await evaluateToolCall({
+      approvalPolicy: activeRun.approvalPolicy,
       arguments: context.args, // 模型传给工具的参数
       policy: this.toolRegistry.get(context.toolCall.name)?.policy, // 工具权限
       protectedPaths: this.protectedPaths,
       workspaceRoot: this.workspaceRoot,
     });
-    // 继续执行
-    if (policy.decision === ToolPolicyDecision.ALLOW) return undefined;
     // 阻止工具
     if (policy.decision === ToolPolicyDecision.DENY) {
       return { block: true, reason: policy.reason };
+    }
+    // 自动允许副作用时仍执行重复调用保护；只读工具不需要指纹。
+    if (policy.decision === ToolPolicyDecision.ALLOW) {
+      if (policy.fingerprint === undefined) return undefined;
+      const toolCallFingerprint = this.executionGuard.createFingerprint(
+        context.toolCall.name,
+        context.args,
+        policy.fingerprint,
+      );
+      const blockReason = this.executionGuard.getBlockReason(
+        context.toolCall.id,
+        toolCallFingerprint,
+      );
+      if (blockReason !== null) return { block: true, reason: blockReason };
+      this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+      return undefined;
     }
 
     const toolCallFingerprint = this.executionGuard.createFingerprint(
@@ -203,6 +220,7 @@ export class RunCoordinator {
       // 决定是否执行工具，返回 undefined，表示不阻止工具，继续执行。
       if (decision === ApprovalDecision.APPROVED) {
         const currentPolicy = await evaluateToolCall({
+          approvalPolicy: activeRun.approvalPolicy,
           arguments: context.args,
           policy: this.toolRegistry.get(context.toolCall.name)?.policy,
           protectedPaths: this.protectedPaths,
@@ -293,6 +311,7 @@ export class RunCoordinator {
     this.agent.streamFunction = input.streamFn;
     this.executionGuard.reset();
     this.activeRun = {
+      approvalPolicy: input.approvalPolicy,
       handleAutoFollowUp: createAutoFollowUpHandler((message) => this.agent.followUp(message)),
       modelId: input.modelId,
       providerId: input.providerId,

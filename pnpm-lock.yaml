@@ -276,6 +276,9 @@ importers:
       '@pi-harness/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@pi-harness/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@react-aria/utils':
         specifier: 'catalog:'
         version: 3.34.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

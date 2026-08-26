@@ -1,7 +1,8 @@
-export interface DatabaseMigration {
-  sql: string;
-  version: string;
-}
+import type { DatabaseSync } from "node:sqlite";
+
+export type DatabaseMigration =
+  | { sql: string; version: string }
+  | { migrate: (database: DatabaseSync) => void; version: string };
 
 /**
  * migration 按顺序保存，使数据库结构变更明确，并能随 TypeScript 构建产物一起发布。
@@ -108,5 +109,70 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX workspaces_removed_sort_order_idx
         ON workspaces(removed_at, sort_order, updated_at DESC);
     `,
+  },
+  {
+    version: "007-approval-policy-settings.sql",
+    sql: `
+      CREATE TABLE app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+    `,
+  },
+  {
+    version: "009-session-approval-policy.sql",
+    migrate: (database) => {
+      database.exec(`
+        INSERT INTO app_settings (key, value, updated_at)
+        SELECT 'default_approval_policy', value, updated_at
+        FROM app_settings
+        WHERE key = 'approval_policy'
+        ON CONFLICT(key) DO NOTHING;
+
+        DELETE FROM app_settings WHERE key = 'approval_policy';
+      `);
+
+      const hasApprovalPolicyColumn =
+        database
+          .prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'approval_policy'")
+          .get() !== undefined;
+      if (hasApprovalPolicyColumn) return;
+
+      database.exec(`
+        ALTER TABLE sessions ADD COLUMN approval_policy TEXT NOT NULL DEFAULT 'request_approval'
+          CHECK (approval_policy IN ('request_approval', 'auto_approve', 'full_access'));
+
+        UPDATE sessions
+        SET approval_policy = COALESCE(
+          (SELECT value FROM app_settings WHERE key = 'default_approval_policy'),
+          'request_approval'
+        );
+      `);
+    },
+  },
+  {
+    version: "010-global-approval-policy.sql",
+    migrate: (database) => {
+      database.exec(`
+        INSERT INTO app_settings (key, value, updated_at)
+        SELECT 'approval_policy', value, updated_at
+        FROM app_settings
+        WHERE key = 'default_approval_policy'
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = excluded.updated_at;
+
+        DELETE FROM app_settings WHERE key = 'default_approval_policy';
+      `);
+
+      const hasApprovalPolicyColumn =
+        database
+          .prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'approval_policy'")
+          .get() !== undefined;
+      if (hasApprovalPolicyColumn) {
+        database.exec("ALTER TABLE sessions DROP COLUMN approval_policy");
+      }
+    },
   },
 ];

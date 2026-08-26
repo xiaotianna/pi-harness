@@ -6,7 +6,7 @@ import type { TSchema } from "typebox";
 const MAX_PARALLEL_TOOL_CALLS = 4;
 
 /**
- * 防止tool重复审批，保证：
+ * 防止副作用工具在单次 Run 中重复执行，保证：
  *  - 同一个工具调用只执行一次。
     - 相同写入反复出现时阻止并提示。
     - 工具超时能够真正停止。

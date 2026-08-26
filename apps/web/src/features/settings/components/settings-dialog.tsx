@@ -6,14 +6,18 @@ import {
   Modal,
   Select,
   Separator,
+  Skeleton,
   ToggleButton,
   ToggleButtonGroup,
+  toast,
 } from "@heroui/react";
 import type { LucideIcon } from "lucide-react";
 import { Archive, Blocks, Bot, Brain, Monitor, Moon, Settings2, Store, Sun } from "lucide-react";
 import { useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
+import { useApprovalPolicySetting } from "../hooks/use-approval-policy-setting";
 import { useAppTheme } from "../theme-provider";
+import { ApprovalPolicySelect } from "./approval-policy-select";
 import { MemorySettingsPanel } from "./memory-settings-panel";
 import { ModelSettingsPanel } from "./model-settings-panel";
 import { PluginMarketplacePanel } from "./plugin-marketplace-panel";
@@ -79,37 +83,25 @@ type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
 
 function GeneralSettingsPanel() {
   const { setTheme, theme } = useAppTheme();
+  const { approvalPolicy, isPending, setApprovalPolicy } = useApprovalPolicySetting();
 
   return (
     <section aria-label="通用设置" className="w-full max-w-[720px]">
-      <SettingsRow description="选择新会话的默认权限模式。" title="权限">
-        <Select
-          aria-label="默认权限"
-          className="min-w-40 max-w-56"
-          defaultSelectedKey="read-only"
-          variant="secondary"
-        >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              <ListBox.Item id="read-only" textValue="只读">
-                <Label>只读</Label>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="workspace-write" textValue="工作区写入">
-                <Label>工作区写入</Label>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="danger-full-access" textValue="完全访问">
-                <Label>完全访问</Label>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            </ListBox>
-          </Select.Popover>
-        </Select>
+      <SettingsRow description="所有会话共用的权限模式。" title="权限">
+        {approvalPolicy === undefined ? (
+          <Skeleton aria-hidden className="h-10 w-40 rounded-xl" />
+        ) : (
+          <ApprovalPolicySelect
+            className="min-w-40 max-w-56"
+            isDisabled={isPending}
+            value={approvalPolicy}
+            onChange={(approvalPolicy) => {
+              void setApprovalPolicy(approvalPolicy).catch((error: unknown) => {
+                toast.danger(error instanceof Error ? error.message : "保存权限审批设置失败");
+              });
+            }}
+          />
+        )}
       </SettingsRow>
 
       <Separator />

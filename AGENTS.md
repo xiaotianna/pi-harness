@@ -204,7 +204,7 @@ export const sessionQueryKeys = {
 - 每个 session 必须绑定不可变的 `workspaceRoot`。工具不得接受调用方任意覆盖工作目录。
 - 所有文件路径在审批前和实际执行前都要进行规范化与 workspace 边界检查。
 - 使用真实路径检查符号链接，拒绝访问 workspace 外部路径以及 daemon 凭据目录。
-- 第一阶段所有文件写入和 Shell 命令都需要用户审批；只读、目录列举和文本搜索可以自动执行。
+- 默认审批策略下所有文件写入和 Shell 命令都需要用户审批；`auto_approve` 只自动批准工作区文件写入，`full_access` 自动批准工作区文件写入和 Shell 命令。审批策略不得绕过 workspace 边界、受保护目录、固定 cwd、环境变量白名单、超时、输出限制和中止信号；只读、目录列举和文本搜索始终可以自动执行。
 - 审批请求必须包含工具名、规范化后的目标、参数摘要、风险说明、session ID 和 run ID。
 - 审批等待必须支持拒绝、超时、Agent abort 和 daemon 关闭。
 - `run_command` 必须设置 cwd、超时、输出上限并传递 `AbortSignal`，不得创建无法追踪的后台进程。

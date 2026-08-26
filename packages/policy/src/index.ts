@@ -1,3 +1,8 @@
+export {
+  ApprovalPolicy,
+  type ApprovalPolicy as ApprovalPolicyValue,
+  isApprovalPolicy,
+} from "./approval-policy.js";
 export { type ResolveWorkspacePathInput, resolveWorkspacePath } from "./path-policy.js";
 export {
   PathPolicyError,

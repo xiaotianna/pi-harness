@@ -19,6 +19,7 @@
     "@lobehub/icons": "catalog:",
     "@lobehub/ui": "catalog:",
     "@pi-harness/agent-runtime": "workspace:*",
+    "@pi-harness/policy": "workspace:*",
     "@react-aria/utils": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",

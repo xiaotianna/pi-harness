@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { ApprovalPolicy, type ApprovalPolicyValue, isApprovalPolicy } from "@pi-harness/policy";
 import { DATABASE_MIGRATIONS } from "./migrations.js";
 
 export interface AuthUser {
@@ -51,6 +52,11 @@ export interface ProviderSettingRepository {
   listCustom(): readonly CustomProviderRecord[];
   setBuiltInEnabled(providerId: string, enabled: boolean, updatedAt: number): void;
   updateCustom(provider: CustomProviderRecord): boolean;
+}
+
+export interface AppSettingRepository {
+  getApprovalPolicy(): ApprovalPolicyValue;
+  setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void;
 }
 
 export interface SessionRecord {
@@ -214,7 +220,11 @@ function runMigrations(database: DatabaseSync): void {
     // 避免数据库结构停留在只完成一部分的状态。
     database.exec("BEGIN IMMEDIATE");
     try {
-      database.exec(migration.sql);
+      if ("sql" in migration) {
+        database.exec(migration.sql);
+      } else {
+        migration.migrate(database);
+      }
       recordMigration.run(migration.version, Date.now());
       database.exec("COMMIT");
     } catch (error: unknown) {
@@ -394,6 +404,34 @@ class SqliteProviderSettingRepository implements ProviderSettingRepository {
   }
 }
 
+const APPROVAL_POLICY_KEY = "approval_policy";
+
+class SqliteAppSettingRepository implements AppSettingRepository {
+  public constructor(private readonly database: DatabaseSync) {}
+
+  public getApprovalPolicy(): ApprovalPolicyValue {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(APPROVAL_POLICY_KEY) as DatabaseRow | undefined;
+    if (!row) return ApprovalPolicy.REQUEST_APPROVAL;
+
+    const value = readRequiredString(row, "value");
+    if (!isApprovalPolicy(value)) {
+      throw new Error("Invalid database value for approval policy");
+    }
+    return value;
+  }
+
+  public setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(APPROVAL_POLICY_KEY, approvalPolicy, updatedAt);
+  }
+}
+
 class SqliteSessionRepository implements SessionRepository {
   public constructor(private readonly database: DatabaseSync) {}
 
@@ -401,7 +439,8 @@ class SqliteSessionRepository implements SessionRepository {
     this.database
       .prepare(
         `INSERT INTO sessions (
-           id, workspace_id, provider_id, model_id, title, last_seq, created_at, updated_at
+           id, workspace_id, provider_id, model_id, title, last_seq,
+           created_at, updated_at
          ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
       )
       .run(
@@ -577,6 +616,7 @@ class SqliteWorkspaceRepository implements WorkspaceRepository {
 }
 
 export interface HarnessDatabase {
+  appSettings: AppSettingRepository;
   authSessions: AuthSessionRepository;
   close(): void;
   providerSettings: ProviderSettingRepository;
@@ -593,6 +633,7 @@ export function openHarnessDatabase(databasePath: string): HarnessDatabase {
   runMigrations(database);
 
   return {
+    appSettings: new SqliteAppSettingRepository(database),
     authSessions: new SqliteAuthSessionRepository(database),
     close: () => database.close(),
     providerSettings: new SqliteProviderSettingRepository(database),

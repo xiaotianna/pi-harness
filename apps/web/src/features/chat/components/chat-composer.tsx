@@ -2,7 +2,17 @@
 
 import type { ChatStatus } from "@agile-avocation/ui-pro";
 import { PromptInput } from "@agile-avocation/ui-pro";
-import { Button, Description, Dropdown, Label, Separator, Tooltip, toast } from "@heroui/react";
+import {
+  Button,
+  Description,
+  Dropdown,
+  Label,
+  Separator,
+  Skeleton,
+  Tooltip,
+  toast,
+} from "@heroui/react";
+import type { ApprovalPolicy } from "@pi-harness/policy/approval-policy";
 import { useQuery } from "@tanstack/react-query";
 import {
   ChevronDown,
@@ -26,6 +36,7 @@ import {
   providerQueryOptions,
   useModelSettingsStore,
 } from "../../models";
+import { ApprovalPolicySelect, useApprovalPolicySetting } from "../../settings";
 import type { ChatWorkspace } from "../data/chat";
 import { useNewChatStore } from "../state/new-chat-store";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
@@ -160,6 +171,11 @@ export function ChatComposer({
   status: statusProp,
   workspaces = [],
 }: ChatComposerProps) {
+  const {
+    approvalPolicy,
+    isPending: isApprovalPolicyPending,
+    setApprovalPolicy,
+  } = useApprovalPolicySetting();
   const defaultModelKey = useModelSettingsStore((state) => state.defaultModelKey);
   const conversationModelKey = useModelSettingsStore((state) =>
     conversationId ? state.conversationModelKeys[conversationId] : undefined,
@@ -231,7 +247,7 @@ export function ChatComposer({
     const hasAttachments = attachments.length > 0;
 
     if (
-      status !== "ready" ||
+      approvalPolicy === undefined ||
       selectedModelKey === null ||
       isSubmittingRef.current ||
       (!trimmed && !hasAttachments) ||
@@ -274,7 +290,8 @@ export function ChatComposer({
     preferredModelKey && availableModelKeys.includes(preferredModelKey)
       ? preferredModelKey
       : (availableModelKeys[0] ?? null);
-  const sendLabel = isGenerating ? "停止生成" : "发送消息";
+  const sendLabel =
+    isGenerating && !hasEditorContent ? "停止生成" : isGenerating ? "发送后续消息" : "发送消息";
   const isHero = presentation === "hero";
   const selectedModelProvider = availableModelProviders.find((provider) =>
     provider.models.some(
@@ -285,6 +302,7 @@ export function ChatComposer({
     (model) => createModelSelectionKey(selectedModelProvider.id, model.id) === selectedModelKey,
   );
   const canSend =
+    approvalPolicy !== undefined &&
     selectedModel !== undefined &&
     (onSubmitMessage ? hasEditorContent : hasEditorContent || attachments.length > 0) &&
     (!isHero || workspaces.length > 0);
@@ -370,6 +388,12 @@ export function ChatComposer({
       });
   };
 
+  const handleApprovalPolicyChange = (nextApprovalPolicy: ApprovalPolicy) => {
+    void setApprovalPolicy(nextApprovalPolicy).catch((error: unknown) => {
+      toast.danger(error instanceof Error ? error.message : "保存权限审批设置失败");
+    });
+  };
+
   const handleWorkspaceAction = (key: unknown) => {
     if (key !== "add-workspace") {
       setSelectedWorkspaceId(String(key));
@@ -388,6 +412,7 @@ export function ChatComposer({
 
   return (
     <PromptInput
+      allowSubmitWhileRunning
       className={className}
       lockInputOnRun={false}
       status={status}
@@ -453,7 +478,7 @@ export function ChatComposer({
         </div>
       ) : null}
       <PromptInput.Shell
-        className={`relative z-10 overflow-visible! rounded-[32px] bg-field shadow-field ${
+        className={`relative z-10 overflow-visible! rounded-[32px] bg-field opacity-100! shadow-field ${
           attachments.length ? "-mt-6" : ""
         }`}
       >
@@ -607,76 +632,84 @@ export function ChatComposer({
                 </Dropdown.Popover>
               </Dropdown>
             ) : null}
-            <Dropdown>
-              <Button
-                aria-label="选择模型"
-                className={`gap-2 px-2 ${
-                  isGenerating ? "pointer-events-auto! cursor-[var(--cursor-disabled)]!" : ""
-                }`}
-                isDisabled={isGenerating}
-                size="sm"
-                variant="ghost"
-              >
-                {selectedModelProvider ? (
-                  <ModelProviderIcon isColor providerId={selectedModelProvider.id} size={16} />
-                ) : null}
-                <span>
-                  {selectedModel?.name ?? (providersQuery.isPending ? "加载模型…" : "选择模型")}
-                </span>
-                <ChevronDown className="size-3.5" />
-              </Button>
-              <Dropdown.Popover className="min-w-52" placement="bottom start">
-                <Dropdown.Menu aria-label="选择模型 Provider">
-                  {availableModelProviders.length === 0 ? (
-                    <Dropdown.Item isDisabled id="no-models" textValue="暂无可用模型">
-                      <CircleAlert className="size-4 text-muted" />
-                      <div className="flex flex-col">
-                        <Label>{providersQuery.isPending ? "正在加载模型" : "暂无可用模型"}</Label>
-                        <Description>请先在设置中连接并启用 Provider</Description>
-                      </div>
-                    </Dropdown.Item>
-                  ) : (
-                    availableModelProviders.map((provider) => (
-                      <Dropdown.SubmenuTrigger key={provider.id}>
-                        <Dropdown.Item id={`provider-${provider.id}`} textValue={provider.name}>
-                          <ModelProviderIcon isColor providerId={provider.id} size={16} />
-                          <Label>{provider.name}</Label>
-                          <Dropdown.SubmenuIndicator />
-                        </Dropdown.Item>
-                        <Dropdown.Popover className="min-w-60">
-                          <Dropdown.Menu
-                            aria-label={`${provider.name} 模型`}
-                            selectedKeys={
-                              selectedModelKey ? new Set([selectedModelKey]) : new Set()
-                            }
-                            selectionMode="single"
-                            onAction={(key) => {
-                              if (typeof key === "string") handleModelChange(key);
-                            }}
-                          >
-                            {provider.models.map((model) => (
-                              <Dropdown.Item
-                                className="ps-2 pe-7"
-                                key={createModelSelectionKey(provider.id, model.id)}
-                                id={createModelSelectionKey(provider.id, model.id)}
-                                textValue={model.name}
-                              >
-                                <ModelProviderIcon isColor providerId={provider.id} size={16} />
-                                <Label>{model.name}</Label>
-                                <Dropdown.ItemIndicator className="start-auto end-2" />
-                              </Dropdown.Item>
-                            ))}
-                          </Dropdown.Menu>
-                        </Dropdown.Popover>
-                      </Dropdown.SubmenuTrigger>
-                    ))
-                  )}
-                </Dropdown.Menu>
-              </Dropdown.Popover>
-            </Dropdown>
+            {approvalPolicy === undefined ? (
+              <Skeleton aria-hidden className="h-8 w-32 rounded-full" />
+            ) : (
+              <ApprovalPolicySelect
+                className="max-w-36 gap-2 px-2"
+                isDisabled={isApprovalPolicyPending}
+                showDescription
+                value={approvalPolicy}
+                onChange={handleApprovalPolicyChange}
+              />
+            )}
+            {providersQuery.isPending ? (
+              <Skeleton aria-hidden className="h-8 w-40 rounded-full" />
+            ) : (
+              <Dropdown>
+                <Button aria-label="选择模型" className="gap-2 px-2" size="sm" variant="ghost">
+                  {selectedModelProvider ? (
+                    <ModelProviderIcon isColor providerId={selectedModelProvider.id} size={16} />
+                  ) : null}
+                  <span>{selectedModel?.name ?? "选择模型"}</span>
+                  <ChevronDown className="size-3.5" />
+                </Button>
+                <Dropdown.Popover className="min-w-52" placement="bottom start">
+                  <Dropdown.Menu aria-label="选择模型 Provider">
+                    {availableModelProviders.length === 0 ? (
+                      <Dropdown.Item isDisabled id="no-models" textValue="暂无可用模型">
+                        <CircleAlert className="size-4 text-muted" />
+                        <div className="flex flex-col">
+                          <Label>暂无可用模型</Label>
+                          <Description>请先在设置中连接并启用 Provider</Description>
+                        </div>
+                      </Dropdown.Item>
+                    ) : (
+                      availableModelProviders.map((provider) => (
+                        <Dropdown.SubmenuTrigger key={provider.id}>
+                          <Dropdown.Item id={`provider-${provider.id}`} textValue={provider.name}>
+                            <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                            <Label>{provider.name}</Label>
+                            <Dropdown.SubmenuIndicator />
+                          </Dropdown.Item>
+                          <Dropdown.Popover className="min-w-60">
+                            <Dropdown.Menu
+                              aria-label={`${provider.name} 模型`}
+                              selectedKeys={
+                                selectedModelKey ? new Set([selectedModelKey]) : new Set()
+                              }
+                              selectionMode="single"
+                              onAction={(key) => {
+                                if (typeof key === "string") handleModelChange(key);
+                              }}
+                            >
+                              {provider.models.map((model) => (
+                                <Dropdown.Item
+                                  className="ps-2 pe-7"
+                                  key={createModelSelectionKey(provider.id, model.id)}
+                                  id={createModelSelectionKey(provider.id, model.id)}
+                                  textValue={model.name}
+                                >
+                                  <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                                  <Label>{model.name}</Label>
+                                  <Dropdown.ItemIndicator className="start-auto end-2" />
+                                </Dropdown.Item>
+                              ))}
+                            </Dropdown.Menu>
+                          </Dropdown.Popover>
+                        </Dropdown.SubmenuTrigger>
+                      ))
+                    )}
+                  </Dropdown.Menu>
+                </Dropdown.Popover>
+              </Dropdown>
+            )}
           </PromptInput.ToolbarStart>
           <PromptInput.ToolbarEnd>
-            <PromptInput.Send aria-label={sendLabel} isDisabled={!canSend && !isGenerating} />
+            <PromptInput.Send
+              aria-label={sendLabel}
+              {...(isGenerating ? {} : { isDisabled: !canSend })}
+            />
           </PromptInput.ToolbarEnd>
         </PromptInput.Toolbar>
       </PromptInput.Shell>

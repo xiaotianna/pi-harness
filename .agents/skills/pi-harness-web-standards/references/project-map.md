@@ -19,6 +19,7 @@
 | 数据类型 | 使用方式 | 示例 |
 |---|---|---|
 | daemon/服务端数据 | TanStack Query | Provider 列表、连接状态 |
+| 全局审批策略 | TanStack Query 读写 daemon `app_settings` | 设置页与消息输入器共享权限模式 |
 | 跨组件纯 UI 状态 | Zustand | 当前页面视图、默认模型偏好 |
 | 局部交互状态 | React 组件状态 | 弹窗开关、输入草稿、展开状态 |
 | 路由与搜索参数 | TanStack Router 加集中 schema | 页面、筛选、排序和选中项 |

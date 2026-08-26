@@ -143,6 +143,17 @@ export async function abortSessionRun(sessionId: string, runId: string): Promise
   );
 }
 
+export async function followUpSessionRun(
+  sessionId: string,
+  runId: string,
+  prompt: string,
+): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/follow-ups`,
+    { body: JSON.stringify({ prompt }), method: "POST" },
+  );
+}
+
 export async function resolveToolApproval(
   sessionId: string,
   runId: string,

@@ -7,7 +7,12 @@ import {
   type RunId,
   type SessionId,
 } from "@pi-harness/agent-runtime";
-import type { SessionRecord, SessionRepository, WorkspaceRepository } from "../storage/database.js";
+import type {
+  AppSettingRepository,
+  SessionRecord,
+  SessionRepository,
+  WorkspaceRepository,
+} from "../storage/database.js";
 import type { SessionEventSnapshot, SessionEventStore } from "../storage/session-event-store.js";
 import type { HumanInteractionService, PendingToolApproval } from "./human-interaction-service.js";
 import type { ProviderService } from "./provider-service.js";
@@ -80,6 +85,7 @@ export class SessionService {
   public constructor(
     private readonly sessions: SessionRepository,
     private readonly workspaces: WorkspaceRepository,
+    private readonly settings: AppSettingRepository,
     private readonly eventStore: SessionEventStore,
     private readonly providers: ProviderService,
     private readonly agents: AgentManager,
@@ -124,10 +130,8 @@ export class SessionService {
     providerId: string,
     modelId: string,
   ): Promise<SessionRecord> {
-    this.assertSessionIdle(sessionId);
     this.getRequiredSession(sessionId);
     await this.providers.resolveRunModel(providerId, modelId);
-    this.assertSessionIdle(sessionId);
     if (!this.sessions.updateModel(sessionId, providerId, modelId, Date.now())) {
       throw new SessionServiceError(SessionErrorCode.NOT_FOUND, "Session 不存在");
     }
@@ -182,6 +186,7 @@ export class SessionService {
       const runId = randomUUID();
       // 4. 生成 runId 并启动
       const task = this.agents.startRun({
+        approvalPolicy: this.settings.getApprovalPolicy(),
         initialSeq: Math.max(session.lastSeq, snapshot.lastPersistedSeq),
         messages: snapshot.messages,
         model,
@@ -206,6 +211,17 @@ export class SessionService {
   public abortRun(sessionId: SessionId, runId: RunId): void {
     this.getRequiredSession(sessionId);
     if (!this.agents.abort(sessionId, runId)) {
+      throw new SessionServiceError(SessionErrorCode.RUN_NOT_FOUND, "活动 Run 不存在");
+    }
+  }
+
+  public followUpRun(sessionId: SessionId, runId: RunId, promptInput: string): void {
+    this.getRequiredSession(sessionId);
+    const prompt = promptInput.trim();
+    if (!prompt) {
+      throw new SessionServiceError(SessionErrorCode.EMPTY_PROMPT, "消息内容不能为空");
+    }
+    if (!this.agents.followUp(sessionId, runId, prompt)) {
       throw new SessionServiceError(SessionErrorCode.RUN_NOT_FOUND, "活动 Run 不存在");
     }
   }

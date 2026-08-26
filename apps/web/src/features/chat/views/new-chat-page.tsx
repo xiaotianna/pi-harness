@@ -3,7 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { SparklesText } from "@/components/ui/sparkles-text";
-import { ChatComposer } from "@/features/chat/components/chat-composer";
+import {
+  ChatComposer,
+  type ChatComposerSubmitInput,
+} from "@/features/chat/components/chat-composer";
 import { authSessionQueryOptions } from "../../auth";
 import { createSession, type Session, startSessionRun } from "../api/session-api";
 import { sessionQueryKeys } from "../api/session-queries";
@@ -19,17 +22,7 @@ export function NewChatPage() {
   const username = sessionQuery.data?.authenticated ? sessionQuery.data.user.username : "";
   const workspaces = workspacesQuery.data ?? [];
   const createMutation = useMutation({
-    mutationFn: async ({
-      modelId,
-      prompt,
-      providerId,
-      workspaceId,
-    }: {
-      modelId: string;
-      prompt: string;
-      providerId: string;
-      workspaceId?: string;
-    }) => {
+    mutationFn: async ({ modelId, prompt, providerId, workspaceId }: ChatComposerSubmitInput) => {
       if (!workspaceId) throw new Error("请选择工作区");
       const session = await createSession({
         modelId,

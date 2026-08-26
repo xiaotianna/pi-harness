@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { relative } from "node:path";
+import { ApprovalPolicy, type ApprovalPolicy as ApprovalPolicyValue } from "./approval-policy.js";
 import { resolveWorkspacePath } from "./path-policy.js";
 
 // 工具审批决策
@@ -28,7 +29,7 @@ export type ToolPolicy =
     };
 
 export type ToolPolicyResult =
-  | { decision: typeof ToolPolicyDecision.ALLOW }
+  | { decision: typeof ToolPolicyDecision.ALLOW; fingerprint?: string }
   | { decision: typeof ToolPolicyDecision.DENY; reason: string }
   | {
       decision: typeof ToolPolicyDecision.ASK;
@@ -39,6 +40,7 @@ export type ToolPolicyResult =
     };
 
 export interface EvaluateToolCallInput {
+  approvalPolicy: ApprovalPolicyValue;
   arguments: unknown;
   policy: ToolPolicy | undefined;
   protectedPaths?: readonly string[];
@@ -90,8 +92,8 @@ async function resolveTarget(
   }
 }
 
-/** 在工具真正执行前，根据工具权限和参数，决定“直接允许、直接拒绝，还是请求用户审批”
- * 只读工具自动放行；所有文件写入和 Shell 命令都必须逐次审批。
+/** 在工具真正执行前，根据工具权限、参数和 Session 审批策略决定允许、拒绝或询问。
+ * 只读工具自动放行；文件写入与 Shell 在完成边界校验后按审批策略处理。
  * 审批流程：
  *  没有注册策略
       → DENY
@@ -100,11 +102,11 @@ async function resolveTarget(
     WORKSPACE_WRITE
       → 读取 arguments.path
       → 校验路径
-      → ASK
+      → request_approval 时 ASK，否则 ALLOW
     SHELL
       → 读取 arguments.command
       → 校验 workspace
-      → ASK
+      → full_access 时 ALLOW，否则 ASK
  * */
 export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<ToolPolicyResult> {
   if (input.policy === undefined) {
@@ -120,6 +122,9 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
         return { decision: ToolPolicyDecision.DENY, reason: "文件工具缺少有效路径" };
       }
       const { fingerprint, target } = await resolveTarget(input, path, input.policy.allowMissing);
+      if (input.approvalPolicy !== ApprovalPolicy.REQUEST_APPROVAL) {
+        return { decision: ToolPolicyDecision.ALLOW, fingerprint };
+      }
       return {
         decision: ToolPolicyDecision.ASK,
         fingerprint,
@@ -134,6 +139,9 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
         return { decision: ToolPolicyDecision.DENY, reason: "命令工具缺少有效命令" };
       }
       const { fingerprint } = await resolveTarget(input, ".", false);
+      if (input.approvalPolicy === ApprovalPolicy.FULL_ACCESS) {
+        return { decision: ToolPolicyDecision.ALLOW, fingerprint };
+      }
       return {
         decision: ToolPolicyDecision.ASK,
         fingerprint,

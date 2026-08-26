@@ -9,6 +9,7 @@ import { useLayoutEffect, useRef } from "react";
 import { AgentTraceView } from "../../trace";
 import {
   abortSessionRun,
+  followUpSessionRun,
   resolveToolApproval,
   type Session,
   type SessionSnapshot,
@@ -88,17 +89,22 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const abortMutation = useMutation({
     mutationFn: (runId: string) => abortSessionRun(sessionId, runId),
   });
+  const followUpMutation = useMutation({
+    mutationFn: ({ prompt, runId }: { prompt: string; runId: string }) =>
+      followUpSessionRun(sessionId, runId, prompt),
+  });
+  const cacheSession = (session: Session) => {
+    queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (current) =>
+      current ? { ...current, session } : current,
+    );
+    queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
+      sessions?.map((item) => (item.id === session.id ? session : item)),
+    );
+  };
   const modelMutation = useMutation({
     mutationFn: ({ modelId, providerId }: { modelId: string; providerId: string }) =>
       updateSessionModel(sessionId, providerId, modelId),
-    onSuccess: (session) => {
-      queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (current) =>
-        current ? { ...current, session } : current,
-      );
-      queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
-        sessions?.map((item) => (item.id === session.id ? session : item)),
-      );
-    },
+    onSuccess: cacheSession,
   });
   const approvalMutation = useMutation({
     mutationFn: ({
@@ -205,7 +211,9 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                     : Promise.reject(new Error("活动 Run 不存在"))
                 }
                 onSubmitMessage={(input) =>
-                  startMutation.mutateAsync(input.prompt).then(() => undefined)
+                  activeRunId
+                    ? followUpMutation.mutateAsync({ prompt: input.prompt, runId: activeRunId })
+                    : startMutation.mutateAsync(input.prompt).then(() => undefined)
                 }
               />
             </div>
@@ -219,6 +227,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   transition={transition}
                 >
                   <ToolApprovalCard
+                    key={pendingApproval.approvalId}
                     approval={pendingApproval}
                     toolName={pendingApprovalTool.toolName}
                     onResolve={(approval, decision) =>

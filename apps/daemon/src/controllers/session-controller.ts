@@ -110,6 +110,23 @@ export class SessionController {
     }
   };
 
+  public followUpRun = async (
+    request: FastifyRequest<{ Body: StartRunDto; Params: SessionRunParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      this.sessions.followUpRun(
+        request.params.sessionId,
+        request.params.runId,
+        request.body.prompt,
+      );
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
   public getPendingApproval = async (
     request: FastifyRequest<{ Params: SessionRunParamsDto }>,
     reply: FastifyReply,

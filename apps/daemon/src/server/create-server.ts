@@ -2,11 +2,13 @@ import cors from "@fastify/cors";
 import { AgentManager } from "@pi-harness/agent-runtime";
 import Fastify from "fastify";
 import { type HarnessConfig, loadHarnessConfig } from "../config/index.js";
+import { registerAppSettingsRoutes } from "../routes/app-settings-routes.js";
 import { registerAuthRoutes } from "../routes/auth-routes.js";
 import { registerHealthRoutes } from "../routes/health-routes.js";
 import { registerProviderRoutes } from "../routes/provider-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerWorkspaceRoutes } from "../routes/workspace-routes.js";
+import { AppSettingsService } from "../services/app-settings-service.js";
 import { HumanInteractionService } from "../services/human-interaction-service.js";
 import { ProviderService } from "../services/provider-service.js";
 import { SessionEventService } from "../services/session-event-service.js";
@@ -26,6 +28,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     },
   });
   const database = openHarnessDatabase(config.databasePath);
+  const appSettings = new AppSettingsService(database.appSettings);
   const credentials = await FileCredentialStore.open(config.credentialsPath);
   const eventStore = new SessionEventStore(config.sessionsPath);
   await eventStore.initialize();
@@ -53,6 +56,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   sessions = new SessionService(
     database.sessions,
     database.workspaces,
+    database.appSettings,
     eventStore,
     providers,
     agents,
@@ -100,6 +104,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   });
 
   await registerAuthRoutes(server, config, database.authSessions);
+  await registerAppSettingsRoutes(server, config, appSettings);
   await registerHealthRoutes(server);
   await registerProviderRoutes(server, config, providers);
   await registerSessionRoutes(server, config, sessions, broker);
