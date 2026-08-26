@@ -12,6 +12,8 @@ import {
   SessionApprovalParamsDtoSchema,
   type SessionEventsQueryDto,
   SessionEventsQueryDtoSchema,
+  type SessionListQueryDto,
+  SessionListQueryDtoSchema,
   type SessionParamsDto,
   SessionParamsDtoSchema,
   type SessionRunParamsDto,
@@ -50,9 +52,14 @@ export async function registerSessionRoutes(
     500: ApiErrorVoSchema,
   };
 
-  server.get(
+  server.get<{ Querystring: SessionListQueryDto }>(
     "/api/sessions",
-    { schema: { response: { 200: SessionListVoSchema } } },
+    {
+      schema: {
+        querystring: SessionListQueryDtoSchema,
+        response: { 200: SessionListVoSchema },
+      },
+    },
     controller.list,
   );
 

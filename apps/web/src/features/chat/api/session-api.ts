@@ -70,9 +70,15 @@ async function readSession(response: Response): Promise<Session> {
   return body;
 }
 
-export async function listSessions(signal?: AbortSignal): Promise<readonly Session[]> {
+export async function listSessions(
+  archived = false,
+  signal?: AbortSignal,
+): Promise<readonly Session[]> {
   const body = (await (
-    await apiRequest("/api/sessions", signal ? { signal } : undefined)
+    await apiRequest(
+      archived ? "/api/sessions?archived=true" : "/api/sessions",
+      signal ? { signal } : undefined,
+    )
   ).json()) as unknown;
   if (!Value.Check(SessionListSchema, body)) throw new Error("daemon 返回了无效的 Session 列表");
   return body;

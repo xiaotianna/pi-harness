@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Alert,
+  Button,
   Label,
   ListBox,
   Modal,
@@ -12,7 +14,18 @@ import {
   toast,
 } from "@heroui/react";
 import type { LucideIcon } from "lucide-react";
-import { Archive, Blocks, Bot, Brain, Monitor, Moon, Settings2, Store, Sun } from "lucide-react";
+import {
+  Archive,
+  Blocks,
+  Bot,
+  Brain,
+  Folder,
+  Monitor,
+  Moon,
+  Settings2,
+  Store,
+  Sun,
+} from "lucide-react";
 import { useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { useApprovalPolicySetting } from "../hooks/use-approval-policy-setting";
@@ -26,14 +39,23 @@ import { SettingsRow } from "./settings-row";
 import { SkillSettingsPanel } from "./skill-settings-panel";
 
 export interface SettingsDialogProps {
-  archivedConversations: readonly {
-    id: string;
-    title: string;
-    updatedAt: string;
-  }[];
+  archivedConversations: ArchivedConversationsState;
   isOpen: boolean;
+  onRestoreArchivedConversation: (conversationId: string) => Promise<void>;
   onOpenChange: (isOpen: boolean) => void;
 }
+
+export type ArchivedConversationsState =
+  | { status: "pending" }
+  | { message: string; status: "error" }
+  | {
+      status: "ready";
+      workspaces: readonly {
+        conversations: readonly { id: string; title: string; updatedAt: string }[];
+        id: string;
+        name: string;
+      }[];
+    };
 
 const SETTINGS_SECTIONS = [
   {
@@ -173,25 +195,83 @@ function GeneralSettingsPanel() {
 }
 
 function ArchivedSettingsPanel({
-  conversations,
+  onRestore,
+  state,
 }: {
-  conversations: SettingsDialogProps["archivedConversations"];
+  onRestore: SettingsDialogProps["onRestoreArchivedConversation"];
+  state: ArchivedConversationsState;
 }) {
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+
+  const restore = async (conversationId: string) => {
+    setRestoringId(conversationId);
+    try {
+      await onRestore(conversationId);
+      toast.success("已恢复对话");
+    } catch (error: unknown) {
+      toast.danger(error instanceof Error ? error.message : "恢复对话失败");
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
   return (
     <section aria-label="已归档对话" className="w-full max-w-[720px]">
       <SettingsPanelHeader description="归档的对话不会显示在侧边栏中。" title="已归档对话" />
-      {conversations.length > 0 ? (
-        <ul className="mt-6 flex flex-col gap-1 rounded-xl bg-default p-1">
-          {conversations.map((conversation) => (
-            <li className="flex min-h-12 items-center gap-3 rounded-lg px-3" key={conversation.id}>
-              <Archive aria-hidden className="size-4 shrink-0 text-muted" />
-              <span className="min-w-0 flex-1 truncate text-foreground">{conversation.title}</span>
-              <span className="shrink-0 text-xs text-muted">
-                {formatChatTimestamp(conversation.updatedAt)}
-              </span>
-            </li>
+      {state.status === "pending" ? (
+        <div aria-busy="true" className="mt-6 space-y-4">
+          <span className="sr-only">正在加载已归档对话</span>
+          <Skeleton className="h-5 w-32 rounded-lg" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+        </div>
+      ) : state.status === "error" ? (
+        <Alert className="mt-6 bg-danger-soft" role="alert" status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{state.message}</Alert.Title>
+          </Alert.Content>
+        </Alert>
+      ) : state.workspaces.length > 0 ? (
+        <div className="mt-6 space-y-6">
+          {state.workspaces.map((workspace) => (
+            <section aria-labelledby={`archived-workspace-${workspace.id}`} key={workspace.id}>
+              <div className="flex min-w-0 items-center gap-2 px-1">
+                <Folder aria-hidden className="size-4 shrink-0 text-muted" />
+                <h3
+                  className="min-w-0 flex-1 truncate font-medium text-foreground"
+                  id={`archived-workspace-${workspace.id}`}
+                >
+                  {workspace.name}
+                </h3>
+              </div>
+              <ul className="mt-2 flex flex-col gap-1 rounded-xl bg-default p-1">
+                {workspace.conversations.map((conversation) => (
+                  <li
+                    className="flex min-h-12 items-center gap-3 rounded-lg px-3"
+                    key={conversation.id}
+                  >
+                    <Archive aria-hidden className="size-4 shrink-0 text-muted" />
+                    <span className="min-w-0 flex-1 truncate text-foreground">
+                      {conversation.title}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted">
+                      {formatChatTimestamp(conversation.updatedAt)}
+                    </span>
+                    <Button
+                      isDisabled={restoringId !== null && restoringId !== conversation.id}
+                      isPending={restoringId === conversation.id}
+                      size="sm"
+                      variant="secondary"
+                      onPress={() => void restore(conversation.id)}
+                    >
+                      恢复
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       ) : (
         <p className="mt-6 rounded-xl bg-default p-6 text-center text-muted">暂无已归档对话</p>
       )}
@@ -202,6 +282,7 @@ function ArchivedSettingsPanel({
 export function SettingsDialog({
   archivedConversations,
   isOpen,
+  onRestoreArchivedConversation,
   onOpenChange,
 }: SettingsDialogProps) {
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
@@ -260,7 +341,10 @@ export function SettingsDialog({
                 ) : activeSectionId === "skills" ? (
                   <SkillSettingsPanel />
                 ) : activeSectionId === "archived" ? (
-                  <ArchivedSettingsPanel conversations={archivedConversations} />
+                  <ArchivedSettingsPanel
+                    state={archivedConversations}
+                    onRestore={onRestoreArchivedConversation}
+                  />
                 ) : (
                   <GeneralSettingsPanel />
                 )}

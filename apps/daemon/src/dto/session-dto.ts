@@ -9,6 +9,12 @@ export const SessionParamsDtoSchema = Type.Object({
 
 export type SessionParamsDto = Static<typeof SessionParamsDtoSchema>;
 
+export const SessionListQueryDtoSchema = Type.Object({
+  archived: Type.Optional(Type.Boolean()),
+});
+
+export type SessionListQueryDto = Static<typeof SessionListQueryDtoSchema>;
+
 export const SessionRunParamsDtoSchema = Type.Object({
   runId: Type.String({ format: "uuid" }),
   sessionId: Type.String({ format: "uuid" }),

@@ -110,8 +110,8 @@ export class SessionService {
     });
   }
 
-  public list(): readonly SessionRecord[] {
-    return this.sessions.list();
+  public list(archived = false): readonly SessionRecord[] {
+    return this.sessions.list(archived);
   }
 
   public isProviderActive(providerId: string): boolean {

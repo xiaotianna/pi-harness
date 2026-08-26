@@ -4,12 +4,17 @@ import { AppLayout } from "@agile-avocation/ui-pro";
 import { toast } from "@heroui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useRouterState } from "@tanstack/react-router";
+import { groupBy } from "es-toolkit";
 import { useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SettingsDialog } from "../../settings";
+import { type ArchivedConversationsState, SettingsDialog } from "../../settings";
 import { updateSession } from "../api/session-api";
-import { sessionListQueryOptions, sessionQueryKeys } from "../api/session-queries";
+import {
+  archivedSessionListQueryOptions,
+  sessionListQueryOptions,
+  sessionQueryKeys,
+} from "../api/session-queries";
 import {
   removeWorkspace,
   reorderWorkspaces,
@@ -42,10 +47,6 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const shouldReduceMotion = useReducedMotion();
-  const sessionsQuery = useQuery(sessionListQueryOptions());
-  const workspacesQuery = useQuery(workspaceListQueryOptions());
-  const addWorkspaceMutation = useAddWorkspace();
-  const setNewChatWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -53,11 +54,60 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const [isDesktopLayout, setIsDesktopLayout] = useState(
     () => window.matchMedia("(min-width: 1025px)").matches,
   );
+  const sessionsQuery = useQuery(sessionListQueryOptions());
+  const archivedSessionsQuery = useQuery({
+    ...archivedSessionListQueryOptions(),
+    enabled: isSettingsOpen,
+  });
+  const workspacesQuery = useQuery(workspaceListQueryOptions());
+  const addWorkspaceMutation = useAddWorkspace();
+  const setNewChatWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
   const threads = useMemo<ChatThread[]>(
     () => (sessionsQuery.data ?? []).map((session) => sessionToChatThread(session)),
     [sessionsQuery.data],
   );
   const workspaces = workspacesQuery.data ?? [];
+  const archivedConversations = useMemo<ArchivedConversationsState>(() => {
+    if (archivedSessionsQuery.isPending || workspacesQuery.isPending) return { status: "pending" };
+    const error = archivedSessionsQuery.error ?? workspacesQuery.error;
+    if (error) {
+      return {
+        message: error instanceof Error ? error.message : "加载已归档对话失败",
+        status: "error",
+      };
+    }
+
+    const sessionsByWorkspace = groupBy(
+      archivedSessionsQuery.data ?? [],
+      (session) => session.workspaceId,
+    );
+    return {
+      status: "ready",
+      workspaces: workspaces.flatMap((workspace) => {
+        const sessions = sessionsByWorkspace[workspace.id] ?? [];
+        return sessions.length === 0
+          ? []
+          : [
+              {
+                conversations: sessions.map((session) => ({
+                  id: session.id,
+                  title: session.title,
+                  updatedAt: new Date(session.updatedAt).toISOString(),
+                })),
+                id: workspace.id,
+                name: workspace.name,
+              },
+            ];
+      }),
+    };
+  }, [
+    archivedSessionsQuery.data,
+    archivedSessionsQuery.error,
+    archivedSessionsQuery.isPending,
+    workspaces,
+    workspacesQuery.error,
+    workspacesQuery.isPending,
+  ]);
 
   const navigate = useCallback(
     (href: string) => {
@@ -217,7 +267,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const handleArchive = useCallback(
     (thread: ChatThread) => {
       void updateSession(thread.id, { archived: true })
-        .then(refreshSessions)
+        .then(() => queryClient.invalidateQueries({ queryKey: sessionQueryKeys.all }))
         .then(() => {
           if (activePage.kind === "thread" && activePage.thread.id === thread.id) navigate("/new");
         })
@@ -225,7 +275,15 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
           toast.danger(error instanceof Error ? error.message : "归档对话失败");
         });
     },
-    [activePage, navigate, refreshSessions],
+    [activePage, navigate, queryClient],
+  );
+
+  const handleRestoreArchivedConversation = useCallback(
+    async (conversationId: string) => {
+      await updateSession(conversationId, { archived: false });
+      await queryClient.invalidateQueries({ queryKey: sessionQueryKeys.all });
+    },
+    [queryClient],
   );
 
   useEffect(() => {
@@ -314,8 +372,9 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         />
       ) : null}
       <SettingsDialog
-        archivedConversations={[]}
+        archivedConversations={archivedConversations}
         isOpen={isSettingsOpen}
+        onRestoreArchivedConversation={handleRestoreArchivedConversation}
         onOpenChange={setIsSettingsOpen}
       />
     </AppLayout>

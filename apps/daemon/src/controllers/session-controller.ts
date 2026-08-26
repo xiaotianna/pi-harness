@@ -4,6 +4,7 @@ import type {
   CreateSessionDto,
   ResolveApprovalDto,
   SessionApprovalParamsDto,
+  SessionListQueryDto,
   SessionParamsDto,
   SessionRunParamsDto,
   StartRunDto,
@@ -30,7 +31,9 @@ export class SessionController {
     private readonly sessions: SessionService,
   ) {}
 
-  public list = async (): Promise<readonly SessionVo[]> => this.sessions.list();
+  public list = async (
+    request: FastifyRequest<{ Querystring: SessionListQueryDto }>,
+  ): Promise<readonly SessionVo[]> => this.sessions.list(request.query.archived ?? false);
 
   public create = async (
     request: FastifyRequest<{ Body: CreateSessionDto }>,

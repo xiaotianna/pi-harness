@@ -92,7 +92,7 @@ export interface CreateSessionRecord {
 export interface SessionRepository {
   create(session: CreateSessionRecord): SessionRecord;
   find(sessionId: string): SessionRecord | null;
-  list(): readonly SessionRecord[];
+  list(archived?: boolean): readonly SessionRecord[];
   setArchived(sessionId: string, archivedAt: number | null, updatedAt: number): boolean;
   updateIndex(sessionId: string, lastSeq: number, updatedAt: number): boolean;
   updateModel(sessionId: string, providerId: string, modelId: string, updatedAt: number): boolean;
@@ -469,13 +469,14 @@ class SqliteSessionRepository implements SessionRepository {
     return row ? mapSession(row) : null;
   }
 
-  public list(): readonly SessionRecord[] {
+  public list(archived = false): readonly SessionRecord[] {
     const rows = this.database
       .prepare(
         `SELECT sessions.*, workspaces.root_path AS workspace_root
          FROM sessions
          INNER JOIN workspaces ON workspaces.id = sessions.workspace_id
-         WHERE sessions.archived_at IS NULL AND workspaces.removed_at IS NULL
+         WHERE sessions.archived_at ${archived ? "IS NOT NULL" : "IS NULL"}
+           AND workspaces.removed_at IS NULL
          ORDER BY sessions.updated_at DESC`,
       )
       .all() as DatabaseRow[];
