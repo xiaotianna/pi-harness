@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";
-import { resolveWorkspacePath } from "@pi-harness/policy";
+import { isAbsolute, resolve } from "node:path";
 import type { WorkspaceRecord, WorkspaceRepository } from "../storage/database.js";
 
 const PICKER_TIMEOUT_MS = 5 * 60 * 1_000;
@@ -163,13 +163,22 @@ async function resolveWorkspaceRoot(input: string): Promise<string> {
   }
 }
 
+async function resolveOpenablePath(path: string, workspaceRoot: string): Promise<string> {
+  const requestedPath = path.trim();
+  if (!requestedPath) throw new Error("Path is empty");
+  const target = isAbsolute(requestedPath) ? requestedPath : resolve(workspaceRoot, requestedPath);
+  try {
+    return await realpath(target);
+  } catch (error: unknown) {
+    if (!requestedPath.startsWith("project/")) throw error;
+    return realpath(resolve(workspaceRoot, requestedPath.slice("project/".length)));
+  }
+}
+
 export class WorkspaceService {
   private activePickerController: AbortController | null = null;
 
-  public constructor(
-    private readonly workspaces: WorkspaceRepository,
-    private readonly protectedPaths: readonly string[] = [],
-  ) {}
+  public constructor(private readonly workspaces: WorkspaceRepository) {}
 
   public list(): readonly WorkspaceRecord[] {
     return this.workspaces.list();
@@ -200,17 +209,9 @@ export class WorkspaceService {
     const workspace = this.getRequired(workspaceId);
     let target: string;
     try {
-      target = await resolveWorkspacePath({
-        path,
-        protectedPaths: this.protectedPaths,
-        workspaceRoot: workspace.rootPath,
-      });
-      if (!(await stat(target)).isFile()) throw new Error("Target is not a file");
+      target = await resolveOpenablePath(path, workspace.rootPath);
     } catch {
-      throw new WorkspaceServiceError(
-        WorkspaceErrorCode.INVALID,
-        "文件不存在或不属于当前 Workspace",
-      );
+      throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "本地路径不存在或无法访问");
     }
 
     try {
@@ -221,10 +222,10 @@ export class WorkspaceService {
       if (isCommandUnavailable(error)) {
         throw new WorkspaceServiceError(
           WorkspaceErrorCode.OPEN_UNAVAILABLE,
-          "当前系统缺少可用的文件打开程序",
+          "当前系统缺少可用的本地路径打开程序",
         );
       }
-      throw new WorkspaceServiceError(WorkspaceErrorCode.OPEN_FAILED, "无法打开本地文件");
+      throw new WorkspaceServiceError(WorkspaceErrorCode.OPEN_FAILED, "无法打开本地路径");
     }
   }
 

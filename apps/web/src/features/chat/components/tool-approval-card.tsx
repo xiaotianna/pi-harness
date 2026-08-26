@@ -33,18 +33,20 @@ export function ToolApprovalCard({
     <Card
       aria-labelledby={titleId}
       aria-modal="true"
-      className="min-h-full w-full gap-3 rounded-[32px] p-4"
+      className="max-h-[min(70svh,36rem)] min-h-full w-full gap-3 overflow-hidden rounded-[32px] p-4"
       role="dialog"
     >
-      <Card.Header className="flex-row items-center gap-2">
+      <Card.Header className="shrink-0 flex-row items-center gap-2">
         <SquareTerminal className="size-4 text-muted" />
         <Card.Title id={titleId} className="text-sm font-normal text-muted">
           {toolName}
         </Card.Title>
       </Card.Header>
-      <Card.Content className="gap-2">
+      <Card.Content className="min-h-0 gap-2 overflow-y-auto">
         <p className="text-sm font-medium">要允许我执行以下操作吗？</p>
-        <code className="block font-mono text-sm text-muted">{approval.summary}</code>
+        <code className="block max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-muted">
+          {approval.summary}
+        </code>
         <p className="line-clamp-2 text-xs text-muted">
           目标：{approval.target} · {approval.risk}
         </p>
@@ -54,7 +56,7 @@ export function ToolApprovalCard({
           </pre>
         ) : null}
       </Card.Content>
-      <Card.Footer className="justify-end gap-2">
+      <Card.Footer className="shrink-0 justify-end gap-2">
         <Button
           isDisabled={pendingDecision !== null}
           isPending={pendingDecision === ApprovalDecision.REJECTED}

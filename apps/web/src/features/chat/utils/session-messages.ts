@@ -433,6 +433,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
                 defaultExpanded: true,
                 id: `${messageId}-thinking-${contentIndex}`,
                 isStreaming: contentIndex === lastContentIndex,
+                shouldTypewrite: false,
                 steps: [{ content: part.content, label: "分析" }],
                 trigger: "已思考",
                 turnId: activeRunId,
@@ -441,6 +442,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
             : {
                 content: part.content,
                 id: `${messageId}-text-${contentIndex}`,
+                shouldTypewrite: false,
                 turnId: activeRunId,
                 type: ChatMessageType.ASSISTANT,
               },

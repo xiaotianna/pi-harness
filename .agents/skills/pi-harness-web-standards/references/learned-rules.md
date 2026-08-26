@@ -147,9 +147,10 @@
 
 - 状态：`active`
 - 范围：助手 Markdown 与会话滚动
-- 规则：助手回复使用 HeroUI Pro `Markdown` 的 memoized block 流式渲染，并通过统一的 `components` 映射配置 Markdown UI；相邻 memoized block 必须保留标题的标准顶部间距，不能因标题成为独立 block 的首元素而贴住前一段内容。绝对 `http://` 和 `https://` 链接使用 HeroUI `Link`，在文本后追加内置 `Link.Icon`，保持默认无下划线、hover 时显示下划线，并在新页面打开；页面锚点和其他协议保留原生 Markdown 链接。本地文件链接由独立的 `AssistantMarkdownLink` 处理，支持绝对路径、相对路径及行号后缀：使用接近正文高度、与文案垂直居中的主题蓝色文件图标，默认无下划线，hover 或键盘聚焦时显示虚线下划线，Tooltip 展示按当前 Workspace 补全的完整路径；链接显示内容取自 Markdown 的 `[]` 文案，与 `()` 中的真实路径分离，并允许长文案在可用宽度内换行。消息列表拦截点击并向 daemon 发送 `workspaceId` 和原始路径；daemon 必须复用路径策略解析真实路径、拒绝 Workspace 外路径和受保护目录，再用系统默认应用打开。GFM 表格使用 HeroUI `Table`，任务列表勾选框使用只读 HeroUI `Checkbox`；`chart` 使用图表组件，`formula` / `math` / `latex` 使用公式组件，`flow` 使用 JSON 步骤数据和 HeroUI `Surface` 卡片，`flowchart` / `mermaid` 使用 Mermaid DSL；Mermaid 的测量节点必须渲染在组件内部受 overflow 约束的容器中，流式源码变化需要先合并，停止变化后再绘制，不能在每次 token 更新时反复切换 loading 与图。结构化块解析或 Mermaid 渲染失败时回退为普通 `CodeBlock`。回复正文和 Thinking 共用该映射。会话内容增长时，距离底部不超过 96px 自动跟随；超过阈值后保持用户阅读位置，并保留显式滚动到底部操作。
-- 依据：用户基于 HeroUI Pro Markdown 文档确认恢复项目原组件，并明确要求 AI 输出根据底部距离阈值决定是否跟随滚动；随后要求表格和任务勾选框改用 HeroUI，并像 MDX 一样集中配置每类 Markdown 块的 UI 组件，又补充需要图表、公式和流程图 mock 及对应渲染组件，最终确认 `flow` 恢复 HeroUI 卡片，`flowchart` 与 `mermaid` 使用 Mermaid DSL；之后指出任务列表与后续标题之间缺少间距，并进一步确认 Mermaid 抖动来自流式源码变化时 loading 与图的反复切换；随后指定 HTTP(S) Markdown 链接使用 HeroUI Link 和内置外链箭头，并进一步纠正应保留官网默认的 hover 下划线交互且点击后打开新页面；后续要求本地路径点击后发送请求并由系统默认应用打开，并明确补充相对路径解析、文件图标、虚线 hover 下划线和完整路径 Tooltip；之后进一步明确链接文案不等于完整路径且长链接内容需要正常换行，本次补充文件图标应放大并与文案垂直居中。
-- 原因：按块更新可保留项目既有 Markdown 视觉，但独立 block 会让标题错误命中首元素零上边距，需要在 block 边界恢复垂直节奏；Markdown block 的内容哈希 key 会让流式变化中的 Mermaid 组件反复挂载，立即绘制会在 loading 和不同高度的图之间切换，需要延后到源码稳定后再渲染；组件内测量容器同时避免临时 SVG 影响页面布局。HeroUI Pro Markdown 的通用 `a` 样式会覆盖 HeroUI Link 的默认下划线状态，需要只对 `.markdown .link` 恢复组件交互。链接判断独立后，Markdown 主映射保持精简，相对路径展示可复用当前 Workspace 上下文；本地文件仍必须交给 daemon，并在执行系统命令前保持 Workspace 和受保护路径边界。集中映射能让所有 AI Markdown 消费者使用一致的 UI 组件；对未完成或非法结构回退为代码可以保留模型原始输出；滚动阈值兼顾持续查看最新输出与向上阅读历史消息。
+- 规则：助手回复使用 HeroUI Pro `Markdown` 的 memoized block 流式渲染，并通过统一的 `components` 映射配置 Markdown UI；真实会话的助手正文以 daemon 事件内容为唯一目标值，Web 对活动回复按动画帧逐步揭示字符，即使单个 chunk 很大也不能整段跳出，`message.completed` 与同批 delta 至少分帧提交且最终正文必须与完成事件一致。相邻 memoized block 必须保留标题的标准顶部间距，不能因标题成为独立 block 的首元素而贴住前一段内容。绝对 `http://` 和 `https://` 链接使用 HeroUI `Link`，在文本后追加内置 `Link.Icon`，保持默认无下划线、hover 时显示下划线，并在新页面打开；页面锚点和其他协议保留原生 Markdown 链接。本地文件链接由独立的 `AssistantMarkdownLink` 处理，支持绝对路径、相对路径及行号后缀：使用接近正文高度、与文案垂直居中的主题蓝色文件图标，并让整个 `inline-flex` 链接盒子与相邻正文行中线对齐；默认无下划线，hover 或键盘聚焦时显示虚线下划线，Tooltip 展示按当前 Workspace 补全的完整路径；链接显示内容取自 Markdown 的 `[]` 文案，与 `()` 中的真实路径分离，并允许长文案在可用宽度内换行。消息列表拦截点击并向 daemon 发送 `workspaceId` 和原始路径；daemon 必须复用路径策略解析真实路径、拒绝 Workspace 外路径和受保护目录，再用系统默认应用打开。GFM 表格使用 HeroUI `Table`，任务列表勾选框使用只读 HeroUI `Checkbox`；`chart` 使用图表组件，`formula` / `math` / `latex` 使用公式组件，`flow` 使用 JSON 步骤数据和 HeroUI `Surface` 卡片，`flowchart` / `mermaid` 使用 Mermaid DSL；Mermaid 的测量节点必须渲染在组件内部受 overflow 约束的容器中，流式源码变化需要先合并，停止变化后再绘制，不能在每次 token 更新时反复切换 loading 与图。结构化块解析或 Mermaid 渲染失败时回退为普通 `CodeBlock`。回复正文和 Thinking 共用该映射。会话内容增长时，距离底部不超过 96px 自动跟随；超过阈值后保持用户阅读位置，并保留显式滚动到底部操作。
+- 依据：用户基于 HeroUI Pro Markdown 文档确认恢复项目原组件，并明确要求 AI 输出根据底部距离阈值决定是否跟随滚动；随后要求表格和任务勾选框改用 HeroUI，并像 MDX 一样集中配置每类 Markdown 块的 UI 组件，又补充需要图表、公式和流程图 mock 及对应渲染组件，最终确认 `flow` 恢复 HeroUI 卡片，`flowchart` 与 `mermaid` 使用 Mermaid DSL；之后指出任务列表与后续标题之间缺少间距，并进一步确认 Mermaid 抖动来自流式源码变化时 loading 与图的反复切换；随后指定 HTTP(S) Markdown 链接使用 HeroUI Link 和内置外链箭头，并进一步纠正应保留官网默认的 hover 下划线交互且点击后打开新页面；后续要求本地路径点击后发送请求并由系统默认应用打开，并明确补充相对路径解析、文件图标、虚线 hover 下划线和完整路径 Tooltip；之后进一步明确链接文案不等于完整路径且长链接内容需要正常换行，本次补充文件图标应放大并与文案垂直居中；本次又明确要求大 chunk 也必须以打字机方式逐步显示，同时保证前后端事件内容一致；后续截图进一步指出本地文件链接整体没有与同一行正文对齐。
+- 原因：按块更新可保留项目既有 Markdown 视觉，但独立 block 会让标题错误命中首元素零上边距，需要在 block 边界恢复垂直节奏；Markdown block 的内容哈希 key 会让流式变化中的 Mermaid 组件反复挂载，立即绘制会在 loading 和不同高度的图之间切换，需要延后到源码稳定后再渲染；组件内测量容器同时避免临时 SVG 影响页面布局。HeroUI Pro Markdown 的通用 `a` 样式会覆盖 HeroUI Link 的默认下划线状态，需要只对 `.markdown .link` 恢复组件交互。链接判断独立后，Markdown 主映射保持精简，相对路径展示可复用当前 Workspace 上下文；本地文件仍必须交给 daemon，并在执行系统命令前保持 Workspace 和受保护路径边界。`align-items` 只能对齐链接内部的图标和文案，行内 `inline-flex` 还需要显式 `vertical-align` 才能与相邻正文对齐。集中映射能让所有 AI Markdown 消费者使用一致的 UI 组件；对未完成或非法结构回退为代码可以保留模型原始输出；滚动阈值兼顾持续查看最新输出与向上阅读历史消息。
+- 本地文件打开边界更新：由 `WEB-031` 替代本条中的 Workspace 外路径限制。
 
 ### WEB-018
 
@@ -240,6 +241,32 @@
 - 规则：助手 Markdown 中原本使用 14px 小字号的正文、三级标题和表格统一使用 15px。
 - 依据：用户明确指出 Markdown 正文相关内容的 14px 字号偏小，要求统一调整为 15px。
 - 原因：统一提高 Markdown 小字号可改善长回复的阅读舒适度，并保持各类正文内容字号一致。
+
+### WEB-029
+
+- 状态：`active`
+- 范围：真实会话中间过程流式展示
+- 规则：运行中的 Thinking 和中间助手正文都必须按 daemon 事件顺序出现，并对大 chunk 按动画帧逐步揭示；揭示速度根据待显示字符积压量动态追赶，慢模型保持自然增量，快模型提高每帧字符数。普通的 `message.completed`、工具开始及工具结果必须等前面的可见内容完全追上后再展示；收到已经开始服务端倒计时的 `approval.requested` 时，必须立即补齐它之前的可见内容并展示审批，不得让展示动画消耗用户的审批时间。Thinking 等可见内容追上后再自动收起，最终可见内容必须与对应完成事件一致。
+- 依据：用户先指出工具调用之间的 Thinking 和中间正文仍然一次性出现，随后进一步指出前文尚未显示完时工具已经出现或完成，并要求根据模型 chunk 动态调整输出速度；在按序缓冲后，又指出长内容可能让已经开始计时的工具审批在展示前超时。
+- 原因：过程消息通常紧接工具调用并快速完成，只给文字组件添加独立打字动画会让后续事件越过仍在追赶的正文；统一的展示队列才能保持普通事件顺序，但带服务端期限的人机交互必须作为紧急边界，避免表现层延迟侵占真实响应窗口。
+
+### WEB-030
+
+- 状态：`superseded`
+- 范围：AI 消息中的 URL 与本地文件链接
+- 规则：Agent Prompt 要求 HTTP(S) URL 和本地文件引用使用带描述文案的 Markdown Link，不使用行内代码；Web 仅对行内代码中完整的 HTTP(S) URL 和带文件名扩展名的绝对路径自动链接兜底，其他代码片段保持代码语义。本地路径点击继续经过 daemon 的 Workspace 与受保护路径校验。
+- 依据：用户指出同样的 URL 和文件路径在 Codex 中可点击，但当前会话因模型使用反引号而只显示为代码片段。
+- 原因：Prompt 负责生成正确语义，窄范围渲染兜底可以兼容已有或偶发的不规范输出，同时避免把 API 路径、命令和普通标识符误判成链接。
+- 替代规则：`WEB-031`
+
+### WEB-031
+
+- 状态：`promoted`
+- 范围：AI 消息中的本地路径打开边界
+- 规则：用户主动点击本地路径链接时，相对路径按当前 Workspace 解析，绝对路径可位于任意位置；href 必须使用真实且可独立解析的路径，不得加入示例占位前缀。只要 `realpath` 后路径真实存在，就交给操作系统打开，普通文件使用默认应用，目录使用文件管理器，不额外限制 Workspace、文件类型或受保护目录。该规则不适用于 Agent 文件工具或 Shell，它们仍须维持 Workspace 与受保护路径边界。
+- 依据：用户先明确要求消息中的文件只要真实存在就应能够定位，即使文件位于当前 Workspace 外；后续点击真实存在的目录被“不是普通文件或受保护目录”拦截时，进一步明确用户主动查看本地路径不应套用 Agent 文件读取限制；本次又指出带本地链接语义的地址不应因提示词示例前缀而无法打开。
+- 原因：用户主动把已展示路径交给本机操作系统打开，不会把路径内容读取到 Web 或模型，与 Agent 自主访问文件属于不同权限边界；这里只需要确认路径存在，Agent 工具仍由原安全策略约束。使用真实 href 还能避免展示层级被错误拼入文件系统路径。
+- 已提升至：`project-map.md` 与 `docs/架构设计.md`。
 
 ## 维护规则
 

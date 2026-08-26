@@ -8,6 +8,7 @@ const WorkspaceRootContext = createContext<string | undefined>(undefined);
 const URI_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:/i;
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-z]:[\\/]/i;
 const PATH_LOCATION_PATTERN = /(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/i;
+const HTTP_URL_PATTERN = /^https?:\/\/\S+$/i;
 
 export interface AssistantMarkdownLinkProviderProps {
   children: ReactNode;
@@ -38,6 +39,13 @@ function isLocalPath(href: string, title?: string): boolean {
     WINDOWS_ABSOLUTE_PATH_PATTERN.test(href) ||
     !URI_SCHEME_PATTERN.test(href.replace(PATH_LOCATION_PATTERN, ""))
   );
+}
+
+export function isAssistantMarkdownLinkTarget(value: string): boolean {
+  if (HTTP_URL_PATTERN.test(value)) return true;
+  const path = value.replace(PATH_LOCATION_PATTERN, "");
+  const isAbsolute = path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(path);
+  return isAbsolute && /(?:^|[\\/])[^\\/]+\.[^\\/]+$/.test(path);
 }
 
 function resolveDisplayPath(workspaceRoot: string | undefined, path: string): string {

@@ -7,7 +7,7 @@ import { Checkbox, Table } from "@heroui/react";
 import { Children, Fragment, isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 import { cn } from "../../shared/utils/cn";
-import { AssistantMarkdownLink } from "./assistant-markdown-link";
+import { AssistantMarkdownLink, isAssistantMarkdownLinkTarget } from "./assistant-markdown-link";
 import { ChartBlock } from "./chart-block";
 import { FlowDiagram } from "./flow-diagram";
 import { FormulaBlock } from "./formula-block";
@@ -44,6 +44,9 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
     }
     if (!isInline && ["flowchart", "mermaid"].includes(language)) {
       return <MermaidBlock source={code} />;
+    }
+    if (isInline && isAssistantMarkdownLinkTarget(code)) {
+      return <AssistantMarkdownLink href={code}>{code}</AssistantMarkdownLink>;
     }
     if (isInline) {
       return (

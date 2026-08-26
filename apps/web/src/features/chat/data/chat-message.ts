@@ -83,6 +83,7 @@ export type ChatMessageAttachment = {
 type ChatMessageBase = {
   id: string;
   isIntermediate?: boolean;
+  shouldTypewrite?: boolean;
   turnDurationMs?: number;
   turnId?: string;
 };

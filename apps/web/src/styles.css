@@ -36,6 +36,7 @@
   align-items: center;
   gap: calc(var(--spacing, 0.25rem) * 1);
   max-width: 100%;
+  vertical-align: middle;
   color: var(--accent);
   text-decoration-line: none;
   text-underline-offset: 3px;
