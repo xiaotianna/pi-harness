@@ -36,15 +36,18 @@ export function ToolCall({
       onExpandedChange={onOpenChange}
     >
       <Disclosure.Heading>
-        <Disclosure.Trigger className="group flex min-h-7 w-full items-center gap-2 p-0 text-[13.5px] text-muted hover:text-foreground">
+        <Disclosure.Trigger className="group flex min-h-7 w-full min-w-0 items-center gap-2 p-0 text-[13.5px] text-muted hover:text-foreground">
           <ChevronRight
             aria-hidden
             className="size-3.5 shrink-0 opacity-60 transition-transform duration-200 group-aria-expanded:rotate-90 motion-reduce:transition-none"
           />
-          <span className="text-start">
+          <span className="shrink-0 whitespace-nowrap text-start">
             {running ? <TextShimmer className="leading-none">{activeLabel}</TextShimmer> : label}
           </span>
-          <span className="rounded-md bg-foreground/[0.06] px-1.5 py-0.5 font-mono text-xs text-foreground/70">
+          <span
+            className="min-w-0 max-w-64 truncate whitespace-nowrap rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-start font-mono text-xs text-foreground/70"
+            title={query}
+          >
             {query}
           </span>
           {!running ? (
@@ -67,14 +70,14 @@ export function ToolCall({
                 {request}
               </pre>
             </div>
-            {!running ? (
+            {!running || result ? (
               <>
                 <Separator className="mx-3.5" />
                 <div className="px-3.5 pb-2.5 pt-2">
-                  <p className="mb-1 font-mono text-muted">结果</p>
+                  <p className="mb-1 font-mono text-muted">{running ? "实时输出" : "结果"}</p>
                   <pre
                     className={cn(
-                      "whitespace-pre-wrap break-words font-mono",
+                      "max-h-52 overflow-auto whitespace-pre-wrap break-words font-mono",
                       failed ? "text-danger" : "text-foreground",
                     )}
                   >

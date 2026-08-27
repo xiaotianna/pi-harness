@@ -3,6 +3,7 @@ import { type ChatMessage, ChatMessageType } from "../../data/chat";
 import { AssistantThreadMessage } from "./assistant-thread-message";
 import { CodeThreadMessage } from "./code-thread-message";
 import { ErrorThreadMessage } from "./error-thread-message";
+import { FileChangeThreadMessage } from "./file-change-thread-message";
 import { ImageGenerationThreadMessage } from "./image-generation-thread-message";
 import { LoadingThreadMessage } from "./loading-thread-message";
 import { OrbsThreadMessage } from "./orbs-thread-message";
@@ -42,6 +43,10 @@ export const MESSAGE_RENDER_STRATEGIES = {
   [ChatMessageType.ERROR]: createMessageRenderStrategy(ChatMessageType.ERROR, (message) => (
     <ErrorThreadMessage message={message} />
   )),
+  [ChatMessageType.FILE_CHANGE]: createMessageRenderStrategy(
+    ChatMessageType.FILE_CHANGE,
+    (message) => <FileChangeThreadMessage message={message} />,
+  ),
   [ChatMessageType.IMAGE_GENERATION]: createMessageRenderStrategy(
     ChatMessageType.IMAGE_GENERATION,
     (message) => <ImageGenerationThreadMessage message={message} />,

@@ -5,9 +5,9 @@ import { truncateHead } from "@earendil-works/pi-agent-core";
 import { isPathWithin, PathPolicyError } from "@pi-harness/policy";
 import { Type } from "typebox";
 import { resolveToolPath, type WorkspaceToolContext } from "../lib/tool-context.js";
+import { hasIgnoredWorkspaceDirectory } from "../utils/workspace-file-changes.js";
 
 const MAX_ENTRIES = 500;
-const IGNORED_DIRECTORY_NAMES = new Set([".git", ".pi-harness", "node_modules"]);
 
 const ListFilesParameters = Type.Object({
   path: Type.Optional(Type.String({ description: "要列举的目录，默认为 workspace 根目录" })),
@@ -25,10 +25,6 @@ function validatePattern(pattern: string): void {
   if (isAbsolute(pattern) || pattern.split(/[\\/]/).includes("..")) {
     throw new Error("glob pattern 不能访问目标目录外部");
   }
-}
-
-function hasIgnoredDirectory(path: string): boolean {
-  return path.split(sep).some((segment) => IGNORED_DIRECTORY_NAMES.has(segment));
 }
 
 /**
@@ -52,7 +48,7 @@ export function createListFilesTool(
       const directory = await resolveToolPath(context, requestedPath);
       if (!(await stat(directory)).isDirectory()) throw new Error("list_files 的 path 必须是目录");
       const workspaceRoot = await resolveToolPath(context, ".");
-      if (hasIgnoredDirectory(relative(workspaceRoot, directory))) {
+      if (hasIgnoredWorkspaceDirectory(relative(workspaceRoot, directory))) {
         throw new Error("list_files 不列举受忽略的目录");
       }
       const entries: string[] = [];
@@ -63,7 +59,7 @@ export function createListFilesTool(
         exclude: (entry) => {
           const absolutePath = resolve(entry.parentPath, entry.name);
           return (
-            hasIgnoredDirectory(relative(directory, absolutePath)) ||
+            hasIgnoredWorkspaceDirectory(relative(directory, absolutePath)) ||
             (context.protectedPaths ?? []).some((path) => isPathWithin(resolve(path), absolutePath))
           );
         },

@@ -4,6 +4,7 @@ export const ChatMessageType = {
   ASSISTANT: "assistant",
   CODE: "code",
   ERROR: "error",
+  FILE_CHANGE: "file-change",
   IMAGE_GENERATION: "image-generation",
   LOADING: "loading",
   ORBS: "orbs",
@@ -39,6 +40,7 @@ export const ChatToolState = {
 export type ChatToolState = (typeof ChatToolState)[keyof typeof ChatToolState];
 
 export type ChatMessageTool = {
+  activeLabel?: string;
   approval?: {
     approvalId: string;
     preview?: string;
@@ -104,6 +106,17 @@ export type ChatAssistantMessage = ChatMessageBase & {
 export type ChatErrorMessage = ChatMessageBase & {
   content: string;
   type: typeof ChatMessageType.ERROR;
+};
+
+export type ChatFileChange = {
+  diff: string;
+  id: string;
+  path: string;
+};
+
+export type ChatFileChangeMessage = ChatMessageBase & {
+  changes: readonly ChatFileChange[];
+  type: typeof ChatMessageType.FILE_CHANGE;
 };
 
 export type ChatReasoningMessage = ChatMessageBase & {
@@ -189,6 +202,7 @@ export type ChatMessage =
   | ChatAssistantMessage
   | ChatCodeMessage
   | ChatErrorMessage
+  | ChatFileChangeMessage
   | ChatImageGenerationMessage
   | ChatLoadingMessage
   | ChatOrbsMessage

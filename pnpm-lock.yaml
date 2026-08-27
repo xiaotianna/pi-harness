@@ -309,6 +309,9 @@ importers:
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
+      diff:
+        specifier: 'catalog:'
+        version: 8.0.4
       es-toolkit:
         specifier: 'catalog:'
         version: 1.50.0

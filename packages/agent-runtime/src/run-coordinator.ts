@@ -10,7 +10,7 @@ import type {
 } from "@earendil-works/pi-agent-core";
 import { type Api, clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
 import { type ApprovalPolicyValue, evaluateToolCall, ToolPolicyDecision } from "@pi-harness/policy";
-import { isFileChangeDetails, type ToolRegistry } from "@pi-harness/tools";
+import { readFileChangeDetails, type ToolRegistry } from "@pi-harness/tools";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
 import { adaptAgentEvent } from "./event-adapter.js";
 import {
@@ -53,7 +53,7 @@ export class RunCoordinator {
   private activeRun: ActiveRun | null = null;
   private readonly executionGuard: ToolRegistry["executionGuard"];
   private nextSeq: number;
-  private readonly pendingFileChanges = new Map<string, FileChangedData>();
+  private readonly pendingFileChanges = new Map<string, readonly FileChangedData[]>();
   private readonly unsubscribe: () => void;
 
   public constructor(
@@ -254,15 +254,19 @@ export class RunCoordinator {
     }
   }
 
-  // 这个方法用于在工具执行成功后，捕获文件变更信息，暂存到 pendingFileChanges
-  // 主要是针对edit_file / write_file两个工具内部做的变更统计
+  // 工具执行成功后捕获其一项或多项文件变更，等待对应 tool_execution_end 后顺序发出。
   private async handleAfterToolCall(context: AfterToolCallContext): Promise<undefined> {
-    if (context.isError || !isFileChangeDetails(context.result.details)) return undefined;
-    this.pendingFileChanges.set(context.toolCall.id, {
-      ...context.result.details,
-      toolCallId: context.toolCall.id,
-      toolName: context.toolCall.name,
-    });
+    if (context.isError) return undefined;
+    const fileChanges = readFileChangeDetails(context.result.details);
+    if (fileChanges.length === 0) return undefined;
+    this.pendingFileChanges.set(
+      context.toolCall.id,
+      fileChanges.map((fileChange) => ({
+        ...fileChange,
+        toolCallId: context.toolCall.id,
+        toolName: context.toolCall.name,
+      })),
+    );
     return undefined;
   }
 
@@ -282,10 +286,15 @@ export class RunCoordinator {
 
     await this.emit(draft, activeRun.runId);
     if (event.type === "tool_execution_end") {
-      const fileChange = this.pendingFileChanges.get(event.toolCallId);
-      if (fileChange !== undefined) {
+      const fileChanges = this.pendingFileChanges.get(event.toolCallId);
+      if (fileChanges !== undefined) {
         this.pendingFileChanges.delete(event.toolCallId);
-        await this.emit({ data: fileChange, type: HarnessEventType.FILE_CHANGED }, activeRun.runId);
+        for (const fileChange of fileChanges) {
+          await this.emit(
+            { data: fileChange, type: HarnessEventType.FILE_CHANGED },
+            activeRun.runId,
+          );
+        }
       }
     }
     activeRun.handleAutoFollowUp(event);

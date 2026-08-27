@@ -29,6 +29,13 @@ export function isFileChangeDetails(value: unknown): value is FileChangeDetails 
   );
 }
 
+export function readFileChangeDetails(value: unknown): readonly FileChangeDetails[] {
+  if (isFileChangeDetails(value)) return [value];
+  if (typeof value !== "object" || value === null || !("fileChanges" in value)) return [];
+  const fileChanges = value.fileChanges;
+  return Array.isArray(fileChanges) && fileChanges.every(isFileChangeDetails) ? fileChanges : [];
+}
+
 export async function readTextFile(path: string, signal?: AbortSignal): Promise<string> {
   const metadata = await stat(path);
   if (!metadata.isFile() || metadata.size > MAX_FILE_BYTES) {

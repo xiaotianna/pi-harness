@@ -1,12 +1,20 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool, AgentToolUpdateCallback } from "@earendil-works/pi-agent-core";
 import { truncateTail } from "@earendil-works/pi-agent-core";
 import { execaCommand } from "execa";
 import { Type } from "typebox";
 import { resolveToolPath, type WorkspaceToolContext } from "../lib/tool-context.js";
+import type { FileChangeDetails } from "../utils/file.js";
+import {
+  captureWorkspaceTextSnapshot,
+  collectWorkspaceFileChanges,
+  type WorkspaceFileChanges,
+  type WorkspaceTextSnapshot,
+} from "../utils/workspace-file-changes.js";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 600_000;
 const MAX_CAPTURE_BYTES = 1024 * 1024;
+const UPDATE_THROTTLE_MS = 100;
 
 const RunCommandParameters = Type.Object({
   command: Type.String({ description: "在 workspace 根目录执行的 Shell 命令", minLength: 1 }),
@@ -19,11 +27,20 @@ const RunCommandParameters = Type.Object({
   ),
 });
 
-export interface RunCommandDetails {
+interface RunCommandProgressDetails {
+  stage: "collecting_changes" | "preparing" | "running";
+}
+
+interface RunCommandCompletedDetails {
   durationMs: number;
   exitCode: number | null;
+  fileChanges: readonly FileChangeDetails[];
+  fileChangesTruncated: boolean;
+  stage: "completed";
   truncated: boolean;
 }
+
+export type RunCommandDetails = RunCommandProgressDetails | RunCommandCompletedDetails;
 
 const PASSTHROUGH_ENV_NAMES = [
   "HOME",
@@ -59,9 +76,24 @@ export function createRunCommandTool(
     description: "在固定的 workspace 根目录执行 Shell 命令，支持取消、超时和输出限制。",
     parameters: RunCommandParameters,
     executionMode: "sequential",
-    async execute(_toolCallId, input, signal) {
+    async execute(_toolCallId, input, signal, onUpdate) {
       const workspaceRoot = await resolveToolPath(context, ".");
-      const result = await execaCommand(input.command, {
+      const update = (
+        stage: RunCommandProgressDetails["stage"],
+        text: string,
+        callback: AgentToolUpdateCallback<RunCommandDetails> | undefined = onUpdate,
+      ) => callback?.({ content: [{ type: "text", text }], details: { stage } });
+
+      update("preparing", "正在扫描命令前的文件状态…");
+      let beforeSnapshot: WorkspaceTextSnapshot | null = null;
+      try {
+        beforeSnapshot = await captureWorkspaceTextSnapshot(context, signal);
+      } catch (error: unknown) {
+        if (signal?.aborted) throw error;
+      }
+
+      update("running", "命令已启动，等待输出…");
+      const subprocess = execaCommand(input.command, {
         all: true,
         cwd: workspaceRoot,
         env: commandEnvironment(),
@@ -71,6 +103,24 @@ export function createRunCommandTool(
         shell: true,
         timeout: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         ...(signal === undefined ? {} : { cancelSignal: signal }),
+      });
+      let liveOutput = "";
+      let updateTimer: ReturnType<typeof setTimeout> | undefined;
+      let lastUpdateAt = 0;
+      const emitOutput = () => {
+        updateTimer = undefined;
+        lastUpdateAt = Date.now();
+        update("running", truncateTail(liveOutput).content || "命令已启动，等待输出…");
+      };
+      subprocess.all?.on("data", (chunk: Buffer | string) => {
+        liveOutput += chunk.toString();
+        const delay = UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
+        if (delay <= 0) emitOutput();
+        else updateTimer ??= setTimeout(emitOutput, delay);
+      });
+
+      const result = await subprocess.finally(() => {
+        if (updateTimer) clearTimeout(updateTimer);
       });
       const output = truncateTail(result.all);
 
@@ -82,11 +132,30 @@ export function createRunCommandTool(
         throw new Error(`TOOL_COMMAND_FAILED: ${output.content || "命令执行失败"}`);
       }
 
+      update(
+        "collecting_changes",
+        output.content
+          ? `${output.content}\n\n正在统计文件变化…`
+          : "命令执行完成，正在统计文件变化…",
+      );
+      let fileChanges: WorkspaceFileChanges = { changes: [], truncated: true };
+      if (beforeSnapshot !== null) {
+        try {
+          fileChanges = await collectWorkspaceFileChanges(context, beforeSnapshot, signal);
+        } catch (error: unknown) {
+          if (signal?.aborted) throw error;
+        }
+      }
+      const trackingNotice = fileChanges.truncated ? "\n\n[文件变更统计可能不完整]" : "";
+
       return {
-        content: [{ type: "text", text: output.content || "(no output)" }],
+        content: [{ type: "text", text: (output.content || "(no output)") + trackingNotice }],
         details: {
           durationMs: result.durationMs,
           exitCode: result.exitCode ?? null,
+          fileChanges: fileChanges.changes,
+          fileChangesTruncated: fileChanges.truncated,
+          stage: "completed",
           truncated: output.truncated,
         },
       };

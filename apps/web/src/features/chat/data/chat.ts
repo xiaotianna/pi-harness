@@ -5,6 +5,8 @@ export type {
   ChatAssistantMessage,
   ChatCodeMessage,
   ChatErrorMessage,
+  ChatFileChange,
+  ChatFileChangeMessage,
   ChatImageGenerationMessage,
   ChatLoadingMessage,
   ChatMessage,

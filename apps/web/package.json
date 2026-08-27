@@ -30,6 +30,7 @@
     "@tiptap/starter-kit": "catalog:",
     "antd": "catalog:",
     "clsx": "catalog:",
+    "diff": "catalog:",
     "es-toolkit": "catalog:",
     "icons": "link:@lobehub/ui/icons",
     "katex": "catalog:",

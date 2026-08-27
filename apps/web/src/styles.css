@@ -95,6 +95,72 @@
   background-clip: content-box;
 }
 
+.code-diff__viewport {
+  scrollbar-width: none;
+}
+
+.code-diff__viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.code-diff__scrollbar {
+  position: absolute;
+  z-index: 10;
+  cursor: var(--cursor-interactive);
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.code-diff__scrollbar[data-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.code-diff__scrollbar--horizontal {
+  right: 4px;
+  bottom: 2px;
+  left: 4px;
+  height: 8px;
+}
+
+.code-diff__scrollbar--vertical {
+  top: 4px;
+  right: 2px;
+  bottom: 4px;
+  width: 8px;
+}
+
+.code-diff__scrollbar-thumb {
+  position: absolute;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--muted) 22%, transparent);
+}
+
+.code-diff__scrollbar--horizontal .code-diff__scrollbar-thumb {
+  top: 2px;
+  left: 0;
+  height: 4px;
+}
+
+.code-diff__scrollbar--vertical .code-diff__scrollbar-thumb {
+  top: 0;
+  left: 2px;
+  width: 4px;
+}
+
+.code-diff__scrollbar:is(:hover, :focus-visible) .code-diff__scrollbar-thumb {
+  background: color-mix(in oklab, var(--muted) 36%, transparent);
+}
+
+.code-diff__token {
+  color: var(--shiki-light, var(--foreground));
+}
+
+:is(.dark, [data-theme="dark"], [data-theme$="-dark"]) .code-diff__token {
+  color: var(--shiki-dark, var(--foreground));
+}
+
 .chat-message__actions {
   opacity: 0;
 }

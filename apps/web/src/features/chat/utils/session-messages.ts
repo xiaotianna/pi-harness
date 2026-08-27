@@ -10,6 +10,7 @@ import { isPlainObject } from "es-toolkit";
 import type { Session, SessionSnapshot } from "../api/session-api";
 import {
   type ChatAssistantMessage,
+  type ChatFileChangeMessage,
   type ChatMessage,
   type ChatMessageTool,
   ChatMessageType,
@@ -150,6 +151,20 @@ function readToolError(value: unknown): string {
   return typeof result === "string" && result ? result : "工具执行失败";
 }
 
+function readToolActiveLabel(value: unknown): string | null {
+  if (!isPlainObject(value) || !isPlainObject(value.details)) return null;
+  switch (value.details.stage) {
+    case "preparing":
+      return "正在扫描文件状态";
+    case "running":
+      return "正在执行命令";
+    case "collecting_changes":
+      return "正在统计文件变化";
+    default:
+      return null;
+  }
+}
+
 function readApprovalPreview(tool: ChatMessageTool): string | null {
   if (!isPlainObject(tool.input)) return null;
   if (
@@ -264,6 +279,20 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     }
 
     if (
+      event.type === HarnessEventType.TOOL_UPDATED &&
+      isPlainObject(event.data) &&
+      typeof event.data.toolCallId === "string"
+    ) {
+      const tool = toolsByCallId.get(event.data.toolCallId);
+      if (tool) {
+        tool.output = readToolResult(event.data.partialResult);
+        const activeLabel = readToolActiveLabel(event.data.partialResult);
+        if (activeLabel) tool.activeLabel = activeLabel;
+      }
+      continue;
+    }
+
+    if (
       event.type === HarnessEventType.APPROVAL_REQUESTED &&
       event.runId &&
       isPlainObject(event.data) &&
@@ -296,6 +325,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     ) {
       const tool = toolsByCallId.get(event.data.toolCallId);
       if (tool) {
+        delete tool.activeLabel;
         delete tool.approval;
         if (event.data.decision === ApprovalDecision.APPROVED) {
           tool.state = ChatToolState.INPUT_AVAILABLE;
@@ -319,6 +349,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     ) {
       const tool = toolsByCallId.get(event.data.toolCallId);
       if (tool) {
+        delete tool.activeLabel;
         delete tool.approval;
         if (event.type === HarnessEventType.TOOL_FAILED) {
           tool.errorText = readToolError(event.data.result);
@@ -328,6 +359,38 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
           tool.state = ChatToolState.OUTPUT_AVAILABLE;
         }
         refreshToolGroupState(messages, tool);
+      }
+      continue;
+    }
+
+    if (
+      event.type === HarnessEventType.FILE_CHANGED &&
+      isPlainObject(event.data) &&
+      typeof event.data.diff === "string" &&
+      typeof event.data.path === "string"
+    ) {
+      const change = {
+        diff: event.data.diff,
+        id: event.id,
+        path: event.data.path,
+      };
+      const previousMessage = messages.at(-1);
+      const existingMessage =
+        previousMessage?.type === ChatMessageType.FILE_CHANGE &&
+        previousMessage.turnId === event.runId
+          ? previousMessage
+          : undefined;
+
+      if (existingMessage) {
+        existingMessage.changes = [...existingMessage.changes, change];
+      } else {
+        const message: ChatFileChangeMessage = {
+          changes: [change],
+          id: event.id,
+          type: ChatMessageType.FILE_CHANGE,
+          ...(event.runId === undefined ? {} : { turnId: event.runId }),
+        };
+        messages.push(message);
       }
       continue;
     }
@@ -404,6 +467,11 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   }
 
   const activeRunId = findActiveRunId(events);
+  const hasActiveTool = messages.some(
+    (message) =>
+      (message.type === ChatMessageType.TOOL && isToolActive(message.tool)) ||
+      (message.type === ChatMessageType.TOOL_GROUP && message.tools.some(isToolActive)),
+  );
   const isAwaitingApproval = messages.some(
     (message) =>
       (message.type === ChatMessageType.TOOL &&
@@ -411,7 +479,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       (message.type === ChatMessageType.TOOL_GROUP &&
         message.tools.some((tool) => tool.state === ChatToolState.REQUIRES_ACTION)),
   );
-  if (activeRunId && !isAwaitingApproval) {
+  if (activeRunId && !isAwaitingApproval && !hasActiveTool) {
     const messageId =
       activeAssistantMessageIdByRunId.get(activeRunId) ?? `streaming-${activeRunId}`;
     const content = [...(streamingContentByRunId.get(activeRunId)?.entries() ?? [])].sort(
@@ -478,7 +546,24 @@ export function updateSnapshotWithEvents(
   }
   const events = [...eventsBySeq.values()].sort((left, right) => left.seq - right.seq);
   const completedThroughSeqByRunId = new Map<string, number>();
+  const completedToolCallIds = new Set<string>();
+  const latestToolUpdateSeqByCallId = new Map<string, number>();
   for (const event of events) {
+    if (
+      (event.type === HarnessEventType.TOOL_COMPLETED ||
+        event.type === HarnessEventType.TOOL_FAILED) &&
+      isPlainObject(event.data) &&
+      typeof event.data.toolCallId === "string"
+    ) {
+      completedToolCallIds.add(event.data.toolCallId);
+    }
+    if (
+      event.type === HarnessEventType.TOOL_UPDATED &&
+      isPlainObject(event.data) &&
+      typeof event.data.toolCallId === "string"
+    ) {
+      latestToolUpdateSeqByCallId.set(event.data.toolCallId, event.seq);
+    }
     if (!event.runId) continue;
     const isAssistantCompleted =
       event.type === HarnessEventType.MESSAGE_COMPLETED &&
@@ -489,6 +574,16 @@ export function updateSnapshotWithEvents(
     }
   }
   const retainedEvents = events.filter((event) => {
+    if (
+      event.type === HarnessEventType.TOOL_UPDATED &&
+      isPlainObject(event.data) &&
+      typeof event.data.toolCallId === "string"
+    ) {
+      return (
+        !completedToolCallIds.has(event.data.toolCallId) &&
+        latestToolUpdateSeqByCallId.get(event.data.toolCallId) === event.seq
+      );
+    }
     if (event.type !== HarnessEventType.MESSAGE_DELTA || !event.runId) return true;
     return event.seq > (completedThroughSeqByRunId.get(event.runId) ?? 0);
   });

@@ -4,26 +4,12 @@ import { Button, Tooltip } from "@heroui/react";
 import { ChevronDown, GitCompareArrows } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { memo, useId, useState } from "react";
+import { CodeDiff, type DiffLine, DiffLineType } from "../../../components/ai/code-diff";
 
 const INSPECTOR_MOTION_TRANSITION = {
   duration: 0.22,
   ease: [0.22, 1, 0.36, 1],
 } as const;
-
-const DiffLineType = {
-  ADDED: "added",
-  CONTEXT: "context",
-  REMOVED: "removed",
-} as const;
-
-type DiffLineType = (typeof DiffLineType)[keyof typeof DiffLineType];
-
-interface DiffLine {
-  content: string;
-  newLineNumber: number | null;
-  oldLineNumber: number | null;
-  type: DiffLineType;
-}
 
 interface WorkspaceDiffFileData {
   additions: number;
@@ -33,24 +19,6 @@ interface WorkspaceDiffFileData {
   path: string;
   shortPath: string;
 }
-
-const DIFF_LINE_CLASS_NAMES: Record<DiffLineType, string> = {
-  [DiffLineType.ADDED]: "bg-success/10",
-  [DiffLineType.CONTEXT]: "bg-background",
-  [DiffLineType.REMOVED]: "bg-danger/10",
-};
-
-const DIFF_LINE_GUTTER_CLASS_NAMES: Record<DiffLineType, string> = {
-  [DiffLineType.ADDED]: "border-success/20 text-success",
-  [DiffLineType.CONTEXT]: "border-separator text-muted",
-  [DiffLineType.REMOVED]: "border-danger/20 text-danger",
-};
-
-const DIFF_LINE_MARKERS: Record<DiffLineType, string> = {
-  [DiffLineType.ADDED]: "+",
-  [DiffLineType.CONTEXT]: " ",
-  [DiffLineType.REMOVED]: "-",
-};
 
 const README_DIFF = `# AI 组件映射
 
@@ -217,33 +185,12 @@ function WorkspaceDiffFile({ file }: { file: WorkspaceDiffFileData }) {
         initial={false}
         transition={transition}
       >
-        <div className="max-h-[min(70dvh,48rem)] overflow-auto">
-          <div className="w-max min-w-full font-mono leading-6">
-            {file.lines.map((line, index) => (
-              <div
-                className={`grid grid-cols-[40px_40px_20px_minmax(520px,1fr)] ${DIFF_LINE_CLASS_NAMES[line.type]}`}
-                key={`${file.id}-${index}-${line.content}`}
-              >
-                <span
-                  className={`border-r px-2 text-right tabular-nums select-none ${DIFF_LINE_GUTTER_CLASS_NAMES[line.type]}`}
-                >
-                  {line.oldLineNumber}
-                </span>
-                <span
-                  className={`border-r px-2 text-right tabular-nums select-none ${DIFF_LINE_GUTTER_CLASS_NAMES[line.type]}`}
-                >
-                  {line.newLineNumber}
-                </span>
-                <span
-                  className={`text-center select-none ${DIFF_LINE_GUTTER_CLASS_NAMES[line.type]}`}
-                >
-                  {DIFF_LINE_MARKERS[line.type]}
-                </span>
-                <code className="pr-3 whitespace-pre text-foreground">{line.content || " "}</code>
-              </div>
-            ))}
-          </div>
-        </div>
+        <CodeDiff
+          ariaLabel={`${file.path} 变更内容`}
+          className="max-h-none"
+          lines={file.lines}
+          path={file.path}
+        />
       </motion.section>
     </article>
   );

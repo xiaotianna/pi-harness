@@ -25,6 +25,7 @@ import {
   PencilLine,
   Plus,
   Search,
+  Square,
   SquareTerminal,
   WandSparkles,
 } from "lucide-react";
@@ -706,6 +707,11 @@ export function ChatComposer({
             )}
           </PromptInput.ToolbarStart>
           <PromptInput.ToolbarEnd>
+            {isGenerating && hasEditorContent ? (
+              <PromptInput.Action aria-label="停止生成" tooltip="停止生成" onPress={handleStop}>
+                <Square aria-hidden className="size-3.5 fill-current" />
+              </PromptInput.Action>
+            ) : null}
             <PromptInput.Send
               aria-label={sendLabel}
               {...(isGenerating ? {} : { isDisabled: !canSend })}

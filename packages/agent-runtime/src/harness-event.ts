@@ -245,7 +245,7 @@ export interface ApprovalResolvedData {
 export interface FileChangedData {
   // 修改前的完整文件内容；新建文件时为 null
   before: string | null;
-  // 修改后的完整文件内容
+  // 修改后的完整文件内容；文件被删除时为空字符串
   after: string;
   // 修改前后的差异文本，供 Diff 面板展示
   diff: string;
