@@ -350,6 +350,7 @@ export class ProviderService {
           isConfigured: auth !== undefined,
           kind: custom ? "custom" : "builtin",
           models: provider.getModels().map((model) => ({
+            contextWindow: model.contextWindow,
             id: model.id,
             name: model.name,
             thinkingLevels: getSupportedThinkingLevels(model).filter(isThinkingLevel),

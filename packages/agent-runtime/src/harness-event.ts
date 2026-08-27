@@ -99,6 +99,8 @@ export const HarnessEventType = {
   /**
    * Context 上下文事件
    */
+  // 每次模型请求发送前的上下文用量快照，只保存分类 Token 估算值
+  CONTEXT_USAGE_SNAPSHOT: "context.usage_snapshot",
   // 为避免超过模型上下文窗口，历史上下文被裁剪或摘要压缩
   CONTEXT_COMPACTED: "context.compacted",
 } as const;
@@ -161,6 +163,15 @@ export interface HarnessEvent<TData = unknown> {
 export interface RunStartedData {
   providerId: string;
   modelId: string;
+}
+
+// context.usage_snapshot
+export interface ContextUsageSnapshotData {
+  conversationTokens: number;
+  estimatedTotalTokens: number;
+  requestIndex: number;
+  systemPromptTokens: number;
+  toolTokens: number;
 }
 
 // run.failed / run.aborted

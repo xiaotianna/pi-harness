@@ -17,6 +17,7 @@ import {
   ApprovalDecision,
   type ApprovalRequestedData,
   type ApprovalResolvedData,
+  type ContextUsageSnapshotData,
   type FileChangedData,
   type HarnessEvent,
   type HarnessEventDraft,
@@ -27,6 +28,7 @@ import {
 } from "./harness-event.js";
 import type { ThinkingLevel } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
+import { estimateContextUsage } from "./utils/context-usage.js";
 
 export interface StartRunInput {
   approvalPolicy: ApprovalPolicyValue;
@@ -318,7 +320,21 @@ export class RunCoordinator {
     this.agent.state.model = input.model;
     this.agent.state.thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
     this.agent.state.systemPrompt = input.systemPrompt;
-    this.agent.streamFunction = input.streamFn;
+    let requestIndex = 0;
+    this.agent.streamFunction = async (model, context, options) => {
+      requestIndex += 1;
+      await this.emit(
+        {
+          data: {
+            ...estimateContextUsage(context),
+            requestIndex,
+          } satisfies ContextUsageSnapshotData,
+          type: HarnessEventType.CONTEXT_USAGE_SNAPSHOT,
+        },
+        input.runId,
+      );
+      return input.streamFn(model, context, options);
+    };
     this.executionGuard.reset();
     this.activeRun = {
       approvalPolicy: input.approvalPolicy,

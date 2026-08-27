@@ -14,6 +14,7 @@ const ProviderSchema = Type.Object({
   kind: Type.Union([Type.Literal("builtin"), Type.Literal("custom")]),
   models: Type.Array(
     Type.Object({
+      contextWindow: Type.Integer({ minimum: 1 }),
       id: Type.String(),
       name: Type.String(),
       thinkingLevels: Type.Array(

@@ -10,6 +10,7 @@ export {
   type ApprovalRequestedData,
   type ApprovalResolvedData,
   type ApprovalResponseDecision,
+  type ContextUsageSnapshotData,
   type FileChangedData,
   type HarnessEvent,
   type HarnessEventDraft,

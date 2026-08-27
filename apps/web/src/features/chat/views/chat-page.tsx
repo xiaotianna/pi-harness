@@ -31,6 +31,7 @@ import {
   readSessionStatus,
   sessionEventsToMessages,
 } from "../utils/session-messages";
+import { summarizeSessionUsage } from "../utils/session-usage";
 
 const CHAT_VIEW_TRANSITION = {
   duration: 0.18,
@@ -53,6 +54,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const transition = shouldReduceMotion ? { duration: 0 } : CHAT_VIEW_TRANSITION;
   const events = snapshot?.events ?? [];
   const messages = sessionEventsToMessages(events);
+  const usage = summarizeSessionUsage(events);
   const pendingApprovalTool = messages
     .flatMap((message) =>
       message.type === ChatMessageType.TOOL
@@ -215,6 +217,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                 providerId={snapshot.session.providerId}
                 status={status}
                 thinkingLevel={snapshot.session.thinkingLevel}
+                usage={usage}
                 onModelChange={(selection) =>
                   modelMutation.mutateAsync(selection).then(() => undefined)
                 }

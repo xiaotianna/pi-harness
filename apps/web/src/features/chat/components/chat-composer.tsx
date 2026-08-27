@@ -47,6 +47,7 @@ import {
 import { ApprovalPolicySelect, useApprovalPolicySetting } from "../../settings";
 import type { ChatWorkspace } from "../data/chat";
 import { useNewChatStore } from "../state/new-chat-store";
+import type { SessionUsageSummary } from "../utils/session-usage";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
 import { ChatAttachmentList } from "./chat-attachment-list";
 import {
@@ -56,6 +57,7 @@ import {
   ChatComposerTokenKind,
   type ChatComposerTokenKind as ChatComposerTokenKindValue,
 } from "./chat-composer-editor";
+import { ContextUsagePopover } from "./context-usage-popover";
 
 type PendingAttachment = {
   id: string;
@@ -94,6 +96,7 @@ export interface ChatComposerProps {
   providerId?: string;
   status?: ChatStatus;
   thinkingLevel?: ThinkingLevelValue;
+  usage?: SessionUsageSummary;
   workspaces?: readonly ChatWorkspace[];
 }
 
@@ -188,6 +191,7 @@ export function ChatComposer({
   providerId,
   status: statusProp,
   thinkingLevel,
+  usage,
   workspaces = [],
 }: ChatComposerProps) {
   const {
@@ -837,6 +841,17 @@ export function ChatComposer({
               <PromptInput.Action aria-label="停止生成" tooltip="停止生成" onPress={handleStop}>
                 <Square aria-hidden className="size-3.5 fill-current" />
               </PromptInput.Action>
+            ) : null}
+            {!isHero && usage && providersQuery.isPending ? (
+              <Skeleton aria-hidden className="h-8 w-12 rounded-full" />
+            ) : null}
+            {!isHero && usage && !providersQuery.isPending && selectedModel ? (
+              <ContextUsagePopover
+                contextWindow={selectedModel.contextWindow}
+                isGenerating={isGenerating}
+                modelName={selectedModel.name}
+                summary={usage}
+              />
             ) : null}
             <PromptInput.Send
               aria-label={sendLabel}
