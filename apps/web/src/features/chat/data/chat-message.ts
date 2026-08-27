@@ -83,7 +83,6 @@ export type ChatMessageAttachment = {
 type ChatMessageBase = {
   id: string;
   isIntermediate?: boolean;
-  shouldTypewrite?: boolean;
   turnDurationMs?: number;
   turnId?: string;
 };
@@ -98,6 +97,7 @@ export type ChatAssistantMessage = ChatMessageBase & {
   actions?: "full" | "minimal";
   content: string;
   image?: ChatMessageImage;
+  isStreaming?: boolean;
   type: typeof ChatMessageType.ASSISTANT;
 };
 

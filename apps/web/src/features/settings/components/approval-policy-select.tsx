@@ -134,9 +134,9 @@ export function ApprovalPolicySelect({
           variant="ghost"
           {...(className ? { className } : {})}
         >
-          <SelectedIcon className={`size-4 ${triggerTextClassName}`} strokeWidth={1.5} />
-          <span className={`font-normal ${triggerTextClassName}`}>{selected?.label}</span>
-          <ChevronDown className={`size-3.5 ${triggerTextClassName}`} strokeWidth={1.5} />
+          <SelectedIcon className={`size-4 ${triggerTextClassName}`} />
+          <span className={triggerTextClassName}>{selected?.label}</span>
+          <ChevronDown className={`size-3.5 ${triggerTextClassName}`} />
         </Button>
         <Dropdown.Popover className="w-80 max-w-[calc(100vw-2rem)]" placement="bottom start">
           <Dropdown.Menu
