@@ -18,6 +18,9 @@ catalogs:
     '@fastify/cors':
       specifier: ^11.0.0
       version: 11.3.0
+    '@gravity-ui/icons':
+      specifier: ^2.21.0
+      version: 2.22.0
     '@heroui/react':
       specifier: ^3.0.0
       version: 3.2.3
@@ -261,6 +264,9 @@ importers:
       '@agile-avocation/ui-pro':
         specifier: workspace:*
         version: link:../../hero-ui-pro
+      '@gravity-ui/icons':
+        specifier: 'catalog:'
+        version: 2.22.0(react@19.2.8)
       '@heroui/react':
         specifier: 'catalog:'
         version: 3.2.3(@react-aria/i18n@3.13.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-aria/ssr@3.10.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-aria/utils@3.34.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-spectrum/provider@3.11.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-aria-components@1.20.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-aria@3.51.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
@@ -1260,6 +1266,14 @@ packages:
       '@modelcontextprotocol/sdk': ^1.25.2
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
+        optional: true
+
+  '@gravity-ui/icons@2.22.0':
+    resolution: {integrity: sha512-v304kVTXbtsq8b3Uq3ZnX9R3LnRdECToeLspDgCs92C9fcID4C7dJqS3PywHKEaM4PFEZO8LRp/6JQbIm9UjHA==}
+    peerDependencies:
+      react: '*'
+    peerDependenciesMeta:
+      react:
         optional: true
 
   '@heroui/react@3.2.3':
@@ -6015,6 +6029,12 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+
+  '@gravity-ui/icons@2.22.0(react@19.2.8)':
+    dependencies:
+      tslib: 2.8.1
+    optionalDependencies:
+      react: 19.2.8
 
   '@heroui/react@3.2.3(@react-aria/i18n@3.13.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-aria/ssr@3.10.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-aria/utils@3.34.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-spectrum/provider@3.11.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-aria-components@1.20.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-aria@3.51.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)':
     dependencies:

@@ -1,5 +1,5 @@
+import { ArrowRight } from "@gravity-ui/icons";
 import { Surface } from "@heroui/react";
-import { ArrowRight } from "lucide-react";
 import type { FlowBlockData } from "./utils/visual-blocks";
 
 export function FlowDiagram({ data }: { data: FlowBlockData }) {

@@ -28,6 +28,7 @@
     "@tiptap/pm": "catalog:",
     "@tiptap/react": "catalog:",
     "@tiptap/starter-kit": "catalog:",
+    "@gravity-ui/icons": "catalog:",
     "antd": "catalog:",
     "clsx": "catalog:",
     "diff": "catalog:",

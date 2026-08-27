@@ -1,7 +1,7 @@
 "use client";
 
+import { FileText, Xmark as X } from "@gravity-ui/icons";
 import { Button } from "@heroui/react";
-import { FileText, X } from "lucide-react";
 
 export type ChatAttachmentListItem = {
   id?: string;

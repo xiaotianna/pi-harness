@@ -1,4 +1,4 @@
-import { Check, LoaderCircle } from "lucide-react";
+import { Check, ArrowsRotateRight as LoaderCircle } from "@gravity-ui/icons";
 import { cn } from "../../shared/utils/cn";
 
 export const TodoStatus = {

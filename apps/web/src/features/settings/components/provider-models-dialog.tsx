@@ -1,8 +1,8 @@
 "use client";
 
+import { CircleCheck, Flask as TestTube2, TrashBin as Trash2 } from "@gravity-ui/icons";
 import { Button, Fieldset, Form, Input, Modal, TextField, Tooltip, toast } from "@heroui/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, TestTube2, Trash2 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import {

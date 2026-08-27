@@ -1,27 +1,26 @@
 "use client";
 
-import { Button, Switch } from "@heroui/react";
-import type { LucideIcon } from "lucide-react";
 import {
-  Activity,
+  Pulse as Activity,
   ArrowLeft,
-  BarChart3,
-  CircleDot,
+  ChartBar as BarChart3,
   Cloud,
-  Component,
-  Figma,
-  FileSearch,
-  Github,
-  GitPullRequest,
-  Globe2,
-  MessageSquare,
+  Diamond as Component,
+  LogoFigma as Figma,
+  FileMagnifier as FileSearch,
+  LogoGithub as Github,
+  CodePullRequest as GitPullRequest,
+  Globe as Globe2,
+  Comment as MessageSquare,
   Pencil,
   Rocket,
-  Search,
-  Table2,
-  Workflow,
-} from "lucide-react";
-import { useState } from "react";
+  Magnifier as Search,
+  LayoutCells as Table2,
+  Pipeline as Workflow,
+} from "@gravity-ui/icons";
+import { Button, Switch } from "@heroui/react";
+import { CircleDot } from "lucide-react";
+import { type ComponentType, type SVGProps, useState } from "react";
 import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import { SettingsPanelHeader } from "./settings-panel-header";
 
@@ -171,13 +170,13 @@ const PLUGINS = [
   name: string;
   description: string;
   category: "developer" | "productivity";
-  icon: LucideIcon;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
   isInstalled: boolean;
   skills: readonly {
     id: string;
     name: string;
     description: string;
-    icon: LucideIcon;
+    icon: ComponentType<SVGProps<SVGSVGElement>>;
     isEnabled: boolean;
   }[];
 }[];

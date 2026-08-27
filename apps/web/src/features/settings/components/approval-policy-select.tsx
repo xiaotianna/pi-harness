@@ -1,12 +1,13 @@
 "use client";
 
+import { ChevronDown } from "@gravity-ui/icons";
 import { AlertDialog, Button, Description, Dropdown, Label, ListBox, Select } from "@heroui/react";
 import {
   ApprovalPolicy,
   type ApprovalPolicy as ApprovalPolicyValue,
   isApprovalPolicy,
 } from "@pi-harness/policy/approval-policy";
-import { ChevronDown, Hand, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Hand, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
 const FULL_ACCESS_TEXT_CLASS_NAME = "text-[color-mix(in_oklab,var(--danger)_65%,var(--warning))]";

@@ -40,7 +40,8 @@
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor` | `features/chat/components/chat-composer.tsx` |
 | 文件选择 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发 | `features/chat/components/chat-composer.tsx` |
 | 命令与搜索弹窗 | `Command` 复合组件 | `features/chat/components/chat-search-dialog.tsx` |
-| 提示词建议 | `PromptSuggestion` | `features/chat/views/explore-page.tsx`、`library-page.tsx` |
+| 提示词建议 | `PromptSuggestion` | `features/chat/views/explore-page.tsx` |
+| 项目任务看板 | HeroUI Pro `Kanban` 与 `useKanban` | `features/chat/views/library-page.tsx` |
 | 基础操作 | HeroUI `Button` | `features/chat/components/chat-navbar.tsx` |
 | 上下文操作 | HeroUI `Dropdown` | `features/chat/components/chat-sidebar.tsx`、`chat-composer.tsx` |
 | 表单字段 | `Form`、`TextField`、`Label`、`Input`、`FieldError` | `features/settings/components/provider-editor-dialog.tsx` |
@@ -52,7 +53,7 @@
 | 状态与反馈 | `Alert`、`Chip`、全局 `toast` | `features/auth/views/login-page.tsx`、`features/settings/components/model-settings-panel.tsx` |
 | AI 等待与生成状态 | assistant-ui Elements `GenerationLoader`、`ThinkingIndicator` | `components/ai/` |
 | 页面数据加载 | 骨架屏；不要用于 AI 处理状态 | `features/chat/views/chat-page.tsx` |
-| 折叠详情 | HeroUI `Disclosure` | `components/ai/reasoning-panel.tsx` |
+| 折叠详情 | HeroUI `Disclosure`；带阴影提示的滚动正文使用 `ScrollShadow` | `components/ai/reasoning-panel.tsx` |
 | 设置面板标题 | 复用 `SettingsPanelHeader` | `features/settings/components/settings-panel-header.tsx` |
 | 设置项行 | 复用 `SettingsRow` | `features/settings/components/settings-row.tsx` |
 | Provider 品牌 | 复用 `ModelProviderIcon`，按 Provider ID 映射直接 SVG | `features/models/components/model-provider-icon.tsx` |
@@ -65,7 +66,7 @@
 
 ### HeroUI
 
-使用 `@heroui/react` 提供基础无障碍组件及其复合结构。当前使用范围包括 Alert、AlertDialog、Avatar、Button、Card、Chip、Description、Disclosure、Dropdown、Fieldset、Form、Header、Input、Kbd、Label、ListBox、Modal、Select、Separator、Surface、Switch、Tabs、TextField、ToggleButtonGroup、Tooltip 和 toast。
+使用 `@heroui/react` 提供基础无障碍组件及其复合结构。当前使用范围包括 Alert、AlertDialog、Avatar、Button、Card、Chip、Description、Disclosure、Dropdown、Fieldset、Form、Header、Input、Kbd、Label、ListBox、Modal、ScrollShadow、Select、Separator、Surface、Switch、Tabs、TextField、ToggleButtonGroup、Tooltip 和 toast。
 
 ### HeroUI Pro 兼容包
 
@@ -75,7 +76,7 @@
 
 - 使用 TanStack Router 管理路由，TanStack Query 管理服务端数据，Zustand 管理共享 UI 状态。
 - `HarnessEventType`、`HarnessEvent` 和 `MessageDeltaKind` 从浏览器安全的 `@pi-harness/agent-runtime/harness-event` 子路径复用，内部消息判断从 `@pi-harness/agent-runtime/agent-message` 复用；不要导入 `agent-runtime` 主入口或在 Web 重复定义事件协议。
-- 使用 Motion 表达业务状态变化，使用 Lucide React 作为普通图标库。
+- 使用 Motion 表达业务状态变化，普通图标优先使用 Gravity UI Icons，没有语义等价图标时才使用 Lucide React；替换图标时保留现有 HeroUI 语义色和业务状态 class。
 - 使用 KaTeX 渲染公式 fenced block，使用 Mermaid 严格安全模式渲染流程图 DSL。
 - 使用 `@tanstack/react-virtual` 处理长列表，使用项目既有 AppLayout 或 `react-resizable-panels` 处理可调面板。
 - 使用 Tailwind CSS v4 和主题 token；不要为同一职责增加第二套依赖。

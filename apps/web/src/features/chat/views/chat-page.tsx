@@ -3,6 +3,7 @@
 import { ChatConversation, ChatLoader } from "@agile-avocation/ui-pro";
 import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness-event";
 import { HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
+import type { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useLayoutEffect, useRef } from "react";
@@ -18,6 +19,7 @@ import {
 } from "../api/session-api";
 import { sessionQueryKeys, sessionSnapshotQueryOptions } from "../api/session-queries";
 import { ChatComposer } from "../components/chat-composer";
+import { ConversationTurnToc } from "../components/conversation-turn-toc";
 import { ThreadMessageList } from "../components/thread-message-list";
 import { ToolApprovalCard } from "../components/tool-approval-card";
 import { ChatPageView } from "../constants/chat-page-view";
@@ -102,8 +104,15 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     );
   };
   const modelMutation = useMutation({
-    mutationFn: ({ modelId, providerId }: { modelId: string; providerId: string }) =>
-      updateSessionModel(sessionId, providerId, modelId),
+    mutationFn: ({
+      modelId,
+      providerId,
+      thinkingLevel,
+    }: {
+      modelId: string;
+      providerId: string;
+      thinkingLevel: ThinkingLevel;
+    }) => updateSessionModel(sessionId, providerId, modelId, thinkingLevel),
     onSuccess: cacheSession,
   });
   const approvalMutation = useMutation({
@@ -147,7 +156,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
 
   return (
     <div className="session-scrollbars flex h-[calc(100svh-var(--chat-navbar-height,64px))] flex-col overflow-hidden">
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         <AnimatePresence initial={false} mode="wait">
           <motion.div
             animate={{ opacity: 1, y: 0 }}
@@ -186,6 +195,9 @@ export function ChatPage({ sessionId }: ChatPageProps) {
             )}
           </motion.div>
         </AnimatePresence>
+        {activeView === ChatPageView.CONVERSATION ? (
+          <ConversationTurnToc messages={messages} scrollContainerRef={conversationRef} />
+        ) : null}
       </div>
 
       <div className="relative z-10 shrink-0 bg-background px-4 pb-2">
@@ -202,6 +214,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                 modelId={snapshot.session.modelId}
                 providerId={snapshot.session.providerId}
                 status={status}
+                thinkingLevel={snapshot.session.thinkingLevel}
                 onModelChange={(selection) =>
                   modelMutation.mutateAsync(selection).then(() => undefined)
                 }

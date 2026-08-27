@@ -3,6 +3,10 @@ import {
   type HarnessEvent,
   HarnessEventType,
 } from "@pi-harness/agent-runtime/harness-event";
+import {
+  ThinkingLevel,
+  type ThinkingLevel as ThinkingLevelValue,
+} from "@pi-harness/agent-runtime/thinking-level";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
@@ -13,6 +17,11 @@ const SessionSchema = Type.Object({
   lastSeq: Type.Integer({ minimum: 0 }),
   modelId: Type.String({ minLength: 1 }),
   providerId: Type.String({ minLength: 1 }),
+  thinkingLevel: Type.Union([
+    Type.Literal(ThinkingLevel.LOW),
+    Type.Literal(ThinkingLevel.MEDIUM),
+    Type.Literal(ThinkingLevel.HIGH),
+  ]),
   title: Type.String({ minLength: 1 }),
   updatedAt: Type.Integer({ minimum: 0 }),
   workspaceId: Type.String({ minLength: 1 }),
@@ -46,6 +55,7 @@ export type RunAccepted = Static<typeof RunAcceptedSchema>;
 export interface CreateSessionInput {
   modelId: string;
   providerId: string;
+  thinkingLevel: ThinkingLevelValue;
   title?: string;
   workspaceId: string;
 }
@@ -122,10 +132,11 @@ export async function updateSessionModel(
   sessionId: string,
   providerId: string,
   modelId: string,
+  thinkingLevel: ThinkingLevelValue,
 ): Promise<Session> {
   return readSession(
     await apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}/model`, {
-      body: JSON.stringify({ modelId, providerId }),
+      body: JSON.stringify({ modelId, providerId, thinkingLevel }),
       method: "PATCH",
     }),
   );

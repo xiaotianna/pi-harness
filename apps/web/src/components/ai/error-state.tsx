@@ -1,4 +1,4 @@
-import { CircleAlert } from "lucide-react";
+import { CircleExclamation as CircleAlert } from "@gravity-ui/icons";
 import { cn } from "../../shared/utils/cn";
 
 export interface ErrorStateProps {

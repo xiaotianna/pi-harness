@@ -69,6 +69,7 @@ export class SessionController {
         request.params.sessionId,
         request.body.providerId,
         request.body.modelId,
+        request.body.thinkingLevel,
       );
     } catch (error: unknown) {
       return this.sendError(request, reply, error);

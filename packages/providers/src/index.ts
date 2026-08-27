@@ -12,6 +12,7 @@ export type {
 export {
   createProvider,
   envApiKeyAuth,
+  getSupportedThinkingLevels,
   ModelsError,
 } from "@earendil-works/pi-ai";
 export { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";

@@ -1,7 +1,7 @@
 "use client";
 
+import { ChevronDown, CodeCompare as GitCompareArrows } from "@gravity-ui/icons";
 import { Button, Tooltip } from "@heroui/react";
-import { ChevronDown, GitCompareArrows } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { memo, useId, useState } from "react";
 import { CodeDiff, type DiffLine, DiffLineType } from "../../../components/ai/code-diff";
@@ -84,7 +84,7 @@ const WORKSPACE_DIFF_FILES = [
         type: DiffLineType.CONTEXT,
       },
       {
-        content: 'import { GitCompareArrows } from "lucide-react";',
+        content: 'import { CodeCompare } from "@gravity-ui/icons";',
         newLineNumber: null,
         oldLineNumber: 3,
         type: DiffLineType.REMOVED,
@@ -96,7 +96,7 @@ const WORKSPACE_DIFF_FILES = [
         type: DiffLineType.ADDED,
       },
       {
-        content: 'import { ChevronDown, GitCompareArrows } from "lucide-react";',
+        content: 'import { ChevronDown, CodeCompare } from "@gravity-ui/icons";',
         newLineNumber: 4,
         oldLineNumber: null,
         type: DiffLineType.ADDED,

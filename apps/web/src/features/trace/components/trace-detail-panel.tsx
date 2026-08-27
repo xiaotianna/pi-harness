@@ -1,8 +1,8 @@
 "use client";
 
 import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
+import { Xmark as X } from "@gravity-ui/icons";
 import { Button, Chip, Tabs, Tooltip } from "@heroui/react";
-import { X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { memo } from "react";
 import {

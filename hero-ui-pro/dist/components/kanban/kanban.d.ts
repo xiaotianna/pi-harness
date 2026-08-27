@@ -4,7 +4,7 @@ import { GridList, GridListItem } from 'react-aria-components/GridList';
 import { DropIndicator as DropIndicatorPrimitive } from 'react-aria-components/useDragAndDrop';
 import { ScrollShadow } from '@heroui/react';
 import type { KanbanVariants } from './kanban.styles';
-interface KanbanRootProps extends Omit<ComponentPropsWithRef<typeof ScrollShadow>, 'size'> {
+interface KanbanRootProps extends ComponentPropsWithRef<'div'> {
     /** Size variant controlling card padding, font size, and column width. @default "md" */
     size?: KanbanVariants['size'];
 }
@@ -49,4 +49,3 @@ interface KanbanDragHandleProps extends ComponentPropsWithRef<typeof ButtonPrimi
 declare const KanbanDragHandle: ({ children, className, ...props }: KanbanDragHandleProps) => import("react/jsx-runtime").JSX.Element;
 export { KanbanCard, KanbanCardList, KanbanColumn, KanbanColumnActions, KanbanColumnBody, KanbanColumnCount, KanbanColumnHeader, KanbanColumnIndicator, KanbanColumnTitle, KanbanDragHandle, KanbanDropIndicator, KanbanRoot, KanbanScrollShadow, };
 export type { KanbanCardListProps, KanbanCardProps, KanbanColumnActionsProps, KanbanColumnBodyProps, KanbanColumnCountProps, KanbanColumnHeaderProps, KanbanColumnIndicatorProps, KanbanColumnProps, KanbanColumnTitleProps, KanbanDragHandleProps, KanbanDropIndicatorProps, KanbanRootProps, KanbanScrollShadowProps, };
-//# sourceMappingURL=kanban.d.ts.map

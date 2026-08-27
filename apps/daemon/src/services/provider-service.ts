@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import {
   type Api,
   type AuthPrompt,
@@ -8,6 +9,7 @@ import {
   createHarnessModels,
   createProvider,
   envApiKeyAuth,
+  getSupportedThinkingLevels,
   loadBuiltInProvider,
   type Model,
   type MutableModels,
@@ -347,7 +349,11 @@ export class ProviderService {
           id: provider.id,
           isConfigured: auth !== undefined,
           kind: custom ? "custom" : "builtin",
-          models: provider.getModels().map((model) => ({ id: model.id, name: model.name })),
+          models: provider.getModels().map((model) => ({
+            id: model.id,
+            name: model.name,
+            thinkingLevels: getSupportedThinkingLevels(model).filter(isThinkingLevel),
+          })),
           name: provider.name,
           protocol: custom?.protocol ?? null,
           requiresApiKey: custom?.requiresApiKey ?? provider.auth.apiKey !== undefined,

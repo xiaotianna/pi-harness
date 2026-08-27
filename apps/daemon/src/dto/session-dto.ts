@@ -1,7 +1,13 @@
 import { ApprovalDecision } from "@pi-harness/agent-runtime/harness-event";
+import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { type Static, Type } from "typebox";
 
 const IdentifierSchema = Type.String({ maxLength: 256, minLength: 1 });
+const ThinkingLevelSchema = Type.Union([
+  Type.Literal(ThinkingLevel.LOW),
+  Type.Literal(ThinkingLevel.MEDIUM),
+  Type.Literal(ThinkingLevel.HIGH),
+]);
 
 export const SessionParamsDtoSchema = Type.Object({
   sessionId: Type.String({ format: "uuid" }),
@@ -42,6 +48,7 @@ export type ResolveApprovalDto = Static<typeof ResolveApprovalDtoSchema>;
 export const CreateSessionDtoSchema = Type.Object({
   modelId: IdentifierSchema,
   providerId: IdentifierSchema,
+  thinkingLevel: Type.Optional(ThinkingLevelSchema),
   title: Type.Optional(Type.String({ maxLength: 200 })),
   workspaceId: Type.String({ format: "uuid" }),
 });
@@ -61,6 +68,7 @@ export type UpdateSessionDto = Static<typeof UpdateSessionDtoSchema>;
 export const UpdateSessionModelDtoSchema = Type.Object({
   modelId: IdentifierSchema,
   providerId: IdentifierSchema,
+  thinkingLevel: Type.Optional(ThinkingLevelSchema),
 });
 
 export type UpdateSessionModelDto = Static<typeof UpdateSessionModelDtoSchema>;

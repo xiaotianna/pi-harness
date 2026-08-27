@@ -7,6 +7,10 @@ import {
   type RunId,
   type SessionId,
 } from "@pi-harness/agent-runtime";
+import {
+  DEFAULT_THINKING_LEVEL,
+  type ThinkingLevel,
+} from "@pi-harness/agent-runtime/thinking-level";
 import type {
   AppSettingRepository,
   SessionRecord,
@@ -43,6 +47,7 @@ export class SessionServiceError extends Error {
 export interface CreateSessionInput {
   modelId: string;
   providerId: string;
+  thinkingLevel?: ThinkingLevel;
   title?: string;
   workspaceId: string;
 }
@@ -105,6 +110,7 @@ export class SessionService {
       id: randomUUID(),
       modelId: input.modelId,
       providerId: input.providerId,
+      thinkingLevel: input.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
       title: normalizeTitle(input.title),
       workspaceId: input.workspaceId,
     });
@@ -129,10 +135,11 @@ export class SessionService {
     sessionId: SessionId,
     providerId: string,
     modelId: string,
+    thinkingLevel?: ThinkingLevel,
   ): Promise<SessionRecord> {
     this.getRequiredSession(sessionId);
     await this.providers.resolveRunModel(providerId, modelId);
-    if (!this.sessions.updateModel(sessionId, providerId, modelId, Date.now())) {
+    if (!this.sessions.updateModel(sessionId, providerId, modelId, thinkingLevel, Date.now())) {
       throw new SessionServiceError(SessionErrorCode.NOT_FOUND, "Session 不存在");
     }
     return this.getRequiredSession(sessionId);
@@ -197,6 +204,7 @@ export class SessionService {
         sessionId,
         streamFn,
         systemPrompt: buildSystemPrompt(),
+        thinkingLevel: session.thinkingLevel,
         workspaceRoot: session.workspaceRoot,
       });
       this.trackBackgroundTask(task, { providerId: session.providerId, runId, sessionId });

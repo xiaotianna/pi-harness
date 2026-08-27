@@ -1,7 +1,14 @@
 "use client";
 
+import {
+  FolderFlows as FolderKanban,
+  Bulb as Lightbulb,
+  ShieldCheck,
+  TrashBin as Trash2,
+  Person as UserRound,
+} from "@gravity-ui/icons";
 import { Button, Card, Chip, Switch, Tabs, Tooltip } from "@heroui/react";
-import { Brain, FolderKanban, Lightbulb, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Brain } from "lucide-react";
 import { SettingsPanelHeader } from "./settings-panel-header";
 import { SettingsRow } from "./settings-row";
 

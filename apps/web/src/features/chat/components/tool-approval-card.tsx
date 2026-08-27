@@ -1,11 +1,11 @@
 "use client";
 
+import { Terminal as SquareTerminal } from "@gravity-ui/icons";
 import { Button, Card, toast } from "@heroui/react";
 import {
   ApprovalDecision,
   type ApprovalResponseDecision,
 } from "@pi-harness/agent-runtime/harness-event";
-import { SquareTerminal } from "lucide-react";
 import { useId, useState } from "react";
 import type { ChatMessageTool, ResolveChatToolApproval } from "../data/chat";
 

@@ -175,4 +175,11 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       }
     },
   },
+  {
+    version: "011-session-thinking-level.sql",
+    sql: `
+      ALTER TABLE sessions ADD COLUMN thinking_level TEXT NOT NULL DEFAULT 'medium'
+        CHECK (thinking_level IN ('low', 'medium', 'high'));
+    `,
+  },
 ];

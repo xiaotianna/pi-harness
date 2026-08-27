@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRightFromSquare as ExternalLink, Eye, EyeSlash as EyeOff } from "@gravity-ui/icons";
 import {
   Button,
   Input,
@@ -11,7 +12,6 @@ import {
   TextField,
   Tooltip,
 } from "@heroui/react";
-import { ExternalLink, Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   type ModelProvider,

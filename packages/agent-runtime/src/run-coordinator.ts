@@ -25,6 +25,7 @@ import {
   type RunInteractionData,
   type SessionId,
 } from "./harness-event.js";
+import type { ThinkingLevel } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
 
 export interface StartRunInput {
@@ -36,6 +37,7 @@ export interface StartRunInput {
   runId: RunId;
   streamFn: StreamFn;
   systemPrompt: string;
+  thinkingLevel: ThinkingLevel;
 }
 
 export type HarnessEventListener = (event: HarnessEvent) => Promise<void> | void;
@@ -314,8 +316,7 @@ export class RunCoordinator {
     }
 
     this.agent.state.model = input.model;
-    // ponytail: 暂用模型支持的中档推理；开放用户配置时改由 run input 传入。
-    this.agent.state.thinkingLevel = clampThinkingLevel(input.model, "medium");
+    this.agent.state.thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
     this.agent.state.systemPrompt = input.systemPrompt;
     this.agent.streamFunction = input.streamFn;
     this.executionGuard.reset();

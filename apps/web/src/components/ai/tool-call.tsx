@@ -1,6 +1,6 @@
 import { TextShimmer } from "@agile-avocation/ui-pro";
+import { Check, ChevronRight, Xmark as X } from "@gravity-ui/icons";
 import { Disclosure, Separator } from "@heroui/react";
-import { Check, ChevronRight, X } from "lucide-react";
 import { cn } from "../../shared/utils/cn";
 
 export interface ToolCallProps {

@@ -1,6 +1,6 @@
 import { ChatMessage as ChatMessagePrimitive } from "@agile-avocation/ui-pro";
+import { ChevronRight } from "@gravity-ui/icons";
 import { Button, Surface } from "@heroui/react";
-import { ChevronRight } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useId, useMemo, useState } from "react";
 import { CodeDiff, parseUnifiedDiff } from "../../../../components/ai/code-diff";
@@ -50,7 +50,7 @@ export function FileChangeThreadMessage({ message }: { message: ChatFileChangeMe
                     onPress={() => setOpenChangeId(isOpen ? null : change.id)}
                   >
                     <motion.span animate={{ rotate: isOpen ? 90 : 0 }} transition={transition}>
-                      <ChevronRight aria-hidden className="size-3 opacity-60" strokeWidth={2.5} />
+                      <ChevronRight aria-hidden className="size-3 opacity-60" />
                     </motion.span>
                     <span title={change.path}>{change.filename}</span>
                     <span className="tabular-nums text-success">+{change.parsed.additions}</span>

@@ -1,16 +1,16 @@
 "use client";
 
-import { Button, Card, Chip, Input, Switch, Tabs, TextField } from "@heroui/react";
-import type { LucideIcon } from "lucide-react";
 import {
   Database,
-  Github,
-  Globe2,
-  MessageSquare,
-  PackagePlus,
-  Search,
+  LogoGithub as Github,
+  Globe as Globe2,
+  Comment as MessageSquare,
+  Box as PackagePlus,
+  Magnifier as Search,
   ShieldCheck,
-} from "lucide-react";
+} from "@gravity-ui/icons";
+import { Button, Card, Chip, Input, Switch, Tabs, TextField } from "@heroui/react";
+import type { ComponentType, SVGProps } from "react";
 import { SettingsPanelHeader } from "./settings-panel-header";
 
 const SKILLS = [
@@ -75,7 +75,7 @@ const SKILLS = [
   description: string;
   scope: string;
   location: string;
-  icon: LucideIcon;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
   resources: readonly string[];
   isInstalled: boolean;
   isEnabled: boolean;

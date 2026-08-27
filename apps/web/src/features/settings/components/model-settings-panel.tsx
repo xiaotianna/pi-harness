@@ -1,5 +1,6 @@
 "use client";
 
+import { CircleExclamation as CircleAlert, Key as KeyRound, Plus } from "@gravity-ui/icons";
 import {
   Button,
   Card,
@@ -12,7 +13,6 @@ import {
   Switch,
 } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, KeyRound, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   createModelSelectionKey,

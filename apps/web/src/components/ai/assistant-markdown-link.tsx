@@ -1,5 +1,5 @@
+import { FileCode as FileCode2 } from "@gravity-ui/icons";
 import { Link, Tooltip } from "@heroui/react";
-import { FileCode2 } from "lucide-react";
 import { type ComponentPropsWithoutRef, createContext, type ReactNode, useContext } from "react";
 import type { ExtraProps } from "react-markdown";
 import { cn } from "../../shared/utils/cn";

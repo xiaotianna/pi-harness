@@ -1,9 +1,9 @@
 "use client";
 
+import { ArrowRightFromSquare as LogOut, Gear as Settings } from "@gravity-ui/icons";
 import { AlertDialog, Avatar, Button, Dropdown, dropdownVariants } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
-import { LogOut, Settings } from "lucide-react";
 import { useState } from "react";
 import { logout } from "../api/auth-api";
 import { authQueryKeys, authSessionQueryOptions } from "../api/auth-queries";

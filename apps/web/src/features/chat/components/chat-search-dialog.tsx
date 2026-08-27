@@ -1,8 +1,8 @@
 "use client";
 
 import { Command } from "@agile-avocation/ui-pro";
+import { Comment as MessageCircle, Magnifier as Search } from "@gravity-ui/icons";
 import { Kbd } from "@heroui/react";
-import { MessageCircle, Search } from "lucide-react";
 import { memo } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import type { ChatThread } from "../data/chat";

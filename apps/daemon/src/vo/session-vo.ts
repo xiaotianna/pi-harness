@@ -1,3 +1,4 @@
+import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { type Static, Type } from "typebox";
 
 export const HarnessEventVoSchema = Type.Object({
@@ -16,6 +17,11 @@ export const SessionVoSchema = Type.Object({
   lastSeq: Type.Integer({ minimum: 0 }),
   modelId: Type.String({ minLength: 1 }),
   providerId: Type.String({ minLength: 1 }),
+  thinkingLevel: Type.Union([
+    Type.Literal(ThinkingLevel.LOW),
+    Type.Literal(ThinkingLevel.MEDIUM),
+    Type.Literal(ThinkingLevel.HIGH),
+  ]),
   title: Type.String({ minLength: 1 }),
   updatedAt: Type.Integer({ minimum: 0 }),
   workspaceId: Type.String({ minLength: 1 }),

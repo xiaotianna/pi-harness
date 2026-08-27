@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  File,
+  Folder,
+  Picture as ImageIcon,
+  Terminal as SquareTerminal,
+  MagicWand as WandSparkles,
+} from "@gravity-ui/icons";
 import { Header, ListBox, Surface } from "@heroui/react";
 import { type Editor, type JSONContent, mergeAttributes, Node } from "@tiptap/core";
 import {
@@ -10,10 +17,10 @@ import {
   useEditor,
 } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import type { LucideIcon } from "lucide-react";
-import { File, Folder, Image as ImageIcon, SquareTerminal, WandSparkles } from "lucide-react";
 import {
+  type ComponentType,
   forwardRef,
+  type SVGProps,
   useEffect,
   useId,
   useImperativeHandle,
@@ -79,7 +86,7 @@ const SUGGESTION_MENU_MAX_WIDTH = 384;
 
 interface TokenVisualStrategy {
   colorClassName: string;
-  icon: LucideIcon;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
   selectedClassName: string;
 }
 

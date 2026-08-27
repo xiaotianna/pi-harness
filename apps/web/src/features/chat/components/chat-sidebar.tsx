@@ -1,8 +1,18 @@
 "use client";
 
 import { Sidebar } from "@agile-avocation/ui-pro";
+import {
+  Archive,
+  Ellipsis,
+  Folder,
+  FolderFill,
+  FolderOpen,
+  FolderOpenFill,
+  Pencil,
+  Plus,
+  TrashBin as Trash2,
+} from "@gravity-ui/icons";
 import { Dropdown, Kbd, Separator, Tooltip } from "@heroui/react";
-import { Archive, Ellipsis, Folder, FolderOpen, Pencil, Plus, Trash2 } from "lucide-react";
 import type { DragEvent, KeyboardEvent } from "react";
 import { memo, useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
@@ -437,8 +447,14 @@ function ChatSidebarWorkspaceItem({
         <Sidebar.MenuIndicator />
       </Sidebar.MenuTrigger>
       <Sidebar.MenuIcon className="order-first" data-current-workspace={isCurrent || undefined}>
-        <Folder className="sidebar__workspace-folder-closed" />
-        <FolderOpen className="sidebar__workspace-folder-open" />
+        <span aria-hidden className="sidebar__workspace-folder sidebar__workspace-folder-closed">
+          <FolderFill className="sidebar__workspace-folder-fill" />
+          <Folder />
+        </span>
+        <span aria-hidden className="sidebar__workspace-folder sidebar__workspace-folder-open">
+          <FolderOpenFill className="sidebar__workspace-folder-fill" />
+          <FolderOpen />
+        </span>
       </Sidebar.MenuIcon>
       <Sidebar.MenuLabel className="pe-16">{workspace.name}</Sidebar.MenuLabel>
       <Sidebar.MenuActions className="absolute end-2 w-16 justify-end">

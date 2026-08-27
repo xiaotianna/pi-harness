@@ -12,7 +12,7 @@ import { kanbanVariants } from './kanban.styles';
 const KanbanContext = createContext({});
 const KanbanRoot = ({ children, className, size, ...props }) => {
     const slots = useMemo(() => kanbanVariants({ size }), [size]);
-    return (_jsx(KanbanContext.Provider, { value: { slots }, children: _jsx(LazyMotion, { features: domMax, children: _jsx(ScrollShadow, { className: composeSlotClassName(slots?.base, className), "data-slot": "kanban", orientation: "horizontal", ...props, children: children }) }) }));
+    return (_jsx(KanbanContext.Provider, { value: { slots }, children: _jsx(LazyMotion, { features: domMax, children: _jsx("div", { className: composeSlotClassName(slots?.base, className), "data-slot": "kanban", ...props, children: children }) }) }));
 };
 const KanbanColumn = ({ children, className, ...props }) => {
     const { slots } = useContext(KanbanContext);
@@ -78,4 +78,3 @@ const KanbanDragHandle = ({ children, className, ...props }) => {
     return (_jsx(ButtonPrimitive, { className: composeTwRenderProps(className, slots?.dragHandle()), "data-slot": "kanban-drag-handle", slot: "drag", ...props, children: children ?? '≡' }));
 };
 export { KanbanCard, KanbanCardList, KanbanColumn, KanbanColumnActions, KanbanColumnBody, KanbanColumnCount, KanbanColumnHeader, KanbanColumnIndicator, KanbanColumnTitle, KanbanDragHandle, KanbanDropIndicator, KanbanRoot, KanbanScrollShadow, };
-//# sourceMappingURL=kanban.js.map

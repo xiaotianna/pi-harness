@@ -34,7 +34,7 @@ PI Harness 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 
 - HeroUI v3（`@heroui/react`）作为唯一基础组件库，HeroUI Pro 组件使用兼容包 `@agile-avocation/ui-pro`
 - Motion，负责页面和业务状态动画
 - Animate UI，仅用于少量动画组件补充
-- Lucide React
+- Gravity UI Icons，缺少等价图标时使用 Lucide React
 - react-resizable-panels
 - `@tanstack/react-virtual`
 - SQLite，通过 `node:sqlite`
@@ -254,13 +254,14 @@ export const sessionQueryKeys = {
 - 开始实现界面前必须先检查项目现有组件、HeroUI 和兼容的 HeroUI Pro 是否已有合适组件；同一视觉或交互模式出现两次及以上时，必须提取到 `components` 或对应 feature 内作为可复用 UI 组件。
 - 项目 UI 全局不使用 `ring` 视觉。禁止添加 `ring-*`、`focus:ring-*`、`focus-visible:ring-*`、`data-[focus-visible]:ring-*` 或通过 `box-shadow` 仿造 ring；HeroUI、HeroUI Pro 和 React Aria 组件自带的 ring 也必须在全局主题层统一清除。
 - 需要表达键盘焦点时使用不改变控件尺寸的背景色、文字色或透明度变化，不使用 ring、额外边框或外描边。HeroUI 组件的 `className` 默认只补充业务布局、尺寸和必要间距，不额外添加边框、阴影、焦点、悬停或按压效果；除 ring 外的组件状态视觉交给 HeroUI 自身实现。
+- 需要用阴影提示滚动溢出的列表统一使用 HeroUI `ScrollShadow` 的内置阴影样式，不手写或叠加 `shadow-*`、渐变遮罩或 `box-shadow`。
 - 项目使用已购买的第三方 HeroUI Pro 兼容包 `@agile-avocation/ui-pro`，不得安装、导入或替换为官方包 `@heroui-pro/react`。HeroUI Pro 文档中的 `@heroui-pro/react` 导入示例在本项目中统一改为从 `@agile-avocation/ui-pro` 导入。
 - 使用 Pro 组件前先查阅 [HeroUI Pro React 组件文档](https://heroui.pro/docs/react/components)，以其中的组件清单、结构、属性和示例为准；同时结合本项目已安装版本的 TypeScript 类型与实际导出进行确认，不凭记忆猜测 API。
 - Button、Input、Select、Modal、Popover、Tooltip、Tabs、Accordion、Menu、Toast 等基础组件继续使用 `@heroui/react`，并参考 [HeroUI React 基础文档](https://heroui.com/en/docs/react/getting-started)。不得为了使用 Pro 组件而重复实现或替换已有的 HeroUI 基础组件。
 - 普通悬停、按压、弹出、折叠和进入退出效果优先使用 HeroUI 自带的 CSS transition 与状态属性，不为简单动画引入 JavaScript 动画。
 - Motion 只用于会话切换、消息进入、Tool Call 状态变化、审批卡片、Diff 面板和共享布局等业务动画。
 - Animate UI 仅作为特殊 Sheet、Animated Icon、Copy Button 等少量组件的补充。引入前确认 HeroUI + Motion 无法以更小成本实现。
-- 图标统一使用 Lucide React。业务组件不得混入另一套风格不一致的图标库。
+- 普通界面图标优先使用 Gravity UI Icons；没有语义等价图标时才使用 Lucide React。图标必须继承现有 HeroUI 语义色和业务状态 class，不得因替换图标库改变颜色、交互状态或布局。
 - 可调整布局面板统一使用 `react-resizable-panels`，长会话和大量事件列表统一使用 `@tanstack/react-virtual`。
 - 所有动画必须尊重 `prefers-reduced-motion`。优先动画 `transform` 和 `opacity`，避免持续动画影响 Agent 流式输出性能。
 - 不为了“更有动画感”给每个元素添加动效。动画必须表达进入、退出、状态变化、层级关系或操作反馈。

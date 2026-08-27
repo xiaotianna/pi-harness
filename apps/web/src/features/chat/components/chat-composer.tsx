@@ -3,6 +3,21 @@
 import type { ChatStatus } from "@agile-avocation/ui-pro";
 import { PromptInput } from "@agile-avocation/ui-pro";
 import {
+  ChevronDown,
+  CircleExclamation as CircleAlert,
+  Code as Code2,
+  Folder,
+  FolderOpen,
+  Bulb as Lightbulb,
+  Paperclip,
+  PencilToLine as PencilLine,
+  Plus,
+  Magnifier as Search,
+  Square,
+  Terminal as SquareTerminal,
+  MagicWand as WandSparkles,
+} from "@gravity-ui/icons";
+import {
   Button,
   Description,
   Dropdown,
@@ -12,25 +27,17 @@ import {
   Tooltip,
   toast,
 } from "@heroui/react";
+import {
+  DEFAULT_THINKING_LEVEL,
+  ThinkingLevel,
+  type ThinkingLevel as ThinkingLevelValue,
+} from "@pi-harness/agent-runtime/thinking-level";
 import type { ApprovalPolicy } from "@pi-harness/policy/approval-policy";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ChevronDown,
-  CircleAlert,
-  Code2,
-  Folder,
-  FolderOpen,
-  Lightbulb,
-  Paperclip,
-  PencilLine,
-  Plus,
-  Search,
-  Square,
-  SquareTerminal,
-  WandSparkles,
-} from "lucide-react";
+import { maxBy } from "es-toolkit";
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { ListLayout, Virtualizer } from "react-aria-components";
 import {
   createModelSelectionKey,
   ModelProviderIcon,
@@ -86,12 +93,14 @@ export interface ChatComposerProps {
   presentation?: "dock" | "hero";
   providerId?: string;
   status?: ChatStatus;
+  thinkingLevel?: ThinkingLevelValue;
   workspaces?: readonly ChatWorkspace[];
 }
 
 export interface ChatComposerModelSelection {
   modelId: string;
   providerId: string;
+  thinkingLevel: ThinkingLevelValue;
 }
 
 export interface ChatComposerSubmitInput extends ChatComposerModelSelection {
@@ -157,6 +166,14 @@ const CONTEXT_MENU_ITEMS = [
   },
 ] satisfies readonly ChatComposerToken[];
 
+const THINKING_LEVEL_OPTIONS = [
+  { description: "响应更快、成本更低", label: "低", value: ThinkingLevel.LOW },
+  { description: "默认均衡", label: "中", value: ThinkingLevel.MEDIUM },
+  { description: "质量更好，但更慢、更贵", label: "高", value: ThinkingLevel.HIGH },
+] as const;
+
+const MODEL_MENU_LAYOUT_OPTIONS = { gap: 2, padding: 6, rowSize: 36 } as const;
+
 export function ChatComposer({
   className,
   conversationId,
@@ -170,6 +187,7 @@ export function ChatComposer({
   presentation = "dock",
   providerId,
   status: statusProp,
+  thinkingLevel,
   workspaces = [],
 }: ChatComposerProps) {
   const {
@@ -210,6 +228,8 @@ export function ChatComposer({
   }, [availableModelKeys, availableModelProviders, modelId, providerId]);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [draftModelKey, setDraftModelKey] = useState<string | null>(null);
+  const [draftThinkingLevel, setDraftThinkingLevel] =
+    useState<ThinkingLevelValue>(DEFAULT_THINKING_LEVEL);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
   const [internalStatus, setInternalStatus] = useState<ChatStatus>("ready");
   const [hasEditorContent, setHasEditorContent] = useState(false);
@@ -273,6 +293,7 @@ export function ChatComposer({
       modelId: selectedModel.id,
       prompt: trimmed,
       providerId: selectedModelProvider.id,
+      thinkingLevel: selectedThinkingLevel,
       ...(selectedWorkspace ? { workspaceId: selectedWorkspace.id } : {}),
     })
       .then(clearComposer)
@@ -301,6 +322,10 @@ export function ChatComposer({
   );
   const selectedModel = selectedModelProvider?.models.find(
     (model) => createModelSelectionKey(selectedModelProvider.id, model.id) === selectedModelKey,
+  );
+  const selectedThinkingLevel = thinkingLevel ?? draftThinkingLevel;
+  const selectedThinkingLevelOption = THINKING_LEVEL_OPTIONS.find(
+    (option) => option.value === selectedThinkingLevel,
   );
   const canSend =
     approvalPolicy !== undefined &&
@@ -382,11 +407,32 @@ export function ChatComposer({
       return;
     }
 
-    void onModelChange({ modelId: model.id, providerId: provider.id })
+    void onModelChange({
+      modelId: model.id,
+      providerId: provider.id,
+      thinkingLevel: selectedThinkingLevel,
+    })
       .then(() => setConversationModelKey(conversationId, modelKey))
       .catch((error: unknown) => {
         toast.danger(error instanceof Error ? error.message : "切换模型失败");
       });
+  };
+
+  const handleThinkingLevelChange = (nextThinkingLevel: ThinkingLevelValue) => {
+    if (!selectedModel?.thinkingLevels.includes(nextThinkingLevel)) return;
+    if (!conversationId) {
+      setDraftThinkingLevel(nextThinkingLevel);
+      return;
+    }
+    if (!onModelChange || !selectedModelProvider) return;
+
+    void onModelChange({
+      modelId: selectedModel.id,
+      providerId: selectedModelProvider.id,
+      thinkingLevel: nextThinkingLevel,
+    }).catch((error: unknown) => {
+      toast.danger(error instanceof Error ? error.message : "切换推理强度失败");
+    });
   };
 
   const handleApprovalPolicyChange = (nextApprovalPolicy: ApprovalPolicy) => {
@@ -657,6 +703,53 @@ export function ChatComposer({
                 </Button>
                 <Dropdown.Popover className="min-w-52" placement="bottom start">
                   <Dropdown.Menu aria-label="选择模型 Provider">
+                    <Dropdown.SubmenuTrigger>
+                      <Dropdown.Item
+                        id="thinking-level"
+                        isDisabled={!selectedModel || selectedModel.thinkingLevels.length === 0}
+                        textValue={`推理强度 ${selectedThinkingLevelOption?.label ?? "中"}`}
+                      >
+                        <div className="flex min-w-0 flex-1 items-center justify-between gap-6">
+                          <Label>推理强度</Label>
+                          <Description>
+                            {selectedModel?.thinkingLevels.length
+                              ? selectedThinkingLevelOption?.label
+                              : "当前模型不支持"}
+                          </Description>
+                        </div>
+                        <Dropdown.SubmenuIndicator />
+                      </Dropdown.Item>
+                      <Dropdown.Popover className="min-w-60" placement="right top">
+                        <Dropdown.Menu
+                          aria-label="推理强度"
+                          selectedKeys={new Set([selectedThinkingLevel])}
+                          selectionMode="single"
+                          onAction={(key) => {
+                            const option = THINKING_LEVEL_OPTIONS.find(
+                              (item) => item.value === key,
+                            );
+                            if (option) handleThinkingLevelChange(option.value);
+                          }}
+                        >
+                          {THINKING_LEVEL_OPTIONS.map((option) => (
+                            <Dropdown.Item
+                              className="ps-2 pe-7"
+                              id={option.value}
+                              isDisabled={!selectedModel?.thinkingLevels.includes(option.value)}
+                              key={option.value}
+                              textValue={`${option.label} ${option.description}`}
+                            >
+                              <div className="flex flex-col">
+                                <Label>{option.label}</Label>
+                                <Description>{option.description}</Description>
+                              </div>
+                              <Dropdown.ItemIndicator className="start-auto end-2" />
+                            </Dropdown.Item>
+                          ))}
+                        </Dropdown.Menu>
+                      </Dropdown.Popover>
+                    </Dropdown.SubmenuTrigger>
+                    <Separator className="my-1" />
                     {availableModelProviders.length === 0 ? (
                       <Dropdown.Item isDisabled id="no-models" textValue="暂无可用模型">
                         <CircleAlert className="size-4 text-muted" />
@@ -666,40 +759,63 @@ export function ChatComposer({
                         </div>
                       </Dropdown.Item>
                     ) : (
-                      availableModelProviders.map((provider) => (
-                        <Dropdown.SubmenuTrigger key={provider.id}>
-                          <Dropdown.Item id={`provider-${provider.id}`} textValue={provider.name}>
-                            <ModelProviderIcon isColor providerId={provider.id} size={16} />
-                            <Label>{provider.name}</Label>
-                            <Dropdown.SubmenuIndicator />
-                          </Dropdown.Item>
-                          <Dropdown.Popover className="min-w-60">
-                            <Dropdown.Menu
-                              aria-label={`${provider.name} 模型`}
-                              selectedKeys={
-                                selectedModelKey ? new Set([selectedModelKey]) : new Set()
-                              }
-                              selectionMode="single"
-                              onAction={(key) => {
-                                if (typeof key === "string") handleModelChange(key);
-                              }}
-                            >
-                              {provider.models.map((model) => (
-                                <Dropdown.Item
-                                  className="ps-2 pe-7"
-                                  key={createModelSelectionKey(provider.id, model.id)}
-                                  id={createModelSelectionKey(provider.id, model.id)}
-                                  textValue={model.name}
+                      availableModelProviders.map((provider) => {
+                        const widestModelName = maxBy(
+                          provider.models,
+                          (model) => model.name.length,
+                        )?.name;
+
+                        return (
+                          <Dropdown.SubmenuTrigger key={provider.id}>
+                            <Dropdown.Item id={`provider-${provider.id}`} textValue={provider.name}>
+                              <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                              <Label>{provider.name}</Label>
+                              <Dropdown.SubmenuIndicator />
+                            </Dropdown.Item>
+                            <Dropdown.Popover className="w-max max-w-[calc(100vw-2rem)]! overflow-hidden">
+                              <span
+                                aria-hidden
+                                className="pointer-events-none invisible block h-0 whitespace-nowrap px-10 text-sm"
+                              >
+                                {widestModelName}
+                              </span>
+                              <Virtualizer
+                                layout={ListLayout}
+                                layoutOptions={MODEL_MENU_LAYOUT_OPTIONS}
+                              >
+                                <Dropdown.Menu
+                                  aria-label={`${provider.name} 模型`}
+                                  className="max-h-[calc(100vh-2rem)] overflow-y-auto! p-0!"
+                                  items={provider.models}
+                                  selectedKeys={
+                                    selectedModelKey ? new Set([selectedModelKey]) : new Set()
+                                  }
+                                  selectionMode="single"
+                                  onAction={(key) => {
+                                    if (typeof key === "string") handleModelChange(key);
+                                  }}
                                 >
-                                  <ModelProviderIcon isColor providerId={provider.id} size={16} />
-                                  <Label>{model.name}</Label>
-                                  <Dropdown.ItemIndicator className="start-auto end-2" />
-                                </Dropdown.Item>
-                              ))}
-                            </Dropdown.Menu>
-                          </Dropdown.Popover>
-                        </Dropdown.SubmenuTrigger>
-                      ))
+                                  {(model) => (
+                                    <Dropdown.Item
+                                      className="ps-2 pe-7"
+                                      id={createModelSelectionKey(provider.id, model.id)}
+                                      textValue={model.name}
+                                    >
+                                      <ModelProviderIcon
+                                        isColor
+                                        providerId={provider.id}
+                                        size={16}
+                                      />
+                                      <Label className="whitespace-nowrap">{model.name}</Label>
+                                      <Dropdown.ItemIndicator className="start-auto end-2" />
+                                    </Dropdown.Item>
+                                  )}
+                                </Dropdown.Menu>
+                              </Virtualizer>
+                            </Dropdown.Popover>
+                          </Dropdown.SubmenuTrigger>
+                        );
+                      })
                     )}
                   </Dropdown.Menu>
                 </Dropdown.Popover>

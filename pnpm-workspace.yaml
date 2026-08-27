@@ -35,6 +35,7 @@ catalog:
   "@types/react": ^19.1.0
   "@types/react-dom": ^19.1.0
   "@vitejs/plugin-react": ^5.0.0
+  "@gravity-ui/icons": ^2.21.0
   antd: ^6.6.1
   clsx: ^2.1.1
   diff: ^8.0.0

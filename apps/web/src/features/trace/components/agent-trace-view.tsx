@@ -1,7 +1,12 @@
 "use client";
 
+import {
+  Clock as Clock3,
+  Hierarchy as ListTree,
+  Magnifier as Search,
+  Wrench,
+} from "@gravity-ui/icons";
 import { Chip, Input, TextField } from "@heroui/react";
-import { Clock3, ListTree, Search, Wrench } from "lucide-react";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { MOCK_AGENT_TRACE } from "../data/mock-agent-trace";
 import {

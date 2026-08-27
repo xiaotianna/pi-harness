@@ -22,11 +22,18 @@ export function NewChatPage() {
   const username = sessionQuery.data?.authenticated ? sessionQuery.data.user.username : "";
   const workspaces = workspacesQuery.data ?? [];
   const createMutation = useMutation({
-    mutationFn: async ({ modelId, prompt, providerId, workspaceId }: ChatComposerSubmitInput) => {
+    mutationFn: async ({
+      modelId,
+      prompt,
+      providerId,
+      thinkingLevel,
+      workspaceId,
+    }: ChatComposerSubmitInput) => {
       if (!workspaceId) throw new Error("请选择工作区");
       const session = await createSession({
         modelId,
         providerId,
+        thinkingLevel,
         title: prompt.slice(0, 60),
         workspaceId,
       });

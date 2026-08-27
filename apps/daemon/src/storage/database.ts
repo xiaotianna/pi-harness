@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { isThinkingLevel, type ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { ApprovalPolicy, type ApprovalPolicyValue, isApprovalPolicy } from "@pi-harness/policy";
 import { DATABASE_MIGRATIONS } from "./migrations.js";
 
@@ -65,6 +66,7 @@ export interface SessionRecord {
   lastSeq: number;
   modelId: string;
   providerId: string;
+  thinkingLevel: ThinkingLevel;
   title: string;
   updatedAt: number;
   workspaceId: string;
@@ -85,6 +87,7 @@ export interface CreateSessionRecord {
   id: string;
   modelId: string;
   providerId: string;
+  thinkingLevel: ThinkingLevel;
   title: string;
   workspaceId: string;
 }
@@ -95,7 +98,13 @@ export interface SessionRepository {
   list(archived?: boolean): readonly SessionRecord[];
   setArchived(sessionId: string, archivedAt: number | null, updatedAt: number): boolean;
   updateIndex(sessionId: string, lastSeq: number, updatedAt: number): boolean;
-  updateModel(sessionId: string, providerId: string, modelId: string, updatedAt: number): boolean;
+  updateModel(
+    sessionId: string,
+    providerId: string,
+    modelId: string,
+    thinkingLevel: ThinkingLevel | undefined,
+    updatedAt: number,
+  ): boolean;
   updateTitle(sessionId: string, title: string, updatedAt: number): boolean;
 }
 
@@ -174,12 +183,17 @@ function mapCustomProvider(row: DatabaseRow): CustomProviderRecord {
 }
 
 function mapSession(row: DatabaseRow): SessionRecord {
+  const thinkingLevel = readRequiredString(row, "thinking_level");
+  if (!isThinkingLevel(thinkingLevel)) {
+    throw new Error("Invalid database value for thinking_level");
+  }
   return {
     createdAt: readRequiredNumber(row, "created_at"),
     id: readRequiredString(row, "id"),
     lastSeq: readRequiredNumber(row, "last_seq"),
     modelId: readRequiredString(row, "model_id"),
     providerId: readRequiredString(row, "provider_id"),
+    thinkingLevel,
     title: readRequiredString(row, "title"),
     updatedAt: readRequiredNumber(row, "updated_at"),
     workspaceId: readRequiredString(row, "workspace_id"),
@@ -439,15 +453,16 @@ class SqliteSessionRepository implements SessionRepository {
     this.database
       .prepare(
         `INSERT INTO sessions (
-           id, workspace_id, provider_id, model_id, title, last_seq,
+           id, workspace_id, provider_id, model_id, thinking_level, title, last_seq,
            created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
       )
       .run(
         session.id,
         session.workspaceId,
         session.providerId,
         session.modelId,
+        session.thinkingLevel,
         session.title,
         session.createdAt,
         session.createdAt,
@@ -507,16 +522,18 @@ class SqliteSessionRepository implements SessionRepository {
     sessionId: string,
     providerId: string,
     modelId: string,
+    thinkingLevel: ThinkingLevel | undefined,
     updatedAt: number,
   ): boolean {
     return (
       this.database
         .prepare(
           `UPDATE sessions
-           SET provider_id = ?, model_id = ?, updated_at = ?
+           SET provider_id = ?, model_id = ?,
+               thinking_level = COALESCE(?, thinking_level), updated_at = ?
            WHERE id = ?`,
         )
-        .run(providerId, modelId, updatedAt, sessionId).changes > 0
+        .run(providerId, modelId, thinkingLevel ?? null, updatedAt, sessionId).changes > 0
     );
   }
 

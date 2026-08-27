@@ -1,8 +1,12 @@
 "use client";
 
 import { AppLayout, Navbar, Sidebar } from "@agile-avocation/ui-pro";
+import {
+  LayoutSplitSideContentRight as PanelRightClose,
+  LayoutSideContentRight as PanelRightOpen,
+  Magnifier as Search,
+} from "@gravity-ui/icons";
 import { Button, Kbd, Tooltip } from "@heroui/react";
-import { PanelRightClose, PanelRightOpen, Search } from "lucide-react";
 import { memo } from "react";
 import type { ChatActivePage } from "../data/chat";
 import { ChatViewToggle } from "./chat-view-toggle";
@@ -13,8 +17,8 @@ const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: stri
     title: "探索",
   },
   library: {
-    subtitle: "已保存的提示词、语气预设和可复用对话",
-    title: "资料库",
+    subtitle: "拖动任务卡片，跟踪项目从待处理到完成的进度",
+    title: "项目看板",
   },
   new: { subtitle: "开始一段全新的对话", title: "新对话" },
   thread: { subtitle: "", title: "" },

@@ -1,3 +1,4 @@
+import { FaceRobot as Bot } from "@gravity-ui/icons";
 import {
   Claude,
   Codex,
@@ -16,7 +17,6 @@ import {
   XiaomiMiMo,
   Zhipu,
 } from "@lobehub/icons";
-import { Bot } from "lucide-react";
 import { cn } from "@/shared/utils/cn";
 
 const MONO_PROVIDER_ICONS: Readonly<Record<string, IconType>> = {
@@ -85,6 +85,6 @@ export function ModelProviderIcon({
   return Icon ? (
     <Icon aria-hidden className={iconClassName} size={size} />
   ) : (
-    <Bot aria-hidden className={iconClassName} size={size} />
+    <Bot aria-hidden className={iconClassName} height={size} width={size} />
   );
 }

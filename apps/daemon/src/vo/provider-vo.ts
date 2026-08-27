@@ -1,8 +1,16 @@
+import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { type Static, Type } from "typebox";
 
 const ProviderModelVoSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
   name: Type.String({ minLength: 1 }),
+  thinkingLevels: Type.Array(
+    Type.Union([
+      Type.Literal(ThinkingLevel.LOW),
+      Type.Literal(ThinkingLevel.MEDIUM),
+      Type.Literal(ThinkingLevel.HIGH),
+    ]),
+  ),
 });
 
 export const ProviderOAuthStatus = {

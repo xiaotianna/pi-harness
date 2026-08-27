@@ -1,6 +1,6 @@
 import { TextShimmer } from "@agile-avocation/ui-pro";
-import { Disclosure } from "@heroui/react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown } from "@gravity-ui/icons";
+import { Disclosure, ScrollShadow } from "@heroui/react";
 import { cn } from "../../shared/utils/cn";
 import { AssistantMarkdown } from "./assistant-markdown";
 
@@ -62,7 +62,7 @@ export function ReasoningPanel({
       </Disclosure.Heading>
       <Disclosure.Content>
         <Disclosure.Body style={{ padding: 0 }}>
-          <div className="max-h-52 overflow-y-auto pb-1 pt-3">
+          <ScrollShadow className="max-h-52 pb-1 pt-3">
             {shownSteps.map((step, index) => (
               <AssistantMarkdown
                 className={cn(
@@ -74,7 +74,7 @@ export function ReasoningPanel({
                 {step.body}
               </AssistantMarkdown>
             ))}
-          </div>
+          </ScrollShadow>
         </Disclosure.Body>
       </Disclosure.Content>
     </Disclosure>

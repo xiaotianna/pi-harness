@@ -1,6 +1,17 @@
 "use client";
 
 import {
+  Archive,
+  Shapes4 as Blocks,
+  FaceRobot as Bot,
+  Folder,
+  Display as Monitor,
+  Moon,
+  Sliders as Settings2,
+  ShoppingBag as Store,
+  Sun,
+} from "@gravity-ui/icons";
+import {
   Alert,
   Button,
   Label,
@@ -13,20 +24,8 @@ import {
   ToggleButtonGroup,
   toast,
 } from "@heroui/react";
-import type { LucideIcon } from "lucide-react";
-import {
-  Archive,
-  Blocks,
-  Bot,
-  Brain,
-  Folder,
-  Monitor,
-  Moon,
-  Settings2,
-  Store,
-  Sun,
-} from "lucide-react";
-import { useState } from "react";
+import { Brain } from "lucide-react";
+import { type ComponentType, type SVGProps, useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { useApprovalPolicySetting } from "../hooks/use-approval-policy-setting";
 import { useAppTheme } from "../theme-provider";
@@ -98,7 +97,7 @@ const SETTINGS_SECTIONS = [
   id: string;
   label: string;
   description: string;
-  icon: LucideIcon;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
 }[];
 
 type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
@@ -321,8 +320,8 @@ export function SettingsDialog({
                         key={section.id}
                         textValue={section.label}
                       >
-                        <Icon aria-hidden className="size-4 shrink-0 text-muted" />
-                        <Label>{section.label}</Label>
+                        <Icon aria-hidden className="size-4 shrink-0 text-foreground" />
+                        <Label className="text-foreground">{section.label}</Label>
                       </ListBox.Item>
                     );
                   })}

@@ -355,9 +355,26 @@
   overflow: hidden;
 }
 
+.sidebar__workspace-folder {
+  display: block;
+  position: relative;
+  width: 1rem;
+  height: 1rem;
+}
+
+.sidebar__workspace-folder > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sidebar__workspace-folder-fill {
+  color: color-mix(in oklab, currentcolor 14%, transparent);
+}
+
 .sidebar__workspace-folder-open {
   display: none;
-  fill: color-mix(in oklab, currentcolor 14%, transparent);
 }
 
 .sidebar__menu-icon[data-current-workspace] {

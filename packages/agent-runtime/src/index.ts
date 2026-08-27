@@ -33,6 +33,13 @@ export type {
   HarnessEventListener,
   StartRunInput,
 } from "./run-coordinator.js";
+export {
+  DEFAULT_THINKING_LEVEL,
+  isThinkingLevel,
+  THINKING_LEVELS,
+  ThinkingLevel,
+  type ThinkingLevel as ThinkingLevelValue,
+} from "./thinking-level.js";
 export type {
   ToolApprovalHandle,
   ToolApprovalRequest,

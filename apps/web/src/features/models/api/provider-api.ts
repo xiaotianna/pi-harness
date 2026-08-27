@@ -1,3 +1,4 @@
+import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 
@@ -11,7 +12,19 @@ const ProviderSchema = Type.Object({
   id: Type.String(),
   isConfigured: Type.Boolean(),
   kind: Type.Union([Type.Literal("builtin"), Type.Literal("custom")]),
-  models: Type.Array(Type.Object({ id: Type.String(), name: Type.String() })),
+  models: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      name: Type.String(),
+      thinkingLevels: Type.Array(
+        Type.Union([
+          Type.Literal(ThinkingLevel.LOW),
+          Type.Literal(ThinkingLevel.MEDIUM),
+          Type.Literal(ThinkingLevel.HIGH),
+        ]),
+      ),
+    }),
+  ),
   name: Type.String(),
   protocol: Type.Union([Type.String(), Type.Null()]),
   requiresApiKey: Type.Boolean(),

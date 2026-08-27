@@ -1,6 +1,6 @@
 import { ChatMessage as ChatMessagePrimitive, TextShimmer } from "@agile-avocation/ui-pro";
+import { Check, ChevronDown } from "@gravity-ui/icons";
 import { Disclosure } from "@heroui/react";
-import { Check, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { type ChatToolGroupMessage, ChatToolState } from "../../data/chat";
 import { ToolCall } from "./tool-call";

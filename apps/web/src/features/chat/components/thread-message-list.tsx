@@ -1,9 +1,10 @@
+import { ChevronRight } from "@gravity-ui/icons";
 import { Disclosure, Separator, toast } from "@heroui/react";
-import { ChevronRight } from "lucide-react";
 import { type MouseEvent, memo, useState } from "react";
 import { AssistantMarkdownLinkProvider } from "../../../components/ai/assistant-markdown-link";
 import { openWorkspacePath } from "../api/workspace-api";
 import { type ChatMessage, ChatMessageType } from "../data/chat";
+import { getConversationTurnAnchorId } from "../utils/conversation-turns";
 import { ThreadMessage } from "./thread-message/index";
 
 export interface ThreadMessageListProps {
@@ -121,9 +122,19 @@ export const ThreadMessageList = memo(function ThreadMessageList({
             index > 0 &&
             (message?.type === ChatMessageType.USER ||
               previousMessage?.type === ChatMessageType.USER);
+          const turnAnchorId =
+            message?.type === ChatMessageType.USER
+              ? getConversationTurnAnchorId(message.id)
+              : undefined;
 
           return (
-            <div key={item.id} className={startsNewTurn ? "mt-6" : undefined}>
+            <div
+              className={
+                startsNewTurn ? "mt-6 scroll-mt-10" : turnAnchorId ? "scroll-mt-10" : undefined
+              }
+              id={turnAnchorId}
+              key={item.id}
+            >
               {item.kind === "message" ? (
                 <ThreadMessage message={item.message} />
               ) : (
