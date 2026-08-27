@@ -465,7 +465,7 @@ function ChatSidebarWorkspaceItem({
                 aria-label={`更多操作：${workspace.name}`}
                 className="sidebar__menu-action"
               >
-                <Ellipsis />
+                <Ellipsis className="!size-3.5 text-muted" />
               </Dropdown.Trigger>
               <Tooltip.Content placement="right">更多操作</Tooltip.Content>
             </Tooltip>
@@ -508,7 +508,7 @@ function ChatSidebarWorkspaceItem({
             aria-label={`在 ${workspace.name} 中新建对话`}
             onPress={() => onNewThread(workspace)}
           >
-            <Plus />
+            <Plus className="!size-3.5 text-muted" />
           </Sidebar.MenuAction>
           <Tooltip.Content placement="right">新对话</Tooltip.Content>
         </Tooltip>
@@ -516,6 +516,7 @@ function ChatSidebarWorkspaceItem({
       <Sidebar.Submenu>
         {threads.length === 0 ? (
           <Sidebar.MenuItem
+            data-thread-item
             id={`${idPrefix}workspace-${workspace.id}-empty`}
             isDisabled
             textValue="暂无对话"
@@ -581,7 +582,7 @@ function ChatSidebarThreadItem({
                 aria-label={`更多操作：${thread.title}`}
                 className="sidebar__menu-action"
               >
-                <Ellipsis />
+                <Ellipsis className="!size-3.5 text-muted" />
               </Dropdown.Trigger>
               <Tooltip.Content placement="right">更多操作</Tooltip.Content>
             </Tooltip>

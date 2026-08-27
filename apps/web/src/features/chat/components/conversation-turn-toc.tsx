@@ -1,6 +1,7 @@
 import { FloatingToc } from "@agile-avocation/ui-pro";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type CSSProperties, type RefObject, useEffect, useMemo, useState } from "react";
+import { CHAT_RESPONSE_PENDING_LABEL } from "../constants/chat-response";
 import type { ChatMessage } from "../data/chat";
 import { getConversationTurnAnchorId, getConversationTurns } from "../utils/conversation-turns";
 
@@ -132,7 +133,7 @@ export function ConversationTurnToc({ messages, scrollContainerRef }: Conversati
                   {previewTurn.userContent}
                 </span>
                 <span className="line-clamp-3 w-full text-sm leading-5 text-muted">
-                  {previewTurn.assistantContent || "AI 正在回复…"}
+                  {previewTurn.assistantPreview || CHAT_RESPONSE_PENDING_LABEL}
                 </span>
               </FloatingToc.Item>
             </motion.div>

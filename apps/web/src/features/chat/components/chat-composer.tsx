@@ -327,6 +327,7 @@ export function ChatComposer({
   const selectedThinkingLevelOption = THINKING_LEVEL_OPTIONS.find(
     (option) => option.value === selectedThinkingLevel,
   );
+  const selectedThinkingLevelLabel = selectedThinkingLevelOption?.label ?? "中";
   const canSend =
     approvalPolicy !== undefined &&
     selectedModel !== undefined &&
@@ -644,10 +645,7 @@ export function ChatComposer({
                   <span className="truncate">{selectedWorkspace?.name ?? "选择工作区"}</span>
                   <ChevronDown className="size-3.5 shrink-0" />
                 </Button>
-                <Dropdown.Popover
-                  className="w-80 max-w-[calc(100vw-2rem)]"
-                  placement="bottom start"
-                >
+                <Dropdown.Popover placement="bottom start">
                   <Dropdown.Menu
                     aria-label="选择工作区"
                     selectedKeys={selectedWorkspace ? new Set([selectedWorkspace.id]) : new Set()}
@@ -666,7 +664,7 @@ export function ChatComposer({
                         <Dropdown.ItemIndicator className="start-auto end-2" />
                       </Dropdown.Item>
                     ))}
-                    <Separator className="my-1" />
+                    {workspaces.length > 0 ? <Separator className="my-1" /> : null}
                     <Dropdown.Item
                       id="add-workspace"
                       isDisabled={isAddingWorkspace}
@@ -694,11 +692,23 @@ export function ChatComposer({
               <Skeleton aria-hidden className="h-8 w-40 rounded-full" />
             ) : (
               <Dropdown>
-                <Button aria-label="选择模型" className="gap-2 px-2" size="sm" variant="ghost">
+                <Button
+                  aria-label={`选择模型，当前 ${selectedModel?.name ?? "未选择模型"}${
+                    selectedModel?.thinkingLevels.length
+                      ? `，推理强度${selectedThinkingLevelLabel}`
+                      : ""
+                  }`}
+                  className="gap-2 px-2"
+                  size="sm"
+                  variant="ghost"
+                >
                   {selectedModelProvider ? (
                     <ModelProviderIcon isColor providerId={selectedModelProvider.id} size={16} />
                   ) : null}
                   <span>{selectedModel?.name ?? "选择模型"}</span>
+                  {selectedModel?.thinkingLevels.length ? (
+                    <span className="font-normal text-muted">{selectedThinkingLevelLabel}</span>
+                  ) : null}
                   <ChevronDown className="size-3.5" />
                 </Button>
                 <Dropdown.Popover className="min-w-52" placement="bottom start">
@@ -707,13 +717,13 @@ export function ChatComposer({
                       <Dropdown.Item
                         id="thinking-level"
                         isDisabled={!selectedModel || selectedModel.thinkingLevels.length === 0}
-                        textValue={`推理强度 ${selectedThinkingLevelOption?.label ?? "中"}`}
+                        textValue={`推理强度 ${selectedThinkingLevelLabel}`}
                       >
                         <div className="flex min-w-0 flex-1 items-center justify-between gap-6">
                           <Label>推理强度</Label>
-                          <Description>
+                          <Description className="text-sm">
                             {selectedModel?.thinkingLevels.length
-                              ? selectedThinkingLevelOption?.label
+                              ? selectedThinkingLevelLabel
                               : "当前模型不支持"}
                           </Description>
                         </div>

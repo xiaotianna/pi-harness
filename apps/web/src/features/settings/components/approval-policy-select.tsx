@@ -139,7 +139,7 @@ export function ApprovalPolicySelect({
           <span className={triggerTextClassName}>{selected?.label}</span>
           <ChevronDown className={`size-3.5 ${triggerTextClassName}`} />
         </Button>
-        <Dropdown.Popover className="w-80 max-w-[calc(100vw-2rem)]" placement="bottom start">
+        <Dropdown.Popover placement="bottom start">
           <Dropdown.Menu
             aria-label="权限审批模式"
             selectedKeys={new Set([value])}

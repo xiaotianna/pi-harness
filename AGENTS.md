@@ -255,13 +255,14 @@ export const sessionQueryKeys = {
 - 项目 UI 全局不使用 `ring` 视觉。禁止添加 `ring-*`、`focus:ring-*`、`focus-visible:ring-*`、`data-[focus-visible]:ring-*` 或通过 `box-shadow` 仿造 ring；HeroUI、HeroUI Pro 和 React Aria 组件自带的 ring 也必须在全局主题层统一清除。
 - 需要表达键盘焦点时使用不改变控件尺寸的背景色、文字色或透明度变化，不使用 ring、额外边框或外描边。HeroUI 组件的 `className` 默认只补充业务布局、尺寸和必要间距，不额外添加边框、阴影、焦点、悬停或按压效果；除 ring 外的组件状态视觉交给 HeroUI 自身实现。
 - 需要用阴影提示滚动溢出的列表统一使用 HeroUI `ScrollShadow` 的内置阴影样式，不手写或叠加 `shadow-*`、渐变遮罩或 `box-shadow`。
+- `Dropdown`、`Select` 等下拉弹层默认由内容自适应宽度，不设置无业务依据的固定 `w-*`；允许按内容类型设置合理的最小宽度，并始终保留视口最大宽度约束。只有虚拟列表、固定列布局等明确场景才能覆盖宽度，且仍需根据实际内容计算而不是使用任意固定值。
 - 项目使用已购买的第三方 HeroUI Pro 兼容包 `@agile-avocation/ui-pro`，不得安装、导入或替换为官方包 `@heroui-pro/react`。HeroUI Pro 文档中的 `@heroui-pro/react` 导入示例在本项目中统一改为从 `@agile-avocation/ui-pro` 导入。
 - 使用 Pro 组件前先查阅 [HeroUI Pro React 组件文档](https://heroui.pro/docs/react/components)，以其中的组件清单、结构、属性和示例为准；同时结合本项目已安装版本的 TypeScript 类型与实际导出进行确认，不凭记忆猜测 API。
 - Button、Input、Select、Modal、Popover、Tooltip、Tabs、Accordion、Menu、Toast 等基础组件继续使用 `@heroui/react`，并参考 [HeroUI React 基础文档](https://heroui.com/en/docs/react/getting-started)。不得为了使用 Pro 组件而重复实现或替换已有的 HeroUI 基础组件。
 - 普通悬停、按压、弹出、折叠和进入退出效果优先使用 HeroUI 自带的 CSS transition 与状态属性，不为简单动画引入 JavaScript 动画。
 - Motion 只用于会话切换、消息进入、Tool Call 状态变化、审批卡片、Diff 面板和共享布局等业务动画。
 - Animate UI 仅作为特殊 Sheet、Animated Icon、Copy Button 等少量组件的补充。引入前确认 HeroUI + Motion 无法以更小成本实现。
-- 普通界面图标优先使用 Gravity UI Icons；没有语义等价图标时才使用 Lucide React。图标必须继承现有 HeroUI 语义色和业务状态 class，不得因替换图标库改变颜色、交互状态或布局。
+- 普通界面图标优先使用 Gravity UI Icons；没有语义等价图标时才使用 Lucide React。图标必须继承现有 HeroUI 语义色和业务状态 class，不得因替换图标库改变颜色、交互状态或布局。同级操作的图标必须显式保持一致的视觉尺寸与颜色；对于使用填充路径且不支持 `strokeWidth` 的图标，通过尺寸和语义色控制视觉重量，不依赖不同容器的默认 SVG 尺寸。
 - 可调整布局面板统一使用 `react-resizable-panels`，长会话和大量事件列表统一使用 `@tanstack/react-virtual`。
 - 所有动画必须尊重 `prefers-reduced-motion`。优先动画 `transform` 和 `opacity`，避免持续动画影响 Agent 流式输出性能。
 - 不为了“更有动画感”给每个元素添加动效。动画必须表达进入、退出、状态变化、层级关系或操作反馈。

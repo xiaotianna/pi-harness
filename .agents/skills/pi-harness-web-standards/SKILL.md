@@ -59,7 +59,7 @@ description: PI Harness 前端工程规范，约束 apps/web 的架构边界、�
 - 把跨页面或跨 feature 的 Query Key、URL 参数、筛选项、排序字段和默认值集中管理。
 - 不安装或导入 `@heroui-pro/react`；项目只使用兼容包 `@agile-avocation/ui-pro`。
 - 使用 Pro 组件前查阅 HeroUI Pro 文档，并核对已安装版本的导出和 TypeScript 类型，不猜测 API。
-- 使用 Gravity UI Icons 表达普通界面图标；没有语义等价图标时才使用 Lucide React。图标继承现有 HeroUI 语义色和业务状态 class；使用 `ModelProviderIcon` 表达 Provider 品牌。
+- 使用 Gravity UI Icons 表达普通界面图标；没有语义等价图标时才使用 Lucide React。图标继承现有 HeroUI 语义色和业务状态 class；同级操作显式保持一致的图标视觉尺寸与颜色。填充路径图标不支持 `strokeWidth` 时，通过尺寸和语义色控制视觉重量，不依赖容器默认 SVG 尺寸。使用 `ModelProviderIcon` 表达 Provider 品牌。
 - 具体场景与已有实现优先级见 [project-map.md](references/project-map.md)。
 
 ## HeroUI 与交互实现
@@ -92,6 +92,7 @@ description: PI Harness 前端工程规范，约束 apps/web 的架构边界、�
 - 避免重复 wrapper、边框、背景和阴影；父容器已经提供间距时，不在子项重复叠加。
 - 需要用阴影提示滚动溢出的列表统一使用 HeroUI `ScrollShadow` 的内置阴影样式，不手写或叠加 `shadow-*`、渐变遮罩或 `box-shadow`。
 - 让内联控件保持内容宽度，并提供合理的最小和最大宽度。
+- 让 `Dropdown`、`Select` 等下拉弹层默认按内容自适应宽度，不添加无业务依据的固定 `w-*`；可以按内容类型设置最小宽度，但必须保留视口最大宽度约束。虚拟列表或固定列布局需要覆盖宽度时，根据实际内容计算。
 - 不添加 `ring-*`、`focus:ring-*`、`focus-visible:ring-*` 或模拟 ring 的 box-shadow。
 - 让宽屏侧栏、移动端覆盖层、滚动容器和弹窗尺寸遵循已有 AppLayout 与 HeroUI 模式。
 - 只在组件库没有对应抽象时使用 `div`、`span`、`p`、标题、列表、section 和 image 等语义或布局元素，并保持交互样式最少。

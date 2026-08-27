@@ -74,7 +74,7 @@ function IntermediateTurn({ messages }: { messages: readonly ChatMessage[] }) {
       </Disclosure.Heading>
       <Separator className="-mb-2 origin-top scale-y-50" variant="tertiary" />
       <Disclosure.Content>
-        <Disclosure.Body>
+        <Disclosure.Body style={{ paddingInline: 0 }}>
           <div className="flex flex-col gap-2 pt-2">
             {messages.map((message) => (
               <ThreadMessage key={message.id} message={message} />

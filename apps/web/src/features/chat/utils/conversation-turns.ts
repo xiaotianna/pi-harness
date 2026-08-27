@@ -1,8 +1,9 @@
+import { CHAT_RESPONSE_FAILED_LABEL } from "../constants/chat-response";
 import type { ChatMessage } from "../data/chat";
 import { ChatMessageType } from "../data/chat";
 
 export type ConversationTurn = {
-  assistantContent: string;
+  assistantPreview: string;
   id: string;
   userContent: string;
 };
@@ -16,13 +17,19 @@ export function getConversationTurns(messages: readonly ChatMessage[]): Conversa
 
   for (const message of messages) {
     if (message.type === ChatMessageType.USER) {
-      turns.push({ assistantContent: "", id: message.id, userContent: message.content });
+      turns.push({ assistantPreview: "", id: message.id, userContent: message.content });
       continue;
     }
 
     if (message.type === ChatMessageType.ASSISTANT) {
       const turn = turns.at(-1);
-      if (turn) turn.assistantContent = message.content;
+      if (turn) turn.assistantPreview = message.content;
+      continue;
+    }
+
+    if (message.type === ChatMessageType.ERROR) {
+      const turn = turns.at(-1);
+      if (turn) turn.assistantPreview = CHAT_RESPONSE_FAILED_LABEL;
     }
   }
 
