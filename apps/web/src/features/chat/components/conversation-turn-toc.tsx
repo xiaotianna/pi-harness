@@ -80,7 +80,7 @@ export function ConversationTurnToc({ messages, scrollContainerRef }: Conversati
           aria-label={`会话目录，当前第 ${currentIndex + 1} 轮，共 ${turns.length} 轮`}
           style={
             {
-              "--floating-toc-bar-active-width": "20px",
+              "--floating-toc-bar-active-width": hoveredIndex === null ? "8px" : "20px",
               "--floating-toc-bar-level-step": "3px",
               "--floating-toc-bar-width": hoveredIndex === null ? "8px" : "16px",
               gap: 0,
@@ -92,7 +92,7 @@ export function ConversationTurnToc({ messages, scrollContainerRef }: Conversati
         >
           {turns.map((turn, index) => (
             <FloatingToc.Bar
-              active={hoveredIndex === index}
+              active={index === peakIndex}
               className="motion-reduce:after:transition-none"
               key={turn.id}
               level={hoveredIndex === null ? 1 : Math.min(Math.abs(index - hoveredIndex) + 1, 4)}
