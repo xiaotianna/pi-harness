@@ -1,8 +1,10 @@
 import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { createWorkspaceToolRegistry } from "@pi-harness/tools";
+import { loadWorkspaceAgentContext } from "./context/workspace-agent-context.js";
 import { createAgent } from "./create-agent.js";
 import type { RunId, SessionId } from "./harness-event.js";
+import { buildSystemPrompt } from "./prompts/system-prompt.js";
 import {
   type HarnessEventListener,
   RunCoordinator,
@@ -16,11 +18,10 @@ export interface RestoreAgentInput {
   model: Model<Api>;
   sessionId: SessionId;
   streamFn: StreamFn;
-  systemPrompt: string;
   workspaceRoot: string;
 }
 
-export interface StartSessionRunInput extends RestoreAgentInput, StartRunInput {}
+export type StartSessionRunInput = RestoreAgentInput & Omit<StartRunInput, "systemPrompt">;
 
 function createUserMessage(text: string): AgentMessage {
   return {
@@ -39,6 +40,7 @@ export class AgentManager {
     private readonly onEvent: HarnessEventListener,
     private readonly requestToolApproval: ToolApprovalRequester,
     private readonly protectedPaths: readonly string[] = [],
+    private readonly globalRoot: string,
   ) {}
 
   public isProviderActive(providerId: string): boolean {
@@ -51,8 +53,16 @@ export class AgentManager {
   }
 
   public async startRun(input: StartSessionRunInput): Promise<void> {
-    const runtime = this.getOrCreate(input);
-    await runtime.start(input);
+    const workspaceContext = await loadWorkspaceAgentContext({
+      globalRoot: this.globalRoot,
+      workspaceRoot: input.workspaceRoot,
+    });
+    const preparedInput = {
+      ...input,
+      systemPrompt: buildSystemPrompt(workspaceContext),
+    };
+    const runtime = this.getOrCreate(preparedInput);
+    await runtime.start(preparedInput);
   }
 
   public abort(sessionId: SessionId, runId: RunId): boolean {
@@ -73,11 +83,12 @@ export class AgentManager {
     this.runtimes.clear();
   }
 
-  private getOrCreate(input: RestoreAgentInput): RunCoordinator {
+  private getOrCreate(input: RestoreAgentInput & { systemPrompt: string }): RunCoordinator {
     const current = this.runtimes.get(input.sessionId);
     if (current !== undefined) return current;
 
     const toolRegistry = createWorkspaceToolRegistry({
+      globalRoot: this.globalRoot,
       protectedPaths: this.protectedPaths,
       workspaceRoot: input.workspaceRoot,
     });

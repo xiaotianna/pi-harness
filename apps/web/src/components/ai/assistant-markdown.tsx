@@ -12,6 +12,7 @@ import { ChartBlock } from "./chart-block";
 import { FlowDiagram } from "./flow-diagram";
 import { FormulaBlock } from "./formula-block";
 import { MermaidBlock } from "./mermaid-block";
+import { readSkillMentionName, renderSkillMentions, SkillMention } from "./skill-mention";
 import { parseChartBlock, parseFlowBlock } from "./utils/visual-blocks";
 
 function getLanguage(className?: string): string {
@@ -20,11 +21,15 @@ function getLanguage(className?: string): string {
 
 const ASSISTANT_MARKDOWN_COMPONENTS = {
   a: AssistantMarkdownLink,
+  blockquote: ({ children }) => <blockquote>{renderSkillMentions(children)}</blockquote>,
   code: ({ children, className, node, ...props }) => {
     const isInline =
       !node?.position?.start.line || node.position.start.line === node.position.end.line;
     const code = String(children ?? "").replace(/\n$/, "");
     const language = getLanguage(className);
+    const skillName = isInline ? readSkillMentionName(code) : null;
+
+    if (skillName) return <SkillMention name={skillName} />;
 
     if (!isInline && language === "chart") {
       const data = parseChartBlock(code);
@@ -116,6 +121,14 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
         </Checkbox.Content>
       </Checkbox>
     ) : null,
+  h1: ({ children }) => <h1>{renderSkillMentions(children)}</h1>,
+  h2: ({ children }) => <h2>{renderSkillMentions(children)}</h2>,
+  h3: ({ children }) => <h3>{renderSkillMentions(children)}</h3>,
+  h4: ({ children }) => <h4>{renderSkillMentions(children)}</h4>,
+  h5: ({ children }) => <h5>{renderSkillMentions(children)}</h5>,
+  h6: ({ children }) => <h6>{renderSkillMentions(children)}</h6>,
+  li: ({ children }) => <li>{renderSkillMentions(children)}</li>,
+  p: ({ children }) => <p>{renderSkillMentions(children)}</p>,
 } satisfies Components;
 
 export function AssistantMarkdown(props: Omit<MarkdownProps, "components">) {

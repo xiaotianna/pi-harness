@@ -32,7 +32,10 @@ function RootLayout() {
 
 function AppErrorRoute() {
   return (
-    <main className="flex min-h-svh items-center justify-center px-6 py-10" role="alert">
+    <main
+      className="flex min-h-svh items-center justify-center px-6 py-10"
+      role="alert"
+    >
       <EmptyState className="max-w-md" size="lg">
         <EmptyState.Media variant="icon">
           <CircleExclamation aria-hidden className="text-danger" />
@@ -40,16 +43,22 @@ function AppErrorRoute() {
         <EmptyState.Header>
           <EmptyState.Title>页面加载失败</EmptyState.Title>
           <EmptyState.Description>
-            页面暂时无法加载，请重试。若问题持续出现，请确认本地 daemon 正在运行。
+            页面暂时无法加载，请重试。若问题持续出现，请确认本地 daemon
+            正在运行。
           </EmptyState.Description>
         </EmptyState.Header>
-        <EmptyState.Content className="flex-row">
-          <Button variant="primary" onPress={() => window.location.reload()}>
-            重试
-          </Button>
-          <Button variant="tertiary" onPress={() => window.location.assign("/")}>
-            返回首页
-          </Button>
+        <EmptyState.Content>
+          <div className="flex gap-2">
+            <Button variant="primary" onPress={() => window.location.reload()}>
+              重试
+            </Button>
+            <Button
+              variant="tertiary"
+              onPress={() => window.location.assign("/")}
+            >
+              返回首页
+            </Button>
+          </div>
         </EmptyState.Content>
       </EmptyState>
     </main>
@@ -81,7 +90,8 @@ const indexRoute = createRoute({
   path: "/",
   beforeLoad: async () => {
     const authSession = await fetchCurrentAuthSession();
-    if (!authSession.authenticated) throw redirect({ replace: true, to: "/login" });
+    if (!authSession.authenticated)
+      throw redirect({ replace: true, to: "/login" });
     const sessions = await queryClient.fetchQuery(sessionListQueryOptions());
     const session = sessions[0];
     if (!session) throw redirect({ replace: true, to: "/new" });
@@ -161,7 +171,8 @@ const chatThreadRoute = createRoute({
           finalError = retryError;
         }
       }
-      if (finalError instanceof ApiRequestError && finalError.status === 404) throw notFound();
+      if (finalError instanceof ApiRequestError && finalError.status === 404)
+        throw notFound();
       throw finalError;
     }
   },
@@ -182,7 +193,12 @@ function LoginRoute() {
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  chatLayoutRoute.addChildren([newChatRoute, libraryRoute, exploreRoute, chatThreadRoute]),
+  chatLayoutRoute.addChildren([
+    newChatRoute,
+    libraryRoute,
+    exploreRoute,
+    chatThreadRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree });

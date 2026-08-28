@@ -1,5 +1,17 @@
 export type { WorkspaceToolContext } from "./lib/tool-context.js";
 export { type ToolRegistration, ToolRegistry } from "./lib/tool-registry.js";
+export {
+  type CreatedSkill,
+  type CreateSkillInput,
+  type LoadedSkill,
+  type SkillDetails,
+  SkillRegistry,
+  type SkillRegistryContext,
+  SkillScope,
+  type SkillScope as SkillScopeValue,
+  type SkillSummary,
+} from "./skill-registry.js";
+export * from "./skills/index.js";
 export { ToolExecutionGuard } from "./tool-execution-guard.js";
 export * from "./tools/index.js";
 export {

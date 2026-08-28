@@ -8,7 +8,7 @@ import type {
 } from "../dto/workspace-dto.js";
 import { type WorkspaceService, WorkspaceServiceError } from "../services/workspace-service.js";
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
-import type { WorkspaceVo } from "../vo/workspace-vo.js";
+import type { WorkspaceSkillVo, WorkspaceVo } from "../vo/workspace-vo.js";
 
 export class WorkspaceController {
   public constructor(
@@ -17,6 +17,17 @@ export class WorkspaceController {
   ) {}
 
   public list = async (): Promise<readonly WorkspaceVo[]> => this.workspaces.list();
+
+  public listSkills = async (
+    request: FastifyRequest<{ Params: WorkspaceParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | readonly WorkspaceSkillVo[]> => {
+    try {
+      return await this.workspaces.listSkills(request.params.workspaceId);
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
 
   public openPath = async (
     request: FastifyRequest<{ Body: OpenWorkspacePathDto; Params: WorkspaceParamsDto }>,

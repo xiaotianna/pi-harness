@@ -1,7 +1,8 @@
 import { resolveWorkspacePath } from "@pi-harness/policy";
 
-// 保存固定的 workspaceRoot 和受保护路径。
+// 保存固定的 globalRoot、workspaceRoot 和受保护路径。
 export interface WorkspaceToolContext {
+  globalRoot: string;
   protectedPaths?: readonly string[];
   workspaceRoot: string;
 }

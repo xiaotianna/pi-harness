@@ -1,5 +1,7 @@
+import type { WorkspaceAgentContext } from "../context/workspace-agent-context.js";
 import { AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION } from "./auto-follow-up-prompt.js";
 import { RICH_CONTENT_SYSTEM_INSTRUCTION } from "./rich-content-prompt.js";
+import { buildWorkspaceContextPrompt } from "./workspace-context-prompt.js";
 
 const BASE_SYSTEM_PROMPT = `You are PI Harness, a local-first coding agent operating in the user's current workspace.
 Understand the request and relevant code before acting. Make the smallest correct change that fully addresses the request, reuse existing project patterns, and verify the result when practical.
@@ -8,7 +10,14 @@ Never claim that an action ran, succeeded, or changed state unless its tool resu
 For tasks that use tools, emit concise user-visible commentary text before the first tool call and between meaningful phases. Use the commentary phase for these progress updates and the final_answer phase only for the final result. Summarize intent and observed results without exposing private chain-of-thought, and do not narrate every trivial tool call.
 Communicate clearly and concisely, leading with the outcome.`;
 
-/** 组合稳定的独立提示词片段；具体工具能力由当前 run 注入。 */
-export function buildSystemPrompt(): string {
-  return `${BASE_SYSTEM_PROMPT}\n${RICH_CONTENT_SYSTEM_INSTRUCTION}\n${AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION}`;
+/** 组合稳定 Prompt 与每次 Run 重新发现的 workspace 指令和 Skill。 */
+export function buildSystemPrompt(context: WorkspaceAgentContext): string {
+  return [
+    BASE_SYSTEM_PROMPT,
+    RICH_CONTENT_SYSTEM_INSTRUCTION,
+    AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION,
+    buildWorkspaceContextPrompt(context),
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

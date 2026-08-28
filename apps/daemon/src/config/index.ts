@@ -29,6 +29,7 @@ export interface GitHubOAuthConfig {
 export interface HarnessConfig {
   credentialsPath: string;
   databasePath: string;
+  globalRoot: string;
   githubOAuth: GitHubOAuthConfig | null;
   host: string;
   logLevel: string;
@@ -97,15 +98,17 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
 
   const databasePath =
     env.PI_HARNESS_DATABASE_PATH ?? join(homedir(), ".pi-harness", "harness.sqlite");
+  const globalRoot = dirname(databasePath);
 
   return {
-    credentialsPath: join(dirname(databasePath), "credentials.json"),
+    credentialsPath: join(globalRoot, "credentials.json"),
     databasePath,
+    globalRoot,
     githubOAuth: resolveGitHubOAuth(env, port),
     host: env.PI_HARNESS_HOST ?? DEFAULT_HOST,
     logLevel: env.PI_HARNESS_LOG_LEVEL ?? "info",
     port,
-    sessionsPath: join(dirname(databasePath), "sessions"),
+    sessionsPath: join(globalRoot, "sessions"),
     webUrl: parseLoopbackUrl("PI_HARNESS_WEB_URL", env.PI_HARNESS_WEB_URL ?? DEFAULT_WEB_URL),
   };
 }

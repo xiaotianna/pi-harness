@@ -4,7 +4,6 @@ import { dirname, resolve } from "node:path";
 import {
   type AgentManager,
   type ApprovalResponseDecision,
-  buildSystemPrompt,
   type FileChangedData,
   type HarnessEvent,
   HarnessEventType,
@@ -309,7 +308,6 @@ export class SessionService {
         runId,
         sessionId,
         streamFn,
-        systemPrompt: buildSystemPrompt(),
         thinkingLevel: session.thinkingLevel,
         workspaceRoot: session.workspaceRoot,
       });

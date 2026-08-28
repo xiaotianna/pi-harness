@@ -14,7 +14,11 @@ import {
 } from "../dto/workspace-dto.js";
 import type { WorkspaceService } from "../services/workspace-service.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
-import { WorkspaceListVoSchema, WorkspaceVoSchema } from "../vo/workspace-vo.js";
+import {
+  WorkspaceListVoSchema,
+  WorkspaceSkillListVoSchema,
+  WorkspaceVoSchema,
+} from "../vo/workspace-vo.js";
 
 export async function registerWorkspaceRoutes(
   server: FastifyInstance,
@@ -35,6 +39,17 @@ export async function registerWorkspaceRoutes(
     "/api/workspaces",
     { schema: { response: { 200: WorkspaceListVoSchema } } },
     controller.list,
+  );
+
+  server.get<{ Params: WorkspaceParamsDto }>(
+    "/api/workspaces/:workspaceId/skills",
+    {
+      schema: {
+        params: WorkspaceParamsDtoSchema,
+        response: { 200: WorkspaceSkillListVoSchema, ...errors },
+      },
+    },
+    controller.listSkills,
   );
 
   server.post(

@@ -1,4 +1,5 @@
 import { ChatMessage as ChatMessagePrimitive } from "@agile-avocation/ui-pro";
+import { renderSkillMentions } from "../../../../components/ai/skill-mention";
 import type { ChatUserMessage } from "../../data/chat";
 import { MessageActions } from "../message-actions";
 import { MessageAttachments } from "./message-attachments";
@@ -8,7 +9,9 @@ export function UserThreadMessage({ message }: { message: ChatUserMessage }) {
     <ChatMessagePrimitive.User>
       <MessageAttachments message={message} />
       <ChatMessagePrimitive.Bubble>
-        <ChatMessagePrimitive.Content>{message.content}</ChatMessagePrimitive.Content>
+        <ChatMessagePrimitive.Content>
+          {renderSkillMentions(message.content)}
+        </ChatMessagePrimitive.Content>
       </ChatMessagePrimitive.Bubble>
       <MessageActions
         content={message.content}

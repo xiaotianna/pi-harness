@@ -25,8 +25,14 @@ export type ToolPolicy =
   | {
       allowMissing: boolean;
       permission: typeof ToolPermission.WORKSPACE_WRITE;
+      resolveTarget?: (argumentsValue: unknown) => ToolWriteTarget | null;
+      risk: string;
       summary: string;
     };
+
+export type ToolWriteTarget =
+  | { path: string }
+  | { fingerprint: string; target: string };
 
 export type ToolPolicyResult =
   | { decision: typeof ToolPolicyDecision.ALLOW; fingerprint?: string }
@@ -55,7 +61,7 @@ function readStringArgument(argumentsValue: unknown, name: string): string | nul
   return typeof value === "string" ? value : null;
 }
 
-async function resolveTarget(
+async function resolveWorkspaceTarget(
   input: EvaluateToolCallInput,
   path: string,
   allowMissing: boolean,
@@ -100,9 +106,9 @@ async function resolveTarget(
     READ_ONLY
       → ALLOW
     WORKSPACE_WRITE
-      → 读取 arguments.path
-      → 校验路径
-      → request_approval 时 ASK，否则 ALLOW
+      → 校验写入目标
+      → workspace 内写入在 request_approval 时 ASK
+      → workspace 外写入仅在 full_access 时 ALLOW
     SHELL
       → 读取 arguments.command
       → 校验 workspace
@@ -117,20 +123,41 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
     case ToolPermission.READ_ONLY:
       return { decision: ToolPolicyDecision.ALLOW };
     case ToolPermission.WORKSPACE_WRITE: {
-      const path = readStringArgument(input.arguments, "path");
-      if (path === null) {
-        return { decision: ToolPolicyDecision.DENY, reason: "文件工具缺少有效路径" };
+      const target = input.policy.resolveTarget
+        ? input.policy.resolveTarget(input.arguments)
+        : { path: readStringArgument(input.arguments, "path") ?? "" };
+      if (target === null) {
+        return { decision: ToolPolicyDecision.DENY, reason: "文件工具缺少有效写入目标" };
       }
-      const { fingerprint, target } = await resolveTarget(input, path, input.policy.allowMissing);
+      if (!("path" in target)) {
+        if (input.approvalPolicy === ApprovalPolicy.FULL_ACCESS) {
+          return { decision: ToolPolicyDecision.ALLOW, fingerprint: target.fingerprint };
+        }
+        return {
+          decision: ToolPolicyDecision.ASK,
+          fingerprint: target.fingerprint,
+          risk: input.policy.risk,
+          summary: input.policy.summary,
+          target: target.target,
+        };
+      }
+      if (!target.path) {
+        return { decision: ToolPolicyDecision.DENY, reason: "文件工具缺少有效写入目标" };
+      }
+      const resolvedTarget = await resolveWorkspaceTarget(
+        input,
+        target.path,
+        input.policy.allowMissing,
+      );
       if (input.approvalPolicy !== ApprovalPolicy.REQUEST_APPROVAL) {
-        return { decision: ToolPolicyDecision.ALLOW, fingerprint };
+        return { decision: ToolPolicyDecision.ALLOW, fingerprint: resolvedTarget.fingerprint };
       }
       return {
         decision: ToolPolicyDecision.ASK,
-        fingerprint,
-        risk: "该操作会修改 workspace 内的文件内容。",
+        fingerprint: resolvedTarget.fingerprint,
+        risk: input.policy.risk,
         summary: input.policy.summary,
-        target,
+        target: resolvedTarget.target,
       };
     }
     case ToolPermission.SHELL: {
@@ -138,7 +165,7 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
       if (command === null) {
         return { decision: ToolPolicyDecision.DENY, reason: "命令工具缺少有效命令" };
       }
-      const { fingerprint } = await resolveTarget(input, ".", false);
+      const { fingerprint } = await resolveWorkspaceTarget(input, ".", false);
       if (input.approvalPolicy === ApprovalPolicy.FULL_ACCESS) {
         return { decision: ToolPolicyDecision.ALLOW, fingerprint };
       }

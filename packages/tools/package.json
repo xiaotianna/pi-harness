@@ -15,7 +15,8 @@
     "diff": "catalog:",
     "es-toolkit": "catalog:",
     "execa": "catalog:",
-    "typebox": "catalog:"
+    "typebox": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

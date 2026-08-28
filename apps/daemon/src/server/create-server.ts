@@ -36,12 +36,14 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   const sessionEvents = new SessionEventService(database.sessions, eventStore, broker);
   await sessionEvents.recoverInterruptedRuns();
   const interactions = new HumanInteractionService();
-  const agents = new AgentManager(sessionEvents.handle, interactions.request, [
-    config.credentialsPath,
-    config.databasePath,
-    config.sessionsPath,
-  ]);
-  const workspaces = new WorkspaceService(database.workspaces);
+  const protectedPaths = [config.globalRoot];
+  const agents = new AgentManager(
+    sessionEvents.handle,
+    interactions.request,
+    protectedPaths,
+    config.globalRoot,
+  );
+  const workspaces = new WorkspaceService(database.workspaces, config.globalRoot);
   let sessions: SessionService | undefined;
   const providers = await ProviderService.create(
     database.providerSettings,
@@ -61,7 +63,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     (error, context) => {
       server.log.error({ err: error, ...context }, "Session run failed outside Agent events");
     },
-    [config.credentialsPath, config.databasePath, config.sessionsPath],
+    protectedPaths,
   );
   const allowedHosts = new Set([
     new URL(config.webUrl).host,

@@ -71,6 +71,7 @@ catalog:
   typebox: ^1.0.0
   typescript: ^5.9.0
   vite: ^7.1.0
+  yaml: ^2.9.0
   zustand: ^5.0.0
 
 catalogMode: strict

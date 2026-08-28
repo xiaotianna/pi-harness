@@ -223,6 +223,7 @@ function readTokenAttributes(attributes: Record<string, unknown>): ChatComposerT
 }
 
 function serializeToken(token: ChatComposerToken): string {
+  if (token.kind === ChatComposerTokenKind.SKILL) return `$${token.id}`;
   return `[[${token.kind}:${token.id}|${token.label}]]`;
 }
 
@@ -271,13 +272,13 @@ function ComposerTokenView({ node, selected }: ReactNodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className={`inline-flex items-center gap-1 rounded-sm px-0.5 align-middle font-medium leading-5 ${visualStrategy.colorClassName} ${
+      className={`inline-flex h-[1lh] items-baseline gap-1 rounded-sm px-0.5 align-baseline font-medium leading-[inherit] ${visualStrategy.colorClassName} ${
         selected ? visualStrategy.selectedClassName : ""
       }`}
       contentEditable={false}
       data-token-kind={token.kind}
     >
-      <TokenVisualIcon className="size-3.5 shrink-0" token={token} />
+      <TokenVisualIcon className="size-3.5 shrink-0 self-center" token={token} />
       <span>{token.label}</span>
     </NodeViewWrapper>
   );

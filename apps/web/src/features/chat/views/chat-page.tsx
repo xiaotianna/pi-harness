@@ -306,6 +306,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                 status={status}
                 thinkingLevel={snapshot.session.thinkingLevel}
                 usage={usage}
+                workspaceId={snapshot.session.workspaceId}
                 onModelChange={(selection) =>
                   modelMutation.mutateAsync(selection).then(() => undefined)
                 }

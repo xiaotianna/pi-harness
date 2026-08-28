@@ -1,4 +1,5 @@
 export type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
+export type { WorkspaceAgentContext } from "./context/workspace-agent-context.js";
 export {
   AgentManager,
   type RestoreAgentInput,

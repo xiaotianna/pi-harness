@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
+import { SkillRegistry, type SkillSummary } from "@pi-harness/tools";
 import type { WorkspaceRecord, WorkspaceRepository } from "../storage/database.js";
 
 const PICKER_TIMEOUT_MS = 5 * 60 * 1_000;
@@ -178,10 +179,21 @@ async function resolveOpenablePath(path: string, workspaceRoot: string): Promise
 export class WorkspaceService {
   private activePickerController: AbortController | null = null;
 
-  public constructor(private readonly workspaces: WorkspaceRepository) {}
+  public constructor(
+    private readonly workspaces: WorkspaceRepository,
+    private readonly globalRoot: string,
+  ) {}
 
   public list(): readonly WorkspaceRecord[] {
     return this.workspaces.list();
+  }
+
+  public async listSkills(workspaceId: string): Promise<readonly SkillSummary[]> {
+    const workspace = this.getRequired(workspaceId);
+    return new SkillRegistry({
+      globalRoot: this.globalRoot,
+      workspaceRoot: workspace.rootPath,
+    }).discover();
   }
 
   public remove(workspaceId: string): void {

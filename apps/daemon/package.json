@@ -17,6 +17,7 @@
     "@pi-harness/agent-runtime": "workspace:*",
     "@pi-harness/policy": "workspace:*",
     "@pi-harness/providers": "workspace:*",
+    "@pi-harness/tools": "workspace:*",
     "es-toolkit": "catalog:",
     "fastify": "catalog:",
     "pino": "catalog:",

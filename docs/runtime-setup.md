@@ -19,11 +19,12 @@
 | 5 | Session SQLite 索引与 Session JSONL | 已完成 |
 | 6 | Session/Run HTTP API 与 SSE | 已完成 |
 | 7 | daemon 运行时装配、关闭与 Provider 占用保护 | 已完成 |
-| 8 | Web 对话页接入真实 Session/Run/SSE | 待开始 |
-| 9 | Tool Registry、Policy、HITL、Sandbox | 待开始 |
-| 10 | AGENTS.md、Skill 与 Context 管理 | 待开始 |
+| 8 | Web 对话页接入真实 Session/Run/SSE | 已完成 |
+| 9 | Tool Registry、Policy、HITL、Sandbox | 已完成 |
+| 10 | AGENTS.md 与 Skill Registry | 已完成 |
+| 11 | Context 预算、裁剪与压缩 | 待开始 |
 
-当前已完成 daemon/runtime 的无工具对话后端闭环。Web 仍使用现有页面数据，接入真实接口后才形成用户可操作的完整闭环。
+当前已完成真实 Web 对话、workspace 工具、审批、文件变化、AGENTS.md 与两级 Skill Registry 闭环。下一阶段处理 Context 预算、裁剪与压缩。
 
 ## 2026-08-24：无工具 Runtime 后端闭环
 
@@ -179,15 +180,22 @@
 - 未执行 dev 或 build。
 - 验证环境显示 Node 22/23 的 engine warning；项目目标运行时仍为 Node.js 24 LTS。
 
+## 2026-08-28：AGENTS.md 与 Skill Registry
+
+状态：`已完成`
+
+- 全局 Skill 使用 daemon 数据目录下的 `skills/`，项目 Skill 使用 workspace `.agents/skills`，同名时项目优先。
+- 按 Skill 结构规范校验目录名、`SKILL.md`、YAML frontmatter、description 和正文，并限制入口及资源文件大小。
+- 每次 Run 有界读取根目录 `AGENTS.md` 并发现 Skill，只将名称、description 和 scope 作为目录注入 System Prompt。
+- Agent 根据用户意图选择 Skill，确定使用后再调用 `load_skill` 读取正文；Runtime 不做关键词预加载。
+- 消息输入器从当前 Workspace 的真实 Skill 目录生成“+ → Skills”菜单，选中标签在提交时序列化为 `$skill-name`。
+- 增加 `find_skill`、`get_skill`、`load_skill` 和 `skill_creator`；资源加载执行真实路径边界检查。
+- `skill_creator` 只创建新 Skill 并复用通用文件写入权限；项目 Skill 跟随 workspace 写入策略，全局 Skill 作为 workspace 外写入仅在 `full_access` 下自动放行，且全局 Skill 目录仍是 daemon 受保护路径。
+
+验证：`@pi-harness/tools` 和 `@pi-harness/agent-runtime` typecheck 通过。未执行 dev 或 build。
+
 ## 下一步
 
 状态：`待开始`
 
-接入 Web 对话页：
-
-1. 用真实 `POST /api/sessions` 替换新会话 mock。
-2. 用 `POST /api/sessions/:sessionId/runs` 发送消息并保存返回的 `runId`。
-3. 订阅 `GET /api/sessions/:sessionId/events`，按 `seq` 去重和排序。
-4. 以 `message.delta` 更新流式消息，以 `message.completed` 替换为完整消息。
-5. 接入 loading、streaming、error、aborted 和断线恢复状态。
-6. Web 闭环完成后，再进入 Tool Registry、Policy、HITL 和 Sandbox。
+实现 Context 预算、裁剪与压缩；在真实会话接近模型上下文上限前完成最小可恢复闭环。

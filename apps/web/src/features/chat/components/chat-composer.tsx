@@ -45,6 +45,7 @@ import {
   useModelSettingsStore,
 } from "../../models";
 import { ApprovalPolicySelect, useApprovalPolicySetting } from "../../settings";
+import { workspaceSkillListQueryOptions } from "../api/workspace-queries";
 import type { ChatWorkspace } from "../data/chat";
 import { useNewChatStore } from "../state/new-chat-store";
 import type { SessionUsageSummary } from "../utils/session-usage";
@@ -97,6 +98,7 @@ export interface ChatComposerProps {
   status?: ChatStatus;
   thinkingLevel?: ThinkingLevelValue;
   usage?: SessionUsageSummary;
+  workspaceId?: string;
   workspaces?: readonly ChatWorkspace[];
 }
 
@@ -140,17 +142,6 @@ const COMMAND_OPTIONS = [
   { id: "fix", label: "/fix" },
 ] as const;
 
-const SKILL_OPTIONS = [
-  { id: "frontend-design", label: "Frontend Design" },
-  { id: "code-review", label: "Code Review" },
-  { id: "documents", label: "Documents" },
-] as const;
-
-const SLASH_MENU_ITEMS = [
-  ...COMMAND_OPTIONS.map((option) => ({ ...option, kind: ChatComposerTokenKind.COMMAND })),
-  ...SKILL_OPTIONS.map((option) => ({ ...option, kind: ChatComposerTokenKind.SKILL })),
-] satisfies readonly ChatComposerToken[];
-
 const CONTEXT_MENU_ITEMS = [
   { id: "design-reference.png", kind: ChatComposerTokenKind.IMAGE, label: "design-reference.png" },
   {
@@ -192,6 +183,7 @@ export function ChatComposer({
   status: statusProp,
   thinkingLevel,
   usage,
+  workspaceId,
   workspaces = [],
 }: ChatComposerProps) {
   const {
@@ -239,6 +231,29 @@ export function ChatComposer({
   const [hasEditorContent, setHasEditorContent] = useState(false);
   const selectedWorkspaceId = useNewChatStore((state) => state.workspaceId);
   const setSelectedWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
+  const selectedWorkspace =
+    workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? workspaces[0];
+  const activeWorkspaceId = workspaceId ?? selectedWorkspace?.id;
+  const skillsQuery = useQuery(workspaceSkillListQueryOptions(activeWorkspaceId));
+  const skillOptions = useMemo(
+    () =>
+      (skillsQuery.data ?? []).map((skill) => ({
+        description: skill.description,
+        id: skill.name,
+        label: skill.name,
+      })),
+    [skillsQuery.data],
+  );
+  const slashMenuItems = useMemo(
+    () => [
+      ...COMMAND_OPTIONS.map((option) => ({
+        ...option,
+        kind: ChatComposerTokenKind.COMMAND,
+      })),
+      ...skillOptions.map((option) => ({ ...option, kind: ChatComposerTokenKind.SKILL })),
+    ],
+    [skillOptions],
+  );
   const attachmentsRef = useRef<PendingAttachment[]>([]);
   const attachmentDrawerId = useId();
   const editorRef = useRef<ChatComposerEditorHandle>(null);
@@ -337,9 +352,6 @@ export function ChatComposer({
     selectedModel !== undefined &&
     (onSubmitMessage ? hasEditorContent : hasEditorContent || attachments.length > 0) &&
     (!isHero || workspaces.length > 0);
-  const selectedWorkspace =
-    workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? workspaces[0];
-
   const handleFilesSelected = (files: File[]) => {
     setIsAttachmentDrawerExpanded(true);
     setAttachments((current) => [
@@ -553,7 +565,7 @@ export function ChatComposer({
             minHeight={56}
             onEmptyChange={handleEditorEmptyChange}
             placeholder={placeholder}
-            slashMenuItems={SLASH_MENU_ITEMS}
+            slashMenuItems={slashMenuItems}
             onSubmit={handleSubmit}
           />
         </PromptInput.Content>
@@ -593,7 +605,7 @@ export function ChatComposer({
                       <Label>命令</Label>
                       <Dropdown.SubmenuIndicator />
                     </Dropdown.Item>
-                    <Dropdown.Popover className="min-w-40" placement="right top">
+                    <Dropdown.Popover className="min-w-40" placement="right bottom">
                       <Dropdown.Menu
                         aria-label="命令"
                         onAction={(key) =>
@@ -614,18 +626,41 @@ export function ChatComposer({
                       <Label>Skills</Label>
                       <Dropdown.SubmenuIndicator />
                     </Dropdown.Item>
-                    <Dropdown.Popover className="min-w-40" placement="right top">
+                    <Dropdown.Popover className="min-w-40" placement="right bottom">
                       <Dropdown.Menu
                         aria-label="Skills"
                         onAction={(key) =>
-                          handleInsertToken(ChatComposerTokenKind.SKILL, SKILL_OPTIONS, key)
+                          handleInsertToken(ChatComposerTokenKind.SKILL, skillOptions, key)
                         }
                       >
-                        {SKILL_OPTIONS.map((option) => (
-                          <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
-                            <Label>{option.label}</Label>
+                        {!activeWorkspaceId ? (
+                          <Dropdown.Item id="skills-workspace-required" isDisabled>
+                            <Label>请先选择工作区</Label>
                           </Dropdown.Item>
-                        ))}
+                        ) : skillsQuery.isPending ? (
+                          <Dropdown.Item id="skills-loading" isDisabled>
+                            <Label>正在加载 Skills...</Label>
+                          </Dropdown.Item>
+                        ) : skillsQuery.isError ? (
+                          <Dropdown.Item id="skills-error" isDisabled>
+                            <Label>Skills 加载失败</Label>
+                          </Dropdown.Item>
+                        ) : skillOptions.length === 0 ? (
+                          <Dropdown.Item id="skills-empty" isDisabled>
+                            <Label>暂无可用 Skill</Label>
+                          </Dropdown.Item>
+                        ) : (
+                          skillOptions.map((option) => (
+                            <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
+                              <div className="flex min-w-0 flex-col">
+                                <Label>{option.label}</Label>
+                                <Description className="max-w-72 truncate">
+                                  {option.description}
+                                </Description>
+                              </div>
+                            </Dropdown.Item>
+                          ))
+                        )}
                       </Dropdown.Menu>
                     </Dropdown.Popover>
                   </Dropdown.SubmenuTrigger>
