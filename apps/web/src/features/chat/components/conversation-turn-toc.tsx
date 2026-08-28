@@ -3,19 +3,29 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type CSSProperties, type RefObject, useEffect, useMemo, useState } from "react";
 import { CHAT_RESPONSE_PENDING_LABEL } from "../constants/chat-response";
 import type { ChatMessage } from "../data/chat";
-import { getConversationTurnAnchorId, getConversationTurns } from "../utils/conversation-turns";
+import { getConversationTurns } from "../utils/conversation-turns";
+import type { ThreadMessageListHandle } from "./thread-message-list";
 
 const TURN_TOC_THRESHOLD = 3;
 const TURN_TOC_BAR_STEP_PX = 14;
 const TURN_PREVIEW_TRANSITION = { duration: 0.15, ease: [0.22, 1, 0.36, 1] } as const;
 
 export interface ConversationTurnTocProps {
+  messageListRef: RefObject<ThreadMessageListHandle | null>;
   messages: readonly ChatMessage[];
   scrollContainerRef: RefObject<HTMLDivElement | null>;
 }
 
-export function ConversationTurnToc({ messages, scrollContainerRef }: ConversationTurnTocProps) {
+export function ConversationTurnToc({
+  messageListRef,
+  messages,
+  scrollContainerRef,
+}: ConversationTurnTocProps) {
   const turns = useMemo(() => getConversationTurns(messages), [messages]);
+  const turnIndexById = useMemo(
+    () => new Map(turns.map((turn, index) => [turn.id, index])),
+    [turns],
+  );
   const [activeIndex, setActiveIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -26,14 +36,10 @@ export function ConversationTurnToc({ messages, scrollContainerRef }: Conversati
     if (!container || turns.length <= TURN_TOC_THRESHOLD) return;
 
     const updateActiveTurn = () => {
-      const marker = container.getBoundingClientRect().top + container.clientHeight * 0.25;
-      let nextIndex = 0;
-
-      for (const [index, turn] of turns.entries()) {
-        const element = document.getElementById(getConversationTurnAnchorId(turn.id));
-        if (!element || element.getBoundingClientRect().top > marker) break;
-        nextIndex = index;
-      }
+      const turnId = messageListRef.current?.getTurnIdAtOffset(
+        container.scrollTop + container.clientHeight * 0.25,
+      );
+      const nextIndex = turnId ? (turnIndexById.get(turnId) ?? 0) : 0;
 
       setActiveIndex((current) => (current === nextIndex ? current : nextIndex));
     };
@@ -47,7 +53,7 @@ export function ConversationTurnToc({ messages, scrollContainerRef }: Conversati
       container.removeEventListener("scroll", updateActiveTurn);
       resizeObserver.disconnect();
     };
-  }, [scrollContainerRef, turns]);
+  }, [messageListRef, scrollContainerRef, turnIndexById, turns.length]);
 
   if (turns.length <= TURN_TOC_THRESHOLD) return null;
 
@@ -57,10 +63,7 @@ export function ConversationTurnToc({ messages, scrollContainerRef }: Conversati
   if (!previewTurn) return null;
 
   const scrollToTurn = (turnId: string) => {
-    document.getElementById(getConversationTurnAnchorId(turnId))?.scrollIntoView({
-      behavior: shouldReduceMotion ? "auto" : "smooth",
-      block: "start",
-    });
+    messageListRef.current?.scrollToTurn(turnId);
   };
 
   return (

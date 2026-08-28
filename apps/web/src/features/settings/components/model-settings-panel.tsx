@@ -10,6 +10,7 @@ import {
   Label,
   ListBox,
   Select,
+  Skeleton,
   Switch,
 } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -151,60 +152,68 @@ export function ModelSettingsPanel() {
           description="所有工作区的新对话都会使用；对话内切换只影响该对话。"
           title="默认模型"
         >
-          <Select
-            aria-label="默认模型"
-            className="min-w-56 max-w-64"
-            placeholder={providersQuery.isPending ? "正在加载模型…" : "暂无可用模型"}
-            value={defaultModelKey ?? ""}
-            variant="secondary"
-            onChange={(key) => {
-              if (typeof key === "string") setDefaultModelKey(key);
-            }}
-          >
-            <Select.Trigger>
-              <Select.Value className="flex items-center gap-2" />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {enabledProviders.length === 0 ? (
-                  <ListBox.Item isDisabled id="no-default-model" textValue="暂无可用模型">
-                    <CircleAlert className="size-4 text-muted" />
-                    <div className="flex flex-col">
-                      <Label>{providersQuery.isPending ? "正在加载模型" : "暂无可用模型"}</Label>
-                      <Description>请先配置并启用一个 Provider</Description>
-                    </div>
-                  </ListBox.Item>
-                ) : (
-                  enabledProviders.map((provider) => (
-                    <ListBox.Section key={provider.id}>
-                      <Header>{provider.name}</Header>
-                      {provider.models.map((model) => (
-                        <ListBox.Item
-                          id={createModelSelectionKey(provider.id, model.id)}
-                          key={createModelSelectionKey(provider.id, model.id)}
-                          textValue={`${model.name} · ${provider.name}`}
-                        >
-                          <ModelProviderIcon isColor providerId={provider.id} size={16} />
-                          <Label>{model.name}</Label>
-                          <ListBox.ItemIndicator />
-                        </ListBox.Item>
-                      ))}
-                    </ListBox.Section>
-                  ))
-                )}
-              </ListBox>
-            </Select.Popover>
-          </Select>
+          {providersQuery.isPending ? (
+            <Skeleton aria-label="正在加载默认模型" className="h-10 w-56 rounded-xl" />
+          ) : (
+            <Select
+              aria-label="默认模型"
+              className="min-w-56 max-w-64"
+              placeholder="暂无可用模型"
+              value={defaultModelKey ?? ""}
+              variant="secondary"
+              onChange={(key) => {
+                if (typeof key === "string") setDefaultModelKey(key);
+              }}
+            >
+              <Select.Trigger>
+                <Select.Value className="flex items-center gap-2" />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  {enabledProviders.length === 0 ? (
+                    <ListBox.Item isDisabled id="no-default-model" textValue="暂无可用模型">
+                      <CircleAlert className="size-4 text-muted" />
+                      <div className="flex flex-col">
+                        <Label>暂无可用模型</Label>
+                        <Description>请先配置并启用一个 Provider</Description>
+                      </div>
+                    </ListBox.Item>
+                  ) : (
+                    enabledProviders.map((provider) => (
+                      <ListBox.Section key={provider.id}>
+                        <Header>{provider.name}</Header>
+                        {provider.models.map((model) => (
+                          <ListBox.Item
+                            id={createModelSelectionKey(provider.id, model.id)}
+                            key={createModelSelectionKey(provider.id, model.id)}
+                            textValue={`${model.name} · ${provider.name}`}
+                          >
+                            <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                            <Label>{model.name}</Label>
+                            <ListBox.ItemIndicator />
+                          </ListBox.Item>
+                        ))}
+                      </ListBox.Section>
+                    ))
+                  )}
+                </ListBox>
+              </Select.Popover>
+            </Select>
+          )}
         </SettingsRow>
       </div>
 
       <div className="mt-8 flex items-center justify-between gap-4">
         <div>
           <h3 className="font-medium text-foreground">Provider</h3>
-          <p className="mt-1 text-sm text-muted">
-            已配置 {configuredProviderCount} 个，共可使用 {availableModels.length} 个模型。
-          </p>
+          {providersQuery.isPending ? (
+            <Skeleton aria-label="正在加载 Provider 统计" className="mt-2 h-4 w-52 rounded-full" />
+          ) : (
+            <p className="mt-1 text-sm text-muted">
+              已配置 {configuredProviderCount} 个，共可使用 {availableModels.length} 个模型。
+            </p>
+          )}
         </div>
       </div>
 
@@ -217,9 +226,35 @@ export function ModelSettingsPanel() {
       ) : null}
 
       {providersQuery.isPending ? (
-        <Card className="mt-4" variant="secondary">
-          <Card.Content className="text-sm text-muted">正在加载 Provider…</Card.Content>
-        </Card>
+        <div aria-busy="true" className="mt-4 flex flex-col gap-3" role="status">
+          <span className="sr-only">正在加载 Provider</span>
+          {["first", "second"].map((item) => (
+            <Card key={item} variant="secondary">
+              <Card.Header className="flex-row items-center gap-4">
+                <Skeleton aria-hidden className="size-10 shrink-0 rounded-xl" />
+                <div className="min-w-0 flex-1">
+                  <Skeleton aria-hidden className="h-5 w-28 rounded-full" />
+                  <Skeleton aria-hidden className="mt-2 h-4 w-40 rounded-full" />
+                </div>
+                <Skeleton aria-hidden className="h-6 w-14 rounded-full" />
+                <Skeleton aria-hidden className="h-6 w-10 rounded-full" />
+              </Card.Header>
+              <Card.Content className="mt-4 flex flex-col gap-4">
+                <div className="flex gap-2">
+                  <Skeleton aria-hidden className="h-6 w-20 rounded-full" />
+                  <Skeleton aria-hidden className="h-6 w-24 rounded-full" />
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <Skeleton aria-hidden className="h-4 w-36 rounded-full" />
+                  <div className="flex gap-2">
+                    <Skeleton aria-hidden className="h-8 w-14 rounded-xl" />
+                    <Skeleton aria-hidden className="h-8 w-14 rounded-xl" />
+                  </div>
+                </div>
+              </Card.Content>
+            </Card>
+          ))}
+        </div>
       ) : null}
 
       {enabledMutation.isError ? (

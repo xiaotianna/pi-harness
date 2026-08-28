@@ -1,4 +1,3 @@
-import type { ChatStatus } from "@agile-avocation/ui-pro";
 import { isInternalAgentMessage } from "@pi-harness/agent-runtime/agent-message";
 import {
   ApprovalDecision,
@@ -14,6 +13,7 @@ import {
   type ChatMessageTool,
   ChatMessageType,
   type ChatThread,
+  type ChatToolGroupMessage,
   ChatToolState,
 } from "../data/chat";
 import {
@@ -192,13 +192,8 @@ function isToolActive(tool: ChatMessageTool): boolean {
   );
 }
 
-function refreshToolGroupState(messages: readonly ChatMessage[], tool: ChatMessageTool): void {
-  const group = messages.find(
-    (message) => message.type === ChatMessageType.TOOL_GROUP && message.tools.includes(tool),
-  );
-  if (group?.type === ChatMessageType.TOOL_GROUP) {
-    group.active = group.tools.some(isToolActive);
-  }
+function refreshToolGroupState(group: ChatToolGroupMessage | undefined): void {
+  if (group) group.active = group.tools.some(isToolActive);
 }
 
 function markRunIntermediateMessages(
@@ -224,16 +219,13 @@ export function findActiveRunId(events: readonly HarnessEvent[]): string | null 
   return activeRunId;
 }
 
-export function readSessionStatus(events: readonly HarnessEvent[]): ChatStatus {
-  return findActiveRunId(events) === null ? "ready" : "streaming";
-}
-
 /**
  * 将完成的jsonl数据转为页面渲染的消息
  * 通过遍历，将工具调用的中间状态数据合并为最终状态
  */
 export function sessionEventsToMessages(events: readonly HarnessEvent[]): readonly ChatMessage[] {
   const messages: ChatMessage[] = [];
+  const messagesByRunId = new Map<string, ChatMessage[]>();
   const fileChangesByRunId = summarizeSessionFileChangesByRun(events);
   const revertedRunIds = readRevertedSessionRunIds(events);
   const activeAssistantMessageIdByRunId = new Map<string, string>();
@@ -241,6 +233,15 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   const runStartedAtById = new Map<string, number>();
   const streamingContentByRunId = new Map<string, Map<number, StreamingContent>>();
   const toolsByCallId = new Map<string, ChatMessageTool>();
+  const toolGroupsByCallId = new Map<string, ChatToolGroupMessage>();
+
+  const pushMessage = (message: ChatMessage) => {
+    messages.push(message);
+    if (!message.turnId) return;
+    const runMessages = messagesByRunId.get(message.turnId) ?? [];
+    runMessages.push(message);
+    messagesByRunId.set(message.turnId, runMessages);
+  };
 
   for (const event of events) {
     if (event.type === HarnessEventType.RUN_STARTED && event.runId) {
@@ -276,7 +277,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
           toolName: event.data.toolName,
         };
         toolsByCallId.set(event.data.toolCallId, tool);
-        messages.push({
+        pushMessage({
           id: `tool-${event.data.toolCallId}`,
           tool,
           type: ChatMessageType.TOOL,
@@ -344,7 +345,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
               : "用户拒绝了工具审批";
           tool.state = ChatToolState.OUTPUT_ERROR;
         }
-        refreshToolGroupState(messages, tool);
+        refreshToolGroupState(toolGroupsByCallId.get(event.data.toolCallId));
       }
       continue;
     }
@@ -366,7 +367,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
           tool.output = readToolResult(event.data.result);
           tool.state = ChatToolState.OUTPUT_AVAILABLE;
         }
-        refreshToolGroupState(messages, tool);
+        refreshToolGroupState(toolGroupsByCallId.get(event.data.toolCallId));
       }
       continue;
     }
@@ -389,12 +390,15 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       const messageId = event.runId ? activeAssistantMessageIdByRunId.get(event.runId) : undefined;
       const completedMessages = readCompletedMessages(event, messageId ?? event.id);
       for (const message of completedMessages) {
-        messages.push(message);
+        pushMessage(message);
         if (message.type === ChatMessageType.TOOL) {
           if (message.tool.toolCallId) toolsByCallId.set(message.tool.toolCallId, message.tool);
         } else if (message.type === ChatMessageType.TOOL_GROUP) {
           for (const tool of message.tools) {
-            if (tool.toolCallId) toolsByCallId.set(tool.toolCallId, tool);
+            if (tool.toolCallId) {
+              toolsByCallId.set(tool.toolCallId, tool);
+              toolGroupsByCallId.set(tool.toolCallId, message);
+            }
           }
         } else if (event.runId && message.type === ChatMessageType.ASSISTANT) {
           lastAssistantMessageByRunId.set(event.runId, message);
@@ -419,7 +423,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
           message.sessionId = event.sessionId;
         }
         markRunIntermediateMessages(
-          messages,
+          messagesByRunId.get(event.runId) ?? [],
           event.runId,
           startedAt === undefined ? undefined : Math.max(0, event.timestamp - startedAt),
           message.id,
@@ -431,11 +435,11 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       const startedAt = runStartedAtById.get(event.runId);
       const fileChanges = fileChangesByRunId.get(event.runId);
       markRunIntermediateMessages(
-        messages,
+        messagesByRunId.get(event.runId) ?? [],
         event.runId,
         startedAt === undefined ? undefined : Math.max(0, event.timestamp - startedAt),
       );
-      messages.push({
+      pushMessage({
         areFileChangesReverted: revertedRunIds.has(event.runId),
         content: readFailureMessage(event),
         ...(fileChanges?.length ? { fileChanges } : {}),
@@ -479,7 +483,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       ([left], [right]) => left - right,
     );
     if (content.length === 0) {
-      messages.push({
+      pushMessage({
         id: `loading-${activeRunId}`,
         label: "正在思考…",
         turnId: activeRunId,
@@ -488,7 +492,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     } else {
       const lastContentIndex = content.at(-1)?.[0];
       for (const [contentIndex, part] of content) {
-        messages.push(
+        pushMessage(
           part.kind === MessageDeltaKind.THINKING
             ? {
                 defaultExpanded: true,

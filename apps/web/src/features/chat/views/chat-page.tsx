@@ -7,7 +7,7 @@ import { HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
 import type { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { AgentTraceView } from "../../trace";
 import {
   abortSessionRun,
@@ -21,17 +21,13 @@ import {
 import { sessionQueryKeys, sessionSnapshotQueryOptions } from "../api/session-queries";
 import { ChatComposer } from "../components/chat-composer";
 import { ConversationTurnToc } from "../components/conversation-turn-toc";
-import { ThreadMessageList } from "../components/thread-message-list";
+import { ThreadMessageList, type ThreadMessageListHandle } from "../components/thread-message-list";
 import { ToolApprovalCard } from "../components/tool-approval-card";
 import { ChatPageView } from "../constants/chat-page-view";
 import { ChatMessageType } from "../data/chat";
 import { useSessionEvents } from "../hooks/use-session-events";
 import { useChatPageViewStore } from "../state/chat-page-view-store";
-import {
-  findActiveRunId,
-  readSessionStatus,
-  sessionEventsToMessages,
-} from "../utils/session-messages";
+import { findActiveRunId, sessionEventsToMessages } from "../utils/session-messages";
 import { summarizeSessionUsage } from "../utils/session-usage";
 
 const CHAT_VIEW_TRANSITION = {
@@ -39,6 +35,7 @@ const CHAT_VIEW_TRANSITION = {
   ease: [0.22, 1, 0.36, 1],
 } as const;
 const CHAT_AUTO_SCROLL_THRESHOLD_PX = 96;
+const EMPTY_SESSION_EVENTS = [] as const;
 
 export interface ChatPageProps {
   sessionId: string;
@@ -125,22 +122,31 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const activeView = useChatPageViewStore((state) => state.activeView);
   const shouldReduceMotion = useReducedMotion();
   const transition = shouldReduceMotion ? { duration: 0 } : CHAT_VIEW_TRANSITION;
-  const events = snapshot?.events ?? [];
-  const messages = sessionEventsToMessages(events);
-  const usage = summarizeSessionUsage(events);
-  const pendingApprovalTool = messages
-    .flatMap((message) =>
-      message.type === ChatMessageType.TOOL
-        ? [message.tool]
-        : message.type === ChatMessageType.TOOL_GROUP
-          ? message.tools
-          : [],
-    )
-    .findLast((tool) => tool.approval !== undefined);
+  const events = snapshot?.events ?? EMPTY_SESSION_EVENTS;
+  const messages = useMemo(() => sessionEventsToMessages(events), [events]);
+  const usage = useMemo(() => summarizeSessionUsage(events), [events]);
+  const eventActiveRunId = useMemo(() => findActiveRunId(events), [events]);
+  const pendingApprovalTool = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      const tool =
+        message?.type === ChatMessageType.TOOL
+          ? message.tool
+          : message?.type === ChatMessageType.TOOL_GROUP
+            ? message.tools.findLast((item) => item.approval !== undefined)
+            : undefined;
+      if (tool?.approval) return tool;
+    }
+    return undefined;
+  }, [messages]);
   const pendingApproval = pendingApprovalTool?.approval;
   const conversationRef = useRef<HTMLDivElement>(null);
   const conversationContentRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<ThreadMessageListHandle>(null);
   const shouldFollowConversationRef = useRef(true);
+  const stopFollowingConversation = useCallback(() => {
+    shouldFollowConversationRef.current = false;
+  }, []);
 
   useLayoutEffect(() => {
     if (!isSnapshotReady || activeView !== ChatPageView.CONVERSATION) return;
@@ -202,28 +208,33 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     }) => resolveToolApproval(sessionId, runId, approvalId, decision),
   });
 
+  const acceptedRunId = startMutation.data?.runId;
+  const isAcceptedRunFinished = useMemo(
+    () =>
+      acceptedRunId !== undefined &&
+      events.some(
+        (event) =>
+          event.runId === acceptedRunId &&
+          (event.type === HarnessEventType.RUN_ABORTED ||
+            event.type === HarnessEventType.RUN_COMPLETED ||
+            event.type === HarnessEventType.RUN_FAILED),
+      ),
+    [acceptedRunId, events],
+  );
+  const acceptedRunIdWhileStarting = isAcceptedRunFinished ? null : (acceptedRunId ?? null);
+  const activeRunId = eventActiveRunId ?? acceptedRunIdWhileStarting;
+  const status =
+    startMutation.isPending || (activeRunId && eventActiveRunId === null)
+      ? "submitted"
+      : eventActiveRunId === null
+        ? "ready"
+        : "streaming";
+
   if (snapshotQuery.isPending) {
     return <ChatPageSkeleton />;
   }
 
   if (!snapshot) return null;
-
-  const acceptedRunId = startMutation.data?.runId;
-  const isAcceptedRunFinished =
-    acceptedRunId !== undefined &&
-    events.some(
-      (event) =>
-        event.runId === acceptedRunId &&
-        (event.type === HarnessEventType.RUN_ABORTED ||
-          event.type === HarnessEventType.RUN_COMPLETED ||
-          event.type === HarnessEventType.RUN_FAILED),
-    );
-  const acceptedRunIdWhileStarting = isAcceptedRunFinished ? null : (acceptedRunId ?? null);
-  const activeRunId = findActiveRunId(events) ?? acceptedRunIdWhileStarting;
-  const status =
-    startMutation.isPending || (activeRunId && readSessionStatus(events) === "ready")
-      ? "submitted"
-      : readSessionStatus(events);
 
   return (
     <div className="session-scrollbars flex h-[calc(100svh-var(--chat-navbar-height,64px))] flex-col overflow-hidden">
@@ -241,6 +252,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
               <ChatConversation
                 ref={conversationRef}
                 className="session-scrollbar h-full min-h-0"
+                initial="instant"
                 resize="instant"
                 onScroll={(event) => {
                   const conversation = event.currentTarget;
@@ -253,7 +265,10 @@ export function ChatPage({ sessionId }: ChatPageProps) {
               >
                 <ChatConversation.Content ref={conversationContentRef} className="flex flex-col">
                   <ThreadMessageList
+                    ref={messageListRef}
                     messages={messages}
+                    onBeforeTurnNavigate={stopFollowingConversation}
+                    scrollContainerRef={conversationRef}
                     workspaceId={snapshot.session.workspaceId}
                     workspaceRoot={snapshot.session.workspaceRoot}
                   />
@@ -267,7 +282,11 @@ export function ChatPage({ sessionId }: ChatPageProps) {
           </motion.div>
         </AnimatePresence>
         {activeView === ChatPageView.CONVERSATION ? (
-          <ConversationTurnToc messages={messages} scrollContainerRef={conversationRef} />
+          <ConversationTurnToc
+            messageListRef={messageListRef}
+            messages={messages}
+            scrollContainerRef={conversationRef}
+          />
         ) : null}
       </div>
 

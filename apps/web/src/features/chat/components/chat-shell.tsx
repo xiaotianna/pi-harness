@@ -355,6 +355,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
           basePath={basePath}
           disableNavigation={disableNavigation}
           isAddingWorkspace={addWorkspaceMutation.isPending}
+          isPending={sessionsQuery.isPending || workspacesQuery.isPending}
           onAddWorkspace={handleAddWorkspace}
           onArchive={handleArchive}
           onNewThread={handleNewThread}

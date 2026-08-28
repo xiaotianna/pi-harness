@@ -12,7 +12,7 @@ import {
   Plus,
   TrashBin as Trash2,
 } from "@gravity-ui/icons";
-import { Dropdown, Kbd, Separator, Tooltip } from "@heroui/react";
+import { Dropdown, Kbd, Separator, Skeleton, Tooltip } from "@heroui/react";
 import type { DragEvent, KeyboardEvent } from "react";
 import { memo, useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
@@ -29,6 +29,7 @@ export interface ChatSidebarProps {
   basePath: string;
   disableNavigation?: boolean;
   isAddingWorkspace?: boolean;
+  isPending?: boolean;
   onAddWorkspace?: (() => void) | undefined;
   onArchive?: ((thread: ChatThread) => void) | undefined;
   onAction?: ((id: ChatNavItemId) => void) | undefined;
@@ -45,6 +46,7 @@ export const ChatSidebar = memo(function ChatSidebar({
   basePath,
   disableNavigation = false,
   isAddingWorkspace = false,
+  isPending = false,
   onAddWorkspace,
   onArchive,
   onAction,
@@ -63,6 +65,7 @@ export const ChatSidebar = memo(function ChatSidebar({
     basePath,
     disableNavigation,
     isAddingWorkspace,
+    isPending,
     onAddWorkspace,
     onArchive,
     onAction,
@@ -100,6 +103,7 @@ function SidebarContents({
   disableNavigation,
   idPrefix = "",
   isAddingWorkspace = false,
+  isPending = false,
   onAddWorkspace,
   onArchive,
   onAction,
@@ -273,54 +277,82 @@ function SidebarContents({
         </Sidebar.Group>
       </Sidebar.Header>
       <Sidebar.Content className="session-scrollbar session-scrollbars pt-1" hideScrollBar={false}>
-        <Sidebar.Group
-          onDragEnd={clearWorkspaceDrag}
-          onDragOver={handleWorkspaceDragOver}
-          onDragStart={handleWorkspaceDragStart}
-          onDrop={handleWorkspaceDrop}
-        >
-          <Sidebar.Menu
-            aria-label="工作区"
-            expandedKeys={workspaces.flatMap((workspace) =>
-              collapsedWorkspaceIds.includes(workspace.id)
-                ? []
-                : [`${idPrefix}workspace-${workspace.id}`],
-            )}
-            showGuideLines={false}
-            onExpandedChange={(expandedKeys) =>
-              setCollapsedWorkspaceIds(
-                workspaces.flatMap((workspace) =>
-                  expandedKeys.has(`${idPrefix}workspace-${workspace.id}`) ? [] : [workspace.id],
-                ),
-              )
-            }
-          >
-            {workspaces.map((workspace) => (
-              <ChatSidebarWorkspaceItem
-                key={workspace.id}
-                basePath={basePath}
-                disableNavigation={disableNavigation ?? false}
-                idPrefix={idPrefix}
-                onArchive={onArchive}
-                onNewThread={onNewThread}
-                onRemove={onRemoveWorkspace}
-                onReveal={onRevealWorkspace}
-                onRename={onRename}
-                onRenameWorkspace={onRenameWorkspace}
-                pathname={pathname}
-                dropPosition={
-                  workspaceDropTarget?.id === workspace.id ? workspaceDropTarget.position : null
-                }
-                isDraggable={canReorderWorkspaces}
-                isDragging={draggedWorkspaceId === workspace.id}
-                isCurrent={activeWorkspaceId === workspace.id}
-                threads={threads.filter((thread) => thread.workspaceId === workspace.id)}
-                workspace={workspace}
-                onKeyDown={handleWorkspaceKeyDown}
-              />
+        {isPending ? (
+          <div aria-busy="true" className="flex flex-col gap-1 px-3 py-1" role="status">
+            <span className="sr-only">正在加载工作区与对话</span>
+            {["first", "second"].map((item, index) => (
+              <div className="flex flex-col gap-1 py-1" key={item}>
+                <div className="flex h-8 items-center gap-2 px-2">
+                  <Skeleton aria-hidden className="size-4 shrink-0 rounded" />
+                  <Skeleton
+                    aria-hidden
+                    className={`h-4 rounded-full ${index === 0 ? "w-32" : "w-24"}`}
+                  />
+                </div>
+                <div className="flex h-8 items-center ps-10 pe-2">
+                  <Skeleton
+                    aria-hidden
+                    className={`h-4 rounded-full ${index === 0 ? "w-36" : "w-28"}`}
+                  />
+                </div>
+                {index === 0 ? (
+                  <div className="flex h-8 items-center ps-10 pe-2">
+                    <Skeleton aria-hidden className="h-4 w-24 rounded-full" />
+                  </div>
+                ) : null}
+              </div>
             ))}
-          </Sidebar.Menu>
-        </Sidebar.Group>
+          </div>
+        ) : (
+          <Sidebar.Group
+            onDragEnd={clearWorkspaceDrag}
+            onDragOver={handleWorkspaceDragOver}
+            onDragStart={handleWorkspaceDragStart}
+            onDrop={handleWorkspaceDrop}
+          >
+            <Sidebar.Menu
+              aria-label="工作区"
+              expandedKeys={workspaces.flatMap((workspace) =>
+                collapsedWorkspaceIds.includes(workspace.id)
+                  ? []
+                  : [`${idPrefix}workspace-${workspace.id}`],
+              )}
+              showGuideLines={false}
+              onExpandedChange={(expandedKeys) =>
+                setCollapsedWorkspaceIds(
+                  workspaces.flatMap((workspace) =>
+                    expandedKeys.has(`${idPrefix}workspace-${workspace.id}`) ? [] : [workspace.id],
+                  ),
+                )
+              }
+            >
+              {workspaces.map((workspace) => (
+                <ChatSidebarWorkspaceItem
+                  key={workspace.id}
+                  basePath={basePath}
+                  disableNavigation={disableNavigation ?? false}
+                  idPrefix={idPrefix}
+                  onArchive={onArchive}
+                  onNewThread={onNewThread}
+                  onRemove={onRemoveWorkspace}
+                  onReveal={onRevealWorkspace}
+                  onRename={onRename}
+                  onRenameWorkspace={onRenameWorkspace}
+                  pathname={pathname}
+                  dropPosition={
+                    workspaceDropTarget?.id === workspace.id ? workspaceDropTarget.position : null
+                  }
+                  isDraggable={canReorderWorkspaces}
+                  isDragging={draggedWorkspaceId === workspace.id}
+                  isCurrent={activeWorkspaceId === workspace.id}
+                  threads={threads.filter((thread) => thread.workspaceId === workspace.id)}
+                  workspace={workspace}
+                  onKeyDown={handleWorkspaceKeyDown}
+                />
+              ))}
+            </Sidebar.Menu>
+          </Sidebar.Group>
+        )}
       </Sidebar.Content>
       <Sidebar.Footer>
         <UserMenu onSettings={onSettings} />
