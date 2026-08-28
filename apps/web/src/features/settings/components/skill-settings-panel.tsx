@@ -9,9 +9,18 @@ import {
   Magnifier as Search,
   ShieldCheck,
 } from "@gravity-ui/icons";
-import { Button, Card, Chip, Input, Switch, Tabs, TextField } from "@heroui/react";
-import type { ComponentType, SVGProps } from "react";
+import { Button, Chip, Input, Switch, TextField } from "@heroui/react";
+import { type ComponentType, type SVGProps, useState } from "react";
+import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import { SettingsPanelHeader } from "./settings-panel-header";
+
+const SKILL_STATUSES = [
+  { id: "all", label: "全部" },
+  { id: "enabled", label: "已开启" },
+  { id: "disabled", label: "已关闭" },
+] as const;
+
+type SkillStatusId = (typeof SKILL_STATUSES)[number]["id"];
 
 const SKILLS = [
   {
@@ -81,61 +90,96 @@ const SKILLS = [
   isEnabled: boolean;
 }[];
 
-function SkillList({ skills }: { skills: readonly (typeof SKILLS)[number][] }) {
+function SkillList({
+  enabledSkillIds,
+  skills,
+  onEnabledChange,
+}: {
+  enabledSkillIds: ReadonlySet<string>;
+  skills: readonly (typeof SKILLS)[number][];
+  onEnabledChange: (skillId: string, isEnabled: boolean) => void;
+}) {
+  if (skills.length === 0) {
+    return <p className="py-12 text-center text-sm text-muted">暂无技能</p>;
+  }
+
   return (
-    <div className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-1">
       {skills.map((skill) => {
         const Icon = skill.icon;
 
         return (
-          <Card key={skill.id} variant="secondary">
-            <Card.Header className="flex-row items-start gap-4">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-default">
-                <Icon aria-hidden className="size-5 text-muted" />
+          <li
+            className="flex min-h-24 items-start gap-3 rounded-xl px-3 py-3 hover:bg-default focus-within:bg-default"
+            key={skill.id}
+          >
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-default">
+              <Icon aria-hidden className="size-5 text-muted" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-foreground">{skill.name}</p>
+              <p className="mt-0.5 text-sm text-muted">{skill.description}</p>
+              <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {skill.resources.map((resource) => (
+                    <Chip key={resource} size="sm" variant="soft">
+                      {resource}
+                    </Chip>
+                  ))}
+                </div>
+                <span className="min-w-0 max-w-64 truncate text-xs text-muted">
+                  {skill.scope} · {skill.location}
+                </span>
               </div>
-              <div className="min-w-0 flex-1">
-                <Card.Title>{skill.name}</Card.Title>
-                <Card.Description className="mt-1">{skill.description}</Card.Description>
-              </div>
-              {skill.isInstalled ? (
-                <Switch
-                  aria-label={`${skill.name} 可用状态`}
-                  defaultSelected={skill.isEnabled}
-                  size="sm"
-                >
-                  <Switch.Content>
-                    <Switch.Control>
-                      <Switch.Thumb />
-                    </Switch.Control>
-                  </Switch.Content>
-                </Switch>
-              ) : (
-                <Button size="sm" variant="secondary">
-                  安装
-                </Button>
-              )}
-            </Card.Header>
-            <Card.Content className="mt-4 flex-row items-center justify-between gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {skill.resources.map((resource) => (
-                  <Chip key={resource} size="sm" variant="soft">
-                    {resource}
-                  </Chip>
-                ))}
-              </div>
-              <span className="max-w-64 truncate text-xs text-muted">
-                {skill.scope} · {skill.location}
-              </span>
-            </Card.Content>
-          </Card>
+            </div>
+            {skill.isInstalled ? (
+              <Switch
+                aria-label={`${skill.name} 可用状态`}
+                isSelected={enabledSkillIds.has(skill.id)}
+                size="sm"
+                onChange={(isSelected) => onEnabledChange(skill.id, isSelected)}
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Content>
+              </Switch>
+            ) : (
+              <Button size="sm" variant="secondary">
+                安装
+              </Button>
+            )}
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 
 export function SkillSettingsPanel() {
-  const installedSkills = SKILLS.filter((skill) => skill.isInstalled);
+  const [activeStatusId, setActiveStatusId] = useState<SkillStatusId>("all");
+  const [enabledSkillIds, setEnabledSkillIds] = useState<Set<string>>(
+    () => new Set(SKILLS.filter((skill) => skill.isEnabled).map((skill) => skill.id)),
+  );
+  const visibleSkills =
+    activeStatusId === "all"
+      ? SKILLS
+      : SKILLS.filter((skill) => enabledSkillIds.has(skill.id) === (activeStatusId === "enabled"));
+
+  const handleEnabledChange = (skillId: string, isEnabled: boolean) => {
+    setEnabledSkillIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+
+      if (isEnabled) {
+        nextIds.add(skillId);
+      } else {
+        nextIds.delete(skillId);
+      }
+
+      return nextIds;
+    });
+  };
 
   return (
     <section aria-label="技能设置" className="w-full max-w-[720px]">
@@ -160,26 +204,38 @@ export function SkillSettingsPanel() {
         </Button>
       </div>
 
-      <Tabs className="mt-5" defaultSelectedKey="installed" variant="secondary">
-        <Tabs.ListContainer>
-          <Tabs.List aria-label="技能分类">
-            <Tabs.Tab id="installed">
-              已安装
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab id="directory">
-              技能库
-              <Tabs.Indicator />
-            </Tabs.Tab>
-          </Tabs.List>
-        </Tabs.ListContainer>
-        <Tabs.Panel className="p-0" id="installed">
-          <SkillList skills={installedSkills} />
-        </Tabs.Panel>
-        <Tabs.Panel className="p-0" id="directory">
-          <SkillList skills={SKILLS} />
-        </Tabs.Panel>
-      </Tabs>
+      <ToggleButtonGroup
+        aria-label="技能状态"
+        className="mt-5 flex flex-wrap gap-1"
+        disallowEmptySelection
+        selectedKeys={[activeStatusId]}
+        selectionMode="single"
+        onSelectionChange={(keys) => {
+          const [key] = keys;
+
+          if (typeof key === "string") {
+            setActiveStatusId(key as SkillStatusId);
+          }
+        }}
+      >
+        {SKILL_STATUSES.map((status) => (
+          <ToggleButton
+            className="h-8 cursor-[var(--cursor-interactive)] rounded-lg px-3 text-sm text-muted outline-none hover:bg-default data-[focus-visible]:bg-default data-[selected]:bg-default data-[selected]:font-medium data-[selected]:text-foreground"
+            id={status.id}
+            key={status.id}
+          >
+            {status.label}
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
+
+      <div className="mt-3">
+        <SkillList
+          enabledSkillIds={enabledSkillIds}
+          skills={visibleSkills}
+          onEnabledChange={handleEnabledChange}
+        />
+      </div>
     </section>
   );
 }

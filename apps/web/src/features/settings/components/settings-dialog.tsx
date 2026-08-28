@@ -320,7 +320,7 @@ export function SettingsDialog({
                         key={section.id}
                         textValue={section.label}
                       >
-                        <Icon aria-hidden className="size-4 shrink-0 text-foreground" />
+                        <Icon aria-hidden className="size-4 shrink-0 text-muted" />
                         <Label className="text-foreground">{section.label}</Label>
                       </ListBox.Item>
                     );
