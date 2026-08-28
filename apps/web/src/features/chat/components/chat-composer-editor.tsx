@@ -28,6 +28,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { FileIconRender } from "../../../components/ui/file-icon-render";
 
 export const ChatComposerTokenKind = {
   COMMAND: "command",
@@ -86,7 +87,7 @@ const SUGGESTION_MENU_MAX_WIDTH = 384;
 
 interface TokenVisualStrategy {
   colorClassName: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
   selectedClassName: string;
 }
 
@@ -98,7 +99,6 @@ const TOKEN_VISUAL_STRATEGIES = {
   },
   [ChatComposerTokenKind.FILE]: {
     colorClassName: "text-[var(--chat-token-file)]",
-    icon: File,
     selectedClassName: "bg-[var(--chat-token-file-soft)]",
   },
   [ChatComposerTokenKind.FOLDER]: {
@@ -132,6 +132,15 @@ function getTokenKey(token: ChatComposerToken): string {
 
 function getTokenVisualStrategy(kind: ChatComposerTokenKind): TokenVisualStrategy {
   return TOKEN_VISUAL_STRATEGIES[kind];
+}
+
+function TokenVisualIcon({ className, token }: { className: string; token: ChatComposerToken }) {
+  const Icon = getTokenVisualStrategy(token.kind).icon;
+  return Icon ? (
+    <Icon aria-hidden className={className} />
+  ) : (
+    <FileIconRender className={className} fallback={File} filePath={token.label} />
+  );
 }
 
 function getSuggestionMenuAnchor(
@@ -258,7 +267,6 @@ function createEditorDocument(value: string): JSONContent {
 function ComposerTokenView({ node, selected }: ReactNodeViewProps) {
   const token = readTokenAttributes(node.attrs as Record<string, unknown>);
   const visualStrategy = getTokenVisualStrategy(token.kind);
-  const Icon = visualStrategy.icon;
 
   return (
     <NodeViewWrapper
@@ -269,7 +277,7 @@ function ComposerTokenView({ node, selected }: ReactNodeViewProps) {
       contentEditable={false}
       data-token-kind={token.kind}
     >
-      <Icon aria-hidden className="size-3.5 shrink-0" />
+      <TokenVisualIcon className="size-3.5 shrink-0" token={token} />
       <span>{token.label}</span>
     </NodeViewWrapper>
   );
@@ -635,7 +643,6 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
                       </Header>
                       {group.items.map((token) => {
                         const visualStrategy = getTokenVisualStrategy(token.kind);
-                        const Icon = visualStrategy.icon;
                         return (
                           <ListBox.Item
                             key={getTokenKey(token)}
@@ -643,9 +650,9 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
                             textValue={token.label}
                             onPress={() => selectSuggestionTokenRef.current(token)}
                           >
-                            <Icon
-                              aria-hidden
+                            <TokenVisualIcon
                               className={`size-4 shrink-0 ${visualStrategy.colorClassName}`}
+                              token={token}
                             />
                             <span className="min-w-0 truncate">{token.label}</span>
                           </ListBox.Item>

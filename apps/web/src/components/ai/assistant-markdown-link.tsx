@@ -1,8 +1,8 @@
-import { FileCode as FileCode2 } from "@gravity-ui/icons";
 import { Link, Tooltip } from "@heroui/react";
 import { type ComponentPropsWithoutRef, createContext, type ReactNode, useContext } from "react";
 import type { ExtraProps } from "react-markdown";
 import { cn } from "../../shared/utils/cn";
+import { FileIconRender } from "../ui/file-icon-render";
 
 const WorkspaceRootContext = createContext<string | undefined>(undefined);
 const URI_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:/i;
@@ -115,7 +115,7 @@ export function AssistantMarkdownLink({
         href={href}
         {...props}
       >
-        <FileCode2 aria-hidden className="size-[1.1em] shrink-0" />
+        <FileIconRender className="size-[1.1em] shrink-0" filePath={path} />
         <span className="min-w-0 [overflow-wrap:anywhere]">{children}</span>
       </a>
       <Tooltip.Content className="max-w-md break-all" placement="top">

@@ -16,6 +16,8 @@
     "@agile-avocation/ui-pro": "workspace:*",
     "@heroui/react": "catalog:",
     "@heroui/styles": "catalog:",
+    "@iconify-icons/vscode-icons": "catalog:",
+    "@iconify/react": "catalog:",
     "@lobehub/icons": "catalog:",
     "@lobehub/ui": "catalog:",
     "@pi-harness/agent-runtime": "workspace:*",

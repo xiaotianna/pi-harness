@@ -35,6 +35,7 @@
 | 会话视口 | `ChatConversation` 复合组件 | `features/chat/views/chat-page.tsx` |
 | 用户与助手消息 | `ChatMessage`、`ChatAttachment`、`AssistantMarkdown`、`CodeBlock`、`ChatSource`；Markdown 表格与任务项映射为 HeroUI `Table`、`Checkbox`，图表、公式、HeroUI Flow 和 Mermaid fenced block 映射为独立 AI 展示组件 | `components/ai/assistant-markdown.tsx`、`components/ai/chart-block.tsx`、`components/ai/formula-block.tsx`、`components/ai/flow-diagram.tsx`、`components/ai/mermaid-block.tsx`、`features/chat/components/thread-message/` |
 | Markdown 链接 | HTTP(S) 使用 HeroUI `Link`；本地绝对或相对文件、目录路径使用带 Tooltip 的 `AssistantMarkdownLink`，href 必须是真实且可独立解析的路径，点击由会话 feature 请求 daemon 交给操作系统打开 | `components/ai/assistant-markdown-link.tsx`、`features/chat/components/thread-message-list.tsx` |
+| 文件图标 | 统一使用 `FileIconRender`，由可排序的文件名/扩展名策略选择本地 Iconify VSCode 图标，未匹配时由调用方传入原有 Gravity 文件图标兜底 | `components/ui/file-icon-render.tsx` |
 | Tool 调用与分组 | assistant-ui Element `ToolCall`；分组使用紧凑列表 | `components/ai/tool-call.tsx`、`features/chat/components/thread-message/` |
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor` | `features/chat/components/chat-composer.tsx` |
@@ -78,6 +79,7 @@
 - 使用 TanStack Router 管理路由，TanStack Query 管理服务端数据，Zustand 管理共享 UI 状态。
 - `HarnessEventType`、`HarnessEvent` 和 `MessageDeltaKind` 从浏览器安全的 `@pi-harness/agent-runtime/harness-event` 子路径复用，内部消息判断从 `@pi-harness/agent-runtime/agent-message` 复用；不要导入 `agent-runtime` 主入口或在 Web 重复定义事件协议。
 - 使用 Motion 表达业务状态变化，普通图标优先使用 Gravity UI Icons，没有语义等价图标时才使用 Lucide React；替换图标时保留现有 HeroUI 语义色和业务状态 class。同级操作显式统一图标视觉尺寸与颜色，填充路径图标通过尺寸和语义色控制视觉重量。
+- 文件类型图标是普通图标规则的专用入口：使用 `@iconify/react` 渲染 `@iconify-icons/vscode-icons` 的本地图标数据，不依赖运行时 Iconify API；所有文件名驱动的图标选择收口到 `FileIconRender`。
 - 使用 KaTeX 渲染公式 fenced block，使用 Mermaid 严格安全模式渲染流程图 DSL。
 - 使用 `@tanstack/react-virtual` 处理长列表，使用项目既有 AppLayout 或 `react-resizable-panels` 处理可调面板。
 - 使用 Tailwind CSS v4 和主题 token；不要为同一职责增加第二套依赖。

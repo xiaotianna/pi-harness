@@ -409,6 +409,15 @@
 - 原因：最新请求的完整 Session Context 才能反映当前模型窗口占用；这与只统计一轮消息不同，也与把多次重复携带的历史输入相加不同。原始消息继续按顺序保存在 Session JSONL，用量快照只保存分类 Token，避免重复持久化 Context 原文；无间隙分段轨道和限高滚动继续保证分类关系与可访问性。
 - 已提升至：`project-map.md` 与 `docs/架构设计.md`。
 
+### WEB-049
+
+- 状态：`promoted`
+- 范围：文件类型图标
+- 规则：所有根据文件名展示的文件图标统一通过 `components/ui/file-icon-render.tsx` 的 `FileIconRender` 渲染；组件使用按优先级匹配文件名与扩展名的策略列表，并通过 `@iconify/react` 加载本地 `@iconify-icons/vscode-icons` 图标数据。未匹配类型时保留调用入口原有的 Gravity 文件图标作为兜底，媒体附件已有缩略图时继续展示缩略图。
+- 依据：用户明确要求文件 icon 全部统一使用封装后的 `file-icon-render`，采用策略模式便于维护，并保留当前 icon 作为兜底。
+- 原因：单一解析入口可以避免 Markdown 链接、附件和编辑器 token 各自维护扩展名映射，同时本地图标数据符合应用的离线使用场景。
+- 已提升至：`project-map.md`。
+
 ## 维护规则
 
 - 新规则使用下一个数字 ID。

@@ -10,6 +10,8 @@ catalog:
   "@fastify/cors": ^11.0.0
   "@heroui/react": ^3.0.0
   "@heroui/styles": ^3.0.0
+  "@iconify-icons/vscode-icons": ^2.0.2
+  "@iconify/react": ^6.0.2
   "@internationalized/date": 3.12.3
   "@internationalized/number": 3.6.7
   "@lobehub/icons": 5.16.0

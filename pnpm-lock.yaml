@@ -27,6 +27,12 @@ catalogs:
     '@heroui/styles':
       specifier: ^3.0.0
       version: 3.2.3
+    '@iconify-icons/vscode-icons':
+      specifier: ^2.0.2
+      version: 2.0.2
+    '@iconify/react':
+      specifier: ^6.0.2
+      version: 6.0.2
     '@internationalized/date':
       specifier: 3.12.3
       version: 3.12.3
@@ -273,6 +279,12 @@ importers:
       '@heroui/styles':
         specifier: 'catalog:'
         version: 3.2.3(tailwind-merge@3.4.0)(tailwindcss@4.3.3)
+      '@iconify-icons/vscode-icons':
+        specifier: 'catalog:'
+        version: 2.0.2
+      '@iconify/react':
+        specifier: 'catalog:'
+        version: 6.0.2(react@19.2.8)
       '@lobehub/icons':
         specifier: 'catalog:'
         version: 5.16.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1292,6 +1304,14 @@ packages:
     resolution: {integrity: sha512-sD9y6fGric5bHhmzsQKyHwj/m8xnxD7uRCxNDnkor30Eo+cOFNqu1IcEOiSCt3qVHb/np8n03y7IX9hQgngnBA==}
     peerDependencies:
       tailwindcss: '>=4.0.0'
+
+  '@iconify-icons/vscode-icons@2.0.2':
+    resolution: {integrity: sha512-GgdjitdZgCZ9k2GIzEj9XHVjleU2DhiTLHEpBTxv7Uj06ZRAxYeo8kuaHPlP+p4iSUpf0rEERztGARQAgQ3pSw==}
+
+  '@iconify/react@6.0.2':
+    resolution: {integrity: sha512-SMmC2sactfpJD427WJEDN6PMyznTFMhByK9yLW0gOTtnjzzbsi/Ke/XqsumsavFPwNiXs8jSiYeZTmLCLwO+Fg==}
+    peerDependencies:
+      react: '>=16'
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -6066,6 +6086,15 @@ snapshots:
       tw-animate-css: 1.4.0
     transitivePeerDependencies:
       - tailwind-merge
+
+  '@iconify-icons/vscode-icons@2.0.2':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify/react@6.0.2(react@19.2.8)':
+    dependencies:
+      '@iconify/types': 2.0.0
+      react: 19.2.8
 
   '@iconify/types@2.0.0': {}
 

@@ -2,6 +2,7 @@
 
 import { FileText, Xmark as X } from "@gravity-ui/icons";
 import { Button } from "@heroui/react";
+import { FileIconRender } from "../../../components/ui/file-icon-render";
 
 export type ChatAttachmentListItem = {
   id?: string;
@@ -53,7 +54,7 @@ export function ChatAttachmentList({
             <img alt="" className="size-7 shrink-0 rounded-md object-cover" src={attachment.src} />
           ) : (
             <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-background text-muted">
-              <FileText className="size-4" />
+              <FileIconRender className="size-4" fallback={FileText} filePath={attachment.name} />
             </span>
           )}
           <span className={composeClassName("min-w-0 flex-1 truncate", !isToken && "text-sm")}>
