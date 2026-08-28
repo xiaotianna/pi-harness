@@ -23,6 +23,14 @@
   padding-inline-start: calc(var(--spacing, 0.25rem) * 5);
 }
 
+.markdown__block + .markdown__block > :is(ul, ol):first-child {
+  margin-block-start: calc(var(--spacing, 0.25rem) * 3);
+}
+
+.markdown__block:not(:last-child) > :is(ul, ol):last-child {
+  margin-block-end: calc(var(--spacing, 0.25rem) * 3);
+}
+
 .markdown__block + .markdown__block > :is(h1, h2, h3, h4):first-child {
   margin-top: calc(var(--spacing, 0.25rem) * 4);
 }

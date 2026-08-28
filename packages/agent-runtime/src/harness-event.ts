@@ -165,7 +165,7 @@ export interface RunStartedData {
   modelId: string;
 }
 
-// context.usage_snapshot
+// context.usage_snapshot：一次模型请求前的完整 Session Context 用量，不是单轮消息用量
 export interface ContextUsageSnapshotData {
   conversationTokens: number;
   estimatedTotalTokens: number;

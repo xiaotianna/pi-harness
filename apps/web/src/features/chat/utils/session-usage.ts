@@ -111,6 +111,7 @@ function readAssistantRequestUsage(event: HarnessEvent): AssistantRequestUsage |
   const output = readNonNegativeNumber(event.data.usage.output);
   const cacheRead = readNonNegativeNumber(event.data.usage.cacheRead);
   const cacheWrite = readNonNegativeNumber(event.data.usage.cacheWrite);
+  const reasoning = Math.min(output, readNonNegativeNumber(event.data.usage.reasoning));
   const reportedTotal = readNonNegativeNumber(event.data.usage.totalTokens);
   const cost = isPlainObject(event.data.usage.cost) ? event.data.usage.cost : {};
   const inputCost = readNonNegativeNumber(cost.input);
@@ -134,7 +135,7 @@ function readAssistantRequestUsage(event: HarnessEvent): AssistantRequestUsage |
       },
       input,
       output,
-      reasoning: readNonNegativeNumber(event.data.usage.reasoning),
+      reasoning,
       totalTokens: reportedTotal || input + output + cacheRead + cacheWrite,
     },
   };
@@ -185,6 +186,7 @@ export function summarizeSessionUsage(events: readonly HarnessEvent[]): SessionU
     const reportedInputTokens =
       request.usage.input + request.usage.cacheRead + request.usage.cacheWrite;
     if (
+      request.isContextUsageReliable &&
       reportedInputTokens > 0 &&
       contextSnapshotState !== null &&
       contextSnapshotState.runId === (event.runId ?? null)

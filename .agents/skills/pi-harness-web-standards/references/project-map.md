@@ -38,7 +38,7 @@
 | Tool 调用与分组 | assistant-ui Element `ToolCall`；分组使用紧凑列表 | `components/ai/tool-call.tsx`、`features/chat/components/thread-message/` |
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor` | `features/chat/components/chat-composer.tsx` |
-| 上下文与用量 | 发送按钮左侧使用 HeroUI `ProgressCircle` 触发 `Popover`，详情在 HeroUI `ProgressBar` 轨道内按上下文窗口占比无间隙地连续组合 System Prompt、Tool 定义和对话消息，并将单次快照与 Run、Session 累计分开；弹层正文使用限高 HeroUI `ScrollShadow` 适配可用视口 | `features/chat/components/context-usage-popover.tsx`、`features/chat/utils/session-usage.ts` |
+| 上下文与用量 | 发送按钮左侧使用 HeroUI `ProgressCircle` 触发 264px 宽的紧凑 `Popover`，详情取最近一次模型请求实际携带的完整 Session Context，在 HeroUI `ProgressBar` 轨道内按上下文窗口占比无间隙地连续组合 System Prompt、Tool 定义和按顺序累积的消息（含 tool call/result）；默认只展示当前窗口占用，最近 Run、Session 累计和说明通过 HeroUI `Disclosure` 展开，弹层正文使用限高 HeroUI `ScrollShadow` 适配可用视口 | `features/chat/components/context-usage-popover.tsx`、`features/chat/utils/session-usage.ts` |
 | 文件选择 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发 | `features/chat/components/chat-composer.tsx` |
 | 命令与搜索弹窗 | `Command` 复合组件 | `features/chat/components/chat-search-dialog.tsx` |
 | 提示词建议 | `PromptSuggestion` | `features/chat/views/explore-page.tsx` |

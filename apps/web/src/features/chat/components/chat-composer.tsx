@@ -849,7 +849,6 @@ export function ChatComposer({
               <ContextUsagePopover
                 contextWindow={selectedModel.contextWindow}
                 isGenerating={isGenerating}
-                modelName={selectedModel.name}
                 summary={usage}
               />
             ) : null}

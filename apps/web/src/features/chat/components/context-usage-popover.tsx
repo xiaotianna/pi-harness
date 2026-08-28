@@ -1,5 +1,6 @@
 import {
   Button,
+  Disclosure,
   Popover,
   ProgressBar,
   ProgressCircle,
@@ -16,7 +17,7 @@ const INTEGER_FORMATTER = new Intl.NumberFormat("zh-CN", { maximumFractionDigits
 const CONTEXT_CATEGORY_STYLES = {
   CONVERSATION: "bg-accent",
   SYSTEM_PROMPT: "bg-muted/55",
-  TOOL: "bg-accent/50",
+  TOOL: "bg-warning/60",
 } as const;
 
 function formatTokens(value: number): string {
@@ -54,9 +55,9 @@ interface ContextBreakdownMetricProps extends UsageMetricProps {
 
 function ContextBreakdownMetric({ label, markerClassName, value }: ContextBreakdownMetricProps) {
   return (
-    <div className="flex items-center justify-between gap-6 text-sm">
-      <span className="flex min-w-0 items-center gap-2 text-muted">
-        <span aria-hidden className={`size-2.5 shrink-0 rounded-sm ${markerClassName}`} />
+    <div className="flex items-center justify-between gap-4 text-xs">
+      <span className="flex min-w-0 items-center gap-1.5 text-muted">
+        <span aria-hidden className={`size-2 shrink-0 rounded-sm ${markerClassName}`} />
         {label}
       </span>
       <span className="shrink-0 tabular-nums text-foreground">~{value}</span>
@@ -92,7 +93,7 @@ function readSegmentPercentage(tokens: number, contextWindow: number): number {
 
 function UsageMetric({ label, value }: UsageMetricProps) {
   return (
-    <div className="flex items-center justify-between gap-6 text-sm">
+    <div className="flex items-center justify-between gap-4 text-xs">
       <span className="text-muted">{label}</span>
       <span className="tabular-nums text-foreground">{value}</span>
     </div>
@@ -102,14 +103,12 @@ function UsageMetric({ label, value }: UsageMetricProps) {
 export interface ContextUsagePopoverProps {
   contextWindow: number;
   isGenerating: boolean;
-  modelName: string;
   summary: SessionUsageSummary;
 }
 
 export function ContextUsagePopover({
   contextWindow,
   isGenerating,
-  modelName,
   summary,
 }: ContextUsagePopoverProps) {
   const contextTokens = summary.contextTokens ?? 0;
@@ -146,28 +145,25 @@ export function ContextUsagePopover({
         <span className="text-xs text-muted">{percentageLabel}</span>
       </Button>
       <Popover.Content
-        className="w-80 max-w-[calc(100vw-2rem)] overflow-hidden"
+        className="w-[264px] max-w-[calc(100vw-2rem)] overflow-hidden"
         offset={10}
         placement="top end"
       >
         <Popover.Dialog className="p-0">
           <ScrollShadow
-            className="max-h-[min(70dvh,36rem)] overscroll-y-contain p-3"
+            className="max-h-[min(70dvh,36rem)] overscroll-y-contain p-2.5"
             orientation="vertical"
           >
-            <div className="flex flex-col gap-3">
-              <div className="flex items-start justify-between gap-6">
-                <div className="min-w-0">
-                  <Popover.Heading>上下文与用量</Popover.Heading>
-                  <p className="mt-0.5 truncate text-xs text-muted">{modelName}</p>
-                </div>
-                <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
+            <div className="flex flex-col gap-2.5">
+              <div className="flex items-center justify-between gap-4">
+                <Popover.Heading className="text-sm font-medium">上下文与用量</Popover.Heading>
+                <span className="shrink-0 text-xs font-medium tabular-nums text-foreground">
                   {percentageLabel}
                 </span>
               </div>
 
               <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-4 text-sm">
+                <div className="flex items-center justify-between gap-4 text-xs">
                   <span className="text-muted">当前上下文</span>
                   <span className="tabular-nums text-foreground">
                     {summary.contextTokens === null
@@ -218,91 +214,128 @@ export function ContextUsagePopover({
                   </ProgressBar.Track>
                 </ProgressBar>
                 {contextBreakdown === null ? (
-                  <p className="rounded-xl bg-default px-3 py-2 text-xs leading-relaxed text-muted">
+                  <p className="rounded-xl bg-default px-2.5 py-2 text-[11px] leading-relaxed text-muted">
                     旧记录没有上下文分段快照，下一次模型请求时会自动记录。
                   </p>
                 ) : (
-                  <div className="mt-1 flex flex-col gap-2.5">
+                  <div className="mt-0.5 flex flex-col gap-2">
                     <ContextBreakdownMetric
                       label="系统提示词"
                       markerClassName={CONTEXT_CATEGORY_STYLES.SYSTEM_PROMPT}
                       value={formatTokens(contextBreakdown.systemPromptTokens)}
                     />
                     <ContextBreakdownMetric
-                      label="工具"
+                      label="工具定义"
                       markerClassName={CONTEXT_CATEGORY_STYLES.TOOL}
                       value={formatTokens(contextBreakdown.toolTokens)}
                     />
                     <ContextBreakdownMetric
-                      label="对话消息"
+                      label="会话消息（含工具调用）"
                       markerClassName={CONTEXT_CATEGORY_STYLES.CONVERSATION}
                       value={formatTokens(contextBreakdown.conversationTokens)}
                     />
-                    <p className="text-xs tabular-nums text-muted">
+                    <p className="text-[11px] tabular-nums text-muted">
                       {isGenerating ? "当前" : "最近"} Run 第 {contextBreakdown.requestIndex}{" "}
-                      次模型请求 · 单次快照
+                      次模型请求前 · 完整 Session 上下文
                     </p>
                   </div>
                 )}
               </div>
 
               <Separator />
+              <Disclosure>
+                {({ isExpanded }) => (
+                  <>
+                    <Disclosure.Heading>
+                      <Disclosure.Trigger className="flex min-h-6 w-full items-center justify-center gap-1 p-0 text-[11px] text-muted hover:text-foreground">
+                        {isExpanded ? "收起" : "展开更多"}
+                        <Disclosure.Indicator className="size-3 opacity-60" />
+                      </Disclosure.Trigger>
+                    </Disclosure.Heading>
+                    <Disclosure.Content>
+                      <Disclosure.Body style={{ padding: 0 }}>
+                        <div className="flex flex-col gap-2.5 pt-2.5">
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between gap-6">
+                              <span className="text-xs font-medium text-foreground">最近 Run</span>
+                              <span className="text-[11px] tabular-nums text-muted">
+                                {latestRun ? `${latestRun.requestCount} 次模型请求` : "暂无请求"}
+                              </span>
+                            </div>
+                            <UsageMetric
+                              label="Token 合计"
+                              value={
+                                latestRun ? formatExactTokens(latestRun.usage.totalTokens) : "—"
+                              }
+                            />
+                            <UsageMetric
+                              label="预估费用"
+                              value={formatCost(
+                                latestRun?.usage.cost.total ?? 0,
+                                latestRun !== null,
+                              )}
+                            />
+                          </div>
 
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-6">
-                  <span className="text-sm font-medium text-foreground">最近 Run</span>
-                  <span className="text-xs tabular-nums text-muted">
-                    {latestRun ? `${latestRun.requestCount} 次模型请求` : "暂无请求"}
-                  </span>
-                </div>
-                <UsageMetric
-                  label="Token 合计"
-                  value={latestRun ? formatExactTokens(latestRun.usage.totalTokens) : "—"}
-                />
-                <UsageMetric
-                  label="预估费用"
-                  value={formatCost(latestRun?.usage.cost.total ?? 0, latestRun !== null)}
-                />
-              </div>
+                          <Separator />
 
-              <Separator />
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between gap-6">
+                              <span className="text-xs font-medium text-foreground">会话累计</span>
+                              <span className="text-[11px] tabular-nums text-muted">
+                                {summary.runCount} 个 Run · {summary.requestCount} 次请求
+                              </span>
+                            </div>
+                            <UsageMetric
+                              label="输入"
+                              value={formatExactTokens(summary.usage.input)}
+                            />
+                            <UsageMetric
+                              label="输出（含推理）"
+                              value={formatExactTokens(summary.usage.output)}
+                            />
+                            <UsageMetric
+                              label="其中推理"
+                              value={formatExactTokens(summary.usage.reasoning)}
+                            />
+                            <UsageMetric
+                              label="缓存读取"
+                              value={formatExactTokens(summary.usage.cacheRead)}
+                            />
+                            <UsageMetric
+                              label="缓存写入"
+                              value={formatExactTokens(summary.usage.cacheWrite)}
+                            />
+                            <UsageMetric
+                              label="Token 合计"
+                              value={formatExactTokens(summary.usage.totalTokens)}
+                            />
+                            <UsageMetric
+                              label="预估费用"
+                              value={formatCost(summary.usage.cost.total, hasUsage)}
+                            />
+                            {summary.interruptedRequestCount > 0 ? (
+                              <UsageMetric
+                                label="失败或中止的部分用量"
+                                value={`${summary.interruptedRequestCount} 次请求`}
+                              />
+                            ) : null}
+                          </div>
 
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-6">
-                  <span className="text-sm font-medium text-foreground">会话累计</span>
-                  <span className="text-xs tabular-nums text-muted">
-                    {summary.runCount} 个 Run · {summary.requestCount} 次请求
-                  </span>
-                </div>
-                <UsageMetric label="输入" value={formatExactTokens(summary.usage.input)} />
-                <UsageMetric
-                  label="输出（含推理）"
-                  value={formatExactTokens(summary.usage.output)}
-                />
-                <UsageMetric label="其中推理" value={formatExactTokens(summary.usage.reasoning)} />
-                <UsageMetric label="缓存读取" value={formatExactTokens(summary.usage.cacheRead)} />
-                <UsageMetric label="缓存写入" value={formatExactTokens(summary.usage.cacheWrite)} />
-                <UsageMetric
-                  label="Token 合计"
-                  value={formatExactTokens(summary.usage.totalTokens)}
-                />
-                <UsageMetric
-                  label="预估费用"
-                  value={formatCost(summary.usage.cost.total, hasUsage)}
-                />
-                {summary.interruptedRequestCount > 0 ? (
-                  <UsageMetric
-                    label="失败或中止的部分用量"
-                    value={`${summary.interruptedRequestCount} 次请求`}
-                  />
-                ) : null}
-              </div>
-
-              <p className="text-xs leading-relaxed text-muted">
-                当前上下文按最近一次模型请求单独记录，分类为发送前估算，总量在 Provider
-                返回输入用量后校准；不会跨请求累加。Run 与会话累计包含已报告的失败或中止用量。推理
-                Token 已包含在输出中，订阅或自定义模型可能不提供金额。
-              </p>
+                          <p className="text-[11px] leading-relaxed text-muted">
+                            当前上下文取最近一次模型请求实际携带的完整 Session
+                            Context，包含系统提示词、工具定义，
+                            以及按顺序累积的会话消息、工具调用与结果。分类为发送前估算，总量在
+                            Provider 返回输入用量后校准；不会把多次请求重复累加。Run
+                            与会话累计包含已报告的失败或中止用量。 推理 Token
+                            已包含在输出中，订阅或自定义模型可能不提供金额。
+                          </p>
+                        </div>
+                      </Disclosure.Body>
+                    </Disclosure.Content>
+                  </>
+                )}
+              </Disclosure>
             </div>
           </ScrollShadow>
         </Popover.Dialog>

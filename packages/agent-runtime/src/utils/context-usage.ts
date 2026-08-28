@@ -54,7 +54,42 @@ function estimateMessageTokens(message: Message): number {
   return tokens;
 }
 
-/** 只记录数量，不持久化 System Prompt、消息正文或工具参数 Schema。 */
+function estimateConversationTokens(messages: readonly Message[], prefixTokens: number): number {
+  let latestReliableUsage: { index: number; tokens: number } | null = null;
+  let latestPrefixTimestamp = Number.NEGATIVE_INFINITY;
+
+  for (const [index, message] of messages.entries()) {
+    if (
+      message.role === "assistant" &&
+      message.timestamp >= latestPrefixTimestamp &&
+      message.stopReason !== "aborted" &&
+      message.stopReason !== "error"
+    ) {
+      const tokens =
+        message.usage.totalTokens ||
+        message.usage.input +
+          message.usage.output +
+          message.usage.cacheRead +
+          message.usage.cacheWrite;
+      if (tokens > 0) latestReliableUsage = { index, tokens };
+    }
+    latestPrefixTimestamp = Math.max(latestPrefixTimestamp, message.timestamp);
+  }
+
+  if (latestReliableUsage === null) {
+    return messages.reduce((total, message) => total + estimateMessageTokens(message), 0);
+  }
+
+  const trailingTokens = messages
+    .slice(latestReliableUsage.index + 1)
+    .reduce((total, message) => total + estimateMessageTokens(message), 0);
+  return Math.max(0, latestReliableUsage.tokens - prefixTokens) + trailingTokens;
+}
+
+/**
+ * 统计本次请求携带的完整 Session Context；messages 已包含按顺序累积的工具调用与结果。
+ * 这里只记录数量，不重复持久化 System Prompt、消息正文或工具参数 Schema。
+ */
 export function estimateContextUsage(context: Context): ContextUsageEstimate {
   const systemPromptTokens = estimateTextTokens(context.systemPrompt ?? "");
   const toolTokens = context.tools?.length
@@ -69,9 +104,9 @@ export function estimateContextUsage(context: Context): ContextUsageEstimate {
         ),
       )
     : 0;
-  const conversationTokens = context.messages.reduce(
-    (total, message) => total + estimateMessageTokens(message),
-    0,
+  const conversationTokens = estimateConversationTokens(
+    context.messages,
+    systemPromptTokens + toolTokens,
   );
 
   return {
