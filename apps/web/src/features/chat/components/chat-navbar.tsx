@@ -1,11 +1,7 @@
 "use client";
 
 import { AppLayout, Navbar, Sidebar } from "@agile-avocation/ui-pro";
-import {
-  LayoutSplitSideContentRight as PanelRightClose,
-  LayoutSideContentRight as PanelRightOpen,
-  Magnifier as Search,
-} from "@gravity-ui/icons";
+import { Magnifier as Search } from "@gravity-ui/icons";
 import { Button, Kbd, Tooltip } from "@heroui/react";
 import { memo } from "react";
 import type { ChatActivePage } from "../data/chat";
@@ -26,17 +22,10 @@ const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: stri
 
 export interface ChatNavbarProps {
   activePage: ChatActivePage;
-  isInspectorOpen?: boolean;
-  onInspectorToggle?: (() => void) | undefined;
   onSearch?: (() => void) | undefined;
 }
 
-export const ChatNavbar = memo(function ChatNavbar({
-  activePage,
-  isInspectorOpen = false,
-  onInspectorToggle,
-  onSearch,
-}: ChatNavbarProps) {
+export const ChatNavbar = memo(function ChatNavbar({ activePage, onSearch }: ChatNavbarProps) {
   const isThread = activePage.kind === "thread";
   const thread = isThread ? activePage.thread : undefined;
   const title = isThread ? (thread?.title ?? "对话") : NAV_TITLES[activePage.kind].title;
@@ -56,26 +45,6 @@ export const ChatNavbar = memo(function ChatNavbar({
         </div>
         <Navbar.Spacer />
         <div className="flex items-center gap-2">
-          {isThread ? (
-            <Tooltip delay={0}>
-              <Button
-                isIconOnly
-                aria-label={isInspectorOpen ? "收起右侧面板" : "打开右侧面板"}
-                size="sm"
-                variant="tertiary"
-                {...(onInspectorToggle ? { onPress: onInspectorToggle } : {})}
-              >
-                {isInspectorOpen ? (
-                  <PanelRightClose className="size-4" />
-                ) : (
-                  <PanelRightOpen className="size-4" />
-                )}
-              </Button>
-              <Tooltip.Content placement="bottom">
-                {isInspectorOpen ? "收起右侧面板" : "打开右侧面板"}
-              </Tooltip.Content>
-            </Tooltip>
-          ) : null}
           <Tooltip delay={0}>
             <Button
               aria-label="搜索对话"

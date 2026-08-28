@@ -1,6 +1,7 @@
 "use client";
 
-import { ChatConversation, ChatLoader } from "@agile-avocation/ui-pro";
+import { ChatConversation, ChatMessage as ChatMessagePrimitive } from "@agile-avocation/ui-pro";
+import { Skeleton } from "@heroui/react";
 import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness-event";
 import { HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
 import type { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
@@ -41,6 +42,78 @@ const CHAT_AUTO_SCROLL_THRESHOLD_PX = 96;
 
 export interface ChatPageProps {
   sessionId: string;
+}
+
+export function ChatPageSkeleton() {
+  const shouldReduceMotion = useReducedMotion();
+
+  return (
+    <div
+      aria-busy
+      className={`relative flex h-[calc(100svh-var(--chat-navbar-height,64px))] flex-col overflow-hidden ${
+        shouldReduceMotion ? "" : "skeleton--shimmer"
+      }`}
+      role="status"
+    >
+      <span className="sr-only">正在加载会话</span>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="mx-auto flex w-full max-w-[714px] flex-col gap-2 px-4 pt-10 pb-12">
+          <ChatMessagePrimitive.User>
+            <ChatMessagePrimitive.Bubble className="w-[min(72%,26rem)]">
+              <ChatMessagePrimitive.Content>
+                <Skeleton animationType="none" aria-hidden className="h-4 w-full rounded-full" />
+              </ChatMessagePrimitive.Content>
+            </ChatMessagePrimitive.Bubble>
+          </ChatMessagePrimitive.User>
+
+          <div className="mt-6">
+            <ChatMessagePrimitive.Assistant>
+              <ChatMessagePrimitive.Body>
+                <ChatMessagePrimitive.Content className="flex flex-col gap-3 py-1">
+                  <Skeleton animationType="none" aria-hidden className="h-4 w-full rounded-full" />
+                  <Skeleton animationType="none" aria-hidden className="h-4 w-[82%] rounded-full" />
+                  <Skeleton animationType="none" aria-hidden className="h-4 w-[58%] rounded-full" />
+                </ChatMessagePrimitive.Content>
+              </ChatMessagePrimitive.Body>
+            </ChatMessagePrimitive.Assistant>
+          </div>
+        </div>
+      </div>
+
+      <div className="relative z-10 shrink-0 bg-background px-4 pb-2">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
+        />
+        <div className="mx-auto w-full max-w-[714px]">
+          <div className="flex min-h-[120px] flex-col justify-between rounded-[32px] bg-field p-4 shadow-field">
+            <Skeleton animationType="none" aria-hidden className="h-4 w-44 rounded-full" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <Skeleton animationType="none" aria-hidden className="size-8 rounded-full" />
+                <Skeleton
+                  animationType="none"
+                  aria-hidden
+                  className="h-8 w-24 rounded-full sm:w-32"
+                />
+                <Skeleton
+                  animationType="none"
+                  aria-hidden
+                  className="hidden h-8 w-36 rounded-full sm:block"
+                />
+              </div>
+              <Skeleton animationType="none" aria-hidden className="size-8 shrink-0 rounded-full" />
+            </div>
+          </div>
+          <Skeleton
+            animationType="none"
+            aria-hidden
+            className="mx-auto mt-3 h-3 w-48 rounded-full"
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function ChatPage({ sessionId }: ChatPageProps) {
@@ -130,11 +203,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   });
 
   if (snapshotQuery.isPending) {
-    return (
-      <div className="h-[calc(100svh-var(--chat-navbar-height,64px))] overflow-hidden px-4 pt-8">
-        <ChatLoader.Skeleton className="mx-auto w-full max-w-[714px]" label="正在加载会话" />
-      </div>
-    );
+    return <ChatPageSkeleton />;
   }
 
   if (!snapshot) return null;

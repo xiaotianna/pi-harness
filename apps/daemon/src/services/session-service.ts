@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import {
   type AgentManager,
   type ApprovalResponseDecision,
   buildSystemPrompt,
+  type FileChangedData,
   type HarnessEvent,
+  HarnessEventType,
+  RunFileChangeOperation,
   type RunId,
   type SessionId,
 } from "@pi-harness/agent-runtime";
@@ -11,6 +16,8 @@ import {
   DEFAULT_THINKING_LEVEL,
   type ThinkingLevel,
 } from "@pi-harness/agent-runtime/thinking-level";
+import { resolveWorkspacePath } from "@pi-harness/policy";
+import { isPlainObject } from "es-toolkit";
 import type {
   AppSettingRepository,
   SessionRecord,
@@ -20,17 +27,21 @@ import type {
 import type { SessionEventSnapshot, SessionEventStore } from "../storage/session-event-store.js";
 import type { HumanInteractionService, PendingToolApproval } from "./human-interaction-service.js";
 import type { ProviderService } from "./provider-service.js";
+import type { SessionEventService } from "./session-event-service.js";
 
 const SessionErrorCode = {
   BUSY: "SESSION_BUSY",
   EMPTY_PROMPT: "EMPTY_RUN_PROMPT",
   EMPTY_TITLE: "EMPTY_SESSION_TITLE",
   NOT_FOUND: "SESSION_NOT_FOUND",
+  RUN_CHANGES_CONFLICT: "RUN_CHANGES_CONFLICT",
+  RUN_CHANGES_NOT_FOUND: "RUN_CHANGES_NOT_FOUND",
   RUN_NOT_FOUND: "RUN_NOT_FOUND",
   WORKSPACE_INVALID: "WORKSPACE_INVALID",
 } as const;
 
 const DEFAULT_SESSION_TITLE = "New session";
+const MAX_REVERT_FILE_BYTES = 1024 * 1024;
 
 export type SessionErrorCode = (typeof SessionErrorCode)[keyof typeof SessionErrorCode];
 
@@ -82,6 +93,99 @@ function normalizeTitle(value: string | undefined): string {
   return title ? title : DEFAULT_SESSION_TITLE;
 }
 
+interface RunFileChange {
+  after: string;
+  before: string | null;
+  path: string;
+}
+
+interface WorkspaceFileState {
+  content: string | null;
+  mode?: number;
+}
+
+function readRunFileChanges(events: readonly HarnessEvent[], runId: RunId): RunFileChange[] {
+  const changesByPath = new Map<string, RunFileChange>();
+
+  for (const event of events) {
+    if (
+      event.runId !== runId ||
+      event.type !== HarnessEventType.FILE_CHANGED ||
+      !isPlainObject(event.data)
+    ) {
+      continue;
+    }
+    const { after, before, path, toolName } = event.data;
+    if (
+      typeof after !== "string" ||
+      (before !== null && typeof before !== "string") ||
+      typeof path !== "string" ||
+      path.length === 0
+    ) {
+      continue;
+    }
+    if (toolName === RunFileChangeOperation.REAPPLY || toolName === RunFileChangeOperation.REVERT) {
+      continue;
+    }
+    const existing = changesByPath.get(path);
+    changesByPath.set(path, { after, before: existing ? existing.before : before, path });
+  }
+
+  return [...changesByPath.values()].filter((change) => (change.before ?? "") !== change.after);
+}
+
+async function readWorkspaceFileState(path: string): Promise<WorkspaceFileState> {
+  try {
+    const metadata = await stat(path);
+    if (!metadata.isFile() || metadata.size > MAX_REVERT_FILE_BYTES) {
+      throw new SessionServiceError(
+        SessionErrorCode.RUN_CHANGES_CONFLICT,
+        "文件类型或大小已变化，无法安全处理本轮更改",
+      );
+    }
+    const content = await readFile(path);
+    if (content.includes(0)) {
+      throw new SessionServiceError(
+        SessionErrorCode.RUN_CHANGES_CONFLICT,
+        "文件已变为二进制内容，无法安全处理本轮更改",
+      );
+    }
+    try {
+      return {
+        content: new TextDecoder("utf-8", { fatal: true }).decode(content),
+        mode: metadata.mode,
+      };
+    } catch {
+      throw new SessionServiceError(
+        SessionErrorCode.RUN_CHANGES_CONFLICT,
+        "文件编码已变化，无法安全处理本轮更改",
+      );
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return { content: null };
+    }
+    throw error;
+  }
+}
+
+async function restoreWorkspaceFile(path: string, state: WorkspaceFileState): Promise<void> {
+  if (state.content === null) {
+    await rm(path, { force: true });
+    return;
+  }
+
+  await mkdir(dirname(path), { recursive: true });
+  const temporaryPath = resolve(dirname(path), `.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporaryPath, state.content, "utf8");
+    if (state.mode !== undefined) await chmod(temporaryPath, state.mode);
+    await rename(temporaryPath, path);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+}
+
 export class SessionService {
   private readonly activeSessionIds = new Set<SessionId>();
   private readonly activeProviderBySession = new Map<SessionId, string>();
@@ -92,10 +196,12 @@ export class SessionService {
     private readonly workspaces: WorkspaceRepository,
     private readonly settings: AppSettingRepository,
     private readonly eventStore: SessionEventStore,
+    private readonly sessionEvents: SessionEventService,
     private readonly providers: ProviderService,
     private readonly agents: AgentManager,
     private readonly interactions: HumanInteractionService,
     private readonly onBackgroundError: SessionBackgroundErrorHandler,
+    private readonly protectedPaths: readonly string[],
   ) {}
 
   public async create(input: CreateSessionInput): Promise<SessionRecord> {
@@ -231,6 +337,134 @@ export class SessionService {
     }
     if (!this.agents.followUp(sessionId, runId, prompt)) {
       throw new SessionServiceError(SessionErrorCode.RUN_NOT_FOUND, "活动 Run 不存在");
+    }
+  }
+
+  public async revertRunChanges(sessionId: SessionId, runId: RunId): Promise<void> {
+    await this.applyRunChanges(sessionId, runId, false);
+  }
+
+  public async reapplyRunChanges(sessionId: SessionId, runId: RunId): Promise<void> {
+    await this.applyRunChanges(sessionId, runId, true);
+  }
+
+  private async applyRunChanges(
+    sessionId: SessionId,
+    runId: RunId,
+    shouldReapply: boolean,
+  ): Promise<void> {
+    this.assertSessionIdle(sessionId);
+    this.activeSessionIds.add(sessionId);
+    try {
+      const action = shouldReapply ? "重新应用" : "撤销";
+      const operation = shouldReapply
+        ? RunFileChangeOperation.REAPPLY
+        : RunFileChangeOperation.REVERT;
+      const session = this.getRequiredSession(sessionId);
+      const snapshot = await this.eventStore.load(sessionId);
+      this.reconcileIndex(session, snapshot);
+      if (!snapshot.events.some((event) => event.runId === runId)) {
+        throw new SessionServiceError(SessionErrorCode.RUN_NOT_FOUND, "Run 不存在");
+      }
+
+      const changes = readRunFileChanges(snapshot.events, runId);
+      if (changes.length === 0) {
+        throw new SessionServiceError(
+          SessionErrorCode.RUN_CHANGES_NOT_FOUND,
+          `本轮没有可${action}的文件更改`,
+        );
+      }
+
+      const currentStates = new Map<string, WorkspaceFileState>();
+      const resolvedPaths = new Map<string, string>();
+      for (const change of changes) {
+        const path = await resolveWorkspacePath({
+          allowMissing: true,
+          path: change.path,
+          protectedPaths: this.protectedPaths,
+          workspaceRoot: session.workspaceRoot,
+        });
+        const current = await readWorkspaceFileState(path);
+        const matchesExpectedState = shouldReapply
+          ? current.content === change.before
+          : current.content === change.after || (current.content === null && change.after === "");
+        if (!matchesExpectedState) {
+          throw new SessionServiceError(
+            SessionErrorCode.RUN_CHANGES_CONFLICT,
+            `${change.path} 当前内容已变化，无法安全${action}`,
+          );
+        }
+        currentStates.set(change.path, current);
+        resolvedPaths.set(change.path, path);
+      }
+
+      const restoredPaths: string[] = [];
+      try {
+        for (const change of changes) {
+          const path = resolvedPaths.get(change.path);
+          if (!path) throw new Error("Resolved workspace path is missing");
+          const current = currentStates.get(change.path);
+          const targetContent = shouldReapply
+            ? change.after === ""
+              ? null
+              : change.after
+            : change.before;
+          await restoreWorkspaceFile(path, {
+            content: targetContent,
+            ...(current?.mode === undefined ? {} : { mode: current.mode }),
+          });
+          restoredPaths.push(change.path);
+        }
+      } catch (error: unknown) {
+        const rollbackErrors: unknown[] = [];
+        for (const workspacePath of restoredPaths.reverse()) {
+          const path = resolvedPaths.get(workspacePath);
+          const current = currentStates.get(workspacePath);
+          if (!path || !current) continue;
+          try {
+            await restoreWorkspaceFile(path, current);
+          } catch (rollbackError: unknown) {
+            rollbackErrors.push(rollbackError);
+          }
+        }
+        if (rollbackErrors.length > 0) {
+          throw new AggregateError(
+            [error, ...rollbackErrors],
+            `${action}失败，且无法完整恢复文件状态`,
+          );
+        }
+        throw error;
+      }
+
+      let nextSeq = Math.max(session.lastSeq, snapshot.lastPersistedSeq) + 1;
+      const toolCallId = randomUUID();
+      for (const change of changes) {
+        const current = currentStates.get(change.path);
+        const targetContent = shouldReapply
+          ? change.after === ""
+            ? null
+            : change.after
+          : change.before;
+        await this.sessionEvents.handle({
+          data: {
+            after: targetContent ?? "",
+            before: current?.content ?? null,
+            diff: "",
+            path: change.path,
+            toolCallId,
+            toolName: operation,
+          } satisfies FileChangedData,
+          id: randomUUID(),
+          runId,
+          seq: nextSeq,
+          sessionId,
+          timestamp: Date.now(),
+          type: HarnessEventType.FILE_CHANGED,
+        });
+        nextSeq += 1;
+      }
+    } finally {
+      this.activeSessionIds.delete(sessionId);
     }
   }
 

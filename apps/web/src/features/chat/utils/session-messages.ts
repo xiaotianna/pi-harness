@@ -10,13 +10,16 @@ import { isPlainObject } from "es-toolkit";
 import type { Session, SessionSnapshot } from "../api/session-api";
 import {
   type ChatAssistantMessage,
-  type ChatFileChangeMessage,
   type ChatMessage,
   type ChatMessageTool,
   ChatMessageType,
   type ChatThread,
   ChatToolState,
 } from "../data/chat";
+import {
+  readRevertedSessionRunIds,
+  summarizeSessionFileChangesByRun,
+} from "./session-file-changes";
 
 const TERMINAL_RUN_EVENTS = new Set<HarnessEvent["type"]>([
   HarnessEventType.RUN_ABORTED,
@@ -41,7 +44,9 @@ function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatM
   const content = readContentText(event.data.content);
   if (!content && !Array.isArray(event.data.content)) return [];
   if (event.data.role === "user") {
-    return content ? [{ content, id: event.id, type: ChatMessageType.USER }] : [];
+    return content
+      ? [{ content, id: event.id, timestamp: event.timestamp, type: ChatMessageType.USER }]
+      : [];
   }
   if (event.data.role !== "assistant" || !Array.isArray(event.data.content)) return [];
 
@@ -83,6 +88,7 @@ function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatM
       messages.push({
         content: part.text,
         id: `${messageId}-text-${index}`,
+        timestamp: event.timestamp,
         type: ChatMessageType.ASSISTANT,
         ...turn,
       });
@@ -228,6 +234,8 @@ export function readSessionStatus(events: readonly HarnessEvent[]): ChatStatus {
  */
 export function sessionEventsToMessages(events: readonly HarnessEvent[]): readonly ChatMessage[] {
   const messages: ChatMessage[] = [];
+  const fileChangesByRunId = summarizeSessionFileChangesByRun(events);
+  const revertedRunIds = readRevertedSessionRunIds(events);
   const activeAssistantMessageIdByRunId = new Map<string, string>();
   const lastAssistantMessageByRunId = new Map<string, ChatAssistantMessage>();
   const runStartedAtById = new Map<string, number>();
@@ -363,38 +371,6 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       continue;
     }
 
-    if (
-      event.type === HarnessEventType.FILE_CHANGED &&
-      isPlainObject(event.data) &&
-      typeof event.data.diff === "string" &&
-      typeof event.data.path === "string"
-    ) {
-      const change = {
-        diff: event.data.diff,
-        id: event.id,
-        path: event.data.path,
-      };
-      const previousMessage = messages.at(-1);
-      const existingMessage =
-        previousMessage?.type === ChatMessageType.FILE_CHANGE &&
-        previousMessage.turnId === event.runId
-          ? previousMessage
-          : undefined;
-
-      if (existingMessage) {
-        existingMessage.changes = [...existingMessage.changes, change];
-      } else {
-        const message: ChatFileChangeMessage = {
-          changes: [change],
-          id: event.id,
-          type: ChatMessageType.FILE_CHANGE,
-          ...(event.runId === undefined ? {} : { turnId: event.runId }),
-        };
-        messages.push(message);
-      }
-      continue;
-    }
-
     if (event.type === HarnessEventType.MESSAGE_DELTA && event.runId) {
       const delta = readDelta(event);
       if (delta) {
@@ -435,7 +411,13 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       const message = lastAssistantMessageByRunId.get(event.runId);
       if (message) {
         const startedAt = runStartedAtById.get(event.runId);
+        const fileChanges = fileChangesByRunId.get(event.runId);
         message.actions = "full";
+        if (fileChanges?.length) {
+          message.areFileChangesReverted = revertedRunIds.has(event.runId);
+          message.fileChanges = fileChanges;
+          message.sessionId = event.sessionId;
+        }
         markRunIntermediateMessages(
           messages,
           event.runId,
@@ -447,14 +429,18 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
 
     if (event.type === HarnessEventType.RUN_FAILED && event.runId) {
       const startedAt = runStartedAtById.get(event.runId);
+      const fileChanges = fileChangesByRunId.get(event.runId);
       markRunIntermediateMessages(
         messages,
         event.runId,
         startedAt === undefined ? undefined : Math.max(0, event.timestamp - startedAt),
       );
       messages.push({
+        areFileChangesReverted: revertedRunIds.has(event.runId),
         content: readFailureMessage(event),
+        ...(fileChanges?.length ? { fileChanges } : {}),
         id: `failed-${event.id}`,
+        sessionId: event.sessionId,
         type: ChatMessageType.ERROR,
         turnId: event.runId,
       });
@@ -462,6 +448,13 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     }
 
     if (event.type === HarnessEventType.RUN_ABORTED && event.runId) {
+      const message = lastAssistantMessageByRunId.get(event.runId);
+      const fileChanges = fileChangesByRunId.get(event.runId);
+      if (message && fileChanges?.length) {
+        message.areFileChangesReverted = revertedRunIds.has(event.runId);
+        message.fileChanges = fileChanges;
+        message.sessionId = event.sessionId;
+      }
       streamingContentByRunId.delete(event.runId);
     }
   }

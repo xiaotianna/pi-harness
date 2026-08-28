@@ -10,7 +10,6 @@ export type {
   ChatCodeMessage,
   ChatErrorMessage,
   ChatFileChange,
-  ChatFileChangeMessage,
   ChatImageGenerationMessage,
   ChatLoadingMessage,
   ChatMessage,
@@ -28,7 +27,7 @@ export type {
   ChatWebSearchMessage,
   ResolveChatToolApproval,
 } from "./chat-message";
-export { ChatMessageType, ChatToolState } from "./chat-message";
+export { ChatFileChangeStatus, ChatMessageType, ChatToolState } from "./chat-message";
 
 import type { ChatMessage } from "./chat-message";
 

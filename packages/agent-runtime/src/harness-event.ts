@@ -16,6 +16,14 @@ export type ApprovalResponseDecision =
   | typeof ApprovalDecision.APPROVED
   | typeof ApprovalDecision.REJECTED;
 
+export const RunFileChangeOperation = {
+  REAPPLY: "reapply_run_changes",
+  REVERT: "undo_run_changes",
+} as const;
+
+export type RunFileChangeOperation =
+  (typeof RunFileChangeOperation)[keyof typeof RunFileChangeOperation];
+
 /**
  * HarnessEventType 是 pi harness（当前项目）对外公开的事件名称
  * 它描述一个 Session 中发生了什么，daemon 会据此持久化或通过 SSE 通知

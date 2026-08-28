@@ -6,23 +6,17 @@ export function FlowDiagram({ data }: { data: FlowBlockData }) {
   return (
     <figure className="mb-3">
       <figcaption className="mb-3 text-sm font-medium text-foreground">{data.title}</figcaption>
-      <ol className="flex flex-col items-center gap-2 sm:flex-row">
+      <ol className="session-scrollbar session-scrollbars flex max-w-full items-center gap-2 overflow-x-auto">
         {data.steps.map((step, index) => (
-          <li
-            className="flex w-full min-w-0 flex-1 flex-col items-center gap-2 sm:flex-row"
-            key={`${step}-${index}`}
-          >
+          <li className="flex shrink-0 items-center gap-2" key={`${step}-${index}`}>
             <Surface
-              className="flex min-h-10 w-full min-w-0 flex-1 items-center justify-center rounded-xl px-3 py-2 text-center text-sm font-medium"
+              className="flex min-h-16 w-max min-w-48 max-w-64 items-center justify-center rounded-xl px-3 py-2 text-center text-sm font-medium"
               variant="secondary"
             >
               {step}
             </Surface>
             {index < data.steps.length - 1 ? (
-              <ArrowRight
-                aria-hidden
-                className="size-4 shrink-0 rotate-90 text-muted sm:rotate-0"
-              />
+              <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
             ) : null}
           </li>
         ))}

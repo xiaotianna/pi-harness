@@ -131,6 +131,32 @@ export class SessionController {
     }
   };
 
+  public revertRunChanges = async (
+    request: FastifyRequest<{ Params: SessionRunParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.sessions.revertRunChanges(request.params.sessionId, request.params.runId);
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public reapplyRunChanges = async (
+    request: FastifyRequest<{ Params: SessionRunParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.sessions.reapplyRunChanges(request.params.sessionId, request.params.runId);
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
   public getPendingApproval = async (
     request: FastifyRequest<{ Params: SessionRunParamsDto }>,
     reply: FastifyReply,
@@ -165,7 +191,7 @@ export class SessionController {
       const status =
         error.code === "SESSION_NOT_FOUND" || error.code === "RUN_NOT_FOUND"
           ? 404
-          : error.code === "SESSION_BUSY"
+          : error.code === "SESSION_BUSY" || error.code === "RUN_CHANGES_CONFLICT"
             ? 409
             : 400;
       return reply.status(status).send({ code: error.code, message: error.message });

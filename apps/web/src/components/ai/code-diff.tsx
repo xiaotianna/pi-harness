@@ -8,6 +8,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -82,15 +83,15 @@ export function parseUnifiedDiff(diff: string): ParsedDiff {
 }
 
 const DIFF_LINE_CLASS_NAMES: Record<DiffLineType, string> = {
-  [DiffLineType.ADDED]: "bg-success/10",
-  [DiffLineType.CONTEXT]: "bg-background",
-  [DiffLineType.REMOVED]: "bg-danger/10",
+  [DiffLineType.ADDED]: "bg-success-soft",
+  [DiffLineType.CONTEXT]: "bg-surface-secondary",
+  [DiffLineType.REMOVED]: "bg-danger-soft",
 };
 
 const DIFF_LINE_GUTTER_CLASS_NAMES: Record<DiffLineType, string> = {
-  [DiffLineType.ADDED]: "border-success/20 text-success",
+  [DiffLineType.ADDED]: "border-separator text-success-soft-foreground",
   [DiffLineType.CONTEXT]: "border-separator text-muted",
-  [DiffLineType.REMOVED]: "border-danger/20 text-danger",
+  [DiffLineType.REMOVED]: "border-separator text-danger-soft-foreground",
 };
 
 const DIFF_LINE_MARKERS: Record<DiffLineType, string> = {
@@ -118,6 +119,29 @@ interface ScrollbarDrag {
   scrollStart: number;
 }
 
+const MAX_HIGHLIGHT_CHARACTERS = 64 * 1024;
+const MAX_HIGHLIGHT_LINE_CHARACTERS = 4 * 1024;
+const MAX_RENDERED_LINE_CHARACTERS = 10 * 1024;
+
+function getHighlightCode(lines: readonly DiffLine[]): string | null {
+  let length = 0;
+
+  for (const line of lines) {
+    if (line.content.length > MAX_HIGHLIGHT_LINE_CHARACTERS) return null;
+    length += line.content.length + 1;
+    if (length > MAX_HIGHLIGHT_CHARACTERS) return null;
+  }
+
+  return lines.map((line) => line.content).join("\n");
+}
+
+function getRenderedLineContent(content: string): string {
+  if (content.length <= MAX_RENDERED_LINE_CHARACTERS) return content || " ";
+
+  // ponytail: 超长单行只渲染有界预览；需要完整大文件 Diff 时再引入横向虚拟化。
+  return `${content.slice(0, MAX_RENDERED_LINE_CHARACTERS)} …（该行过长，已截断）`;
+}
+
 function getLanguage(path: string): BundledLanguage | "plaintext" {
   const fileName = path.split(/[\\/]/).at(-1)?.toLowerCase() ?? "";
   const language = fileName.includes(".") ? fileName.split(".").at(-1) : fileName;
@@ -125,9 +149,9 @@ function getLanguage(path: string): BundledLanguage | "plaintext" {
 }
 
 export function CodeDiff({ ariaLabel, className, lines, path }: CodeDiffProps) {
-  const code = lines.map((line) => line.content).join("\n");
+  const code = useMemo(() => getHighlightCode(lines), [lines]);
   const language = getLanguage(path);
-  const highlightKey = `${language}:${code}`;
+  const highlightKey = code === null ? null : `${language}:${code}`;
   const viewportId = useId();
   const viewportRef = useRef<HTMLDivElement>(null);
   const horizontalScrollbarRef = useRef<HTMLDivElement>(null);
@@ -187,6 +211,8 @@ export function CodeDiff({ ariaLabel, className, lines, path }: CodeDiffProps) {
   }, []);
 
   useEffect(() => {
+    if (code === null || highlightKey === null) return;
+
     let cancelled = false;
 
     void codeToTokens(code, {
@@ -326,13 +352,14 @@ export function CodeDiff({ ariaLabel, className, lines, path }: CodeDiffProps) {
     else viewport.scrollTop = current + direction;
   }
 
-  const highlightedLines = highlighted?.key === highlightKey ? highlighted.tokens : null;
+  const highlightedLines =
+    highlightKey !== null && highlighted?.key === highlightKey ? highlighted.tokens : null;
 
   return (
     <section
       aria-label={ariaLabel}
       className={cn(
-        "relative max-h-[min(60dvh,36rem)] overflow-hidden bg-background text-xs",
+        "relative max-h-[min(60dvh,36rem)] overflow-hidden bg-surface-secondary text-[13px] text-surface-secondary-foreground",
         className,
       )}
       data-slot="code-diff"
@@ -349,7 +376,7 @@ export function CodeDiff({ ariaLabel, className, lines, path }: CodeDiffProps) {
                 "grid grid-cols-[40px_40px_20px_minmax(520px,1fr)]",
                 DIFF_LINE_CLASS_NAMES[line.type],
               )}
-              key={`${index}-${line.oldLineNumber}-${line.newLineNumber}-${line.content}`}
+              key={`${index}-${line.oldLineNumber}-${line.newLineNumber}`}
             >
               <span
                 className={cn(
@@ -372,7 +399,7 @@ export function CodeDiff({ ariaLabel, className, lines, path }: CodeDiffProps) {
               >
                 {DIFF_LINE_MARKERS[line.type]}
               </span>
-              <code className="pr-3 whitespace-pre text-foreground">
+              <code className="pr-3 whitespace-pre text-surface-secondary-foreground">
                 {highlightedLines?.[index]?.length
                   ? highlightedLines[index].map((token, tokenIndex) => (
                       <span
@@ -383,7 +410,7 @@ export function CodeDiff({ ariaLabel, className, lines, path }: CodeDiffProps) {
                         {token.content}
                       </span>
                     ))
-                  : line.content || " "}
+                  : getRenderedLineContent(line.content)}
               </code>
             </div>
           ))}

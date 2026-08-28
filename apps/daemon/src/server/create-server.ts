@@ -54,12 +54,14 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     database.workspaces,
     database.appSettings,
     eventStore,
+    sessionEvents,
     providers,
     agents,
     interactions,
     (error, context) => {
       server.log.error({ err: error, ...context }, "Session run failed outside Agent events");
     },
+    [config.credentialsPath, config.databasePath, config.sessionsPath],
   );
   const allowedHosts = new Set([
     new URL(config.webUrl).host,

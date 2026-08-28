@@ -10,7 +10,12 @@ export function UserThreadMessage({ message }: { message: ChatUserMessage }) {
       <ChatMessagePrimitive.Bubble>
         <ChatMessagePrimitive.Content>{message.content}</ChatMessagePrimitive.Content>
       </ChatMessagePrimitive.Bubble>
-      <MessageActions content={message.content} variant="minimal" />
+      <MessageActions
+        content={message.content}
+        {...(message.timestamp === undefined ? {} : { timestamp: message.timestamp })}
+        timestampPosition="start"
+        variant="minimal"
+      />
     </ChatMessagePrimitive.User>
   );
 }

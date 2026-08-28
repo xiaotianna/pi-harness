@@ -1,3 +1,7 @@
+import { EmptyState } from "@agile-avocation/ui-pro";
+import { CircleExclamation } from "@gravity-ui/icons";
+import { Button } from "@heroui/react";
+import { CancelledError } from "@tanstack/react-query";
 import {
   createRootRoute,
   createRoute,
@@ -14,6 +18,7 @@ import {
   sessionSnapshotQueryOptions,
 } from "../features/chat/api/session-queries";
 import { ChatShell } from "../features/chat/components/chat-shell";
+import { ChatPageSkeleton } from "../features/chat/views/chat-page";
 import { ChatThreadPage } from "../pages/chat-thread-page";
 import { ExplorePage } from "../pages/explore-page";
 import { LibraryPage } from "../pages/library-page";
@@ -23,6 +28,32 @@ import { queryClient } from "./query-client";
 
 function RootLayout() {
   return <Outlet />;
+}
+
+function AppErrorRoute() {
+  return (
+    <main className="flex min-h-svh items-center justify-center px-6 py-10" role="alert">
+      <EmptyState className="max-w-md" size="lg">
+        <EmptyState.Media variant="icon">
+          <CircleExclamation aria-hidden className="text-danger" />
+        </EmptyState.Media>
+        <EmptyState.Header>
+          <EmptyState.Title>页面加载失败</EmptyState.Title>
+          <EmptyState.Description>
+            页面暂时无法加载，请重试。若问题持续出现，请确认本地 daemon 正在运行。
+          </EmptyState.Description>
+        </EmptyState.Header>
+        <EmptyState.Content className="flex-row">
+          <Button variant="primary" onPress={() => window.location.reload()}>
+            重试
+          </Button>
+          <Button variant="tertiary" onPress={() => window.location.assign("/")}>
+            返回首页
+          </Button>
+        </EmptyState.Content>
+      </EmptyState>
+    </main>
+  );
 }
 
 function ChatLayout() {
@@ -35,6 +66,7 @@ function ChatLayout() {
 
 const rootRoute = createRootRoute({
   component: RootLayout,
+  errorComponent: AppErrorRoute,
 });
 
 async function fetchCurrentAuthSession() {
@@ -112,12 +144,25 @@ const exploreRoute = createRoute({
 const chatThreadRoute = createRoute({
   getParentRoute: () => chatLayoutRoute,
   path: "/$chatId",
-  loader: async ({ params }) => {
+  pendingComponent: ChatPageSkeleton,
+  pendingMinMs: 0,
+  pendingMs: 0,
+  loader: async ({ abortController, params }) => {
+    const queryOptions = sessionSnapshotQueryOptions(params.chatId);
     try {
-      return await queryClient.ensureQueryData(sessionSnapshotQueryOptions(params.chatId));
+      return await queryClient.ensureQueryData(queryOptions);
     } catch (error: unknown) {
-      if (error instanceof ApiRequestError && error.status === 404) throw notFound();
-      throw error;
+      let finalError = error;
+      if (error instanceof CancelledError) {
+        abortController.signal.throwIfAborted();
+        try {
+          return await queryClient.fetchQuery(queryOptions);
+        } catch (retryError: unknown) {
+          finalError = retryError;
+        }
+      }
+      if (finalError instanceof ApiRequestError && finalError.status === 404) throw notFound();
+      throw finalError;
     }
   },
   component: ChatThreadRoute,

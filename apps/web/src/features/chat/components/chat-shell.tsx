@@ -26,6 +26,7 @@ import type { ChatActivePage, ChatNavItemId, ChatThread, ChatWorkspace } from ".
 import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
 import { useAddWorkspace } from "../hooks/use-add-workspace";
 import { useNewChatStore } from "../state/new-chat-store";
+import { useWorkspaceInspectorStore } from "../state/workspace-inspector-store";
 import { sessionToChatThread } from "../utils/session-messages";
 import { ChatNavbar } from "./chat-navbar";
 import { ChatSearchDialog } from "./chat-search-dialog";
@@ -39,8 +40,8 @@ export interface ChatShellProps {
   disableNavigation?: boolean;
 }
 
-const INSPECTOR_DEFAULT_WIDTH = 500;
-const INSPECTOR_MIN_WIDTH = 500;
+const INSPECTOR_DEFAULT_WIDTH = 460;
+const INSPECTOR_MIN_WIDTH = 360;
 
 export function ChatShell({ basePath = "", children, disableNavigation = false }: ChatShellProps) {
   const router = useRouter();
@@ -49,7 +50,6 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const shouldReduceMotion = useReducedMotion();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<ChatRenameTarget | null>(null);
   const [isDesktopLayout, setIsDesktopLayout] = useState(
     () => window.matchMedia("(min-width: 1025px)").matches,
@@ -62,6 +62,10 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const workspacesQuery = useQuery(workspaceListQueryOptions());
   const addWorkspaceMutation = useAddWorkspace();
   const setNewChatWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
+  const inspectorFiles = useWorkspaceInspectorStore((state) => state.files);
+  const inspectorSelectedPath = useWorkspaceInspectorStore((state) => state.selectedPath);
+  const inspectorTurnId = useWorkspaceInspectorStore((state) => state.turnId);
+  const closeInspector = useWorkspaceInspectorStore((state) => state.close);
   const threads = useMemo<ChatThread[]>(
     () => (sessionsQuery.data ?? []).map((session) => sessionToChatThread(session)),
     [sessionsQuery.data],
@@ -122,7 +126,8 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     [pathname, basePath, threads],
   );
   const isThreadPage = activePage.kind === "thread";
-  const isInspectorVisible = isThreadPage && isInspectorOpen;
+  const activeThreadId = isThreadPage ? activePage.thread.id : null;
+  const isInspectorVisible = isThreadPage && inspectorTurnId !== null;
 
   const handleNavAction = useCallback(
     (id: ChatNavItemId) => {
@@ -142,17 +147,11 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     [router, basePath, disableNavigation],
   );
 
-  const handleInspectorToggle = useCallback(() => {
-    setIsInspectorOpen((isOpen) => !isOpen);
-  }, []);
-
   const handleInspectorOpenChange = useCallback(
     (isOpen: boolean) => {
-      if (!isThreadPage && isOpen) return;
-
-      setIsInspectorOpen(isOpen);
+      if (!isOpen) closeInspector();
     },
-    [isThreadPage],
+    [closeInspector],
   );
 
   const handleSearchOpen = useCallback(() => {
@@ -295,6 +294,10 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   }, []);
 
   useEffect(() => {
+    closeInspector();
+  }, [activeThreadId, closeInspector]);
+
+  useEffect(() => {
     if (disableNavigation) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -314,7 +317,19 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
 
   return (
     <AppLayout
-      aside={<WorkspaceInspector isOpen={isInspectorVisible} />}
+      aside={
+        isInspectorVisible && activePage.kind === "thread" ? (
+          <WorkspaceInspector
+            files={inspectorFiles}
+            key={`${activePage.thread.id}:${inspectorTurnId}`}
+            selectedPath={inspectorSelectedPath}
+            workspaceId={activePage.thread.workspaceId}
+            onClose={closeInspector}
+          />
+        ) : (
+          <div aria-hidden className="h-full w-full" />
+        )
+      }
       asideDefaultSize={`${INSPECTOR_DEFAULT_WIDTH}px`}
       asideMaxSize="50%"
       asideMinSize={`${INSPECTOR_MIN_WIDTH}px`}
@@ -322,17 +337,16 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       asideOpen={isInspectorVisible}
       asideResizable={isDesktopLayout}
       asideResizeBehavior="preserve-pixel-size"
+      defaultAsideOpen={false}
       navigate={navigate}
       reduceMotion={shouldReduceMotion ?? false}
-      resizableAutoSaveId="chat-workspace-inspector"
+      resizableAutoSaveId="chat-workspace-inspector-v2"
       scrollMode="content"
       sidebarCollapsible="offcanvas"
       onAsideOpenChange={handleInspectorOpenChange}
       navbar={
         <ChatNavbar
           activePage={activePage}
-          isInspectorOpen={isInspectorVisible}
-          onInspectorToggle={isThreadPage ? handleInspectorToggle : undefined}
           onSearch={disableNavigation ? undefined : handleSearchOpen}
         />
       }

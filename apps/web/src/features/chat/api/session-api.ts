@@ -171,6 +171,20 @@ export async function followUpSessionRun(
   );
 }
 
+export async function revertSessionRunChanges(sessionId: string, runId: string): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/revert-changes`,
+    { method: "POST" },
+  );
+}
+
+export async function reapplySessionRunChanges(sessionId: string, runId: string): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/reapply-changes`,
+    { method: "POST" },
+  );
+}
+
 export async function resolveToolApproval(
   sessionId: string,
   runId: string,

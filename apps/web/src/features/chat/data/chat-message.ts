@@ -4,7 +4,6 @@ export const ChatMessageType = {
   ASSISTANT: "assistant",
   CODE: "code",
   ERROR: "error",
-  FILE_CHANGE: "file-change",
   IMAGE_GENERATION: "image-generation",
   LOADING: "loading",
   ORBS: "orbs",
@@ -19,6 +18,21 @@ export const ChatMessageType = {
 } as const;
 
 export type ChatMessageType = (typeof ChatMessageType)[keyof typeof ChatMessageType];
+
+export const ChatFileChangeStatus = {
+  ADDED: "added",
+  DELETED: "deleted",
+  MODIFIED: "modified",
+} as const;
+
+export type ChatFileChangeStatus = (typeof ChatFileChangeStatus)[keyof typeof ChatFileChangeStatus];
+
+export type ChatFileChange = {
+  after: string;
+  before: string | null;
+  path: string;
+  status: ChatFileChangeStatus;
+};
 
 export type ChatMessageImage = {
   alt: string;
@@ -85,6 +99,8 @@ export type ChatMessageAttachment = {
 type ChatMessageBase = {
   id: string;
   isIntermediate?: boolean;
+  sessionId?: string;
+  timestamp?: number;
   turnDurationMs?: number;
   turnId?: string;
 };
@@ -97,26 +113,19 @@ export type ChatUserMessage = ChatMessageBase & {
 
 export type ChatAssistantMessage = ChatMessageBase & {
   actions?: "full" | "minimal";
+  areFileChangesReverted?: boolean;
   content: string;
+  fileChanges?: readonly ChatFileChange[];
   image?: ChatMessageImage;
   isStreaming?: boolean;
   type: typeof ChatMessageType.ASSISTANT;
 };
 
 export type ChatErrorMessage = ChatMessageBase & {
+  areFileChangesReverted?: boolean;
   content: string;
+  fileChanges?: readonly ChatFileChange[];
   type: typeof ChatMessageType.ERROR;
-};
-
-export type ChatFileChange = {
-  diff: string;
-  id: string;
-  path: string;
-};
-
-export type ChatFileChangeMessage = ChatMessageBase & {
-  changes: readonly ChatFileChange[];
-  type: typeof ChatMessageType.FILE_CHANGE;
 };
 
 export type ChatReasoningMessage = ChatMessageBase & {
@@ -202,7 +211,6 @@ export type ChatMessage =
   | ChatAssistantMessage
   | ChatCodeMessage
   | ChatErrorMessage
-  | ChatFileChangeMessage
   | ChatImageGenerationMessage
   | ChatLoadingMessage
   | ChatOrbsMessage

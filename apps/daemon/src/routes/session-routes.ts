@@ -144,6 +144,28 @@ export async function registerSessionRoutes(
     controller.followUpRun,
   );
 
+  server.post<{ Params: SessionRunParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/revert-changes",
+    {
+      schema: {
+        params: SessionRunParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.revertRunChanges,
+  );
+
+  server.post<{ Params: SessionRunParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/reapply-changes",
+    {
+      schema: {
+        params: SessionRunParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.reapplyRunChanges,
+  );
+
   server.get<{ Params: SessionRunParamsDto }>(
     "/api/sessions/:sessionId/runs/:runId/approvals/current",
     {

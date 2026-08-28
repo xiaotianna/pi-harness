@@ -21,6 +21,8 @@ export {
   type MessageDeltaKind as MessageDeltaKindValue,
   type MessageHarnessEvent,
   type RunFailureData,
+  RunFileChangeOperation,
+  type RunFileChangeOperation as RunFileChangeOperationValue,
   type RunId,
   type RunInteractionData,
   type RunStartedData,
