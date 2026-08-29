@@ -12,6 +12,7 @@ import { createSession, type Session, startSessionRun } from "../api/session-api
 import { sessionQueryKeys } from "../api/session-queries";
 import { workspaceListQueryOptions } from "../api/workspace-queries";
 import { useAddWorkspace } from "../hooks/use-add-workspace";
+import { useNewChatStore } from "../state/new-chat-store";
 
 export function NewChatPage() {
   const router = useRouter();
@@ -19,6 +20,8 @@ export function NewChatPage() {
   const sessionQuery = useQuery(authSessionQueryOptions());
   const workspacesQuery = useQuery(workspaceListQueryOptions());
   const addWorkspaceMutation = useAddWorkspace();
+  const draft = useNewChatStore((state) => state.draft);
+  const clearDraft = useNewChatStore((state) => state.clearDraft);
   const username = sessionQuery.data?.authenticated ? sessionQuery.data.user.username : "";
   const workspaces = workspacesQuery.data ?? [];
   const createMutation = useMutation({
@@ -44,7 +47,10 @@ export function NewChatPage() {
       await startSessionRun(session.id, prompt);
       return session.id;
     },
-    onSuccess: (sessionId) => router.history.push(`/${sessionId}`),
+    onSuccess: (sessionId) => {
+      clearDraft();
+      router.history.push(`/${sessionId}`);
+    },
   });
 
   return (
@@ -63,6 +69,14 @@ export function NewChatPage() {
           </div>
           <ChatComposer
             className="w-full"
+            key={`new-chat-${draft?.id ?? "default"}`}
+            {...(draft
+              ? {
+                  initialPrompt: draft.prompt,
+                  ...(draft.skillLabel ? { initialSkillLabel: draft.skillLabel } : {}),
+                  ...(draft.skillName ? { initialSkillName: draft.skillName } : {}),
+                }
+              : {})}
             isAddingWorkspace={addWorkspaceMutation.isPending}
             presentation="hero"
             status={createMutation.isPending ? "submitted" : "ready"}

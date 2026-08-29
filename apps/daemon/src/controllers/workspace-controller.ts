@@ -1,16 +1,23 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { HarnessConfig } from "../config/index.js";
 import type {
+  InstallWorkspaceSkillDto,
   OpenWorkspacePathDto,
   ReorderWorkspacesDto,
   UpdateWorkspaceDto,
   UpdateWorkspaceSkillDto,
   WorkspaceParamsDto,
   WorkspaceSkillParamsDto,
+  WritableWorkspaceSkillParamsDto,
 } from "../dto/workspace-dto.js";
 import { type WorkspaceService, WorkspaceServiceError } from "../services/workspace-service.js";
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
-import type { WorkspaceSkillContentVo, WorkspaceSkillVo, WorkspaceVo } from "../vo/workspace-vo.js";
+import type {
+  WorkspaceSkillContentVo,
+  WorkspaceSkillInstallVo,
+  WorkspaceSkillVo,
+  WorkspaceVo,
+} from "../vo/workspace-vo.js";
 
 export class WorkspaceController {
   public constructor(
@@ -28,6 +35,28 @@ export class WorkspaceController {
       return await this.workspaces.listSkills(request.params.workspaceId);
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
+    }
+  };
+
+  public installSkill = async (
+    request: FastifyRequest<{ Body: InstallWorkspaceSkillDto; Params: WorkspaceParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | WorkspaceSkillInstallVo> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+
+    try {
+      return await this.workspaces.installSkill(
+        request.params.workspaceId,
+        request.body,
+        abortController.signal,
+      );
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
     }
   };
 
@@ -70,7 +99,7 @@ export class WorkspaceController {
   };
 
   public openSkillDirectory = async (
-    request: FastifyRequest<{ Params: WorkspaceSkillParamsDto }>,
+    request: FastifyRequest<{ Params: WritableWorkspaceSkillParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
@@ -94,7 +123,7 @@ export class WorkspaceController {
   };
 
   public removeSkill = async (
-    request: FastifyRequest<{ Params: WorkspaceSkillParamsDto }>,
+    request: FastifyRequest<{ Params: WritableWorkspaceSkillParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
@@ -113,7 +142,7 @@ export class WorkspaceController {
   public updateSkill = async (
     request: FastifyRequest<{
       Body: UpdateWorkspaceSkillDto;
-      Params: WorkspaceSkillParamsDto;
+      Params: WritableWorkspaceSkillParamsDto;
     }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
@@ -212,15 +241,17 @@ export class WorkspaceController {
       const status =
         error.code === "WORKSPACE_NOT_FOUND"
           ? 404
-          : error.code === "WORKSPACE_PICKER_BUSY"
+          : error.code === "WORKSPACE_PICKER_BUSY" || error.code === "SKILL_INSTALL_CONFLICT"
             ? 409
             : error.code === "WORKSPACE_PICKER_UNAVAILABLE" ||
                 error.code === "WORKSPACE_OPEN_UNAVAILABLE" ||
-                error.code === "WORKSPACE_REVEAL_UNAVAILABLE"
+                error.code === "WORKSPACE_REVEAL_UNAVAILABLE" ||
+                error.code === "SKILL_INSTALL_UNAVAILABLE"
               ? 501
               : error.code === "WORKSPACE_OPEN_FAILED" ||
                   error.code === "WORKSPACE_PICKER_FAILED" ||
-                  error.code === "WORKSPACE_REVEAL_FAILED"
+                  error.code === "WORKSPACE_REVEAL_FAILED" ||
+                  error.code === "SKILL_INSTALL_FAILED"
                 ? 500
                 : 400;
       return reply.status(status).send({ code: error.code, message: error.message });

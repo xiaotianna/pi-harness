@@ -35,13 +35,19 @@ import { ModelSettingsPanel } from "./model-settings-panel";
 import { PluginMarketplacePanel } from "./plugin-marketplace-panel";
 import { SettingsPanelHeader } from "./settings-panel-header";
 import { SettingsRow } from "./settings-row";
-import { SkillSettingsPanel, type SkillSettingsWorkspace } from "./skill-settings-panel";
+import {
+  type SkillChatDraft,
+  SkillSettingsPanel,
+  type SkillSettingsWorkspace,
+} from "./skill-settings-panel";
 
 export interface SettingsDialogProps {
   archivedConversations: ArchivedConversationsState;
+  currentWorkspaceId: string | null;
   isOpen: boolean;
   onRestoreArchivedConversation: (conversationId: string) => Promise<void>;
   onOpenChange: (isOpen: boolean) => void;
+  onStartSkillChat: (draft: SkillChatDraft) => void;
   workspaces: readonly SkillSettingsWorkspace[];
 }
 
@@ -281,9 +287,11 @@ function ArchivedSettingsPanel({
 
 export function SettingsDialog({
   archivedConversations,
+  currentWorkspaceId,
   isOpen,
   onRestoreArchivedConversation,
   onOpenChange,
+  onStartSkillChat,
   workspaces,
 }: SettingsDialogProps) {
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
@@ -340,7 +348,11 @@ export function SettingsDialog({
                 ) : activeSectionId === "plugins" ? (
                   <PluginMarketplacePanel />
                 ) : activeSectionId === "skills" ? (
-                  <SkillSettingsPanel workspaces={workspaces} />
+                  <SkillSettingsPanel
+                    currentWorkspaceId={currentWorkspaceId}
+                    workspaces={workspaces}
+                    onStartChat={onStartSkillChat}
+                  />
                 ) : activeSectionId === "archived" ? (
                   <ArchivedSettingsPanel
                     state={archivedConversations}

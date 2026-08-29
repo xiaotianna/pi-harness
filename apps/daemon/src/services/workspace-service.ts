@@ -1,7 +1,16 @@
 import { execFile } from "node:child_process";
-import { realpath, stat } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
-import { SkillRegistry, type SkillScope } from "@pi-harness/tools";
+import { randomUUID } from "node:crypto";
+import { cp, mkdir, mkdtemp, realpath, rename, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
+import { isPathWithin } from "@pi-harness/policy";
+import {
+  SkillRegistry,
+  SkillScope,
+  type SkillScope as SkillScopeValue,
+  type WritableSkillScope,
+} from "@pi-harness/tools";
+import type { InstallWorkspaceSkillDto } from "../dto/workspace-dto.js";
 import type {
   AppSettingRepository,
   WorkspaceRecord,
@@ -10,6 +19,11 @@ import type {
 
 const PICKER_TIMEOUT_MS = 5 * 60 * 1_000;
 const REVEAL_TIMEOUT_MS = 10_000;
+const SKILL_INSTALL_TIMEOUT_MS = 5 * 60 * 1_000;
+const SKILL_INSTALL_MAX_BUFFER_BYTES = 1024 * 1024;
+const SKILLS_CLI_PACKAGE = "skills@1.5.23";
+const GITHUB_SHORTHAND_PATTERN =
+  /^[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?$/;
 
 const WorkspaceErrorCode = {
   INVALID: "WORKSPACE_INVALID",
@@ -21,6 +35,10 @@ const WorkspaceErrorCode = {
   OPEN_UNAVAILABLE: "WORKSPACE_OPEN_UNAVAILABLE",
   REVEAL_FAILED: "WORKSPACE_REVEAL_FAILED",
   REVEAL_UNAVAILABLE: "WORKSPACE_REVEAL_UNAVAILABLE",
+  SKILL_INSTALL_CONFLICT: "SKILL_INSTALL_CONFLICT",
+  SKILL_INSTALL_FAILED: "SKILL_INSTALL_FAILED",
+  SKILL_INSTALL_INVALID: "SKILL_INSTALL_INVALID",
+  SKILL_INSTALL_UNAVAILABLE: "SKILL_INSTALL_UNAVAILABLE",
 } as const;
 
 export type WorkspaceErrorCode = (typeof WorkspaceErrorCode)[keyof typeof WorkspaceErrorCode];
@@ -155,6 +173,173 @@ function runOpen(path: string, signal: AbortSignal): Promise<void> {
   });
 }
 
+function normalizeSkillSource(input: string): string {
+  const source = input.trim();
+  if (GITHUB_SHORTHAND_PATTERN.test(source)) return source;
+
+  try {
+    const url = new URL(source);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "github.com" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      url.pathname.split("/").filter(Boolean).length < 2
+    ) {
+      throw new Error("Invalid GitHub source");
+    }
+    return url.toString();
+  } catch {
+    throw new WorkspaceServiceError(
+      WorkspaceErrorCode.SKILL_INSTALL_INVALID,
+      "请输入 owner/repo 或有效的 GitHub Skill 地址",
+    );
+  }
+}
+
+function skillInstallEnvironment(): NodeJS.ProcessEnv {
+  const names = [
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "PATH",
+    "TMPDIR",
+    "USER",
+  ] as const;
+  return {
+    ...Object.fromEntries(
+      names.flatMap((name) => {
+        const value = process.env[name];
+        return value === undefined ? [] : [[name, value]];
+      }),
+    ),
+    DISABLE_TELEMETRY: "1",
+  };
+}
+
+function runSkillInstaller(
+  cwd: string,
+  source: string,
+  skillName: string | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  const args = [
+    "dlx",
+    SKILLS_CLI_PACKAGE,
+    "add",
+    source,
+    "--agent",
+    "codex",
+    "--copy",
+    "--yes",
+    ...(skillName ? ["--skill", skillName] : []),
+  ];
+
+  return new Promise((resolvePromise, rejectPromise) => {
+    execFile(
+      "pnpm",
+      args,
+      {
+        cwd,
+        encoding: "utf8",
+        env: skillInstallEnvironment(),
+        maxBuffer: SKILL_INSTALL_MAX_BUFFER_BYTES,
+        signal,
+        timeout: SKILL_INSTALL_TIMEOUT_MS,
+        windowsHide: true,
+      },
+      (error) => {
+        if (error) rejectPromise(error);
+        else resolvePromise();
+      },
+    );
+  });
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch (error: unknown) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function installStagedSkills(
+  stagedSkills: readonly { directory: string; name: string }[],
+  targetRoot: string,
+): Promise<void> {
+  await mkdir(targetRoot, { mode: 0o700, recursive: true });
+  const canonicalTargetRoot = await realpath(targetRoot);
+  const destinations = stagedSkills.map((skill) => ({
+    destination: resolve(canonicalTargetRoot, skill.name),
+    skill,
+  }));
+
+  for (const { destination } of destinations) {
+    if (!isPathWithin(canonicalTargetRoot, destination)) {
+      throw new WorkspaceServiceError(
+        WorkspaceErrorCode.SKILL_INSTALL_INVALID,
+        "Skill 安装路径越界",
+      );
+    }
+    if (await pathExists(destination)) {
+      throw new WorkspaceServiceError(
+        WorkspaceErrorCode.SKILL_INSTALL_CONFLICT,
+        "存在同名 Skill，请先卸载或更换名称",
+      );
+    }
+  }
+
+  const created: string[] = [];
+  const pending: string[] = [];
+  try {
+    for (const { destination, skill } of destinations) {
+      const temporaryDestination = `${destination}.installing-${randomUUID()}`;
+      pending.push(temporaryDestination);
+      await cp(skill.directory, temporaryDestination, {
+        errorOnExist: true,
+        force: false,
+        recursive: true,
+      });
+      await rename(temporaryDestination, destination);
+      pending.pop();
+      created.push(destination);
+    }
+  } catch (error: unknown) {
+    await Promise.all([
+      ...pending.map((path) => rm(path, { force: true, recursive: true })),
+      ...created.map((path) => rm(path, { force: true, recursive: true })),
+    ]);
+    throw error;
+  }
+}
+
+async function resolveGlobalSkillInstallRoot(globalRoot: string): Promise<string> {
+  const canonicalGlobalRoot = await realpath(globalRoot);
+  const targetRoot = resolve(canonicalGlobalRoot, "skills");
+  if (!isPathWithin(canonicalGlobalRoot, targetRoot)) {
+    throw new WorkspaceServiceError(
+      WorkspaceErrorCode.SKILL_INSTALL_INVALID,
+      "全局 Skill 安装路径越界",
+    );
+  }
+  await mkdir(targetRoot, { mode: 0o700, recursive: true });
+  const canonicalTargetRoot = await realpath(targetRoot);
+  if (!isPathWithin(canonicalGlobalRoot, canonicalTargetRoot)) {
+    throw new WorkspaceServiceError(
+      WorkspaceErrorCode.SKILL_INSTALL_INVALID,
+      "拒绝通过符号链接安装到全局 Skill 目录外",
+    );
+  }
+  return canonicalTargetRoot;
+}
+
 async function resolveWorkspaceRoot(input: string): Promise<string> {
   try {
     const rootPath = await realpath(input);
@@ -199,13 +384,63 @@ export class WorkspaceService {
       description: skill.description,
       directory: skill.directory,
       id: skill.id,
-      isEnabled: !disabledDirectories.has(skill.directory),
+      isEnabled:
+        skill.scope === SkillScope.SYSTEM ||
+        (skill.directory !== null && !disabledDirectories.has(skill.directory)),
       name: skill.name,
       scope: skill.scope,
     }));
   }
 
-  public async getSkillContent(workspaceId: string, name: string, scope: SkillScope) {
+  public async installSkill(
+    workspaceId: string,
+    input: InstallWorkspaceSkillDto,
+    signal: AbortSignal,
+  ): Promise<{ installedSkillNames: string[] }> {
+    this.getRequired(workspaceId);
+    const source = normalizeSkillSource(input.source);
+    const stagingRoot = await mkdtemp(join(tmpdir(), "pi-harness-skill-install-"));
+
+    try {
+      await runSkillInstaller(stagingRoot, source, input.skillName, signal);
+      const stagedSkills = (
+        await new SkillRegistry({
+          globalRoot: stagingRoot,
+          workspaceRoot: stagingRoot,
+        }).discoverListItems()
+      ).flatMap((skill) =>
+        skill.scope === SkillScope.PROJECT && skill.directory
+          ? [{ directory: skill.directory, name: skill.name }]
+          : [],
+      );
+      if (stagedSkills.length === 0) {
+        throw new WorkspaceServiceError(
+          WorkspaceErrorCode.SKILL_INSTALL_INVALID,
+          "来源中没有找到有效的 Skill",
+        );
+      }
+
+      const targetRoot = await resolveGlobalSkillInstallRoot(this.globalRoot);
+      await installStagedSkills(stagedSkills, targetRoot);
+      return { installedSkillNames: stagedSkills.map((skill) => skill.name).sort() };
+    } catch (error: unknown) {
+      if (error instanceof WorkspaceServiceError || signal.aborted) throw error;
+      if (isCommandUnavailable(error)) {
+        throw new WorkspaceServiceError(
+          WorkspaceErrorCode.SKILL_INSTALL_UNAVAILABLE,
+          "当前系统缺少 pnpm，无法运行 Skill 安装器",
+        );
+      }
+      throw new WorkspaceServiceError(
+        WorkspaceErrorCode.SKILL_INSTALL_FAILED,
+        "Skill 安装失败，请检查 GitHub 来源、网络连接或访问权限",
+      );
+    } finally {
+      await rm(stagingRoot, { force: true, recursive: true });
+    }
+  }
+
+  public async getSkillContent(workspaceId: string, name: string, scope: SkillScopeValue) {
     const skill = await this.createSkillRegistry(workspaceId).load(name, scope);
     return { content: skill.content };
   }
@@ -213,19 +448,29 @@ export class WorkspaceService {
   public async setSkillEnabled(
     workspaceId: string,
     name: string,
-    scope: SkillScope,
+    scope: WritableSkillScope,
     isEnabled: boolean,
   ): Promise<void> {
     const skill = await this.createSkillRegistry(workspaceId).get(name, scope);
+    if (skill.directory === null) {
+      throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "系统 Skill 不可停用");
+    }
     const disabledDirectories = new Set(this.settings.getDisabledSkillDirectories());
     if (isEnabled) disabledDirectories.delete(skill.directory);
     else disabledDirectories.add(skill.directory);
     this.settings.setDisabledSkillDirectories([...disabledDirectories].sort(), Date.now());
   }
 
-  public async removeSkill(workspaceId: string, name: string, scope: SkillScope): Promise<void> {
+  public async removeSkill(
+    workspaceId: string,
+    name: string,
+    scope: WritableSkillScope,
+  ): Promise<void> {
     const registry = this.createSkillRegistry(workspaceId);
     const skill = await registry.get(name, scope);
+    if (skill.directory === null) {
+      throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "系统 Skill 不可卸载");
+    }
     await registry.remove(name, scope);
     const disabledDirectories = new Set(this.settings.getDisabledSkillDirectories());
     if (disabledDirectories.delete(skill.directory)) {
@@ -236,10 +481,13 @@ export class WorkspaceService {
   public async openSkillDirectory(
     workspaceId: string,
     name: string,
-    scope: SkillScope,
+    scope: WritableSkillScope,
     signal: AbortSignal,
   ): Promise<void> {
     const skill = await this.createSkillRegistry(workspaceId).get(name, scope);
+    if (skill.directory === null) {
+      throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "系统 Skill 没有本地目录");
+    }
     await this.openTarget(skill.directory, signal);
   }
 

@@ -50,7 +50,7 @@
 | 单选 | `Select` 加 `ListBox`；操作菜单使用 `Dropdown` | `features/settings/components/settings-dialog.tsx`、`model-settings-panel.tsx` |
 | 平行视图或模式 | `Tabs`；少量偏好使用 detached `ToggleButtonGroup` | `features/chat/components/chat-view-toggle.tsx`、`features/settings/components/settings-dialog.tsx` |
 | 布尔设置 | HeroUI `Switch`，放在行尾 | `features/settings/components/model-settings-panel.tsx` |
-| 普通工作流 | HeroUI `Modal` | `features/settings/components/provider-editor-dialog.tsx` |
+| 普通工作流 | HeroUI `Modal` | `features/settings/components/provider-editor-dialog.tsx`、`features/skills/components/skill-install-dialog.tsx` |
 | 危险确认 | HeroUI `AlertDialog`，明确说明后果 | `features/chat/components/chat-shell-dialogs.tsx`、`features/auth/components/user-menu.tsx` |
 | 状态与反馈 | `Alert`、`Chip`、全局 `toast` | `features/auth/views/login-page.tsx`、`features/settings/components/model-settings-panel.tsx` |
 | AI 等待与生成状态 | assistant-ui Elements `GenerationLoader`、`ThinkingIndicator` | `components/ai/` |

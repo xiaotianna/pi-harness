@@ -5,6 +5,7 @@ import { isPlainObject } from "es-toolkit";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { parse, stringify } from "yaml";
+import { findSystemSkill, SYSTEM_SKILL_SCOPE, SYSTEM_SKILLS } from "./skills/system-skills.js";
 
 const MAX_SKILL_BYTES = 128 * 1024;
 const MAX_RESOURCE_BYTES = 1024 * 1024;
@@ -15,9 +16,11 @@ const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 export const SkillScope = {
   GLOBAL: "global",
   PROJECT: "project",
+  SYSTEM: SYSTEM_SKILL_SCOPE,
 } as const;
 
 export type SkillScope = (typeof SkillScope)[keyof typeof SkillScope];
+export type WritableSkillScope = typeof SkillScope.GLOBAL | typeof SkillScope.PROJECT;
 
 const SkillFrontmatterSchema = Type.Object(
   {
@@ -42,7 +45,7 @@ export interface SkillSummary {
 }
 
 export interface SkillListItem extends SkillSummary {
-  directory: string;
+  directory: string | null;
 }
 
 export interface SkillDetails extends SkillListItem {
@@ -59,7 +62,7 @@ export interface CreateSkillInput {
   description: string;
   instructions: string;
   name: string;
-  scope: SkillScope;
+  scope: WritableSkillScope;
 }
 
 export interface CreatedSkill {
@@ -69,6 +72,11 @@ export interface CreatedSkill {
 
 interface SkillRecord extends SkillDetails {
   instructions: string;
+}
+
+interface FileSkillRecord extends SkillRecord {
+  directory: string;
+  scope: WritableSkillScope;
 }
 
 export interface SkillRegistryContext {
@@ -184,6 +192,9 @@ export class SkillRegistry {
     if (resource === undefined || resource === "SKILL.md") {
       return { ...summary, content: skill.instructions, resource: "SKILL.md" };
     }
+    if (skill.directory === null) {
+      throw new Error("SKILL_RESOURCE_INVALID: 系统 Skill 不包含可读取资源");
+    }
     if (isAbsolute(resource) || resource.split(/[\\/]/).includes("..")) {
       throw new Error("SKILL_RESOURCE_INVALID: resource 必须是 Skill 目录内的相对路径");
     }
@@ -195,8 +206,9 @@ export class SkillRegistry {
     return { ...summary, content, resource };
   }
 
-  public async remove(name: string, scope: SkillScope): Promise<void> {
+  public async remove(name: string, scope: WritableSkillScope): Promise<void> {
     const skill = await this.getRecord(name, scope, false);
+    if (skill.directory === null) throw new Error("SKILL_READ_ONLY: 系统 Skill 不可卸载");
     await rm(skill.directory, { recursive: true });
   }
 
@@ -238,11 +250,24 @@ export class SkillRegistry {
   }
 
   private async discoverRecords(scope?: SkillScope): Promise<readonly SkillRecord[]> {
-    const scopes = scope ? [scope] : [SkillScope.PROJECT, SkillScope.GLOBAL];
+    const scopes = scope ? [scope] : [SkillScope.SYSTEM, SkillScope.PROJECT, SkillScope.GLOBAL];
     const records: SkillRecord[] = [];
     const registeredNames = new Set<string>();
 
     for (const currentScope of scopes) {
+      if (currentScope === SkillScope.SYSTEM) {
+        for (const skill of SYSTEM_SKILLS) {
+          if (registeredNames.has(skill.name)) continue;
+          records.push({
+            ...skill,
+            directory: null,
+            resources: [],
+            resourcesTruncated: false,
+          });
+          registeredNames.add(skill.name);
+        }
+        continue;
+      }
       const root = await this.resolveRoot(currentScope, false);
       if (root === null) continue;
       for (const entry of await readdir(root, { withFileTypes: true })) {
@@ -268,9 +293,21 @@ export class SkillRegistry {
     if (!new RegExp(SKILL_NAME_PATTERN).test(name) || name.length > 64) {
       throw new Error("SKILL_INVALID: Skill 名称无效");
     }
-    const scopes = scope ? [scope] : [SkillScope.PROJECT, SkillScope.GLOBAL];
+    const scopes = scope ? [scope] : [SkillScope.SYSTEM, SkillScope.PROJECT, SkillScope.GLOBAL];
     let invalidError: unknown;
     for (const currentScope of scopes) {
+      if (currentScope === SkillScope.SYSTEM) {
+        const systemSkill = findSystemSkill(name);
+        if (systemSkill) {
+          return {
+            ...systemSkill,
+            directory: null,
+            resources: [],
+            resourcesTruncated: false,
+          };
+        }
+        continue;
+      }
       const root = await this.resolveRoot(currentScope, false);
       if (root === null) continue;
       try {
@@ -291,9 +328,9 @@ export class SkillRegistry {
   private async readRecord(
     root: string,
     name: string,
-    scope: SkillScope,
+    scope: WritableSkillScope,
     shouldListResources = true,
-  ): Promise<SkillRecord> {
+  ): Promise<FileSkillRecord> {
     const directory = await realpath(resolve(root, name));
     if (!isPathWithin(root, directory)) throw new Error("SKILL_INVALID: Skill 目录越界");
     const content = await readBoundedText(join(directory, "SKILL.md"), MAX_SKILL_BYTES);
@@ -327,7 +364,10 @@ export class SkillRegistry {
     };
   }
 
-  private async resolveRoot(scope: SkillScope, shouldCreate: boolean): Promise<string | null> {
+  private async resolveRoot(
+    scope: WritableSkillScope,
+    shouldCreate: boolean,
+  ): Promise<string | null> {
     const configuredRoot =
       scope === SkillScope.PROJECT
         ? join(this.context.workspaceRoot, ".agents", "skills")

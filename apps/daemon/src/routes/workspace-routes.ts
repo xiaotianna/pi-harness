@@ -3,6 +3,8 @@ import { Type } from "typebox";
 import type { HarnessConfig } from "../config/index.js";
 import { WorkspaceController } from "../controllers/workspace-controller.js";
 import {
+  type InstallWorkspaceSkillDto,
+  InstallWorkspaceSkillDtoSchema,
   type OpenWorkspacePathDto,
   OpenWorkspacePathDtoSchema,
   type ReorderWorkspacesDto,
@@ -15,12 +17,15 @@ import {
   WorkspaceParamsDtoSchema,
   type WorkspaceSkillParamsDto,
   WorkspaceSkillParamsDtoSchema,
+  type WritableWorkspaceSkillParamsDto,
+  WritableWorkspaceSkillParamsDtoSchema,
 } from "../dto/workspace-dto.js";
 import type { WorkspaceService } from "../services/workspace-service.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
   WorkspaceListVoSchema,
   WorkspaceSkillContentVoSchema,
+  WorkspaceSkillInstallVoSchema,
   WorkspaceSkillListVoSchema,
   WorkspaceVoSchema,
 } from "../vo/workspace-vo.js";
@@ -57,6 +62,18 @@ export async function registerWorkspaceRoutes(
     controller.listSkills,
   );
 
+  server.post<{ Body: InstallWorkspaceSkillDto; Params: WorkspaceParamsDto }>(
+    "/api/workspaces/:workspaceId/skills/install",
+    {
+      schema: {
+        body: InstallWorkspaceSkillDtoSchema,
+        params: WorkspaceParamsDtoSchema,
+        response: { 200: WorkspaceSkillInstallVoSchema, ...errors },
+      },
+    },
+    controller.installSkill,
+  );
+
   server.get<{ Params: WorkspaceSkillParamsDto }>(
     "/api/workspaces/:workspaceId/skills/:scope/:name",
     {
@@ -68,34 +85,34 @@ export async function registerWorkspaceRoutes(
     controller.getSkillContent,
   );
 
-  server.patch<{ Body: UpdateWorkspaceSkillDto; Params: WorkspaceSkillParamsDto }>(
+  server.patch<{ Body: UpdateWorkspaceSkillDto; Params: WritableWorkspaceSkillParamsDto }>(
     "/api/workspaces/:workspaceId/skills/:scope/:name",
     {
       schema: {
         body: UpdateWorkspaceSkillDtoSchema,
-        params: WorkspaceSkillParamsDtoSchema,
+        params: WritableWorkspaceSkillParamsDtoSchema,
         response: { 204: Type.Null(), ...errors },
       },
     },
     controller.updateSkill,
   );
 
-  server.post<{ Params: WorkspaceSkillParamsDto }>(
+  server.post<{ Params: WritableWorkspaceSkillParamsDto }>(
     "/api/workspaces/:workspaceId/skills/:scope/:name/open",
     {
       schema: {
-        params: WorkspaceSkillParamsDtoSchema,
+        params: WritableWorkspaceSkillParamsDtoSchema,
         response: { 204: Type.Null(), ...errors },
       },
     },
     controller.openSkillDirectory,
   );
 
-  server.delete<{ Params: WorkspaceSkillParamsDto }>(
+  server.delete<{ Params: WritableWorkspaceSkillParamsDto }>(
     "/api/workspaces/:workspaceId/skills/:scope/:name",
     {
       schema: {
-        params: WorkspaceSkillParamsDtoSchema,
+        params: WritableWorkspaceSkillParamsDtoSchema,
         response: { 204: Type.Null(), ...errors },
       },
     },

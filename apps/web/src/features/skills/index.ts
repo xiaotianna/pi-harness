@@ -1,5 +1,7 @@
 export {
   getSkillContent,
+  type InstallSkillInput,
+  installSkill,
   openSkillDirectory,
   openSkillRootDirectory,
   removeSkill,
@@ -11,3 +13,4 @@ export {
   skillListQueryOptions,
   skillQueryKeys,
 } from "./api/skill-queries";
+export { SkillInstallDialog } from "./components/skill-install-dialog";

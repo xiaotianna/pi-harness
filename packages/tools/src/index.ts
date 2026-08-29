@@ -11,6 +11,7 @@ export {
   SkillScope,
   type SkillScope as SkillScopeValue,
   type SkillSummary,
+  type WritableSkillScope,
 } from "./skill-registry.js";
 export * from "./skills/index.js";
 export { ToolExecutionGuard } from "./tool-execution-guard.js";

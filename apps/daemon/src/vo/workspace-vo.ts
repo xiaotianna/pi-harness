@@ -15,11 +15,15 @@ export const WorkspaceListVoSchema = Type.Array(WorkspaceVoSchema);
 
 export const WorkspaceSkillVoSchema = Type.Object({
   description: Type.String({ minLength: 1 }),
-  directory: Type.String({ minLength: 1 }),
+  directory: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
   id: Type.String({ minLength: 1 }),
   isEnabled: Type.Boolean(),
   name: Type.String({ minLength: 1 }),
-  scope: Type.Union([Type.Literal(SkillScope.PROJECT), Type.Literal(SkillScope.GLOBAL)]),
+  scope: Type.Union([
+    Type.Literal(SkillScope.SYSTEM),
+    Type.Literal(SkillScope.PROJECT),
+    Type.Literal(SkillScope.GLOBAL),
+  ]),
 });
 
 export type WorkspaceSkillVo = Static<typeof WorkspaceSkillVoSchema>;
@@ -31,3 +35,9 @@ export const WorkspaceSkillContentVoSchema = Type.Object({
 });
 
 export type WorkspaceSkillContentVo = Static<typeof WorkspaceSkillContentVoSchema>;
+
+export const WorkspaceSkillInstallVoSchema = Type.Object({
+  installedSkillNames: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
+});
+
+export type WorkspaceSkillInstallVo = Static<typeof WorkspaceSkillInstallVoSchema>;

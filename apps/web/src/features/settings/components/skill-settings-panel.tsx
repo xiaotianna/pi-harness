@@ -1,10 +1,20 @@
 "use client";
 
-import { Folder, FolderOpen, Globe, MagicWand } from "@gravity-ui/icons";
+import {
+  ChevronDown,
+  FileArrowDown,
+  Folder,
+  FolderOpen,
+  Globe,
+  MagicWand,
+  Plus,
+} from "@gravity-ui/icons";
 import {
   Alert,
   AlertDialog,
   Button,
+  Dropdown,
+  Label,
   ScrollShadow,
   Skeleton,
   Switch,
@@ -20,6 +30,7 @@ import {
   openSkillRootDirectory,
   removeSkill,
   type Skill,
+  SkillInstallDialog,
   skillDetailQueryOptions,
   skillListQueryOptions,
   skillQueryKeys,
@@ -30,6 +41,19 @@ import { SettingsCatalogItem } from "./settings-catalog-item";
 import { SettingsPanelHeader } from "./settings-panel-header";
 
 const ALL_SKILLS_TAB_ID = "all";
+const SKILL_CREATOR_NAME = "skill-creator";
+
+const SkillChatAction = {
+  CREATE: "create",
+  INSTALL: "install",
+} as const;
+
+export interface SkillChatDraft {
+  prompt: string;
+  skillLabel?: string;
+  skillName?: string;
+  workspaceId: string;
+}
 
 export type SkillSettingsWorkspace = {
   id: string;
@@ -41,6 +65,14 @@ type SkillEntry = {
   skill: Skill;
   workspaceId: string;
 };
+
+function getSkillDisplayName(skill: Skill): string {
+  if (skill.scope !== "system") return skill.name;
+  return skill.name
+    .split("-")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
 
 function SkillGroupHeader({
   directory,
@@ -98,48 +130,58 @@ function SkillDetail({
   onRemove: () => void;
 }) {
   const contentQuery = useQuery(skillDetailQueryOptions(entry.workspaceId, entry.skill));
+  const isSystemSkill = entry.skill.scope === "system";
+  const displayName = getSkillDisplayName(entry.skill);
 
   return (
     <SettingsCatalogDetail
       action={
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-sm text-muted">{entry.skill.isEnabled ? "已开启" : "已关闭"}</span>
-          <Switch
-            aria-label={`${entry.skill.name} 可用状态`}
-            isDisabled={isUpdating || isRemoving}
-            isSelected={entry.skill.isEnabled}
-            size="sm"
-            onChange={onEnabledChange}
-          >
-            <Switch.Content>
-              <Switch.Control>
-                <Switch.Thumb />
-              </Switch.Control>
-            </Switch.Content>
-          </Switch>
-        </div>
+        isSystemSkill ? (
+          <span className="text-sm text-muted">系统</span>
+        ) : (
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-sm text-muted">
+              {entry.skill.isEnabled ? "已开启" : "已关闭"}
+            </span>
+            <Switch
+              aria-label={`${entry.skill.name} 可用状态`}
+              isDisabled={isUpdating || isRemoving}
+              isSelected={entry.skill.isEnabled}
+              size="sm"
+              onChange={onEnabledChange}
+            >
+              <Switch.Content>
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+              </Switch.Content>
+            </Switch>
+          </div>
+        )
       }
-      ariaLabel={`${entry.skill.name} 技能详情`}
+      ariaLabel={`${displayName} 技能详情`}
       backLabel="返回技能"
       description={entry.skill.description}
       icon={<MagicWand aria-hidden className="size-6 text-muted" />}
-      name={entry.skill.name}
+      name={displayName}
       toolbarAction={
-        <div className="flex items-center gap-1">
-          <Button isDisabled={isRemoving} size="sm" variant="tertiary" onPress={onOpenDirectory}>
-            <FolderOpen aria-hidden className="size-4" />
-            打开目录
-          </Button>
-          <Button
-            isDisabled={isUpdating}
-            isPending={isRemoving}
-            size="sm"
-            variant="danger-soft"
-            onPress={onRemove}
-          >
-            卸载
-          </Button>
-        </div>
+        isSystemSkill ? null : (
+          <div className="flex items-center gap-1">
+            <Button isDisabled={isRemoving} size="sm" variant="tertiary" onPress={onOpenDirectory}>
+              <FolderOpen aria-hidden className="size-4" />
+              打开目录
+            </Button>
+            <Button
+              isDisabled={isUpdating}
+              isPending={isRemoving}
+              size="sm"
+              variant="danger-soft"
+              onPress={onRemove}
+            >
+              卸载
+            </Button>
+          </div>
+        )
       }
       onBack={onBack}
     >
@@ -185,13 +227,18 @@ function SkillListSkeleton() {
 }
 
 export function SkillSettingsPanel({
+  currentWorkspaceId,
+  onStartChat,
   workspaces,
 }: {
+  currentWorkspaceId: string | null;
+  onStartChat: (draft: SkillChatDraft) => void;
   workspaces: readonly SkillSettingsWorkspace[];
 }) {
   const queryClient = useQueryClient();
   const [activeTabId, setActiveTabId] = useState(ALL_SKILLS_TAB_ID);
   const [detailEntry, setDetailEntry] = useState<SkillEntry | null>(null);
+  const [isInstallOpen, setIsInstallOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<SkillEntry | null>(null);
   const skillQueries = useQueries({
     queries: workspaces.map((workspace) => skillListQueryOptions(workspace.id)),
@@ -204,8 +251,19 @@ export function SkillSettingsPanel({
   const globalEntries = (globalGroup?.skills ?? [])
     .filter((skill) => skill.scope === "global")
     .map((skill) => ({ skill, workspaceId: globalGroup?.workspace.id ?? "" }));
-  const globalDirectory = globalEntries.at(0)?.skill.directory.replace(/[\\/][^\\/]+$/, "");
+  const systemEntries = (globalGroup?.skills ?? [])
+    .filter((skill) => skill.scope === "system")
+    .map((skill) => ({ skill, workspaceId: globalGroup?.workspace.id ?? "" }));
+  const hasAnySkill =
+    systemEntries.length > 0 ||
+    globalEntries.length > 0 ||
+    workspaceGroups.some((group) => group.skills?.some((skill) => skill.scope === "project"));
+  const globalDirectory = globalEntries.at(0)?.skill.directory?.replace(/[\\/][^\\/]+$/, "");
   const activeWorkspaceIndex = workspaces.findIndex((workspace) => workspace.id === activeTabId);
+  const targetWorkspace =
+    activeWorkspaceIndex >= 0
+      ? workspaces[activeWorkspaceIndex]
+      : (workspaces.find((workspace) => workspace.id === currentWorkspaceId) ?? workspaces[0]);
   const activeQueries =
     activeTabId === ALL_SKILLS_TAB_ID
       ? skillQueries
@@ -214,6 +272,17 @@ export function SkillSettingsPanel({
         : [];
   const activeError = activeQueries.find((query) => query?.isError)?.error;
   const isPending = activeQueries.some((query) => query?.isPending);
+
+  const startSkillChat = () => {
+    if (!targetWorkspace) return;
+
+    onStartChat({
+      prompt: "创建一个当前项目 Skill。技能需求：",
+      skillLabel: "Skill Creator",
+      skillName: SKILL_CREATOR_NAME,
+      workspaceId: targetWorkspace.id,
+    });
+  };
 
   const updateMutation = useMutation({
     mutationFn: ({ entry, isEnabled }: { entry: SkillEntry; isEnabled: boolean }) =>
@@ -268,39 +337,45 @@ export function SkillSettingsPanel({
         {entries.map((entry) => {
           const isUpdating = isEntryUpdating(entry);
           const isRemoving = isEntryRemoving(entry);
+          const isSystemSkill = entry.skill.scope === "system";
+          const displayName = getSkillDisplayName(entry.skill);
 
           return (
             <SettingsCatalogItem
               action={
-                <div className="flex shrink-0 items-center gap-2">
-                  <Switch
-                    aria-label={`${entry.skill.name} 可用状态`}
-                    isDisabled={isUpdating || isRemoving}
-                    isSelected={entry.skill.isEnabled}
-                    size="sm"
-                    onChange={(isEnabled) => updateMutation.mutate({ entry, isEnabled })}
-                  >
-                    <Switch.Content>
-                      <Switch.Control>
-                        <Switch.Thumb />
-                      </Switch.Control>
-                    </Switch.Content>
-                  </Switch>
-                  <Button
-                    isDisabled={isUpdating}
-                    isPending={isRemoving}
-                    size="sm"
-                    variant="danger-soft"
-                    onPress={() => setRemoveTarget(entry)}
-                  >
-                    卸载
-                  </Button>
-                </div>
+                isSystemSkill ? (
+                  <span className="text-sm text-muted">系统</span>
+                ) : (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Switch
+                      aria-label={`${entry.skill.name} 可用状态`}
+                      isDisabled={isUpdating || isRemoving}
+                      isSelected={entry.skill.isEnabled}
+                      size="sm"
+                      onChange={(isEnabled) => updateMutation.mutate({ entry, isEnabled })}
+                    >
+                      <Switch.Content>
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                      </Switch.Content>
+                    </Switch>
+                    <Button
+                      isDisabled={isUpdating}
+                      isPending={isRemoving}
+                      size="sm"
+                      variant="danger-soft"
+                      onPress={() => setRemoveTarget(entry)}
+                    >
+                      卸载
+                    </Button>
+                  </div>
+                )
               }
-              ariaLabel={`查看 ${entry.skill.name} 详情`}
+              ariaLabel={`查看 ${displayName} 详情`}
               icon={<MagicWand aria-hidden className="size-5 text-muted" />}
               key={`${entry.workspaceId}:${entry.skill.id}`}
-              name={entry.skill.name}
+              name={displayName}
               secondary={<span className="min-w-0 flex-1 truncate">{entry.skill.description}</span>}
               onPress={() => setDetailEntry(entry)}
             />
@@ -324,6 +399,36 @@ export function SkillSettingsPanel({
       ) : (
         <section aria-label="技能设置" className="w-full min-w-0 max-w-[720px]">
           <SettingsPanelHeader
+            action={
+              <Dropdown>
+                <Button isDisabled={!targetWorkspace} size="sm" variant="secondary">
+                  <Plus aria-hidden className="size-4" />
+                  新增技能
+                  <ChevronDown aria-hidden className="size-4" />
+                </Button>
+                <Dropdown.Popover
+                  className="min-w-36 max-w-[calc(100vw-2rem)]"
+                  placement="bottom end"
+                >
+                  <Dropdown.Menu
+                    aria-label="新增技能"
+                    onAction={(key) => {
+                      if (key === SkillChatAction.CREATE) startSkillChat();
+                      if (key === SkillChatAction.INSTALL) setIsInstallOpen(true);
+                    }}
+                  >
+                    <Dropdown.Item id={SkillChatAction.CREATE} textValue="创建技能">
+                      <MagicWand aria-hidden className="size-4 text-muted" />
+                      <Label>创建技能</Label>
+                    </Dropdown.Item>
+                    <Dropdown.Item id={SkillChatAction.INSTALL} textValue="安装技能">
+                      <FileArrowDown aria-hidden className="size-4 text-muted" />
+                      <Label>安装技能</Label>
+                    </Dropdown.Item>
+                  </Dropdown.Menu>
+                </Dropdown.Popover>
+              </Dropdown>
+            }
             description="管理全局和各项目技能的可用状态；卸载会删除对应的本地技能目录。"
             title="技能"
           />
@@ -383,49 +488,68 @@ export function SkillSettingsPanel({
                 ) : null}
 
                 {activeTabId === ALL_SKILLS_TAB_ID ? (
-                  <div className="space-y-4">
-                    <section aria-labelledby="global-skills-heading">
-                      <SkillGroupHeader
-                        directory={globalDirectory ?? null}
-                        icon={<Globe aria-hidden className="size-4 shrink-0 text-muted" />}
-                        title="全局技能"
-                        titleId="global-skills-heading"
-                        onOpenDirectory={() => {
-                          if (globalDirectory && globalGroup) {
-                            openRootDirectory(globalGroup.workspace.id, globalDirectory);
-                          }
-                        }}
-                      />
-                      <div className="mt-1">{renderSkillList(globalEntries, "暂无全局技能")}</div>
-                    </section>
-
-                    {workspaceGroups.map(({ skills, workspace }) => {
-                      const entries = (skills ?? [])
-                        .filter((skill) => skill.scope === "project")
-                        .map((skill) => ({ skill, workspaceId: workspace.id }));
-                      if (entries.length === 0) return null;
-                      const projectDirectory = entries[0]?.skill.directory.replace(
-                        /[\\/][^\\/]+$/,
-                        "",
-                      );
-
-                      return (
-                        <section aria-label={`${workspace.name} 项目技能`} key={workspace.id}>
+                  hasAnySkill ? (
+                    <div className="space-y-4">
+                      {systemEntries.length > 0 ? (
+                        <section aria-labelledby="system-skills-heading">
                           <SkillGroupHeader
-                            directory={projectDirectory ?? null}
-                            icon={<Folder aria-hidden className="size-4 shrink-0 text-muted" />}
-                            title={workspace.name}
+                            directory={null}
+                            icon={<MagicWand aria-hidden className="size-4 shrink-0 text-muted" />}
+                            title="系统技能"
+                            titleId="system-skills-heading"
+                            onOpenDirectory={() => undefined}
+                          />
+                          <div className="mt-1">{renderSkillList(systemEntries)}</div>
+                        </section>
+                      ) : null}
+
+                      {globalEntries.length > 0 ? (
+                        <section aria-labelledby="global-skills-heading">
+                          <SkillGroupHeader
+                            directory={globalDirectory ?? null}
+                            icon={<Globe aria-hidden className="size-4 shrink-0 text-muted" />}
+                            title="全局技能"
+                            titleId="global-skills-heading"
                             onOpenDirectory={() => {
-                              if (projectDirectory) {
-                                openRootDirectory(workspace.id, projectDirectory);
+                              if (globalDirectory && globalGroup) {
+                                openRootDirectory(globalGroup.workspace.id, globalDirectory);
                               }
                             }}
                           />
-                          <div className="mt-1">{renderSkillList(entries)}</div>
+                          <div className="mt-1">{renderSkillList(globalEntries)}</div>
                         </section>
-                      );
-                    })}
-                  </div>
+                      ) : null}
+
+                      {workspaceGroups.map(({ skills, workspace }) => {
+                        const entries = (skills ?? [])
+                          .filter((skill) => skill.scope === "project")
+                          .map((skill) => ({ skill, workspaceId: workspace.id }));
+                        if (entries.length === 0) return null;
+                        const projectDirectory = entries[0]?.skill.directory?.replace(
+                          /[\\/][^\\/]+$/,
+                          "",
+                        );
+
+                        return (
+                          <section aria-label={`${workspace.name} 项目技能`} key={workspace.id}>
+                            <SkillGroupHeader
+                              directory={projectDirectory ?? null}
+                              icon={<Folder aria-hidden className="size-4 shrink-0 text-muted" />}
+                              title={workspace.name}
+                              onOpenDirectory={() => {
+                                if (projectDirectory) {
+                                  openRootDirectory(workspace.id, projectDirectory);
+                                }
+                              }}
+                            />
+                            <div className="mt-1">{renderSkillList(entries)}</div>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    renderSkillList([], "暂无技能")
+                  )
                 ) : activeWorkspaceIndex >= 0 ? (
                   renderSkillList(
                     (workspaceGroups[activeWorkspaceIndex]?.skills ?? [])
@@ -470,6 +594,14 @@ export function SkillSettingsPanel({
           </AlertDialog.Dialog>
         </AlertDialog.Container>
       </AlertDialog.Backdrop>
+
+      {targetWorkspace ? (
+        <SkillInstallDialog
+          isOpen={isInstallOpen}
+          workspaceId={targetWorkspace.id}
+          onClose={() => setIsInstallOpen(false)}
+        />
+      ) : null}
     </>
   );
 }

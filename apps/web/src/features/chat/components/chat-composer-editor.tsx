@@ -222,8 +222,12 @@ function readTokenAttributes(attributes: Record<string, unknown>): ChatComposerT
   };
 }
 
-function serializeToken(token: ChatComposerToken): string {
+export function serializeChatComposerToken(token: ChatComposerToken): string {
   if (token.kind === ChatComposerTokenKind.SKILL) return `$${token.id}`;
+  return `[[${token.kind}:${token.id}|${token.label}]]`;
+}
+
+export function createChatComposerTokenValue(token: ChatComposerToken): string {
   return `[[${token.kind}:${token.id}|${token.label}]]`;
 }
 
@@ -330,7 +334,7 @@ const ChatComposerTokenNode = Node.create({
   },
 
   renderText({ node }) {
-    return serializeToken(readTokenAttributes(node.attrs as Record<string, unknown>));
+    return serializeChatComposerToken(readTokenAttributes(node.attrs as Record<string, unknown>));
   },
 
   addNodeView() {

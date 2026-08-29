@@ -57,6 +57,7 @@ import {
   type ChatComposerToken,
   ChatComposerTokenKind,
   type ChatComposerTokenKind as ChatComposerTokenKindValue,
+  createChatComposerTokenValue,
 } from "./chat-composer-editor";
 import { ContextUsagePopover } from "./context-usage-popover";
 
@@ -86,6 +87,9 @@ function revokeAttachmentUrls(items: readonly PendingAttachment[]) {
 export interface ChatComposerProps {
   className?: string;
   conversationId?: string;
+  initialPrompt?: string;
+  initialSkillLabel?: string;
+  initialSkillName?: string;
   isAddingWorkspace?: boolean;
   modelId?: string;
   onAddWorkspace?: () => Promise<ChatWorkspace | null>;
@@ -167,10 +171,27 @@ const THINKING_LEVEL_OPTIONS = [
 ] as const;
 
 const MODEL_MENU_LAYOUT_OPTIONS = { gap: 2, padding: 6, rowSize: 36 } as const;
+const SKILL_SCOPE_LABELS = {
+  global: "全局",
+  project: "项目",
+  system: "系统",
+} as const;
+const SKILL_SCOPE_ORDER = { system: 0, global: 1, project: 2 } as const;
+
+function getSkillOptionLabel(name: string, scope: keyof typeof SKILL_SCOPE_LABELS): string {
+  if (scope !== "system") return name;
+  return name
+    .split("-")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
 
 export function ChatComposer({
   className,
   conversationId,
+  initialPrompt = "",
+  initialSkillLabel,
+  initialSkillName,
   isAddingWorkspace = false,
   modelId,
   onAddWorkspace,
@@ -222,13 +243,25 @@ export function ChatComposer({
     );
     return provider ? createModelSelectionKey(provider.id, modelId) : null;
   }, [availableModelKeys, availableModelProviders, modelId, providerId]);
+  const initialEditorValue = useMemo(() => {
+    const skillToken = initialSkillName
+      ? createChatComposerTokenValue({
+          id: initialSkillName,
+          kind: ChatComposerTokenKind.SKILL,
+          label: initialSkillLabel ?? initialSkillName,
+        })
+      : "";
+    return [skillToken, initialPrompt].filter(Boolean).join(" ");
+  }, [initialPrompt, initialSkillLabel, initialSkillName]);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [draftModelKey, setDraftModelKey] = useState<string | null>(null);
   const [draftThinkingLevel, setDraftThinkingLevel] =
     useState<ThinkingLevelValue>(DEFAULT_THINKING_LEVEL);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
   const [internalStatus, setInternalStatus] = useState<ChatStatus>("ready");
-  const [hasEditorContent, setHasEditorContent] = useState(false);
+  const [hasEditorContent, setHasEditorContent] = useState(() =>
+    Boolean(initialEditorValue.trim()),
+  );
   const selectedWorkspaceId = useNewChatStore((state) => state.workspaceId);
   const setSelectedWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
   const selectedWorkspace =
@@ -239,10 +272,16 @@ export function ChatComposer({
     () =>
       (skillsQuery.data ?? [])
         .filter((skill) => skill.isEnabled)
+        .toSorted(
+          (left, right) =>
+            SKILL_SCOPE_ORDER[left.scope] - SKILL_SCOPE_ORDER[right.scope] ||
+            left.name.localeCompare(right.name),
+        )
         .map((skill) => ({
           description: skill.description,
           id: skill.name,
-          label: skill.name,
+          label: getSkillOptionLabel(skill.name, skill.scope),
+          scopeLabel: SKILL_SCOPE_LABELS[skill.scope],
         })),
     [skillsQuery.data],
   );
@@ -563,6 +602,7 @@ export function ChatComposer({
             ref={editorRef}
             ariaLabel="消息输入框"
             contextMenuItems={CONTEXT_MENU_ITEMS}
+            initialValue={initialEditorValue}
             maxHeight={80}
             minHeight={56}
             onEmptyChange={handleEditorEmptyChange}
@@ -654,11 +694,17 @@ export function ChatComposer({
                         ) : (
                           skillOptions.map((option) => (
                             <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
-                              <div className="flex min-w-0 flex-col">
-                                <Label>{option.label}</Label>
-                                <Description className="max-w-72 truncate">
-                                  {option.description}
-                                </Description>
+                              <div className="flex min-w-0 flex-1 items-center gap-3">
+                                <WandSparkles aria-hidden className="size-4 shrink-0 text-muted" />
+                                <div className="flex min-w-0 flex-1 flex-col">
+                                  <Label>{option.label}</Label>
+                                  <Description className="max-w-72 truncate">
+                                    {option.description}
+                                  </Description>
+                                </div>
+                                <span className="shrink-0 text-sm text-muted">
+                                  {option.scopeLabel}
+                                </span>
                               </div>
                             </Dropdown.Item>
                           ))

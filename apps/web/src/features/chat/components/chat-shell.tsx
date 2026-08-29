@@ -8,7 +8,11 @@ import { groupBy } from "es-toolkit";
 import { useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type ArchivedConversationsState, SettingsDialog } from "../../settings";
+import {
+  type ArchivedConversationsState,
+  SettingsDialog,
+  type SkillChatDraft,
+} from "../../settings";
 import { updateSession } from "../api/session-api";
 import {
   archivedSessionListQueryOptions,
@@ -61,7 +65,10 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   });
   const workspacesQuery = useQuery(workspaceListQueryOptions());
   const addWorkspaceMutation = useAddWorkspace();
+  const clearNewChatDraft = useNewChatStore((state) => state.clearDraft);
+  const newChatWorkspaceId = useNewChatStore((state) => state.workspaceId);
   const setNewChatWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
+  const startNewChatDraft = useNewChatStore((state) => state.startDraft);
   const inspectorFiles = useWorkspaceInspectorStore((state) => state.files);
   const inspectorSelectedPath = useWorkspaceInspectorStore((state) => state.selectedPath);
   const inspectorTurnId = useWorkspaceInspectorStore((state) => state.turnId);
@@ -127,6 +134,9 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   );
   const isThreadPage = activePage.kind === "thread";
   const activeThreadId = isThreadPage ? activePage.thread.id : null;
+  const currentWorkspaceId = isThreadPage
+    ? activePage.thread.workspaceId
+    : (newChatWorkspaceId ?? workspaces[0]?.id ?? null);
   const isInspectorVisible = isThreadPage && inspectorTurnId !== null;
 
   const handleNavAction = useCallback(
@@ -134,9 +144,12 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       if (disableNavigation) return;
       const item = CHAT_NAV_ITEMS.find((entry) => entry.id === id);
 
-      if (item?.href) router.history.push(basePath + item.href);
+      if (item?.href) {
+        if (item.href === "/new") clearNewChatDraft();
+        router.history.push(basePath + item.href);
+      }
     },
-    [router, basePath, disableNavigation],
+    [basePath, clearNewChatDraft, disableNavigation, router],
   );
 
   const handleThreadSelect = useCallback(
@@ -164,10 +177,21 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
 
   const handleNewThread = useCallback(
     (workspace: ChatWorkspace) => {
+      clearNewChatDraft();
       setNewChatWorkspaceId(workspace.id);
       navigate("/new");
     },
-    [navigate, setNewChatWorkspaceId],
+    [clearNewChatDraft, navigate, setNewChatWorkspaceId],
+  );
+
+  const handleStartSkillChat = useCallback(
+    (draft: SkillChatDraft) => {
+      if (disableNavigation) return;
+      startNewChatDraft(draft);
+      setIsSettingsOpen(false);
+      navigate("/new");
+    },
+    [disableNavigation, navigate, startNewChatDraft],
   );
 
   const handleAddWorkspace = useCallback(() => {
@@ -231,6 +255,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         )
         .then(() => {
           if (activePage.kind === "thread" && activePage.thread.workspaceId === workspace.id) {
+            clearNewChatDraft();
             navigate("/new");
           }
         })
@@ -238,7 +263,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
           toast.danger(error instanceof Error ? error.message : "移除项目失败");
         });
     },
-    [activePage, navigate, queryClient],
+    [activePage, clearNewChatDraft, navigate, queryClient],
   );
 
   const handleReorderWorkspaces = useCallback(
@@ -268,13 +293,16 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       void updateSession(thread.id, { archived: true })
         .then(() => queryClient.invalidateQueries({ queryKey: sessionQueryKeys.all }))
         .then(() => {
-          if (activePage.kind === "thread" && activePage.thread.id === thread.id) navigate("/new");
+          if (activePage.kind === "thread" && activePage.thread.id === thread.id) {
+            clearNewChatDraft();
+            navigate("/new");
+          }
         })
         .catch((error: unknown) => {
           toast.danger(error instanceof Error ? error.message : "归档对话失败");
         });
     },
-    [activePage, navigate, queryClient],
+    [activePage, clearNewChatDraft, navigate, queryClient],
   );
 
   const handleRestoreArchivedConversation = useCallback(
@@ -388,10 +416,12 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       ) : null}
       <SettingsDialog
         archivedConversations={archivedConversations}
+        currentWorkspaceId={currentWorkspaceId}
         isOpen={isSettingsOpen}
         workspaces={workspaces}
         onRestoreArchivedConversation={handleRestoreArchivedConversation}
         onOpenChange={setIsSettingsOpen}
+        onStartSkillChat={handleStartSkillChat}
       />
     </AppLayout>
   );

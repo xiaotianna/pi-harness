@@ -10,7 +10,11 @@ const LoadSkillParameters = Type.Object({
     Type.String({ description: "要加载的 Skill 相对资源路径；默认加载 SKILL.md", minLength: 1 }),
   ),
   scope: Type.Optional(
-    Type.Union([Type.Literal(SkillScope.PROJECT), Type.Literal(SkillScope.GLOBAL)]),
+    Type.Union([
+      Type.Literal(SkillScope.SYSTEM),
+      Type.Literal(SkillScope.PROJECT),
+      Type.Literal(SkillScope.GLOBAL),
+    ]),
   ),
 });
 
@@ -19,7 +23,7 @@ export function createLoadSkillTool(
 ): AgentTool<typeof LoadSkillParameters, LoadSkillDetails> {
   return {
     description:
-      "加载已发现 Skill 的指令正文或其 references、scripts 等文本资源；项目 Skill 优先于同名全局 Skill。",
+      "加载已发现 Skill 的指令正文或其 references、scripts 等文本资源；系统 Skill 名称保留，其他同名 Skill 由项目定义优先于全局定义。",
     executionMode: "parallel",
     label: "Load skill",
     name: "load_skill",
