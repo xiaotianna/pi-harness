@@ -1,5 +1,5 @@
-import { open } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { resolveWorkspacePath } from "@pi-harness/policy";
 import { SkillRegistry, type SkillSummary } from "@pi-harness/tools";
 
@@ -12,6 +12,7 @@ export interface WorkspaceAgentContext {
 
 export interface WorkspaceAgentContextSource {
   globalRoot: string;
+  isSkillEnabled?: (directory: string) => boolean;
   workspaceRoot: string;
 }
 

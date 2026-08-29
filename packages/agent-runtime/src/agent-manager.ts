@@ -41,6 +41,7 @@ export class AgentManager {
     private readonly requestToolApproval: ToolApprovalRequester,
     private readonly protectedPaths: readonly string[] = [],
     private readonly globalRoot: string,
+    private readonly isSkillEnabled: (directory: string) => boolean = () => true,
   ) {}
 
   public isProviderActive(providerId: string): boolean {
@@ -55,6 +56,7 @@ export class AgentManager {
   public async startRun(input: StartSessionRunInput): Promise<void> {
     const workspaceContext = await loadWorkspaceAgentContext({
       globalRoot: this.globalRoot,
+      isSkillEnabled: this.isSkillEnabled,
       workspaceRoot: input.workspaceRoot,
     });
     const preparedInput = {
@@ -89,6 +91,7 @@ export class AgentManager {
 
     const toolRegistry = createWorkspaceToolRegistry({
       globalRoot: this.globalRoot,
+      isSkillEnabled: this.isSkillEnabled,
       protectedPaths: this.protectedPaths,
       workspaceRoot: input.workspaceRoot,
     });

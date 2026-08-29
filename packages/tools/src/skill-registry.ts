@@ -41,7 +41,11 @@ export interface SkillSummary {
   scope: SkillScope;
 }
 
-export interface SkillDetails extends SkillSummary {
+export interface SkillListItem extends SkillSummary {
+  directory: string;
+}
+
+export interface SkillDetails extends SkillListItem {
   resources: readonly string[];
   resourcesTruncated: boolean;
 }
@@ -64,12 +68,12 @@ export interface CreatedSkill {
 }
 
 interface SkillRecord extends SkillDetails {
-  directory: string;
   instructions: string;
 }
 
 export interface SkillRegistryContext {
   globalRoot: string;
+  isSkillEnabled?: (directory: string) => boolean;
   workspaceRoot: string;
 }
 
@@ -104,9 +108,7 @@ function readSkillDocument(
   }
 
   const instructions = content.slice(match[0].length).trim();
-  if (!instructions || /^\[TODO:/m.test(instructions)) {
-    throw new Error("SKILL_INVALID: Skill instructions 不能为空或包含未完成 TODO");
-  }
+  if (!instructions) throw new Error("SKILL_INVALID: Skill instructions 不能为空");
   return { frontmatter, instructions };
 }
 
@@ -132,11 +134,16 @@ function toSummary({
   return skill;
 }
 
-function toDetails({
-  directory: _directory,
+function toDetails({ instructions: _instructions, ...skill }: SkillRecord): SkillDetails {
+  return skill;
+}
+
+function toListItem({
   instructions: _instructions,
+  resources: _resources,
+  resourcesTruncated: _resourcesTruncated,
   ...skill
-}: SkillRecord): SkillDetails {
+}: SkillRecord): SkillListItem {
   return skill;
 }
 
@@ -147,6 +154,10 @@ export class SkillRegistry {
   // 扫描全部有效 Skill，返回简要信息
   public async discover(): Promise<readonly SkillSummary[]> {
     return (await this.discoverRecords()).map(toSummary);
+  }
+
+  public async discoverListItems(): Promise<readonly SkillListItem[]> {
+    return (await this.discoverRecords()).map(toListItem);
   }
 
   // 根据名称和描述搜索 Skill
@@ -182,6 +193,11 @@ export class SkillRegistry {
     }
     const content = await readBoundedText(path, MAX_RESOURCE_BYTES);
     return { ...summary, content, resource };
+  }
+
+  public async remove(name: string, scope: SkillScope): Promise<void> {
+    const skill = await this.getRecord(name, scope, false);
+    await rm(skill.directory, { recursive: true });
   }
 
   // 创建新的 Skill 目录和 SKILL.md
@@ -233,6 +249,7 @@ export class SkillRegistry {
         if (!entry.isDirectory() || registeredNames.has(entry.name)) continue;
         try {
           const record = await this.readRecord(root, entry.name, currentScope, false);
+          if (this.context.isSkillEnabled?.(record.directory) === false) continue;
           records.push(record);
           registeredNames.add(record.name);
         } catch {
@@ -257,7 +274,11 @@ export class SkillRegistry {
       const root = await this.resolveRoot(currentScope, false);
       if (root === null) continue;
       try {
-        return await this.readRecord(root, name, currentScope, shouldListResources);
+        const record = await this.readRecord(root, name, currentScope, shouldListResources);
+        if (this.context.isSkillEnabled?.(record.directory) === false) {
+          throw new Error(`SKILL_DISABLED: ${name}`);
+        }
+        return record;
       } catch (error: unknown) {
         if (isNodeError(error) && error.code === "ENOENT") continue;
         invalidError = error;

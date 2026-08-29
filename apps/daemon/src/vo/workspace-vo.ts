@@ -1,3 +1,4 @@
+import { SkillScope } from "@pi-harness/tools";
 import { type Static, Type } from "typebox";
 
 export const WorkspaceVoSchema = Type.Object({
@@ -14,7 +15,11 @@ export const WorkspaceListVoSchema = Type.Array(WorkspaceVoSchema);
 
 export const WorkspaceSkillVoSchema = Type.Object({
   description: Type.String({ minLength: 1 }),
+  directory: Type.String({ minLength: 1 }),
+  id: Type.String({ minLength: 1 }),
+  isEnabled: Type.Boolean(),
   name: Type.String({ minLength: 1 }),
+  scope: Type.Union([Type.Literal(SkillScope.PROJECT), Type.Literal(SkillScope.GLOBAL)]),
 });
 
 export type WorkspaceSkillVo = Static<typeof WorkspaceSkillVoSchema>;

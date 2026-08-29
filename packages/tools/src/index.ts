@@ -5,6 +5,7 @@ export {
   type CreateSkillInput,
   type LoadedSkill,
   type SkillDetails,
+  type SkillListItem,
   SkillRegistry,
   type SkillRegistryContext,
   SkillScope,

@@ -42,8 +42,13 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     interactions.request,
     protectedPaths,
     config.globalRoot,
+    (directory) => !database.appSettings.getDisabledSkillDirectories().includes(directory),
   );
-  const workspaces = new WorkspaceService(database.workspaces, config.globalRoot);
+  const workspaces = new WorkspaceService(
+    database.workspaces,
+    config.globalRoot,
+    database.appSettings,
+  );
   let sessions: SessionService | undefined;
   const providers = await ProviderService.create(
     database.providerSettings,

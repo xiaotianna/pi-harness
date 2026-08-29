@@ -9,8 +9,12 @@ import {
   ReorderWorkspacesDtoSchema,
   type UpdateWorkspaceDto,
   UpdateWorkspaceDtoSchema,
+  type UpdateWorkspaceSkillDto,
+  UpdateWorkspaceSkillDtoSchema,
   type WorkspaceParamsDto,
   WorkspaceParamsDtoSchema,
+  type WorkspaceSkillParamsDto,
+  WorkspaceSkillParamsDtoSchema,
 } from "../dto/workspace-dto.js";
 import type { WorkspaceService } from "../services/workspace-service.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
@@ -50,6 +54,40 @@ export async function registerWorkspaceRoutes(
       },
     },
     controller.listSkills,
+  );
+
+  server.patch<{ Body: UpdateWorkspaceSkillDto; Params: WorkspaceSkillParamsDto }>(
+    "/api/workspaces/:workspaceId/skills/:scope/:name",
+    {
+      schema: {
+        body: UpdateWorkspaceSkillDtoSchema,
+        params: WorkspaceSkillParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.updateSkill,
+  );
+
+  server.post<{ Params: WorkspaceSkillParamsDto }>(
+    "/api/workspaces/:workspaceId/skills/:scope/:name/open",
+    {
+      schema: {
+        params: WorkspaceSkillParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.openSkillDirectory,
+  );
+
+  server.delete<{ Params: WorkspaceSkillParamsDto }>(
+    "/api/workspaces/:workspaceId/skills/:scope/:name",
+    {
+      schema: {
+        params: WorkspaceSkillParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.removeSkill,
   );
 
   server.post(

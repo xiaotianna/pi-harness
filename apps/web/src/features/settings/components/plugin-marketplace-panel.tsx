@@ -2,7 +2,6 @@
 
 import {
   Pulse as Activity,
-  ArrowLeft,
   ChartBar as BarChart3,
   Cloud,
   Diamond as Component,
@@ -22,6 +21,8 @@ import { Button, Switch } from "@heroui/react";
 import { CircleDot } from "lucide-react";
 import { type ComponentType, type SVGProps, useState } from "react";
 import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
+import { SettingsCatalogDetail } from "./settings-catalog-detail";
+import { SettingsCatalogItem } from "./settings-catalog-item";
 import { SettingsPanelHeader } from "./settings-panel-header";
 
 const PLUGIN_CATEGORIES = [
@@ -220,28 +221,15 @@ function PluginList({
         const Icon = plugin.icon;
 
         return (
-          <li className="relative min-h-16 rounded-xl" key={plugin.id}>
-            <Button
-              aria-label={`查看 ${plugin.name} 插件详情`}
-              className="absolute inset-0 z-0 h-full w-full cursor-[var(--cursor-interactive)] rounded-xl"
-              variant="ghost"
-              onPress={() => onSelect(plugin.id)}
-            >
-              <span className="sr-only">查看 {plugin.name} 插件详情</span>
-            </Button>
-            <div className="pointer-events-none relative z-10 flex min-h-16 items-center gap-3 px-3 py-2">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-default">
-                <Icon aria-hidden className="size-5 text-muted" />
-              </div>
-              <div className="min-w-0 flex-1 pr-20">
-                <p className="font-medium text-foreground">{plugin.name}</p>
-                <p className="mt-0.5 truncate text-sm text-muted">{plugin.description}</p>
-              </div>
-            </div>
-            <div className="absolute top-1/2 right-3 z-20 -translate-y-1/2">
-              <PluginInstallButton plugin={plugin} />
-            </div>
-          </li>
+          <SettingsCatalogItem
+            action={<PluginInstallButton plugin={plugin} />}
+            ariaLabel={`查看 ${plugin.name} 插件详情`}
+            icon={<Icon aria-hidden className="size-5 text-muted" />}
+            key={plugin.id}
+            name={plugin.name}
+            secondary={<span className="min-w-0 flex-1 truncate">{plugin.description}</span>}
+            onPress={() => onSelect(plugin.id)}
+          />
         );
       })}
     </ul>
@@ -252,25 +240,15 @@ function PluginDetail({ onBack, plugin }: { onBack: () => void; plugin: Plugin }
   const Icon = plugin.icon;
 
   return (
-    <section aria-label={`${plugin.name} 插件详情`} className="w-full max-w-[720px]">
-      <Button className="-ml-2" size="sm" variant="ghost" onPress={onBack}>
-        <ArrowLeft aria-hidden className="size-4" />
-        返回插件市场
-      </Button>
-
-      <div className="mt-5 flex items-start gap-4">
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-default">
-          <Icon aria-hidden className="size-6 text-muted" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-medium text-foreground">{plugin.name}</h2>
-            <PluginInstallButton plugin={plugin} />
-          </div>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-muted">{plugin.description}</p>
-        </div>
-      </div>
-
+    <SettingsCatalogDetail
+      action={<PluginInstallButton plugin={plugin} />}
+      ariaLabel={`${plugin.name} 插件详情`}
+      backLabel="返回插件市场"
+      description={plugin.description}
+      icon={<Icon aria-hidden className="size-6 text-muted" />}
+      name={plugin.name}
+      onBack={onBack}
+    >
       <div className="mt-8">
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-foreground">包含的技能</h3>
@@ -308,7 +286,7 @@ function PluginDetail({ onBack, plugin }: { onBack: () => void; plugin: Plugin }
           })}
         </div>
       </div>
-    </section>
+    </SettingsCatalogDetail>
   );
 }
 
@@ -349,7 +327,7 @@ export function PluginMarketplacePanel() {
       >
         {PLUGIN_CATEGORIES.map((category) => (
           <ToggleButton
-            className="h-8 cursor-[var(--cursor-interactive)] rounded-lg px-3 text-sm text-muted outline-none hover:bg-default data-[focus-visible]:bg-default data-[selected]:bg-default data-[selected]:font-medium data-[selected]:text-foreground"
+            className="h-8 cursor-[var(--cursor-interactive)] rounded-lg px-3 text-sm text-muted outline-none hover:bg-default data-[focus-visible]:bg-default data-[selected]:bg-accent-soft data-[selected]:font-medium data-[selected]:text-accent-soft-foreground"
             id={category.id}
             key={category.id}
           >

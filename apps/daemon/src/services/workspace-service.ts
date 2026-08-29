@@ -1,8 +1,12 @@
 import { execFile } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
-import { SkillRegistry, type SkillSummary } from "@pi-harness/tools";
-import type { WorkspaceRecord, WorkspaceRepository } from "../storage/database.js";
+import { SkillRegistry, type SkillScope } from "@pi-harness/tools";
+import type {
+  AppSettingRepository,
+  WorkspaceRecord,
+  WorkspaceRepository,
+} from "../storage/database.js";
 
 const PICKER_TIMEOUT_MS = 5 * 60 * 1_000;
 const REVEAL_TIMEOUT_MS = 10_000;
@@ -182,18 +186,56 @@ export class WorkspaceService {
   public constructor(
     private readonly workspaces: WorkspaceRepository,
     private readonly globalRoot: string,
+    private readonly settings: AppSettingRepository,
   ) {}
 
   public list(): readonly WorkspaceRecord[] {
     return this.workspaces.list();
   }
 
-  public async listSkills(workspaceId: string): Promise<readonly SkillSummary[]> {
-    const workspace = this.getRequired(workspaceId);
-    return new SkillRegistry({
-      globalRoot: this.globalRoot,
-      workspaceRoot: workspace.rootPath,
-    }).discover();
+  public async listSkills(workspaceId: string) {
+    const disabledDirectories = new Set(this.settings.getDisabledSkillDirectories());
+    return (await this.createSkillRegistry(workspaceId).discoverListItems()).map((skill) => ({
+      description: skill.description,
+      directory: skill.directory,
+      id: skill.id,
+      isEnabled: !disabledDirectories.has(skill.directory),
+      name: skill.name,
+      scope: skill.scope,
+    }));
+  }
+
+  public async setSkillEnabled(
+    workspaceId: string,
+    name: string,
+    scope: SkillScope,
+    isEnabled: boolean,
+  ): Promise<void> {
+    const skill = await this.createSkillRegistry(workspaceId).get(name, scope);
+    const disabledDirectories = new Set(this.settings.getDisabledSkillDirectories());
+    if (isEnabled) disabledDirectories.delete(skill.directory);
+    else disabledDirectories.add(skill.directory);
+    this.settings.setDisabledSkillDirectories([...disabledDirectories].sort(), Date.now());
+  }
+
+  public async removeSkill(workspaceId: string, name: string, scope: SkillScope): Promise<void> {
+    const registry = this.createSkillRegistry(workspaceId);
+    const skill = await registry.get(name, scope);
+    await registry.remove(name, scope);
+    const disabledDirectories = new Set(this.settings.getDisabledSkillDirectories());
+    if (disabledDirectories.delete(skill.directory)) {
+      this.settings.setDisabledSkillDirectories([...disabledDirectories].sort(), Date.now());
+    }
+  }
+
+  public async openSkillDirectory(
+    workspaceId: string,
+    name: string,
+    scope: SkillScope,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const skill = await this.createSkillRegistry(workspaceId).get(name, scope);
+    await this.openTarget(skill.directory, signal);
   }
 
   public remove(workspaceId: string): void {
@@ -226,19 +268,7 @@ export class WorkspaceService {
       throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "本地路径不存在或无法访问");
     }
 
-    try {
-      await runOpen(target, signal);
-    } catch (error: unknown) {
-      if (signal.aborted) return;
-      if (error instanceof WorkspaceServiceError) throw error;
-      if (isCommandUnavailable(error)) {
-        throw new WorkspaceServiceError(
-          WorkspaceErrorCode.OPEN_UNAVAILABLE,
-          "当前系统缺少可用的本地路径打开程序",
-        );
-      }
-      throw new WorkspaceServiceError(WorkspaceErrorCode.OPEN_FAILED, "无法打开本地路径");
-    }
+    await this.openTarget(target, signal);
   }
 
   public async reveal(workspaceId: string, signal: AbortSignal): Promise<void> {
@@ -312,5 +342,28 @@ export class WorkspaceService {
       throw new WorkspaceServiceError(WorkspaceErrorCode.NOT_FOUND, "Workspace 不存在");
     }
     return workspace;
+  }
+
+  private createSkillRegistry(workspaceId: string): SkillRegistry {
+    return new SkillRegistry({
+      globalRoot: this.globalRoot,
+      workspaceRoot: this.getRequired(workspaceId).rootPath,
+    });
+  }
+
+  private async openTarget(target: string, signal: AbortSignal): Promise<void> {
+    try {
+      await runOpen(target, signal);
+    } catch (error: unknown) {
+      if (signal.aborted) return;
+      if (error instanceof WorkspaceServiceError) throw error;
+      if (isCommandUnavailable(error)) {
+        throw new WorkspaceServiceError(
+          WorkspaceErrorCode.OPEN_UNAVAILABLE,
+          "当前系统缺少可用的本地路径打开程序",
+        );
+      }
+      throw new WorkspaceServiceError(WorkspaceErrorCode.OPEN_FAILED, "无法打开本地路径");
+    }
   }
 }

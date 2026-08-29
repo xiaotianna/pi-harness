@@ -4,7 +4,9 @@ import type {
   OpenWorkspacePathDto,
   ReorderWorkspacesDto,
   UpdateWorkspaceDto,
+  UpdateWorkspaceSkillDto,
   WorkspaceParamsDto,
+  WorkspaceSkillParamsDto,
 } from "../dto/workspace-dto.js";
 import { type WorkspaceService, WorkspaceServiceError } from "../services/workspace-service.js";
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
@@ -49,6 +51,68 @@ export class WorkspaceController {
       return this.sendError(request, reply, error);
     } finally {
       request.raw.off("aborted", handleAborted);
+    }
+  };
+
+  public openSkillDirectory = async (
+    request: FastifyRequest<{ Params: WorkspaceSkillParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+
+    try {
+      await this.workspaces.openSkillDirectory(
+        request.params.workspaceId,
+        request.params.name,
+        request.params.scope,
+        abortController.signal,
+      );
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
+
+  public removeSkill = async (
+    request: FastifyRequest<{ Params: WorkspaceSkillParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.workspaces.removeSkill(
+        request.params.workspaceId,
+        request.params.name,
+        request.params.scope,
+      );
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public updateSkill = async (
+    request: FastifyRequest<{
+      Body: UpdateWorkspaceSkillDto;
+      Params: WorkspaceSkillParamsDto;
+    }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.workspaces.setSkillEnabled(
+        request.params.workspaceId,
+        request.params.name,
+        request.params.scope,
+        request.body.isEnabled,
+      );
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
     }
   };
 

@@ -45,7 +45,7 @@ import {
   useModelSettingsStore,
 } from "../../models";
 import { ApprovalPolicySelect, useApprovalPolicySetting } from "../../settings";
-import { workspaceSkillListQueryOptions } from "../api/workspace-queries";
+import { skillListQueryOptions } from "../../skills";
 import type { ChatWorkspace } from "../data/chat";
 import { useNewChatStore } from "../state/new-chat-store";
 import type { SessionUsageSummary } from "../utils/session-usage";
@@ -234,14 +234,16 @@ export function ChatComposer({
   const selectedWorkspace =
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? workspaces[0];
   const activeWorkspaceId = workspaceId ?? selectedWorkspace?.id;
-  const skillsQuery = useQuery(workspaceSkillListQueryOptions(activeWorkspaceId));
+  const skillsQuery = useQuery(skillListQueryOptions(activeWorkspaceId));
   const skillOptions = useMemo(
     () =>
-      (skillsQuery.data ?? []).map((skill) => ({
-        description: skill.description,
-        id: skill.name,
-        label: skill.name,
-      })),
+      (skillsQuery.data ?? [])
+        .filter((skill) => skill.isEnabled)
+        .map((skill) => ({
+          description: skill.description,
+          id: skill.name,
+          label: skill.name,
+        })),
     [skillsQuery.data],
   );
   const slashMenuItems = useMemo(

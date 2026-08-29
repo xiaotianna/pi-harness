@@ -35,13 +35,14 @@ import { ModelSettingsPanel } from "./model-settings-panel";
 import { PluginMarketplacePanel } from "./plugin-marketplace-panel";
 import { SettingsPanelHeader } from "./settings-panel-header";
 import { SettingsRow } from "./settings-row";
-import { SkillSettingsPanel } from "./skill-settings-panel";
+import { SkillSettingsPanel, type SkillSettingsWorkspace } from "./skill-settings-panel";
 
 export interface SettingsDialogProps {
   archivedConversations: ArchivedConversationsState;
   isOpen: boolean;
   onRestoreArchivedConversation: (conversationId: string) => Promise<void>;
   onOpenChange: (isOpen: boolean) => void;
+  workspaces: readonly SkillSettingsWorkspace[];
 }
 
 export type ArchivedConversationsState =
@@ -84,7 +85,7 @@ const SETTINGS_SECTIONS = [
   {
     id: "skills",
     label: "技能",
-    description: "管理已安装技能及其可用状态。",
+    description: "管理技能及其可用状态。",
     icon: Blocks,
   },
   {
@@ -283,6 +284,7 @@ export function SettingsDialog({
   isOpen,
   onRestoreArchivedConversation,
   onOpenChange,
+  workspaces,
 }: SettingsDialogProps) {
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
 
@@ -328,7 +330,7 @@ export function SettingsDialog({
                 </ListBox>
               </aside>
 
-              <main className="min-h-0 overflow-y-auto py-8 pr-16 pl-8">
+              <main className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto py-8 pr-16 pl-8">
                 {activeSectionId === "general" ? (
                   <GeneralSettingsPanel />
                 ) : activeSectionId === "models" ? (
@@ -338,7 +340,7 @@ export function SettingsDialog({
                 ) : activeSectionId === "plugins" ? (
                   <PluginMarketplacePanel />
                 ) : activeSectionId === "skills" ? (
-                  <SkillSettingsPanel />
+                  <SkillSettingsPanel workspaces={workspaces} />
                 ) : activeSectionId === "archived" ? (
                   <ArchivedSettingsPanel
                     state={archivedConversations}

@@ -57,7 +57,9 @@ export interface ProviderSettingRepository {
 
 export interface AppSettingRepository {
   getApprovalPolicy(): ApprovalPolicyValue;
+  getDisabledSkillDirectories(): readonly string[];
   setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void;
+  setDisabledSkillDirectories(directories: readonly string[], updatedAt: number): void;
 }
 
 export interface SessionRecord {
@@ -419,6 +421,7 @@ class SqliteProviderSettingRepository implements ProviderSettingRepository {
 }
 
 const APPROVAL_POLICY_KEY = "approval_policy";
+const DISABLED_SKILL_DIRECTORIES_KEY = "disabled_skill_directories";
 
 class SqliteAppSettingRepository implements AppSettingRepository {
   public constructor(private readonly database: DatabaseSync) {}
@@ -436,6 +439,19 @@ class SqliteAppSettingRepository implements AppSettingRepository {
     return value;
   }
 
+  public getDisabledSkillDirectories(): readonly string[] {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(DISABLED_SKILL_DIRECTORIES_KEY) as DatabaseRow | undefined;
+    if (!row) return [];
+
+    const value = JSON.parse(readRequiredString(row, "value")) as unknown;
+    if (!Array.isArray(value) || !value.every((directory) => typeof directory === "string")) {
+      throw new Error("Invalid database value for disabled skill directories");
+    }
+    return value;
+  }
+
   public setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void {
     this.database
       .prepare(
@@ -443,6 +459,15 @@ class SqliteAppSettingRepository implements AppSettingRepository {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       )
       .run(APPROVAL_POLICY_KEY, approvalPolicy, updatedAt);
+  }
+
+  public setDisabledSkillDirectories(directories: readonly string[], updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(DISABLED_SKILL_DIRECTORIES_KEY, JSON.stringify(directories), updatedAt);
   }
 }
 

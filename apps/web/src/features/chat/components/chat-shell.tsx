@@ -214,7 +214,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     [queryClient, refreshSessions],
   );
 
-  const handleRevealWorkspace = useCallback((workspace: ChatWorkspace) => {
+  const handleRevealWorkspace = useCallback((workspace: Pick<ChatWorkspace, "id">) => {
     void revealWorkspace(workspace.id).catch((error: unknown) => {
       toast.danger(error instanceof Error ? error.message : "无法显示工作区目录");
     });
@@ -389,6 +389,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       <SettingsDialog
         archivedConversations={archivedConversations}
         isOpen={isSettingsOpen}
+        workspaces={workspaces}
         onRestoreArchivedConversation={handleRestoreArchivedConversation}
         onOpenChange={setIsSettingsOpen}
       />

@@ -12,14 +12,7 @@ const WorkspaceSchema = Type.Object({
 });
 
 const WorkspaceListSchema = Type.Array(WorkspaceSchema);
-const WorkspaceSkillSchema = Type.Object({
-  description: Type.String({ minLength: 1 }),
-  name: Type.String({ minLength: 1 }),
-});
-const WorkspaceSkillListSchema = Type.Array(WorkspaceSkillSchema);
-
 type Workspace = Static<typeof WorkspaceSchema>;
-export type WorkspaceSkill = Static<typeof WorkspaceSkillSchema>;
 
 function toChatWorkspace(workspace: Workspace): ChatWorkspace {
   return {
@@ -48,22 +41,6 @@ export async function listWorkspaces(signal?: AbortSignal): Promise<readonly Cha
     throw new Error("daemon 返回了无效的 Workspace 列表");
   }
   return body.map(toChatWorkspace);
-}
-
-export async function listWorkspaceSkills(
-  workspaceId: string,
-  signal?: AbortSignal,
-): Promise<readonly WorkspaceSkill[]> {
-  const body = (await (
-    await apiRequest(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/skills`,
-      signal ? { signal } : undefined,
-    )
-  ).json()) as unknown;
-  if (!Value.Check(WorkspaceSkillListSchema, body)) {
-    throw new Error("daemon 返回了无效的 Skill 目录");
-  }
-  return body;
 }
 
 export async function selectWorkspaceDirectory(): Promise<ChatWorkspace | null> {
