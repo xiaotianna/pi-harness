@@ -19,9 +19,9 @@ import {
 } from "../features/chat/api/session-queries";
 import { ChatShell } from "../features/chat/components/chat-shell";
 import { ChatPageSkeleton } from "../features/chat/views/chat-page";
+import { BoardPage } from "../pages/board-page";
 import { ChatThreadPage } from "../pages/chat-thread-page";
 import { ExplorePage } from "../pages/explore-page";
-import { LibraryPage } from "../pages/library-page";
 import { LoginPage } from "../pages/login-page";
 import { NewChatPage } from "../pages/new-chat-page";
 import { queryClient } from "./query-client";
@@ -139,10 +139,10 @@ const newChatRoute = createRoute({
   component: NewChatPage,
 });
 
-const libraryRoute = createRoute({
+const boardRoute = createRoute({
   getParentRoute: () => chatLayoutRoute,
-  path: "/library",
-  component: LibraryPage,
+  path: "/board",
+  component: BoardPage,
 });
 
 const exploreRoute = createRoute({
@@ -195,7 +195,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   chatLayoutRoute.addChildren([
     newChatRoute,
-    libraryRoute,
+    boardRoute,
     exploreRoute,
     chatThreadRoute,
   ]),

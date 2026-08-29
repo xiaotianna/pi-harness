@@ -11,14 +11,16 @@ import {
   Tooltip,
   toast,
 } from "@heroui/react";
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
+import { AssistantMarkdown } from "../../../components/ai/assistant-markdown";
 import {
   openSkillDirectory,
   openSkillRootDirectory,
   removeSkill,
   type Skill,
+  skillDetailQueryOptions,
   skillListQueryOptions,
   skillQueryKeys,
   updateSkill,
@@ -80,36 +82,86 @@ function SkillGroupHeader({
 
 function SkillDetail({
   entry,
+  isRemoving,
+  isUpdating,
   onBack,
+  onEnabledChange,
   onOpenDirectory,
+  onRemove,
 }: {
   entry: SkillEntry;
+  isRemoving: boolean;
+  isUpdating: boolean;
   onBack: () => void;
+  onEnabledChange: (isEnabled: boolean) => void;
   onOpenDirectory: () => void;
+  onRemove: () => void;
 }) {
+  const contentQuery = useQuery(skillDetailQueryOptions(entry.workspaceId, entry.skill));
+
   return (
     <SettingsCatalogDetail
       action={
-        <Button size="sm" variant="tertiary" onPress={onOpenDirectory}>
-          <FolderOpen aria-hidden className="size-4" />
-          打开目录
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-sm text-muted">{entry.skill.isEnabled ? "已开启" : "已关闭"}</span>
+          <Switch
+            aria-label={`${entry.skill.name} 可用状态`}
+            isDisabled={isUpdating || isRemoving}
+            isSelected={entry.skill.isEnabled}
+            size="sm"
+            onChange={onEnabledChange}
+          >
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
+          </Switch>
+        </div>
       }
       ariaLabel={`${entry.skill.name} 技能详情`}
       backLabel="返回技能"
       description={entry.skill.description}
       icon={<MagicWand aria-hidden className="size-6 text-muted" />}
       name={entry.skill.name}
+      toolbarAction={
+        <div className="flex items-center gap-1">
+          <Button isDisabled={isRemoving} size="sm" variant="tertiary" onPress={onOpenDirectory}>
+            <FolderOpen aria-hidden className="size-4" />
+            打开目录
+          </Button>
+          <Button
+            isDisabled={isUpdating}
+            isPending={isRemoving}
+            size="sm"
+            variant="danger-soft"
+            onPress={onRemove}
+          >
+            卸载
+          </Button>
+        </div>
+      }
       onBack={onBack}
     >
       <div className="mt-8">
-        <h3 className="font-medium text-foreground">所在目录</h3>
-        <div className="mt-3 flex min-h-16 items-center gap-3 rounded-xl px-3 py-2.5">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface-secondary">
-            <FolderOpen aria-hidden className="size-4 text-muted" />
+        {contentQuery.isPending ? (
+          <div aria-busy="true" className="space-y-3">
+            <span className="sr-only">正在加载技能内容</span>
+            <Skeleton className="h-5 w-2/3 rounded-lg" />
+            <Skeleton className="h-4 w-full rounded-lg" />
+            <Skeleton className="h-4 w-5/6 rounded-lg" />
           </div>
-          <p className="min-w-0 flex-1 truncate text-sm text-muted">{entry.skill.directory}</p>
-        </div>
+        ) : contentQuery.isError ? (
+          <Alert className="bg-danger-soft" role="alert" status="danger">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>技能内容加载失败</Alert.Title>
+              <Alert.Description>{contentQuery.error.message}</Alert.Description>
+            </Alert.Content>
+          </Alert>
+        ) : (
+          <AssistantMarkdown>{contentQuery.data}</AssistantMarkdown>
+        )}
       </div>
     </SettingsCatalogDetail>
   );
@@ -167,7 +219,14 @@ export function SkillSettingsPanel({
     mutationFn: ({ entry, isEnabled }: { entry: SkillEntry; isEnabled: boolean }) =>
       updateSkill(entry.workspaceId, entry.skill, isEnabled),
     onError: (error: Error) => toast.danger(error.message),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: skillQueryKeys.all }),
+    onSuccess: async (_, { entry, isEnabled }) => {
+      setDetailEntry((current) =>
+        current?.workspaceId === entry.workspaceId && current.skill.id === entry.skill.id
+          ? { ...current, skill: { ...current.skill, isEnabled } }
+          : current,
+      );
+      await queryClient.invalidateQueries({ queryKey: skillQueryKeys.all });
+    },
   });
   const removeMutation = useMutation({
     mutationFn: (entry: SkillEntry) => removeSkill(entry.workspaceId, entry.skill),
@@ -192,20 +251,23 @@ export function SkillSettingsPanel({
     });
   };
 
+  const isEntryUpdating = (entry: SkillEntry) =>
+    updateMutation.isPending &&
+    updateMutation.variables.entry.workspaceId === entry.workspaceId &&
+    updateMutation.variables.entry.skill.id === entry.skill.id;
+  const isEntryRemoving = (entry: SkillEntry) =>
+    removeMutation.isPending &&
+    removeMutation.variables.workspaceId === entry.workspaceId &&
+    removeMutation.variables.skill.id === entry.skill.id;
+
   const renderSkillList = (entries: readonly SkillEntry[], emptyMessage = "暂无技能") =>
     entries.length === 0 ? (
       <p className="py-8 text-center text-sm text-muted">{emptyMessage}</p>
     ) : (
       <ul className="flex flex-col gap-1">
         {entries.map((entry) => {
-          const isUpdating =
-            updateMutation.isPending &&
-            updateMutation.variables.entry.workspaceId === entry.workspaceId &&
-            updateMutation.variables.entry.skill.id === entry.skill.id;
-          const isRemoving =
-            removeMutation.isPending &&
-            removeMutation.variables.workspaceId === entry.workspaceId &&
-            removeMutation.variables.skill.id === entry.skill.id;
+          const isUpdating = isEntryUpdating(entry);
+          const isRemoving = isEntryRemoving(entry);
 
           return (
             <SettingsCatalogItem
@@ -252,8 +314,12 @@ export function SkillSettingsPanel({
       {detailEntry ? (
         <SkillDetail
           entry={detailEntry}
+          isRemoving={isEntryRemoving(detailEntry)}
+          isUpdating={isEntryUpdating(detailEntry)}
           onBack={() => setDetailEntry(null)}
+          onEnabledChange={(isEnabled) => updateMutation.mutate({ entry: detailEntry, isEnabled })}
           onOpenDirectory={() => openDirectory(detailEntry)}
+          onRemove={() => setRemoveTarget(detailEntry)}
         />
       ) : (
         <section aria-label="技能设置" className="w-full min-w-0 max-w-[720px]">

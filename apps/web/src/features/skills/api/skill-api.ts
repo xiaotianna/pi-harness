@@ -11,6 +11,9 @@ const SkillSchema = Type.Object({
   scope: Type.Union([Type.Literal("project"), Type.Literal("global")]),
 });
 const SkillListSchema = Type.Array(SkillSchema);
+const SkillContentSchema = Type.Object({
+  content: Type.String({ minLength: 1 }),
+});
 
 export type Skill = Static<typeof SkillSchema>;
 
@@ -30,6 +33,18 @@ export async function listSkills(
   ).json()) as unknown;
   if (!Value.Check(SkillListSchema, body)) throw new Error("daemon 返回了无效的 Skill 目录");
   return body;
+}
+
+export async function getSkillContent(
+  workspaceId: string,
+  skill: Pick<Skill, "name" | "scope">,
+  signal?: AbortSignal,
+): Promise<string> {
+  const body = (await (
+    await apiRequest(skillPath(workspaceId, skill), signal ? { signal } : undefined)
+  ).json()) as unknown;
+  if (!Value.Check(SkillContentSchema, body)) throw new Error("daemon 返回了无效的 Skill 内容");
+  return body.content;
 }
 
 export async function updateSkill(

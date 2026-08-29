@@ -43,7 +43,7 @@
 | 文件选择 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发 | `features/chat/components/chat-composer.tsx` |
 | 命令与搜索弹窗 | `Command` 复合组件 | `features/chat/components/chat-search-dialog.tsx` |
 | 提示词建议 | `PromptSuggestion` | `features/chat/views/explore-page.tsx` |
-| 项目任务看板 | HeroUI Pro `Kanban` 与 `useKanban` | `features/chat/views/library-page.tsx` |
+| 项目任务看板 | HeroUI Pro `Kanban` 与 `useKanban` | `features/chat/views/board-page.tsx` |
 | 基础操作 | HeroUI `Button` | `features/chat/components/chat-navbar.tsx` |
 | 上下文操作 | HeroUI `Dropdown`；弹层按内容自适应宽度，只设置必要的最小宽度和视口上限 | `features/chat/components/chat-sidebar.tsx`、`chat-composer.tsx` |
 | 表单字段 | `Form`、`TextField`、`Label`、`Input`、`FieldError` | `features/settings/components/provider-editor-dialog.tsx` |

@@ -205,6 +205,11 @@ export class WorkspaceService {
     }));
   }
 
+  public async getSkillContent(workspaceId: string, name: string, scope: SkillScope) {
+    const skill = await this.createSkillRegistry(workspaceId).load(name, scope);
+    return { content: skill.content };
+  }
+
   public async setSkillEnabled(
     workspaceId: string,
     name: string,

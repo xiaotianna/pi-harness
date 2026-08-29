@@ -1,8 +1,13 @@
 export {
+  getSkillContent,
   openSkillDirectory,
   openSkillRootDirectory,
   removeSkill,
   type Skill,
   updateSkill,
 } from "./api/skill-api";
-export { skillListQueryOptions, skillQueryKeys } from "./api/skill-queries";
+export {
+  skillDetailQueryOptions,
+  skillListQueryOptions,
+  skillQueryKeys,
+} from "./api/skill-queries";

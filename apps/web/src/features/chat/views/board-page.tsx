@@ -273,7 +273,7 @@ function ProjectColumn({
   );
 }
 
-export function LibraryPage() {
+export function BoardPage() {
   const [isScrolledFromStart, setIsScrolledFromStart] = useState(false);
   const [isScrolledToEnd, setIsScrolledToEnd] = useState(false);
   const kanban = useKanban<ProjectTask>({

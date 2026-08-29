@@ -11,6 +11,7 @@ export function SettingsCatalogDetail({
   icon,
   name,
   onBack,
+  toolbarAction,
 }: {
   action: ReactNode;
   ariaLabel: string;
@@ -20,13 +21,17 @@ export function SettingsCatalogDetail({
   icon: ReactNode;
   name: string;
   onBack: () => void;
+  toolbarAction?: ReactNode;
 }) {
   return (
     <section aria-label={ariaLabel} className="w-full max-w-[720px]">
-      <Button className="-ml-2" size="sm" variant="ghost" onPress={onBack}>
-        <ArrowLeft aria-hidden className="size-4" />
-        {backLabel}
-      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button className="-ml-2" size="sm" variant="ghost" onPress={onBack}>
+          <ArrowLeft aria-hidden className="size-4" />
+          {backLabel}
+        </Button>
+        {toolbarAction}
+      </div>
 
       <div className="mt-5 flex items-start gap-4">
         <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-default">

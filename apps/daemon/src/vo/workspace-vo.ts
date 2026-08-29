@@ -25,3 +25,9 @@ export const WorkspaceSkillVoSchema = Type.Object({
 export type WorkspaceSkillVo = Static<typeof WorkspaceSkillVoSchema>;
 
 export const WorkspaceSkillListVoSchema = Type.Array(WorkspaceSkillVoSchema);
+
+export const WorkspaceSkillContentVoSchema = Type.Object({
+  content: Type.String({ minLength: 1 }),
+});
+
+export type WorkspaceSkillContentVo = Static<typeof WorkspaceSkillContentVoSchema>;

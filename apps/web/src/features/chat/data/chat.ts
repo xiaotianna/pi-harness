@@ -31,7 +31,7 @@ export { ChatFileChangeStatus, ChatMessageType, ChatToolState } from "./chat-mes
 
 import type { ChatMessage } from "./chat-message";
 
-export type ChatNavItemId = "new" | "library" | "explore";
+export type ChatNavItemId = "new" | "board" | "explore";
 
 export type ChatNavItem = {
   id: ChatNavItemId;
@@ -75,7 +75,7 @@ export type ChatWorkspace = {
 
 export const CHAT_NAV_ITEMS: readonly ChatNavItem[] = [
   { href: "/new", icon: MessageCirclePlus, id: "new", label: "新对话" },
-  { href: "/library", icon: FolderKanban, id: "library", label: "项目看板" },
+  { href: "/board", icon: FolderKanban, id: "board", label: "项目看板" },
   { href: "/explore", icon: Compass, id: "explore", label: "探索" },
 ] as const;
 
@@ -93,12 +93,12 @@ export const SUGGESTED_PROMPTS: readonly string[] = [
   "比较三种定价模式，并为按量计费的 SaaS 推荐一种。",
 ] as const;
 
-export type ChatPageKind = "thread" | "new" | "library" | "explore";
+export type ChatPageKind = "thread" | "new" | "board" | "explore";
 
 export type ChatActivePage =
   | { kind: "thread"; thread: ChatThread }
   | { kind: "new" }
-  | { kind: "library" }
+  | { kind: "board" }
   | { kind: "explore" };
 
 export function resolveChatActivePage(
@@ -112,7 +112,7 @@ export function resolveChatActivePage(
   const firstSegment = relative.replace(/^\//, "").split("/")[0] ?? "";
 
   if (firstSegment === "new") return { kind: "new" };
-  if (firstSegment === "library") return { kind: "library" };
+  if (firstSegment === "board") return { kind: "board" };
   if (firstSegment === "explore") return { kind: "explore" };
 
   const thread = threads.find((item) => item.id === firstSegment) ?? threads[0];

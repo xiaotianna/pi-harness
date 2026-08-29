@@ -20,6 +20,7 @@ import type { WorkspaceService } from "../services/workspace-service.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
   WorkspaceListVoSchema,
+  WorkspaceSkillContentVoSchema,
   WorkspaceSkillListVoSchema,
   WorkspaceVoSchema,
 } from "../vo/workspace-vo.js";
@@ -54,6 +55,17 @@ export async function registerWorkspaceRoutes(
       },
     },
     controller.listSkills,
+  );
+
+  server.get<{ Params: WorkspaceSkillParamsDto }>(
+    "/api/workspaces/:workspaceId/skills/:scope/:name",
+    {
+      schema: {
+        params: WorkspaceSkillParamsDtoSchema,
+        response: { 200: WorkspaceSkillContentVoSchema, ...errors },
+      },
+    },
+    controller.getSkillContent,
   );
 
   server.patch<{ Body: UpdateWorkspaceSkillDto; Params: WorkspaceSkillParamsDto }>(
