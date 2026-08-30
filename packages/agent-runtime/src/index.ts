@@ -1,10 +1,10 @@
 export type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
-export type { WorkspaceAgentContext } from "./context/workspace-agent-context.js";
 export {
   AgentManager,
   type RestoreAgentInput,
   type StartSessionRunInput,
 } from "./agent-manager.js";
+export type { WorkspaceAgentContext } from "./context/workspace-agent-context.js";
 export {
   ApprovalDecision,
   type ApprovalDecision as ApprovalDecisionValue,
@@ -49,3 +49,14 @@ export type {
   ToolApprovalRequest,
   ToolApprovalRequester,
 } from "./tool-approval.js";
+export {
+  type HarnessUserAttachment,
+  type HarnessUserMessage,
+  isHarnessUserMessage,
+  type RunInputAttachment,
+  type RunInputContextReference,
+  type RunUserInput,
+  UserContextReferenceKind,
+  type UserContextReferenceKind as UserContextReferenceKindValue,
+  UserInputContextError,
+} from "./user-input.js";

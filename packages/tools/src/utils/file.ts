@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { Transform } from "node:stream";
+import { resolveDocumentFileType } from "./document-text.js";
+import { detectImageMimeType, expectedImageMimeType, isPdfBuffer } from "./media-file.js";
 
 export const MAX_FILE_BYTES = 1024 * 1024;
 
@@ -16,6 +19,39 @@ export interface TextFilePage {
   hasMore: boolean;
   lines: string[];
   totalLines: number | null;
+}
+
+async function assertTextFileFormat(path: string, signal?: AbortSignal): Promise<void> {
+  if (resolveDocumentFileType(path, "") !== null || path.toLowerCase().endsWith(".pdf")) {
+    throw new Error("read_file 仅支持 UTF-8 文本；PDF 或 Office 文档请使用 read_document");
+  }
+  if (expectedImageMimeType(path) !== null) {
+    throw new Error("read_file 仅支持 UTF-8 文本；图片请使用 view_image");
+  }
+
+  const handle = await open(path, "r");
+  try {
+    const prefix = Buffer.alloc(8 * 1024);
+    const { bytesRead } = await handle.read(prefix, 0, prefix.length, 0);
+    const content = prefix.subarray(0, bytesRead);
+    if (detectImageMimeType(content) !== null) {
+      throw new Error("read_file 仅支持 UTF-8 文本；图片请使用 view_image");
+    }
+    if (isPdfBuffer(content)) {
+      throw new Error("read_file 仅支持 UTF-8 文本；PDF 文档请使用 read_document");
+    }
+    if (content.includes(0)) throw new Error("read_file 不支持二进制文件");
+    try {
+      new TextDecoder("utf-8", { fatal: true }).decode(content, {
+        stream: bytesRead === prefix.length,
+      });
+    } catch {
+      throw new Error("read_file 仅支持有效的 UTF-8 文本文件");
+    }
+    signal?.throwIfAborted();
+  } finally {
+    await handle.close();
+  }
 }
 
 export function isFileChangeDetails(value: unknown): value is FileChangeDetails {
@@ -50,6 +86,7 @@ export async function readTextFilePage(
   limit: number,
   signal?: AbortSignal,
 ): Promise<TextFilePage> {
+  await assertTextFileFormat(path, signal);
   const handle = await open(path, "r");
   try {
     const metadata = await handle.stat();
@@ -60,11 +97,29 @@ export async function readTextFilePage(
       metadata.size > 0 && (await handle.read(lastByte, 0, 1, metadata.size - 1)).bytesRead === 1
         ? lastByte[0] === 0x0a
         : false;
-    const input = handle.createReadStream({
+    const source = handle.createReadStream({
       autoClose: false,
-      encoding: "utf8",
       ...(signal === undefined ? {} : { signal }),
     });
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    const input = source.pipe(
+      new Transform({
+        flush(callback) {
+          try {
+            callback(null, decoder.decode());
+          } catch {
+            callback(new Error("read_file 仅支持有效的 UTF-8 文本文件"));
+          }
+        },
+        transform(chunk: Buffer, _encoding, callback) {
+          try {
+            callback(null, decoder.decode(chunk, { stream: true }));
+          } catch {
+            callback(new Error("read_file 仅支持有效的 UTF-8 文本文件"));
+          }
+        },
+      }),
+    );
     let currentLineBytes = 0;
     const checkLineSize = (chunk: Buffer | string) => {
       const parts = (typeof chunk === "string" ? chunk : chunk.toString("utf8")).split("\n");
@@ -113,6 +168,8 @@ export async function readTextFilePage(
     } finally {
       input.removeListener("data", checkLineSize);
       reader.close();
+      source.unpipe(input);
+      source.destroy();
       input.destroy();
     }
 

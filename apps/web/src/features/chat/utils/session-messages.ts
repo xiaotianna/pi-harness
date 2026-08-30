@@ -5,6 +5,7 @@ import {
   HarnessEventType,
   MessageDeltaKind,
 } from "@pi-harness/agent-runtime/harness-event";
+import { isHarnessUserMessage } from "@pi-harness/agent-runtime/user-input";
 import { isPlainObject } from "es-toolkit";
 import type { Session, SessionSnapshot } from "../api/session-api";
 import {
@@ -44,8 +45,49 @@ function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatM
   const content = readContentText(event.data.content);
   if (!content && !Array.isArray(event.data.content)) return [];
   if (event.data.role === "user") {
-    return content
-      ? [{ content, id: event.id, timestamp: event.timestamp, type: ChatMessageType.USER }]
+    const harnessUserMessage = isHarnessUserMessage(event.data) ? event.data : null;
+    const displayContent = harnessUserMessage?.displayText ?? content;
+    const attachments = harnessUserMessage
+      ? (harnessUserMessage.attachments ?? []).flatMap((attachment) => {
+          if (
+            !isPlainObject(attachment) ||
+            typeof attachment.mimeType !== "string" ||
+            typeof attachment.name !== "string" ||
+            typeof attachment.size !== "number"
+          ) {
+            return [];
+          }
+          const image =
+            typeof attachment.contentIndex === "number" && Array.isArray(harnessUserMessage.content)
+              ? harnessUserMessage.content[attachment.contentIndex]
+              : undefined;
+          const src =
+            isPlainObject(image) &&
+            image.type === "image" &&
+            typeof image.data === "string" &&
+            typeof image.mimeType === "string"
+              ? `data:${image.mimeType};base64,${image.data}`
+              : undefined;
+          return [
+            {
+              mimeType: attachment.mimeType,
+              name: attachment.name,
+              size: attachment.size,
+              ...(src === undefined ? {} : { src }),
+            },
+          ];
+        })
+      : [];
+    return displayContent || attachments.length > 0
+      ? [
+          {
+            ...(attachments.length === 0 ? {} : { attachments }),
+            content: displayContent,
+            id: event.id,
+            timestamp: event.timestamp,
+            type: ChatMessageType.USER,
+          },
+        ]
       : [];
   }
   if (event.data.role !== "assistant" || !Array.isArray(event.data.content)) return [];

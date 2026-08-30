@@ -22,9 +22,10 @@
 | 8 | Web 对话页接入真实 Session/Run/SSE | 已完成 |
 | 9 | Tool Registry、Policy、HITL、Sandbox | 已完成 |
 | 10 | AGENTS.md 与 Skill Registry | 已完成 |
-| 11 | Context 预算、裁剪与压缩 | 待开始 |
+| 11 | 消息附件与 `@` Workspace 上下文 | 已完成 |
+| 12 | Context 预算、裁剪与压缩 | 待开始 |
 
-当前已完成真实 Web 对话、workspace 工具、审批、文件变化、AGENTS.md 与两级 Skill Registry 闭环。下一阶段处理 Context 预算、裁剪与压缩。
+当前已完成真实 Web 对话、workspace 工具、审批、文件变化、AGENTS.md、两级 Skill Registry、消息附件与 `@` Workspace 上下文闭环。下一阶段处理 Context 预算、裁剪与压缩。
 
 ## 2026-08-24：无工具 Runtime 后端闭环
 
@@ -193,6 +194,21 @@
 - `skill_creator` 只创建新 Skill 并复用通用文件写入权限；项目 Skill 跟随 workspace 写入策略，全局 Skill 作为 workspace 外写入仅在 `full_access` 下自动放行，且全局 Skill 目录仍是 daemon 受保护路径。
 
 验证：`@pi-harness/tools` 和 `@pi-harness/agent-runtime` typecheck 通过。未执行 dev 或 build。
+
+## 2026-08-30：消息附件与 `@` Workspace 上下文
+
+状态：`已完成`
+
+- Run 与 Follow-up 输入从单一 prompt 扩展为结构化 `RunUserInput`，同时携带文本、附件和 Workspace 引用。
+- 消息输入器支持选择图片与常用文本/代码文件；支持在运行中的 Session 继续添加附件并排队 Follow-up。
+- 输入 `@` 时从当前 Workspace 的真实目录生成图片、文件和文件夹候选，选中后以可见标签保留在编辑器和历史用户消息中。
+- daemon 的候选列表排除忽略目录并验证 Workspace 真实路径边界，实际读取时再校验受保护目录；文件夹引用只注入有界目录清单。
+- Runtime 将图片转换为模型图片内容，将文本附件和文件引用放入带不可信数据边界的上下文段；当前模型不支持图片时返回明确错误。
+- `transformContext` 只对历史消息中已展开的附件与 `@` 引用应用同一总量限制，避免失败请求留下的超大参考内容污染后续重试；该投影不修改 JSONL，也不裁剪普通会话历史。
+- 完整模型消息、附件展示元数据和 `@` 引用元数据随 `message.completed` 写入 Session JSONL；恢复后仍可展示原始用户输入和图片附件。
+- Web 限制单个附件 5 MB、最多 8 个、单次合计 10 MB；Runtime 对单个文本来源最多读取 64 KiB，并将本次附件与引用的总文本限制在模型窗口的 25%（最少 8 KiB、最多 64 KiB 字符），文件夹清单最多 200 项。
+
+验证：`@pi-harness/tools`、`@pi-harness/agent-runtime`、`@pi-harness/daemon` 和 `@pi-harness/web` typecheck 通过，本次相关文件通过 Biome。未执行 dev 或 build；当前验证环境为 Node.js 22，存在项目要求 Node.js 24 LTS 的 engine warning。
 
 ## 下一步
 

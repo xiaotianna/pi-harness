@@ -9,7 +9,9 @@ import {
   HarnessEventType,
   RunFileChangeOperation,
   type RunId,
+  type RunUserInput,
   type SessionId,
+  UserInputContextError,
 } from "@pi-harness/agent-runtime";
 import {
   DEFAULT_THINKING_LEVEL,
@@ -36,6 +38,7 @@ const SessionErrorCode = {
   RUN_CHANGES_CONFLICT: "RUN_CHANGES_CONFLICT",
   RUN_CHANGES_NOT_FOUND: "RUN_CHANGES_NOT_FOUND",
   RUN_NOT_FOUND: "RUN_NOT_FOUND",
+  USER_CONTEXT_INVALID: "USER_CONTEXT_INVALID",
   WORKSPACE_INVALID: "WORKSPACE_INVALID",
 } as const;
 
@@ -275,11 +278,16 @@ export class SessionService {
     return this.getRequiredSession(sessionId);
   }
 
-  public async startRun(sessionId: SessionId, promptInput: string): Promise<RunAccepted> {
+  public async startRun(sessionId: SessionId, input: RunUserInput): Promise<RunAccepted> {
     // 1. Session 是否空闲
     this.assertSessionIdle(sessionId);
-    const prompt = promptInput.trim();
-    if (!prompt) {
+    const prompt = input.prompt.trim();
+    const userInput = {
+      attachments: input.attachments ?? [],
+      prompt,
+      references: input.references ?? [],
+    } satisfies RunUserInput;
+    if (!prompt && userInput.attachments.length === 0 && userInput.references.length === 0) {
       throw new SessionServiceError(SessionErrorCode.EMPTY_PROMPT, "消息内容不能为空");
     }
 
@@ -303,7 +311,7 @@ export class SessionService {
         messages: snapshot.messages,
         model,
         modelId: session.modelId,
-        prompt,
+        userInput,
         providerId: session.providerId,
         runId,
         sessionId,
@@ -327,13 +335,32 @@ export class SessionService {
     }
   }
 
-  public followUpRun(sessionId: SessionId, runId: RunId, promptInput: string): void {
+  public async followUpRun(sessionId: SessionId, runId: RunId, input: RunUserInput): Promise<void> {
     this.getRequiredSession(sessionId);
-    const prompt = promptInput.trim();
-    if (!prompt) {
+    const userInput = {
+      attachments: input.attachments ?? [],
+      prompt: input.prompt.trim(),
+      references: input.references ?? [],
+    } satisfies RunUserInput;
+    if (
+      !userInput.prompt &&
+      userInput.attachments.length === 0 &&
+      userInput.references.length === 0
+    ) {
       throw new SessionServiceError(SessionErrorCode.EMPTY_PROMPT, "消息内容不能为空");
     }
-    if (!this.agents.followUp(sessionId, runId, prompt)) {
+    let wasQueued: boolean;
+    try {
+      wasQueued = await this.agents.followUp(sessionId, runId, userInput);
+    } catch (error: unknown) {
+      throw new SessionServiceError(
+        SessionErrorCode.USER_CONTEXT_INVALID,
+        error instanceof UserInputContextError
+          ? error.message
+          : "无法读取附件或引用上下文，请确认文件仍然存在且可访问",
+      );
+    }
+    if (!wasQueued) {
       throw new SessionServiceError(SessionErrorCode.RUN_NOT_FOUND, "活动 Run 不存在");
     }
   }

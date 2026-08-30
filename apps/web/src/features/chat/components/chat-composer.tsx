@@ -32,6 +32,11 @@ import {
   ThinkingLevel,
   type ThinkingLevel as ThinkingLevelValue,
 } from "@pi-harness/agent-runtime/thinking-level";
+import {
+  type RunInputContextReference,
+  type RunUserInput,
+  UserContextReferenceKind,
+} from "@pi-harness/agent-runtime/user-input";
 import type { ApprovalPolicy } from "@pi-harness/policy/approval-policy";
 import { useQuery } from "@tanstack/react-query";
 import { maxBy } from "es-toolkit";
@@ -46,15 +51,21 @@ import {
 } from "../../models";
 import { ApprovalPolicySelect, useApprovalPolicySetting } from "../../settings";
 import { skillListQueryOptions } from "../../skills";
+import { workspaceContextItemsQueryOptions } from "../api/workspace-queries";
 import type { ChatWorkspace } from "../data/chat";
 import { useNewChatStore } from "../state/new-chat-store";
+import {
+  createRunInputAttachment,
+  MAX_RUN_ATTACHMENT_BYTES,
+  MAX_RUN_ATTACHMENT_TOTAL_BYTES,
+  MAX_RUN_ATTACHMENTS,
+} from "../utils/run-input";
 import type { SessionUsageSummary } from "../utils/session-usage";
 import type { ChatAttachmentListItem } from "./chat-attachment-list";
 import { ChatAttachmentList } from "./chat-attachment-list";
 import {
   ChatComposerEditor,
   type ChatComposerEditorHandle,
-  type ChatComposerToken,
   ChatComposerTokenKind,
   type ChatComposerTokenKind as ChatComposerTokenKindValue,
   createChatComposerTokenValue,
@@ -62,6 +73,7 @@ import {
 import { ContextUsagePopover } from "./context-usage-popover";
 
 type PendingAttachment = {
+  file: File;
   id: string;
   mimeType?: string;
   name: string;
@@ -112,8 +124,7 @@ export interface ChatComposerModelSelection {
   thinkingLevel: ThinkingLevelValue;
 }
 
-export interface ChatComposerSubmitInput extends ChatComposerModelSelection {
-  prompt: string;
+export interface ChatComposerSubmitInput extends ChatComposerModelSelection, RunUserInput {
   workspaceId?: string;
 }
 
@@ -145,24 +156,6 @@ const COMMAND_OPTIONS = [
   { id: "explain", label: "/explain" },
   { id: "fix", label: "/fix" },
 ] as const;
-
-const CONTEXT_MENU_ITEMS = [
-  { id: "design-reference.png", kind: ChatComposerTokenKind.IMAGE, label: "design-reference.png" },
-  {
-    id: "dashboard-preview.jpg",
-    kind: ChatComposerTokenKind.IMAGE,
-    label: "dashboard-preview.jpg",
-  },
-  { id: "README.md", kind: ChatComposerTokenKind.FILE, label: "README.md" },
-  { id: "package.json", kind: ChatComposerTokenKind.FILE, label: "package.json" },
-  { id: "architecture", kind: ChatComposerTokenKind.FILE, label: "架构设计.md" },
-  { id: "apps/web", kind: ChatComposerTokenKind.FOLDER, label: "apps/web" },
-  {
-    id: "packages/agent-runtime",
-    kind: ChatComposerTokenKind.FOLDER,
-    label: "packages/agent-runtime",
-  },
-] satisfies readonly ChatComposerToken[];
 
 const THINKING_LEVEL_OPTIONS = [
   { description: "响应更快、成本更低", label: "低", value: ThinkingLevel.LOW },
@@ -267,6 +260,21 @@ export function ChatComposer({
   const selectedWorkspace =
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? workspaces[0];
   const activeWorkspaceId = workspaceId ?? selectedWorkspace?.id;
+  const contextItemsQuery = useQuery(workspaceContextItemsQueryOptions(activeWorkspaceId));
+  const contextMenuItems = useMemo(
+    () =>
+      (contextItemsQuery.data ?? []).map((item) => ({
+        id: item.path,
+        kind:
+          item.kind === UserContextReferenceKind.IMAGE
+            ? ChatComposerTokenKind.IMAGE
+            : item.kind === UserContextReferenceKind.FOLDER
+              ? ChatComposerTokenKind.FOLDER
+              : ChatComposerTokenKind.FILE,
+        label: item.path,
+      })),
+    [contextItemsQuery.data],
+  );
   const skillsQuery = useQuery(skillListQueryOptions(activeWorkspaceId));
   const skillOptions = useMemo(
     () =>
@@ -326,6 +334,20 @@ export function ChatComposer({
     const value = editorRef.current?.getValue() ?? "";
     const trimmed = value.trim();
     const hasAttachments = attachments.length > 0;
+    const references = editorRef.current?.getTokens().flatMap<RunInputContextReference>((token) => {
+      const kind =
+        token.kind === ChatComposerTokenKind.IMAGE
+          ? UserContextReferenceKind.IMAGE
+          : token.kind === ChatComposerTokenKind.FOLDER
+            ? UserContextReferenceKind.FOLDER
+            : token.kind === ChatComposerTokenKind.FILE
+              ? UserContextReferenceKind.FILE
+              : null;
+      return kind === null ? [] : [{ kind, path: token.id }];
+    });
+    const uniqueReferences = [
+      ...new Map((references ?? []).map((item) => [item.path, item])).values(),
+    ];
 
     if (
       approvalPolicy === undefined ||
@@ -349,13 +371,18 @@ export function ChatComposer({
     }
 
     isSubmittingRef.current = true;
-    void onSubmitMessage({
-      modelId: selectedModel.id,
-      prompt: trimmed,
-      providerId: selectedModelProvider.id,
-      thinkingLevel: selectedThinkingLevel,
-      ...(selectedWorkspace ? { workspaceId: selectedWorkspace.id } : {}),
-    })
+    void Promise.all(attachments.map((attachment) => createRunInputAttachment(attachment.file)))
+      .then((runAttachments) =>
+        onSubmitMessage({
+          attachments: runAttachments,
+          modelId: selectedModel.id,
+          prompt: trimmed,
+          providerId: selectedModelProvider.id,
+          references: uniqueReferences,
+          thinkingLevel: selectedThinkingLevel,
+          ...(selectedWorkspace ? { workspaceId: selectedWorkspace.id } : {}),
+        }),
+      )
       .then(clearComposer)
       .catch((error: unknown) => {
         toast.danger(error instanceof Error ? error.message : "发送消息失败");
@@ -366,6 +393,7 @@ export function ChatComposer({
   };
 
   const isGenerating = status === "submitted" || status === "streaming";
+  const hasDraftContent = hasEditorContent || attachments.length > 0;
   const preferredModelKey =
     initialConversationModelKey ?? conversationModelKey ?? draftModelKey ?? defaultModelKey;
   const selectedModelKey =
@@ -373,7 +401,7 @@ export function ChatComposer({
       ? preferredModelKey
       : (availableModelKeys[0] ?? null);
   const sendLabel =
-    isGenerating && !hasEditorContent ? "停止生成" : isGenerating ? "发送后续消息" : "发送消息";
+    isGenerating && !hasDraftContent ? "停止生成" : isGenerating ? "发送后续消息" : "发送消息";
   const isHero = presentation === "hero";
   const selectedModelProvider = availableModelProviders.find((provider) =>
     provider.models.some(
@@ -391,14 +419,37 @@ export function ChatComposer({
   const canSend =
     approvalPolicy !== undefined &&
     selectedModel !== undefined &&
-    (onSubmitMessage ? hasEditorContent : hasEditorContent || attachments.length > 0) &&
+    hasDraftContent &&
     (!isHero || workspaces.length > 0);
   const handleFilesSelected = (files: File[]) => {
+    const remainingSlots = Math.max(0, MAX_RUN_ATTACHMENTS - attachments.length);
+    let availableBytes = Math.max(
+      0,
+      MAX_RUN_ATTACHMENT_TOTAL_BYTES -
+        attachments.reduce((total, item) => total + item.file.size, 0),
+    );
+    const acceptedFiles = files
+      .filter((file) => {
+        if (file.size > MAX_RUN_ATTACHMENT_BYTES) {
+          toast.danger(`${file.name} 超过 5 MB，无法添加`);
+          return false;
+        }
+        if (file.size > availableBytes) {
+          toast.danger("附件总大小不能超过 10 MB");
+          return false;
+        }
+        availableBytes -= file.size;
+        return true;
+      })
+      .slice(0, remainingSlots);
+    if (files.length > remainingSlots) toast.warning(`一次最多添加 ${MAX_RUN_ATTACHMENTS} 个附件`);
+    if (acceptedFiles.length === 0) return;
     setIsAttachmentDrawerExpanded(true);
     setAttachments((current) => [
       ...current,
-      ...files.map((file) => {
+      ...acceptedFiles.map((file) => {
         const attachment: PendingAttachment = {
+          file,
           id: createAttachmentId(file),
           mimeType: file.type,
           name: file.name,
@@ -521,7 +572,7 @@ export function ChatComposer({
       className={className}
       lockInputOnRun={false}
       status={status}
-      value={hasEditorContent ? "content" : ""}
+      value={hasDraftContent ? "content" : ""}
       variant="primary"
       onStop={handleStop}
       onSubmit={handleSubmit}
@@ -593,7 +644,6 @@ export function ChatComposer({
             aria-hidden
             multiple
             className="sr-only"
-            disabled={isGenerating}
             tabIndex={-1}
             type="file"
             onChange={handleFileInputChange}
@@ -601,7 +651,14 @@ export function ChatComposer({
           <ChatComposerEditor
             ref={editorRef}
             ariaLabel="消息输入框"
-            contextMenuItems={CONTEXT_MENU_ITEMS}
+            contextMenuItems={contextMenuItems}
+            contextMenuStatus={
+              contextItemsQuery.isPending
+                ? "loading"
+                : contextItemsQuery.isError
+                  ? "error"
+                  : "ready"
+            }
             initialValue={initialEditorValue}
             maxHeight={80}
             minHeight={56}
@@ -633,11 +690,7 @@ export function ChatComposer({
                     if (key === "attach") fileInputRef.current?.click();
                   }}
                 >
-                  <Dropdown.Item
-                    id="attach"
-                    isDisabled={isGenerating || onSubmitMessage !== undefined}
-                    textValue="添加附件"
-                  >
+                  <Dropdown.Item id="attach" textValue="添加附件">
                     <Paperclip className="size-4 text-muted" />
                     <Label>添加附件</Label>
                   </Dropdown.Item>
@@ -920,7 +973,7 @@ export function ChatComposer({
             )}
           </PromptInput.ToolbarStart>
           <PromptInput.ToolbarEnd>
-            {isGenerating && hasEditorContent ? (
+            {isGenerating && hasDraftContent ? (
               <PromptInput.Action aria-label="停止生成" tooltip="停止生成" onPress={handleStop}>
                 <Square aria-hidden className="size-3.5 fill-current" />
               </PromptInput.Action>

@@ -17,8 +17,14 @@ export * from "./skills/index.js";
 export { ToolExecutionGuard } from "./tool-execution-guard.js";
 export * from "./tools/index.js";
 export {
+  extractDocumentText,
+  parseDocumentText,
+  resolveDocumentFileType,
+} from "./utils/document-text.js";
+export {
   type FileChangeDetails,
   isFileChangeDetails,
   readFileChangeDetails,
 } from "./utils/file.js";
+export { hasIgnoredWorkspaceDirectory } from "./utils/workspace-file-changes.js";
 export { createWorkspaceToolRegistry } from "./workspace-tool-registry.js";

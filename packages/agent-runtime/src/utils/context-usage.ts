@@ -1,6 +1,6 @@
 import type { Context, Message } from "@earendil-works/pi-ai";
 
-const APPROXIMATE_CHARS_PER_TOKEN = 4;
+const APPROXIMATE_ASCII_CHARS_PER_TOKEN = 3;
 const APPROXIMATE_IMAGE_TOKENS = 1_200;
 
 export interface ContextUsageEstimate {
@@ -11,7 +11,13 @@ export interface ContextUsageEstimate {
 }
 
 function estimateTextTokens(text: string): number {
-  return Math.ceil(text.length / APPROXIMATE_CHARS_PER_TOKEN);
+  let asciiCharacters = 0;
+  let nonAsciiCharacters = 0;
+  for (const character of text) {
+    if ((character.codePointAt(0) ?? 0) <= 0x7f) asciiCharacters += 1;
+    else nonAsciiCharacters += 1;
+  }
+  return Math.ceil(asciiCharacters / APPROXIMATE_ASCII_CHARS_PER_TOKEN) + nonAsciiCharacters;
 }
 
 function safeStringify(value: unknown): string {

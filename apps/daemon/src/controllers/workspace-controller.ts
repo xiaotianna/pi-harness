@@ -13,6 +13,7 @@ import type {
 import { type WorkspaceService, WorkspaceServiceError } from "../services/workspace-service.js";
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
 import type {
+  WorkspaceContextItemVo,
   WorkspaceSkillContentVo,
   WorkspaceSkillInstallVo,
   WorkspaceSkillVo,
@@ -26,6 +27,25 @@ export class WorkspaceController {
   ) {}
 
   public list = async (): Promise<readonly WorkspaceVo[]> => this.workspaces.list();
+
+  public listContextItems = async (
+    request: FastifyRequest<{ Params: WorkspaceParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | readonly WorkspaceContextItemVo[]> => {
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+    try {
+      return await this.workspaces.listContextItems(
+        request.params.workspaceId,
+        abortController.signal,
+      );
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
 
   public listSkills = async (
     request: FastifyRequest<{ Params: WorkspaceParamsDto }>,

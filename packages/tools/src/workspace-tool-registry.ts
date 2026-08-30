@@ -8,13 +8,17 @@ import { createLoadSkillTool } from "./skills/load-skill.js";
 import { createSkillCreatorTool, skillCreatorToolPolicy } from "./skills/skill-creator.js";
 import { createEditFileTool } from "./tools/edit-file.js";
 import { createListFilesTool } from "./tools/list-files.js";
+import { createReadDocumentTool } from "./tools/read-document.js";
 import { createReadFileTool } from "./tools/read-file.js";
 import { createRunCommandTool } from "./tools/run-command.js";
 import { createSearchTextTool } from "./tools/search-text.js";
+import { createViewImageTool } from "./tools/view-image.js";
+import { createViewPdfPageTool } from "./tools/view-pdf-page.js";
 import { createWriteFileTool } from "./tools/write-file.js";
 
 const BUILT_IN_SOURCE = "built_in";
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000;
+const DOCUMENT_TOOL_TIMEOUT_MS = 60_000;
 const RUN_COMMAND_TIMEOUT_MS = 610_000;
 
 export function createWorkspaceToolRegistry(context: WorkspaceToolContext): ToolRegistry {
@@ -26,6 +30,24 @@ export function createWorkspaceToolRegistry(context: WorkspaceToolContext): Tool
       source: BUILT_IN_SOURCE,
       timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
       tool: createReadFileTool(context),
+    },
+    {
+      policy: readOnlyPolicy,
+      source: BUILT_IN_SOURCE,
+      timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
+      tool: createViewImageTool(context),
+    },
+    {
+      policy: readOnlyPolicy,
+      source: BUILT_IN_SOURCE,
+      timeoutMs: DOCUMENT_TOOL_TIMEOUT_MS,
+      tool: createReadDocumentTool(context),
+    },
+    {
+      policy: readOnlyPolicy,
+      source: BUILT_IN_SOURCE,
+      timeoutMs: DOCUMENT_TOOL_TIMEOUT_MS,
+      tool: createViewPdfPageTool(context),
     },
     {
       policy: readOnlyPolicy,

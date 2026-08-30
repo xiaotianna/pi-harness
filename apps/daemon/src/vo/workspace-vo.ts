@@ -1,3 +1,4 @@
+import { UserContextReferenceKind } from "@pi-harness/agent-runtime/user-input";
 import { SkillScope } from "@pi-harness/tools";
 import { type Static, Type } from "typebox";
 
@@ -12,6 +13,18 @@ export const WorkspaceVoSchema = Type.Object({
 export type WorkspaceVo = Static<typeof WorkspaceVoSchema>;
 
 export const WorkspaceListVoSchema = Type.Array(WorkspaceVoSchema);
+
+export const WorkspaceContextItemVoSchema = Type.Object({
+  kind: Type.Union([
+    Type.Literal(UserContextReferenceKind.FILE),
+    Type.Literal(UserContextReferenceKind.FOLDER),
+    Type.Literal(UserContextReferenceKind.IMAGE),
+  ]),
+  path: Type.String({ minLength: 1 }),
+});
+
+export const WorkspaceContextItemListVoSchema = Type.Array(WorkspaceContextItemVoSchema);
+export type WorkspaceContextItemVo = Static<typeof WorkspaceContextItemVoSchema>;
 
 export const WorkspaceSkillVoSchema = Type.Object({
   description: Type.String({ minLength: 1 }),

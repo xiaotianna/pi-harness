@@ -1,3 +1,7 @@
+import {
+  type RunInputContextReference,
+  UserContextReferenceKind,
+} from "@pi-harness/agent-runtime/user-input";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
@@ -12,6 +16,16 @@ const WorkspaceSchema = Type.Object({
 });
 
 const WorkspaceListSchema = Type.Array(WorkspaceSchema);
+const WorkspaceContextItemListSchema = Type.Array(
+  Type.Object({
+    kind: Type.Union([
+      Type.Literal(UserContextReferenceKind.FILE),
+      Type.Literal(UserContextReferenceKind.FOLDER),
+      Type.Literal(UserContextReferenceKind.IMAGE),
+    ]),
+    path: Type.String({ minLength: 1 }),
+  }),
+);
 type Workspace = Static<typeof WorkspaceSchema>;
 
 function toChatWorkspace(workspace: Workspace): ChatWorkspace {
@@ -41,6 +55,22 @@ export async function listWorkspaces(signal?: AbortSignal): Promise<readonly Cha
     throw new Error("daemon 返回了无效的 Workspace 列表");
   }
   return body.map(toChatWorkspace);
+}
+
+export async function listWorkspaceContextItems(
+  workspaceId: string,
+  signal?: AbortSignal,
+): Promise<readonly RunInputContextReference[]> {
+  const body = (await (
+    await apiRequest(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/context-items`,
+      signal ? { signal } : undefined,
+    )
+  ).json()) as unknown;
+  if (!Value.Check(WorkspaceContextItemListSchema, body)) {
+    throw new Error("daemon 返回了无效的 Workspace 上下文列表");
+  }
+  return body;
 }
 
 export async function selectWorkspaceDirectory(): Promise<ChatWorkspace | null> {

@@ -1,5 +1,6 @@
 import { ApprovalDecision } from "@pi-harness/agent-runtime/harness-event";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
+import { UserContextReferenceKind } from "@pi-harness/agent-runtime/user-input";
 import { type Static, Type } from "typebox";
 
 const IdentifierSchema = Type.String({ maxLength: 256, minLength: 1 });
@@ -73,8 +74,26 @@ export const UpdateSessionModelDtoSchema = Type.Object({
 
 export type UpdateSessionModelDto = Static<typeof UpdateSessionModelDtoSchema>;
 
+const RunInputAttachmentSchema = Type.Object({
+  data: Type.String({ maxLength: 7_000_000 }),
+  mimeType: Type.String({ maxLength: 255, minLength: 1 }),
+  name: Type.String({ maxLength: 255, minLength: 1 }),
+  size: Type.Integer({ maximum: 5 * 1024 * 1024, minimum: 0 }),
+});
+
+const RunInputContextReferenceSchema = Type.Object({
+  kind: Type.Union([
+    Type.Literal(UserContextReferenceKind.FILE),
+    Type.Literal(UserContextReferenceKind.FOLDER),
+    Type.Literal(UserContextReferenceKind.IMAGE),
+  ]),
+  path: Type.String({ maxLength: 4_096, minLength: 1 }),
+});
+
 export const StartRunDtoSchema = Type.Object({
-  prompt: Type.String({ maxLength: 1_000_000, minLength: 1 }),
+  attachments: Type.Optional(Type.Array(RunInputAttachmentSchema, { maxItems: 8 })),
+  prompt: Type.String({ maxLength: 1_000_000 }),
+  references: Type.Optional(Type.Array(RunInputContextReferenceSchema, { maxItems: 32 })),
 });
 
 export type StartRunDto = Static<typeof StartRunDtoSchema>;

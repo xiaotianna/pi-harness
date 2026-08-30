@@ -7,7 +7,7 @@ import {
   Terminal as SquareTerminal,
   MagicWand as WandSparkles,
 } from "@gravity-ui/icons";
-import { Header, ListBox, Surface } from "@heroui/react";
+import { Header, ListBox, ListLayout, Surface, Virtualizer } from "@heroui/react";
 import { type Editor, type JSONContent, mergeAttributes, Node } from "@tiptap/core";
 import {
   EditorContent,
@@ -50,6 +50,7 @@ export interface ChatComposerToken {
 export interface ChatComposerEditorHandle {
   clear: () => void;
   focus: () => void;
+  getTokens: () => readonly ChatComposerToken[];
   getValue: () => string;
   insertToken: (token: ChatComposerToken) => void;
   setValue: (value: string) => void;
@@ -58,6 +59,7 @@ export interface ChatComposerEditorHandle {
 export interface ChatComposerEditorProps {
   ariaLabel?: string;
   contextMenuItems?: readonly ChatComposerToken[];
+  contextMenuStatus?: "error" | "loading" | "ready";
   initialValue?: string;
   isDisabled?: boolean;
   maxHeight?: number | string;
@@ -84,6 +86,12 @@ const SUGGESTION_MENU_GAP = 8;
 const SUGGESTION_MENU_HORIZONTAL_PADDING = 12;
 const SUGGESTION_MENU_MAX_HEIGHT = 336;
 const SUGGESTION_MENU_MAX_WIDTH = 384;
+const SUGGESTION_MENU_LAYOUT_OPTIONS = {
+  gap: 0,
+  headingSize: 28,
+  padding: 0,
+  rowSize: 36,
+} as const;
 
 interface TokenVisualStrategy {
   colorClassName: string;
@@ -128,6 +136,10 @@ const tokenGroups = [
 
 function getTokenKey(token: ChatComposerToken): string {
   return `${token.kind}:${token.id}`;
+}
+
+function createTokenSearchText(token: ChatComposerToken): string {
+  return `${token.kind} ${token.id} ${token.label}`.toLowerCase();
 }
 
 function getTokenVisualStrategy(kind: ChatComposerTokenKind): TokenVisualStrategy {
@@ -224,11 +236,19 @@ function readTokenAttributes(attributes: Record<string, unknown>): ChatComposerT
 
 export function serializeChatComposerToken(token: ChatComposerToken): string {
   if (token.kind === ChatComposerTokenKind.SKILL) return `$${token.id}`;
-  return `[[${token.kind}:${token.id}|${token.label}]]`;
+  return `[[${token.kind}:${encodeURIComponent(token.id)}|${encodeURIComponent(token.label)}]]`;
 }
 
 export function createChatComposerTokenValue(token: ChatComposerToken): string {
-  return `[[${token.kind}:${token.id}|${token.label}]]`;
+  return `[[${token.kind}:${encodeURIComponent(token.id)}|${encodeURIComponent(token.label)}]]`;
+}
+
+function decodeTokenPart(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function createTextNode(text: string): JSONContent[] {
@@ -245,7 +265,7 @@ function parseLine(line: string): JSONContent[] {
 
     if (isTokenKind(kind) && id && label) {
       content.push({
-        attrs: { id, kind, label },
+        attrs: { id: decodeTokenPart(id), kind, label: decodeTokenPart(label) },
         type: "chatComposerToken",
       });
     } else {
@@ -267,6 +287,15 @@ function createEditorDocument(value: string): JSONContent {
     })),
     type: "doc",
   };
+}
+
+function readDocumentTokens(node: JSONContent): ChatComposerToken[] {
+  const tokens: ChatComposerToken[] = [];
+  if (node.type === ChatComposerTokenNode.name && node.attrs) {
+    tokens.push(readTokenAttributes(node.attrs));
+  }
+  for (const child of node.content ?? []) tokens.push(...readDocumentTokens(child));
+  return tokens;
 }
 
 function ComposerTokenView({ node, selected }: ReactNodeViewProps) {
@@ -370,6 +399,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
     {
       ariaLabel = "消息输入框",
       contextMenuItems = [],
+      contextMenuStatus = "ready",
       initialValue = "",
       isDisabled = false,
       maxHeight = 240,
@@ -498,25 +528,34 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
     });
 
     const activeMenuItems = suggestionMenu?.trigger === "@" ? contextMenuItems : slashMenuItems;
+    const searchableSuggestionItems = useMemo(
+      () =>
+        activeMenuItems.map((token) => ({
+          searchText: createTokenSearchText(token),
+          token,
+        })),
+      [activeMenuItems],
+    );
     const matchingSuggestionItems = useMemo(() => {
-      const normalizedQuery = suggestionMenu?.query.trim().toLocaleLowerCase() ?? "";
+      const normalizedQuery = suggestionMenu?.query.trim().toLowerCase() ?? "";
       if (!normalizedQuery) return activeMenuItems;
 
-      return activeMenuItems.filter((token) =>
-        `${token.kind} ${token.id} ${token.label}`.toLocaleLowerCase().includes(normalizedQuery),
-      );
-    }, [activeMenuItems, suggestionMenu?.query]);
+      return searchableSuggestionItems
+        .filter((item) => item.searchText.includes(normalizedQuery))
+        .map((item) => item.token);
+    }, [activeMenuItems, searchableSuggestionItems, suggestionMenu?.query]);
 
-    const groupedSuggestionItems = useMemo(
-      () =>
-        tokenGroups
-          .map((group) => ({
-            ...group,
-            items: matchingSuggestionItems.filter((token) => token.kind === group.kind),
-          }))
-          .filter((group) => group.items.length > 0),
-      [matchingSuggestionItems],
-    );
+    const groupedSuggestionItems = useMemo(() => {
+      const itemsByKind = new Map<ChatComposerTokenKind, ChatComposerToken[]>(
+        tokenGroups.map((group) => [group.kind, []]),
+      );
+      for (const token of matchingSuggestionItems) itemsByKind.get(token.kind)?.push(token);
+
+      return tokenGroups.flatMap((group) => {
+        const items = itemsByKind.get(group.kind) ?? [];
+        return items.length > 0 ? [{ ...group, items }] : [];
+      });
+    }, [matchingSuggestionItems]);
 
     const filteredSuggestionItems = useMemo(
       () => groupedSuggestionItems.flatMap((group) => group.items),
@@ -561,6 +600,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
         focus: () => {
           editor?.commands.focus();
         },
+        getTokens: () => (editor ? readDocumentTokens(editor.getJSON()) : []),
         getValue: () => editor?.getText({ blockSeparator: "\n" }) ?? "",
         insertToken: (token) => {
           editor
@@ -618,56 +658,68 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
               style={{ maxHeight: suggestionMenu.maxHeight }}
             >
               {filteredSuggestionItems.length > 0 ? (
-                <ListBox
-                  id={suggestionMenuId}
-                  aria-label={
-                    suggestionMenu.trigger === "@"
-                      ? "添加图片、文件或文件夹上下文"
-                      : "插入命令或 Skill"
-                  }
-                  className="min-h-0 overflow-y-auto"
-                  selectedKeys={selectedSuggestionItem ? [getTokenKey(selectedSuggestionItem)] : []}
-                  selectionMode="single"
-                  onSelectionChange={(keys) => {
-                    if (keys === "all") return;
-                    const [key] = keys;
-                    const selectedIndex = filteredSuggestionItems.findIndex(
-                      (item) => getTokenKey(item) === key,
-                    );
-                    if (selectedIndex >= 0) {
-                      setSuggestionMenu((current) =>
-                        current ? { ...current, selectedIndex } : current,
-                      );
+                <Virtualizer layout={ListLayout} layoutOptions={SUGGESTION_MENU_LAYOUT_OPTIONS}>
+                  <ListBox
+                    id={suggestionMenuId}
+                    aria-label={
+                      suggestionMenu.trigger === "@"
+                        ? "添加图片、文件或文件夹上下文"
+                        : "插入命令或 Skill"
                     }
-                  }}
-                >
-                  {groupedSuggestionItems.map((group) => (
-                    <ListBox.Section key={group.kind} id={group.kind}>
-                      <Header className="px-2 pb-1 pt-2 text-xs font-medium text-muted first:pt-1">
-                        {group.label}
-                      </Header>
-                      {group.items.map((token) => {
-                        const visualStrategy = getTokenVisualStrategy(token.kind);
-                        return (
-                          <ListBox.Item
-                            key={getTokenKey(token)}
-                            id={getTokenKey(token)}
-                            textValue={token.label}
-                            onPress={() => selectSuggestionTokenRef.current(token)}
-                          >
-                            <TokenVisualIcon
-                              className={`size-4 shrink-0 ${visualStrategy.colorClassName}`}
-                              token={token}
-                            />
-                            <span className="min-w-0 truncate">{token.label}</span>
-                          </ListBox.Item>
+                    className="min-h-0 overflow-y-auto"
+                    items={groupedSuggestionItems}
+                    selectedKeys={
+                      selectedSuggestionItem ? [getTokenKey(selectedSuggestionItem)] : []
+                    }
+                    selectionMode="single"
+                    style={{ maxHeight: Math.max(suggestionMenu.maxHeight - 16, 0) }}
+                    onSelectionChange={(keys) => {
+                      if (keys === "all") return;
+                      const [key] = keys;
+                      const selectedIndex = filteredSuggestionItems.findIndex(
+                        (item) => getTokenKey(item) === key,
+                      );
+                      if (selectedIndex >= 0) {
+                        setSuggestionMenu((current) =>
+                          current ? { ...current, selectedIndex } : current,
                         );
-                      })}
-                    </ListBox.Section>
-                  ))}
-                </ListBox>
+                      }
+                    }}
+                  >
+                    {(group) => (
+                      <ListBox.Section id={group.kind}>
+                        <Header className="px-2 pb-1 pt-2 text-xs font-medium text-muted first:pt-1">
+                          {group.label}
+                        </Header>
+                        {group.items.map((token) => {
+                          const visualStrategy = getTokenVisualStrategy(token.kind);
+                          return (
+                            <ListBox.Item
+                              key={getTokenKey(token)}
+                              id={getTokenKey(token)}
+                              textValue={token.label}
+                              onPress={() => selectSuggestionTokenRef.current(token)}
+                            >
+                              <TokenVisualIcon
+                                className={`size-4 shrink-0 ${visualStrategy.colorClassName}`}
+                                token={token}
+                              />
+                              <span className="min-w-0 truncate">{token.label}</span>
+                            </ListBox.Item>
+                          );
+                        })}
+                      </ListBox.Section>
+                    )}
+                  </ListBox>
+                </Virtualizer>
               ) : (
-                <div className="px-3 py-6 text-center text-sm text-muted">没有匹配的内容</div>
+                <div className="px-3 py-6 text-center text-sm text-muted">
+                  {suggestionMenu.trigger === "@" && contextMenuStatus === "loading"
+                    ? "正在扫描 Workspace..."
+                    : suggestionMenu.trigger === "@" && contextMenuStatus === "error"
+                      ? "Workspace 上下文加载失败"
+                      : "没有匹配的内容"}
+                </div>
               )}
             </Surface>
           </div>

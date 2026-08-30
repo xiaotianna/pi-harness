@@ -23,6 +23,7 @@ import {
 import type { WorkspaceService } from "../services/workspace-service.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
+  WorkspaceContextItemListVoSchema,
   WorkspaceListVoSchema,
   WorkspaceSkillContentVoSchema,
   WorkspaceSkillInstallVoSchema,
@@ -49,6 +50,17 @@ export async function registerWorkspaceRoutes(
     "/api/workspaces",
     { schema: { response: { 200: WorkspaceListVoSchema } } },
     controller.list,
+  );
+
+  server.get<{ Params: WorkspaceParamsDto }>(
+    "/api/workspaces/:workspaceId/context-items",
+    {
+      schema: {
+        params: WorkspaceParamsDtoSchema,
+        response: { 200: WorkspaceContextItemListVoSchema, ...errors },
+      },
+    },
+    controller.listContextItems,
   );
 
   server.get<{ Params: WorkspaceParamsDto }>(

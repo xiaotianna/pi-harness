@@ -94,7 +94,11 @@ export class SessionController {
   ): Promise<FastifyReply | RunAcceptedVo> => {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
-      const accepted = await this.sessions.startRun(request.params.sessionId, request.body.prompt);
+      const accepted = await this.sessions.startRun(request.params.sessionId, {
+        attachments: request.body.attachments ?? [],
+        prompt: request.body.prompt,
+        references: request.body.references ?? [],
+      });
       return reply.status(202).send(accepted);
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
@@ -120,11 +124,11 @@ export class SessionController {
   ): Promise<FastifyReply> => {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
-      this.sessions.followUpRun(
-        request.params.sessionId,
-        request.params.runId,
-        request.body.prompt,
-      );
+      await this.sessions.followUpRun(request.params.sessionId, request.params.runId, {
+        attachments: request.body.attachments ?? [],
+        prompt: request.body.prompt,
+        references: request.body.references ?? [],
+      });
       return reply.status(204).send();
     } catch (error: unknown) {
       return this.sendError(request, reply, error);

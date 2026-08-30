@@ -7,6 +7,7 @@ import {
   ThinkingLevel,
   type ThinkingLevel as ThinkingLevelValue,
 } from "@pi-harness/agent-runtime/thinking-level";
+import type { RunUserInput } from "@pi-harness/agent-runtime/user-input";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
@@ -142,10 +143,13 @@ export async function updateSessionModel(
   );
 }
 
-export async function startSessionRun(sessionId: string, prompt: string): Promise<RunAccepted> {
+export async function startSessionRun(
+  sessionId: string,
+  input: RunUserInput,
+): Promise<RunAccepted> {
   const body = (await (
     await apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(input),
       method: "POST",
     })
   ).json()) as unknown;
@@ -163,11 +167,11 @@ export async function abortSessionRun(sessionId: string, runId: string): Promise
 export async function followUpSessionRun(
   sessionId: string,
   runId: string,
-  prompt: string,
+  input: RunUserInput,
 ): Promise<void> {
   await apiRequest(
     `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/follow-ups`,
-    { body: JSON.stringify({ prompt }), method: "POST" },
+    { body: JSON.stringify(input), method: "POST" },
   );
 }
 

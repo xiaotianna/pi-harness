@@ -1,10 +1,15 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, mkdtemp, realpath, rename, rm, stat } from "node:fs/promises";
+import { cp, glob, mkdir, mkdtemp, realpath, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
-import { isPathWithin } from "@pi-harness/policy";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
+  type RunInputContextReference,
+  UserContextReferenceKind,
+} from "@pi-harness/agent-runtime/user-input";
+import { isPathWithin, resolveWorkspacePath } from "@pi-harness/policy";
+import {
+  hasIgnoredWorkspaceDirectory,
   SkillRegistry,
   SkillScope,
   type SkillScope as SkillScopeValue,
@@ -24,6 +29,9 @@ const SKILL_INSTALL_MAX_BUFFER_BYTES = 1024 * 1024;
 const SKILLS_CLI_PACKAGE = "skills@1.5.23";
 const GITHUB_SHORTHAND_PATTERN =
   /^[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?$/;
+const MAX_CONTEXT_ITEMS = 500;
+const MAX_CONTEXT_CANDIDATES = 2_000;
+const IMAGE_FILE_EXTENSIONS = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
 
 const WorkspaceErrorCode = {
   INVALID: "WORKSPACE_INVALID",
@@ -376,6 +384,64 @@ export class WorkspaceService {
 
   public list(): readonly WorkspaceRecord[] {
     return this.workspaces.list();
+  }
+
+  public async listContextItems(
+    workspaceId: string,
+    signal?: AbortSignal,
+  ): Promise<readonly RunInputContextReference[]> {
+    const workspaceRoot = this.getRequired(workspaceId).rootPath;
+    const items = new Map<string, RunInputContextReference>();
+
+    for await (const entry of glob("**/*", {
+      cwd: workspaceRoot,
+      exclude: (candidate) =>
+        hasIgnoredWorkspaceDirectory(
+          relative(workspaceRoot, resolve(candidate.parentPath, candidate.name)),
+        ),
+      withFileTypes: true,
+    })) {
+      if (signal?.aborted) throw signal.reason ?? new Error("Workspace 上下文扫描已取消");
+      const absolutePath = resolve(entry.parentPath, entry.name);
+      const workspacePath = relative(workspaceRoot, absolutePath);
+      if (
+        !workspacePath ||
+        workspacePath === ".." ||
+        workspacePath.startsWith(`..${sep}`) ||
+        hasIgnoredWorkspaceDirectory(workspacePath)
+      ) {
+        continue;
+      }
+
+      try {
+        await resolveWorkspacePath({ path: absolutePath, workspaceRoot });
+      } catch {
+        continue;
+      }
+
+      const normalizedPath = workspacePath.split(sep).join("/");
+      const extension = entry.isFile()
+        ? entry.name.split(".").at(-1)?.toLocaleLowerCase()
+        : undefined;
+      const kind = entry.isDirectory()
+        ? UserContextReferenceKind.FOLDER
+        : extension && IMAGE_FILE_EXTENSIONS.has(extension)
+          ? UserContextReferenceKind.IMAGE
+          : entry.isFile()
+            ? UserContextReferenceKind.FILE
+            : null;
+      if (kind === null) continue;
+      items.set(normalizedPath, { kind, path: normalizedPath });
+      if (items.size === MAX_CONTEXT_CANDIDATES) break;
+    }
+
+    return [...items.values()]
+      .toSorted(
+        (left, right) =>
+          left.path.split("/").length - right.path.split("/").length ||
+          left.path.localeCompare(right.path),
+      )
+      .slice(0, MAX_CONTEXT_ITEMS);
   }
 
   public async listSkills(workspaceId: string) {

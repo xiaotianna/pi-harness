@@ -5,6 +5,7 @@ import { Skeleton } from "@heroui/react";
 import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness-event";
 import { HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
 import type { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
+import type { RunUserInput } from "@pi-harness/agent-runtime/user-input";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
@@ -167,14 +168,14 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   }, [activeView, isSnapshotReady, sessionId]);
 
   const startMutation = useMutation({
-    mutationFn: (prompt: string) => startSessionRun(sessionId, prompt),
+    mutationFn: (input: RunUserInput) => startSessionRun(sessionId, input),
   });
   const abortMutation = useMutation({
     mutationFn: (runId: string) => abortSessionRun(sessionId, runId),
   });
   const followUpMutation = useMutation({
-    mutationFn: ({ prompt, runId }: { prompt: string; runId: string }) =>
-      followUpSessionRun(sessionId, runId, prompt),
+    mutationFn: ({ input, runId }: { input: RunUserInput; runId: string }) =>
+      followUpSessionRun(sessionId, runId, input),
   });
   const cacheSession = (session: Session) => {
     queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (current) =>
@@ -317,8 +318,8 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                 }
                 onSubmitMessage={(input) =>
                   activeRunId
-                    ? followUpMutation.mutateAsync({ prompt: input.prompt, runId: activeRunId })
-                    : startMutation.mutateAsync(input.prompt).then(() => undefined)
+                    ? followUpMutation.mutateAsync({ input, runId: activeRunId })
+                    : startMutation.mutateAsync(input).then(() => undefined)
                 }
               />
             </div>

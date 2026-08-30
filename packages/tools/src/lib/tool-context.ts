@@ -5,6 +5,7 @@ export interface WorkspaceToolContext {
   globalRoot: string;
   isSkillEnabled?: (directory: string) => boolean;
   protectedPaths?: readonly string[];
+  supportsImageInput?: () => boolean;
   workspaceRoot: string;
 }
 

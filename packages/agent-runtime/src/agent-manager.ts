@@ -11,6 +11,7 @@ import {
   type StartRunInput,
 } from "./run-coordinator.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
+import type { RunUserInput } from "./user-input.js";
 
 export interface RestoreAgentInput {
   initialSeq: number;
@@ -75,8 +76,8 @@ export class AgentManager {
     return this.runtimes.get(sessionId)?.steer(runId, createUserMessage(text)) ?? false;
   }
 
-  public followUp(sessionId: SessionId, runId: RunId, text: string): boolean {
-    return this.runtimes.get(sessionId)?.followUp(runId, createUserMessage(text)) ?? false;
+  public async followUp(sessionId: SessionId, runId: RunId, input: RunUserInput): Promise<boolean> {
+    return (await this.runtimes.get(sessionId)?.followUp(runId, input)) ?? false;
   }
 
   public async close(): Promise<void> {
@@ -89,10 +90,14 @@ export class AgentManager {
     const current = this.runtimes.get(input.sessionId);
     if (current !== undefined) return current;
 
+    const toolCapabilities = {
+      supportsImageInput: input.model.input.includes("image"),
+    };
     const toolRegistry = createWorkspaceToolRegistry({
       globalRoot: this.globalRoot,
       isSkillEnabled: this.isSkillEnabled,
       protectedPaths: this.protectedPaths,
+      supportsImageInput: () => toolCapabilities.supportsImageInput,
       workspaceRoot: input.workspaceRoot,
     });
     const agent = createAgent({ ...input, tools: toolRegistry.tools });
@@ -105,6 +110,9 @@ export class AgentManager {
       input.workspaceRoot,
       this.protectedPaths,
       this.requestToolApproval,
+      (supportsImageInput) => {
+        toolCapabilities.supportsImageInput = supportsImageInput;
+      },
     );
     this.runtimes.set(input.sessionId, runtime);
     return runtime;

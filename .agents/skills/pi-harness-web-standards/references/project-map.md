@@ -40,7 +40,8 @@
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor` | `features/chat/components/chat-composer.tsx` |
 | 上下文与用量 | 发送按钮左侧使用 HeroUI `ProgressCircle` 触发 264px 宽的紧凑 `Popover`，详情取最近一次模型请求实际携带的完整 Session Context，在 HeroUI `ProgressBar` 轨道内按上下文窗口占比无间隙地连续组合 System Prompt、Tool 定义和按顺序累积的消息（含 tool call/result）；默认只展示当前窗口占用，最近 Run、Session 累计和说明通过 HeroUI `Disclosure` 展开，弹层正文使用限高 HeroUI `ScrollShadow` 适配可用视口 | `features/chat/components/context-usage-popover.tsx`、`features/chat/utils/session-usage.ts` |
-| 文件选择 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发 | `features/chat/components/chat-composer.tsx` |
+| 文件选择 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发；不使用扩展名 `accept` 白名单，所有普通文件都可作为结构化 Run 附件提交；图片、文本和可解析文档展开到 Context，其他二进制保留元数据并明确降级 | `features/chat/components/chat-composer.tsx`、`features/chat/utils/run-input.ts`、`packages/agent-runtime/src/utils/document-text.ts` |
+| `@` Workspace 上下文 | `ChatComposerEditor` 输入 `@` 时展示当前 Workspace 的真实图片、文件和文件夹候选；候选搜索预建索引，长列表使用 HeroUI 导出的 `Virtualizer`，并通过 Collection `items` 驱动动态分组，确保各候选类型完整参与虚拟布局；选中后保留内联标签并作为结构化引用提交，不改成 Tool Call | `features/chat/components/chat-composer-editor.tsx`、`chat-context-mention.tsx`、`features/chat/api/workspace-queries.ts` |
 | 命令与搜索弹窗 | `Command` 复合组件 | `features/chat/components/chat-search-dialog.tsx` |
 | 提示词建议 | `PromptSuggestion` | `features/chat/views/explore-page.tsx` |
 | 项目任务看板 | HeroUI Pro `Kanban` 与 `useKanban` | `features/chat/views/board-page.tsx` |
@@ -77,11 +78,12 @@
 ### 其他前端依赖
 
 - 使用 TanStack Router 管理路由，TanStack Query 管理服务端数据，Zustand 管理共享 UI 状态。
+- 使用 `@tanstack/react-virtual` 处理普通长列表；HeroUI `ListBox`、`Dropdown.Menu` 等 Collection 长列表使用 `react-aria-components` 的 `Virtualizer` 与 `ListLayout`，保留集合语义、选中状态和键盘交互。
 - `HarnessEventType`、`HarnessEvent` 和 `MessageDeltaKind` 从浏览器安全的 `@pi-harness/agent-runtime/harness-event` 子路径复用，内部消息判断从 `@pi-harness/agent-runtime/agent-message` 复用；不要导入 `agent-runtime` 主入口或在 Web 重复定义事件协议。
 - 使用 Motion 表达业务状态变化，普通图标优先使用 Gravity UI Icons，没有语义等价图标时才使用 Lucide React；替换图标时保留现有 HeroUI 语义色和业务状态 class。同级操作显式统一图标视觉尺寸与颜色，填充路径图标通过尺寸和语义色控制视觉重量。
 - 文件类型图标是普通图标规则的专用入口：使用 `@iconify/react` 渲染 `@iconify-icons/vscode-icons` 的本地图标数据，不依赖运行时 Iconify API；所有文件名驱动的图标选择收口到 `FileIconRender`。
 - 使用 KaTeX 渲染公式 fenced block，使用 Mermaid 严格安全模式渲染流程图 DSL。
-- 使用 `@tanstack/react-virtual` 处理长列表，使用项目既有 AppLayout 或 `react-resizable-panels` 处理可调面板。
+- 使用项目既有 AppLayout 或 `react-resizable-panels` 处理可调面板。
 - 使用 Tailwind CSS v4 和主题 token；不要为同一职责增加第二套依赖。
 
 ## 原生元素例外

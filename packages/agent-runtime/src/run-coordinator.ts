@@ -28,13 +28,15 @@ import {
 } from "./harness-event.js";
 import type { ThinkingLevel } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
+import { type RunUserInput, UserInputContextError } from "./user-input.js";
 import { estimateContextUsage } from "./utils/context-usage.js";
+import { createHarnessUserMessage, limitUserInputContext } from "./utils/user-input.js";
 
 export interface StartRunInput {
   approvalPolicy: ApprovalPolicyValue;
   model: Model<Api>;
   modelId: string;
-  prompt: string;
+  userInput: RunUserInput;
   providerId: string;
   runId: RunId;
   streamFn: StreamFn;
@@ -48,6 +50,7 @@ interface ActiveRun {
   approvalPolicy: ApprovalPolicyValue;
   handleAutoFollowUp: ReturnType<typeof createAutoFollowUpHandler>;
   modelId: string;
+  preparationAbortController: AbortController;
   providerId: string;
   runId: RunId;
 }
@@ -69,11 +72,14 @@ export class RunCoordinator {
     private readonly workspaceRoot: string,
     private readonly protectedPaths: readonly string[],
     private readonly requestToolApproval: ToolApprovalRequester,
+    private readonly setSupportsImageInput: (supportsImageInput: boolean) => void,
   ) {
     this.executionGuard = toolRegistry.executionGuard;
     this.nextSeq = initialSeq + 1;
     this.agent.beforeToolCall = (context, signal) => this.handleBeforeToolCall(context, signal);
     this.agent.afterToolCall = (context) => this.handleAfterToolCall(context);
+    this.agent.transformContext = async (messages) =>
+      limitUserInputContext(messages, this.agent.state.model.contextWindow);
     // 构造时会订阅 pi Agent 事件
     this.unsubscribe = agent.subscribe((event) => this.handleAgentEvent(event));
   }
@@ -318,6 +324,7 @@ export class RunCoordinator {
     }
 
     this.agent.state.model = input.model;
+    this.setSupportsImageInput(input.model.input.includes("image"));
     this.agent.state.thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
     this.agent.state.systemPrompt = input.systemPrompt;
     let requestIndex = 0;
@@ -336,16 +343,53 @@ export class RunCoordinator {
       return input.streamFn(model, context, options);
     };
     this.executionGuard.reset();
+    const preparationAbortController = new AbortController();
     this.activeRun = {
       approvalPolicy: input.approvalPolicy,
       handleAutoFollowUp: createAutoFollowUpHandler((message) => this.agent.followUp(message)),
       modelId: input.modelId,
+      preparationAbortController,
       providerId: input.providerId,
       runId: input.runId,
     };
 
     try {
-      await this.agent.prompt(input.prompt);
+      let message: AgentMessage;
+      try {
+        message = await createHarnessUserMessage({
+          input: input.userInput,
+          model: input.model,
+          protectedPaths: this.protectedPaths,
+          signal: preparationAbortController.signal,
+          workspaceRoot: this.workspaceRoot,
+        });
+      } catch (error: unknown) {
+        await this.emit(
+          {
+            data: { modelId: input.modelId, providerId: input.providerId },
+            type: HarnessEventType.RUN_STARTED,
+          },
+          input.runId,
+        );
+        const isAborted = preparationAbortController.signal.aborted;
+        await this.emit(
+          {
+            data: isAborted
+              ? { code: "RUN_ABORTED", message: "运行已停止" }
+              : {
+                  code: "USER_CONTEXT_INVALID",
+                  message:
+                    error instanceof UserInputContextError
+                      ? error.message
+                      : "无法读取附件或引用上下文，请确认文件仍然存在且可访问",
+                },
+            type: isAborted ? HarnessEventType.RUN_ABORTED : HarnessEventType.RUN_FAILED,
+          },
+          input.runId,
+        );
+        return;
+      }
+      await this.agent.prompt(message);
     } finally {
       this.executionGuard.reset();
       this.pendingFileChanges.clear();
@@ -355,6 +399,7 @@ export class RunCoordinator {
 
   public abort(runId: RunId): boolean {
     if (this.activeRun?.runId !== runId) return false;
+    this.activeRun.preparationAbortController.abort();
     this.agent.abort();
     return true;
   }
@@ -366,7 +411,15 @@ export class RunCoordinator {
   }
 
   // 将当前活动 run 的消息追加到 Agent 的 follow-up 队列
-  public followUp(runId: RunId, message: AgentMessage): boolean {
+  public async followUp(runId: RunId, input: RunUserInput): Promise<boolean> {
+    if (this.activeRun?.runId !== runId) return false;
+    const message = await createHarnessUserMessage({
+      input,
+      model: this.agent.state.model,
+      protectedPaths: this.protectedPaths,
+      signal: this.activeRun.preparationAbortController.signal,
+      workspaceRoot: this.workspaceRoot,
+    });
     if (this.activeRun?.runId !== runId) return false;
     this.agent.followUp(message);
     return true;

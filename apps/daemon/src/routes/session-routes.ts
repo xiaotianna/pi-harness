@@ -112,6 +112,7 @@ export async function registerSessionRoutes(
   server.post<{ Body: StartRunDto; Params: SessionParamsDto }>(
     "/api/sessions/:sessionId/runs",
     {
+      bodyLimit: 16 * 1024 * 1024,
       schema: {
         body: StartRunDtoSchema,
         params: SessionParamsDtoSchema,
@@ -135,6 +136,7 @@ export async function registerSessionRoutes(
   server.post<{ Body: StartRunDto; Params: SessionRunParamsDto }>(
     "/api/sessions/:sessionId/runs/:runId/follow-ups",
     {
+      bodyLimit: 16 * 1024 * 1024,
       schema: {
         body: StartRunDtoSchema,
         params: SessionRunParamsDtoSchema,

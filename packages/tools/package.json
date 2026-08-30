@@ -11,10 +11,13 @@
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "catalog:",
+    "@napi-rs/canvas": "catalog:",
     "@pi-harness/policy": "workspace:*",
     "diff": "catalog:",
     "es-toolkit": "catalog:",
     "execa": "catalog:",
+    "officeparser": "catalog:",
+    "pdfjs-dist": "catalog:",
     "typebox": "catalog:",
     "yaml": "catalog:"
   },
