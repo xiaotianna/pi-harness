@@ -27,6 +27,11 @@ export function MessageAttachments({ message }: { message: ChatUserMessage }) {
           <ChatAttachment.Root
             key={`${attachment.name}-${index}`}
             name={attachment.name}
+            {...(hasMediaPreview
+              ? {}
+              : {
+                  className: "h-14 max-w-60 gap-2 border-0 bg-surface-secondary px-2.5",
+                })}
             {...(attachment.mimeType !== undefined ? { mimeType: attachment.mimeType } : {})}
             {...(attachment.size !== undefined ? { size: attachment.size } : {})}
             {...(attachment.src !== undefined ? { src: attachment.src } : {})}
@@ -37,7 +42,7 @@ export function MessageAttachments({ message }: { message: ChatUserMessage }) {
               <ChatAttachment.Preview>
                 <span>
                   <FileIconRender
-                    className="size-5"
+                    className="size-6"
                     fallback={FileText}
                     filePath={attachment.name}
                   />

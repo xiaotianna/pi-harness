@@ -4,6 +4,7 @@ import { Disclosure } from "@heroui/react";
 import { useState } from "react";
 import { type ChatToolGroupMessage, ChatToolState } from "../../data/chat";
 import { ToolCall } from "./tool-call";
+import { ToolIcon } from "./tool-icon";
 
 export function ToolGroupThreadMessage({ message }: { message: ChatToolGroupMessage }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -28,7 +29,10 @@ export function ToolGroupThreadMessage({ message }: { message: ChatToolGroupMess
         >
           <Disclosure.Heading>
             <Disclosure.Trigger className="group flex min-h-7 items-center gap-1.5 p-0 text-[13.5px] text-muted hover:text-foreground">
-              {isActive ? null : <Check aria-hidden className="size-3.5 text-success" />}
+              <ToolIcon
+                className="size-4 shrink-0"
+                toolName={isActive && activeTool ? activeTool.toolName : "tool_group"}
+              />
               <span className="text-start">
                 {isActive ? (
                   <TextShimmer className="leading-none">
@@ -38,6 +42,7 @@ export function ToolGroupThreadMessage({ message }: { message: ChatToolGroupMess
                   message.label
                 )}
               </span>
+              {isActive ? null : <Check aria-hidden className="size-3.5 text-success" />}
               <ChevronDown
                 aria-hidden
                 className="size-3.5 opacity-60 transition-transform duration-200 group-aria-expanded:rotate-180 motion-reduce:transition-none"

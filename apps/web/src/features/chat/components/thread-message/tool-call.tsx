@@ -2,6 +2,7 @@ import { isPlainObject } from "es-toolkit";
 import { useState } from "react";
 import { ToolCall as ToolCallElement } from "../../../../components/ai/tool-call";
 import { type ChatMessageTool, ChatToolState } from "../../data/chat";
+import { ToolIcon } from "./tool-icon";
 
 function fileName(path: string): string {
   return path.split(/[\\/]/).at(-1) ?? path;
@@ -51,6 +52,7 @@ export function ToolCall({ tool }: { tool: ChatMessageTool }) {
     <ToolCallElement
       activeLabel={isAwaitingApproval ? "等待审批" : (tool.activeLabel ?? presentation.active)}
       failed={isFailed}
+      icon={<ToolIcon className="size-4" toolName={tool.toolName} />}
       label={isFailed ? presentation.failed : presentation.done}
       onOpenChange={setIsOpen}
       open={isOpen}

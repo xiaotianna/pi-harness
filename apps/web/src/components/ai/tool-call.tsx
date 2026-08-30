@@ -1,12 +1,14 @@
 import { TextShimmer } from "@agile-avocation/ui-pro";
 import { Check, ChevronRight, Xmark as X } from "@gravity-ui/icons";
 import { Disclosure, Separator } from "@heroui/react";
+import type { ReactNode } from "react";
 import { cn } from "../../shared/utils/cn";
 
 export interface ToolCallProps {
   activeLabel: string;
   className?: string;
   failed?: boolean;
+  icon?: ReactNode;
   label: string;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -20,6 +22,7 @@ export function ToolCall({
   activeLabel,
   className,
   failed = false,
+  icon,
   label,
   onOpenChange,
   open,
@@ -41,6 +44,11 @@ export function ToolCall({
             aria-hidden
             className="size-3.5 shrink-0 opacity-60 transition-transform duration-200 group-aria-expanded:rotate-90 motion-reduce:transition-none"
           />
+          {icon ? (
+            <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
+              {icon}
+            </span>
+          ) : null}
           <span className="shrink-0 whitespace-nowrap text-start">
             {running ? <TextShimmer className="leading-none">{activeLabel}</TextShimmer> : label}
           </span>
