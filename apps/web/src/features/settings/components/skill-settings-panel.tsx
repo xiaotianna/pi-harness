@@ -244,6 +244,7 @@ export function SkillSettingsPanel({
     queries: workspaces.map((workspace) => skillListQueryOptions(workspace.id)),
   });
   const workspaceGroups = workspaces.map((workspace, index) => ({
+    query: skillQueries[index],
     skills: skillQueries[index]?.data,
     workspace,
   }));
@@ -264,14 +265,14 @@ export function SkillSettingsPanel({
     activeWorkspaceIndex >= 0
       ? workspaces[activeWorkspaceIndex]
       : (workspaces.find((workspace) => workspace.id === currentWorkspaceId) ?? workspaces[0]);
-  const activeQueries =
+  const activeWorkspaceGroups =
     activeTabId === ALL_SKILLS_TAB_ID
-      ? skillQueries
-      : activeWorkspaceIndex >= 0
-        ? [skillQueries[activeWorkspaceIndex]]
-        : [];
-  const activeError = activeQueries.find((query) => query?.isError)?.error;
-  const isPending = activeQueries.some((query) => query?.isPending);
+      ? workspaceGroups
+      : workspaceGroups.filter(({ workspace }) => workspace.id === activeTabId);
+  const activeErrors = activeWorkspaceGroups.flatMap(({ query, workspace }) =>
+    query?.error ? [{ error: query.error, workspace }] : [],
+  );
+  const isPending = activeWorkspaceGroups.some(({ query }) => query?.isPending);
 
   const startSkillChat = () => {
     if (!targetWorkspace) return;
@@ -475,17 +476,22 @@ export function SkillSettingsPanel({
               <SkillListSkeleton />
             ) : (
               <>
-                {activeError ? (
-                  <Alert className="mb-4 bg-danger-soft" role="alert" status="danger">
+                {activeErrors.map(({ error, workspace }) => (
+                  <Alert
+                    className="mb-4 bg-danger-soft"
+                    key={workspace.id}
+                    role="alert"
+                    status="danger"
+                  >
                     <Alert.Indicator />
                     <Alert.Content>
-                      <Alert.Title>技能加载失败</Alert.Title>
+                      <Alert.Title>{workspace.name}</Alert.Title>
                       <Alert.Description>
-                        {activeError instanceof Error ? activeError.message : "无法加载技能"}
+                        {error instanceof Error ? error.message : "无法加载技能"}
                       </Alert.Description>
                     </Alert.Content>
                   </Alert>
-                ) : null}
+                ))}
 
                 {activeTabId === ALL_SKILLS_TAB_ID ? (
                   hasAnySkill ? (

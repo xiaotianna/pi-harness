@@ -356,7 +356,7 @@ async function resolveWorkspaceRoot(input: string): Promise<string> {
   } catch {
     throw new WorkspaceServiceError(
       WorkspaceErrorCode.INVALID,
-      "Workspace 不存在或不是可访问的目录",
+      "Workspace 目录不存在或无法访问，可能已被移动或重命名",
     );
   }
 }
@@ -446,7 +446,8 @@ export class WorkspaceService {
 
   public async listSkills(workspaceId: string) {
     const disabledDirectories = new Set(this.settings.getDisabledSkillDirectories());
-    return (await this.createSkillRegistry(workspaceId).discoverListItems()).map((skill) => ({
+    const registry = await this.createSkillRegistry(workspaceId);
+    return (await registry.discoverListItems()).map((skill) => ({
       description: skill.description,
       directory: skill.directory,
       id: skill.id,
@@ -507,7 +508,7 @@ export class WorkspaceService {
   }
 
   public async getSkillContent(workspaceId: string, name: string, scope: SkillScopeValue) {
-    const skill = await this.createSkillRegistry(workspaceId).load(name, scope);
+    const skill = await (await this.createSkillRegistry(workspaceId)).load(name, scope);
     return { content: skill.content };
   }
 
@@ -517,7 +518,7 @@ export class WorkspaceService {
     scope: WritableSkillScope,
     isEnabled: boolean,
   ): Promise<void> {
-    const skill = await this.createSkillRegistry(workspaceId).get(name, scope);
+    const skill = await (await this.createSkillRegistry(workspaceId)).get(name, scope);
     if (skill.directory === null) {
       throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "系统 Skill 不可停用");
     }
@@ -532,7 +533,7 @@ export class WorkspaceService {
     name: string,
     scope: WritableSkillScope,
   ): Promise<void> {
-    const registry = this.createSkillRegistry(workspaceId);
+    const registry = await this.createSkillRegistry(workspaceId);
     const skill = await registry.get(name, scope);
     if (skill.directory === null) {
       throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "系统 Skill 不可卸载");
@@ -550,7 +551,7 @@ export class WorkspaceService {
     scope: WritableSkillScope,
     signal: AbortSignal,
   ): Promise<void> {
-    const skill = await this.createSkillRegistry(workspaceId).get(name, scope);
+    const skill = await (await this.createSkillRegistry(workspaceId)).get(name, scope);
     if (skill.directory === null) {
       throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "系统 Skill 没有本地目录");
     }
@@ -663,10 +664,10 @@ export class WorkspaceService {
     return workspace;
   }
 
-  private createSkillRegistry(workspaceId: string): SkillRegistry {
+  private async createSkillRegistry(workspaceId: string): Promise<SkillRegistry> {
     return new SkillRegistry({
       globalRoot: this.globalRoot,
-      workspaceRoot: this.getRequired(workspaceId).rootPath,
+      workspaceRoot: await resolveWorkspaceRoot(this.getRequired(workspaceId).rootPath),
     });
   }
 
