@@ -39,7 +39,7 @@
 | Tool 调用与分组 | assistant-ui Element `ToolCall`；分组使用紧凑列表 | `components/ai/tool-call.tsx`、`features/chat/components/thread-message/` |
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor` | `features/chat/components/chat-composer.tsx` |
-| 上下文与用量 | 发送按钮左侧使用 HeroUI `ProgressCircle` 触发 264px 宽的紧凑 `Popover`，详情取最近一次模型请求实际携带的完整 Session Context，在 HeroUI `ProgressBar` 轨道内按上下文窗口占比无间隙地连续组合 System Prompt、Tool 定义和按顺序累积的消息（含 tool call/result）；默认只展示当前窗口占用，最近 Run、Session 累计和说明通过 HeroUI `Disclosure` 展开，弹层正文使用限高 HeroUI `ScrollShadow` 适配可用视口 | `features/chat/components/context-usage-popover.tsx`、`features/chat/utils/session-usage.ts` |
+| 上下文与用量 | 发送按钮左侧使用 HeroUI `ProgressCircle` 触发 264px 宽的紧凑 `Popover`，详情取最近一次模型请求实际携带的完整 Session Context，在 HeroUI `ProgressBar` 轨道内按上下文窗口占比无间隙地连续组合 System Prompt、Tool 定义和按顺序累积的消息（含 tool call/result）；默认只展示当前窗口占用，最近 Run、Session 累计和说明通过 HeroUI `Disclosure` 展开，弹层正文使用限高 HeroUI `ScrollShadow` 适配可用视口；已有 checkpoint 时提供管理入口，使用 HeroUI `Modal` 和两个 `Select` 选择任意版本并排查看，空闲时恢复所选版本 | `features/chat/components/context-usage-popover.tsx`、`context-checkpoint-dialog.tsx`、`features/chat/utils/session-usage.ts` |
 | 文件选择 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发；不使用扩展名 `accept` 白名单，所有普通文件都可作为结构化 Run 附件提交；图片、文本和可解析文档展开到 Context，其他二进制保留元数据并明确降级 | `features/chat/components/chat-composer.tsx`、`features/chat/utils/run-input.ts`、`packages/agent-runtime/src/utils/document-text.ts` |
 | `@` Workspace 上下文 | `ChatComposerEditor` 输入 `@` 时展示当前 Workspace 的真实图片、文件和文件夹候选；候选搜索预建索引，长列表使用 HeroUI 导出的 `Virtualizer`，并通过 Collection `items` 驱动动态分组，确保各候选类型完整参与虚拟布局；选中后保留内联标签并作为结构化引用提交，不改成 Tool Call | `features/chat/components/chat-composer-editor.tsx`、`chat-context-mention.tsx`、`features/chat/api/workspace-queries.ts` |
 | 命令与搜索弹窗 | `Command` 复合组件 | `features/chat/components/chat-search-dialog.tsx` |
@@ -47,7 +47,7 @@
 | 项目任务看板 | HeroUI Pro `Kanban` 与 `useKanban` | `features/chat/views/board-page.tsx` |
 | 基础操作 | HeroUI `Button` | `features/chat/components/chat-navbar.tsx` |
 | 上下文操作 | HeroUI `Dropdown`；弹层按内容自适应宽度，只设置必要的最小宽度和视口上限 | `features/chat/components/chat-sidebar.tsx`、`chat-composer.tsx` |
-| 表单字段 | `Form`、`TextField`、`Label`、`Input`、`FieldError` | `features/settings/components/provider-editor-dialog.tsx` |
+| 表单字段 | `Form`、`TextField`、`Label`、`Input`、`FieldError`；自定义 Provider 的模型行逐项编辑 `contextWindow` 与 `maxTokens`，最大输出不得超过上下文窗口 | `features/settings/components/provider-editor-dialog.tsx`、`provider-models-dialog.tsx` |
 | 单选 | `Select` 加 `ListBox`；操作菜单使用 `Dropdown` | `features/settings/components/settings-dialog.tsx`、`model-settings-panel.tsx` |
 | 平行视图或模式 | `Tabs`；少量偏好使用 detached `ToggleButtonGroup` | `features/chat/components/chat-view-toggle.tsx`、`features/settings/components/settings-dialog.tsx` |
 | 布尔设置 | HeroUI `Switch`，放在行尾 | `features/settings/components/model-settings-panel.tsx` |

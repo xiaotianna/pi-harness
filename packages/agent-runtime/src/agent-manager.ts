@@ -1,9 +1,18 @@
 import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { createWorkspaceToolRegistry } from "@pi-harness/tools";
+import {
+  createWorkspaceToolRegistry,
+  type PlanUpdatedData,
+  type TodoUpdatedData,
+} from "@pi-harness/tools";
 import { loadWorkspaceAgentContext } from "./context/workspace-agent-context.js";
 import { createAgent } from "./create-agent.js";
-import type { RunId, SessionId } from "./harness-event.js";
+import type {
+  ContextCheckpointRecord,
+  ContextCompactedData,
+  RunId,
+  SessionId,
+} from "./harness-event.js";
 import { buildSystemPrompt } from "./prompts/system-prompt.js";
 import {
   type HarnessEventListener,
@@ -14,11 +23,17 @@ import type { ToolApprovalRequester } from "./tool-approval.js";
 import type { RunUserInput } from "./user-input.js";
 
 export interface RestoreAgentInput {
+  contextCheckpoint: ContextCompactedData | null;
+  contextCheckpointEventSeq: number | null;
+  contextCheckpointHistory: readonly ContextCheckpointRecord[];
+  contextCheckpointTailStartMessageIndex: number | null;
   initialSeq: number;
   messages: readonly AgentMessage[];
   model: Model<Api>;
+  plan: PlanUpdatedData | null;
   sessionId: SessionId;
   streamFn: StreamFn;
+  todos: TodoUpdatedData | null;
   workspaceRoot: string;
 }
 
@@ -86,6 +101,11 @@ export class AgentManager {
     this.runtimes.clear();
   }
 
+  public applyContextCheckpointRestore(sessionId: SessionId, eventSeq: number): boolean {
+    const runtime = this.runtimes.get(sessionId);
+    return runtime === undefined || runtime.applyContextCheckpointRestore(eventSeq);
+  }
+
   private getOrCreate(input: RestoreAgentInput & { systemPrompt: string }): RunCoordinator {
     const current = this.runtimes.get(input.sessionId);
     if (current !== undefined) return current;
@@ -93,15 +113,36 @@ export class AgentManager {
     const toolCapabilities = {
       supportsImageInput: input.model.input.includes("image"),
     };
+    let runtime: RunCoordinator | null = null;
     const toolRegistry = createWorkspaceToolRegistry({
       globalRoot: this.globalRoot,
       isSkillEnabled: this.isSkillEnabled,
+      onPlanUpdated: (data) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.updatePlan(data);
+      },
+      onContextCheckpointRestored: (steps) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.restoreContextCheckpoint(steps);
+      },
+      onSessionHistorySearched: (searchInput) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.searchSessionHistory(searchInput);
+      },
+      onTodosUpdated: (data) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.updateTodos(data);
+      },
+      onWorkingStateReset: (reason) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.resetWorkingState(reason);
+      },
       protectedPaths: this.protectedPaths,
       supportsImageInput: () => toolCapabilities.supportsImageInput,
       workspaceRoot: input.workspaceRoot,
     });
     const agent = createAgent({ ...input, tools: toolRegistry.tools });
-    const runtime = new RunCoordinator(
+    runtime = new RunCoordinator(
       input.sessionId,
       agent,
       toolRegistry,
@@ -113,6 +154,12 @@ export class AgentManager {
       (supportsImageInput) => {
         toolCapabilities.supportsImageInput = supportsImageInput;
       },
+      input.contextCheckpoint,
+      input.contextCheckpointEventSeq,
+      input.contextCheckpointTailStartMessageIndex,
+      [...input.contextCheckpointHistory],
+      input.plan,
+      input.todos,
     );
     this.runtimes.set(input.sessionId, runtime);
     return runtime;

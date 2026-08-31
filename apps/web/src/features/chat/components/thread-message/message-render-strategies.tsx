@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { type ChatMessage, ChatMessageType } from "../../data/chat";
 import { AssistantThreadMessage } from "./assistant-thread-message";
 import { CodeThreadMessage } from "./code-thread-message";
+import { ContextCompactionThreadMessage } from "./context-compaction-thread-message";
 import { ErrorThreadMessage } from "./error-thread-message";
 import { ImageGenerationThreadMessage } from "./image-generation-thread-message";
 import { LoadingThreadMessage } from "./loading-thread-message";
@@ -39,6 +40,10 @@ export const MESSAGE_RENDER_STRATEGIES = {
   [ChatMessageType.CODE]: createMessageRenderStrategy(ChatMessageType.CODE, (message) => (
     <CodeThreadMessage message={message} />
   )),
+  [ChatMessageType.CONTEXT_COMPACTION]: createMessageRenderStrategy(
+    ChatMessageType.CONTEXT_COMPACTION,
+    (message) => <ContextCompactionThreadMessage message={message} />,
+  ),
   [ChatMessageType.ERROR]: createMessageRenderStrategy(ChatMessageType.ERROR, (message) => (
     <ErrorThreadMessage message={message} />
   )),

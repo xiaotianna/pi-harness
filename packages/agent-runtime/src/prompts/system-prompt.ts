@@ -1,5 +1,6 @@
 import type { WorkspaceAgentContext } from "../context/workspace-agent-context.js";
 import { AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION } from "./auto-follow-up-prompt.js";
+import { CONTEXT_CONTINUITY_SYSTEM_INSTRUCTION } from "./context-continuity-prompt.js";
 import { RICH_CONTENT_SYSTEM_INSTRUCTION } from "./rich-content-prompt.js";
 import { buildWorkspaceContextPrompt } from "./workspace-context-prompt.js";
 
@@ -17,6 +18,7 @@ export function buildSystemPrompt(context: WorkspaceAgentContext): string {
     BASE_SYSTEM_PROMPT,
     RICH_CONTENT_SYSTEM_INSTRUCTION,
     AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION,
+    CONTEXT_CONTINUITY_SYSTEM_INSTRUCTION,
     buildWorkspaceContextPrompt(context),
   ]
     .filter(Boolean)

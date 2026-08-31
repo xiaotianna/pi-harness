@@ -16,6 +16,13 @@ export const SessionParamsDtoSchema = Type.Object({
 
 export type SessionParamsDto = Static<typeof SessionParamsDtoSchema>;
 
+export const SessionCheckpointParamsDtoSchema = Type.Object({
+  eventSeq: Type.Integer({ minimum: 1 }),
+  sessionId: Type.String({ format: "uuid" }),
+});
+
+export type SessionCheckpointParamsDto = Static<typeof SessionCheckpointParamsDtoSchema>;
+
 export const SessionListQueryDtoSchema = Type.Object({
   archived: Type.Optional(Type.Boolean()),
 });

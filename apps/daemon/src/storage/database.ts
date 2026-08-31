@@ -33,12 +33,21 @@ export interface AuthSessionRepository {
   findSessionUser(tokenHash: string, now: number): AuthUser | null;
 }
 
+export const DEFAULT_CUSTOM_MODEL_CONTEXT_WINDOW = 128_000;
+export const DEFAULT_CUSTOM_MODEL_MAX_TOKENS = 32_000;
+
+export interface CustomProviderModelRecord {
+  contextWindow: number;
+  id: string;
+  maxTokens: number;
+}
+
 export interface CustomProviderRecord {
   baseUrl: string;
   createdAt: number;
   enabled: boolean;
   id: string;
-  modelIds: readonly string[];
+  models: readonly CustomProviderModelRecord[];
   name: string;
   protocol: string;
   requiresApiKey: boolean;
@@ -166,17 +175,46 @@ function mapAuthUser(row: DatabaseRow): AuthUser {
 }
 
 function mapCustomProvider(row: DatabaseRow): CustomProviderRecord {
-  const modelIds = JSON.parse(readRequiredString(row, "model_ids_json")) as unknown;
-  if (!Array.isArray(modelIds) || !modelIds.every((value) => typeof value === "string")) {
+  const storedModels = JSON.parse(readRequiredString(row, "model_ids_json")) as unknown;
+  if (!Array.isArray(storedModels)) {
     throw new Error("Invalid database value for model_ids_json");
   }
+  const models = storedModels.map((value): CustomProviderModelRecord => {
+    if (typeof value === "string") {
+      return {
+        contextWindow: DEFAULT_CUSTOM_MODEL_CONTEXT_WINDOW,
+        id: value,
+        maxTokens: DEFAULT_CUSTOM_MODEL_MAX_TOKENS,
+      };
+    }
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("id" in value) ||
+      !("contextWindow" in value) ||
+      !("maxTokens" in value) ||
+      typeof value.id !== "string" ||
+      !Number.isSafeInteger(value.contextWindow) ||
+      !Number.isSafeInteger(value.maxTokens) ||
+      value.contextWindow < 1_024 ||
+      value.maxTokens < 1 ||
+      value.maxTokens > value.contextWindow
+    ) {
+      throw new Error("Invalid database value for model_ids_json");
+    }
+    return {
+      contextWindow: value.contextWindow as number,
+      id: value.id,
+      maxTokens: value.maxTokens as number,
+    };
+  });
 
   return {
     baseUrl: readRequiredString(row, "base_url"),
     createdAt: Number(row.created_at),
     enabled: row.enabled === 1,
     id: readRequiredString(row, "provider_id"),
-    modelIds,
+    models,
     name: readRequiredString(row, "name"),
     protocol: readRequiredString(row, "protocol"),
     requiresApiKey: row.requires_api_key === 1,
@@ -349,7 +387,7 @@ class SqliteProviderSettingRepository implements ProviderSettingRepository {
         provider.name,
         provider.protocol,
         provider.baseUrl,
-        JSON.stringify(provider.modelIds),
+        JSON.stringify(provider.models),
         Number(provider.requiresApiKey),
         Number(provider.enabled),
         provider.createdAt,
@@ -410,7 +448,7 @@ class SqliteProviderSettingRepository implements ProviderSettingRepository {
           provider.name,
           provider.protocol,
           provider.baseUrl,
-          JSON.stringify(provider.modelIds),
+          JSON.stringify(provider.models),
           Number(provider.requiresApiKey),
           Number(provider.enabled),
           provider.updatedAt,

@@ -10,6 +10,7 @@ export {
   type ModelProvider,
   ProviderApiError,
   type ProviderInput,
+  type ProviderModelInput,
   ProviderOAuthPromptType,
   type ProviderOAuthState,
   ProviderOAuthStatus,

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./agent-message": "./src/utils/agent-message.ts",
+    "./context-pipeline": "./src/context/context-pipeline.ts",
     "./harness-event": "./src/harness-event.ts",
     "./thinking-level": "./src/thinking-level.ts",
     "./tool-approval": "./src/tool-approval.ts",

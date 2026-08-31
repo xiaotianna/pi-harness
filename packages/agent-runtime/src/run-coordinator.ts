@@ -8,16 +8,43 @@ import type {
   BeforeToolCallResult,
   StreamFn,
 } from "@earendil-works/pi-agent-core";
-import { type Api, clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
-import { type ApprovalPolicyValue, evaluateToolCall, ToolPolicyDecision } from "@pi-harness/policy";
-import { readFileChangeDetails, type ToolRegistry } from "@pi-harness/tools";
+import {
+  type Api,
+  type AssistantMessage,
+  clampThinkingLevel,
+  createAssistantMessageEventStream,
+  type Model,
+} from "@earendil-works/pi-ai";
+import {
+  type ApprovalPolicyValue,
+  evaluateToolCall,
+  ToolPolicyDecision,
+} from "@pi-harness/policy";
+import {
+  attachSuccessfulTodoEvidence,
+  PlanStepStatus,
+  type PlanUpdatedData,
+  readFileChangeDetails,
+  type SessionHistorySearchResult,
+  type TodoUpdatedData,
+  type ToolRegistry,
+} from "@pi-harness/tools";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
+import {
+  CONTEXT_WINDOW_EXCEEDED_ERROR_CODE,
+  projectContext,
+} from "./context/context-pipeline.js";
 import { adaptAgentEvent } from "./event-adapter.js";
 import {
   ApprovalDecision,
   type ApprovalRequestedData,
   type ApprovalResolvedData,
+  type ContextCheckpointRecord,
+  type ContextCheckpointRestoredData,
+  type ContextCompactedData,
+  ContextCompactionReason,
   type ContextUsageSnapshotData,
+  type ContextWorkingStateResetData,
   type FileChangedData,
   type HarnessEvent,
   type HarnessEventDraft,
@@ -30,7 +57,10 @@ import type { ThinkingLevel } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
 import { type RunUserInput, UserInputContextError } from "./user-input.js";
 import { estimateContextUsage } from "./utils/context-usage.js";
-import { createHarnessUserMessage, limitUserInputContext } from "./utils/user-input.js";
+import {
+  createHarnessUserMessage,
+  limitUserInputContext,
+} from "./utils/user-input.js";
 
 export interface StartRunInput {
   approvalPolicy: ApprovalPolicyValue;
@@ -44,7 +74,9 @@ export interface StartRunInput {
   thinkingLevel: ThinkingLevel;
 }
 
-export type HarnessEventListener = (event: HarnessEvent) => Promise<void> | void;
+export type HarnessEventListener = (
+  event: HarnessEvent,
+) => Promise<void> | void;
 
 interface ActiveRun {
   approvalPolicy: ApprovalPolicyValue;
@@ -53,6 +85,42 @@ interface ActiveRun {
   preparationAbortController: AbortController;
   providerId: string;
   runId: RunId;
+  startMessageIndex: number;
+  streamFn: StreamFn;
+}
+
+export function shouldResetWorkingStateForNewRun(
+  plan: PlanUpdatedData | null,
+  todos: TodoUpdatedData | null,
+): boolean {
+  return plan !== null || todos !== null;
+}
+
+function createContextWindowErrorStream(model: Model<Api>, message: string) {
+  const stream = createAssistantMessageEventStream();
+  const error: AssistantMessage = {
+    api: model.api,
+    content: [],
+    errorMessage: `${CONTEXT_WINDOW_EXCEEDED_ERROR_CODE}: ${message}`,
+    model: model.id,
+    provider: model.provider,
+    role: "assistant",
+    stopReason: "error",
+    timestamp: Date.now(),
+    usage: {
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: { cacheRead: 0, cacheWrite: 0, input: 0, output: 0, total: 0 },
+      input: 0,
+      output: 0,
+      totalTokens: 0,
+    },
+  };
+  queueMicrotask(() => {
+    stream.push({ error, reason: "error", type: "error" });
+    stream.end(error);
+  });
+  return stream;
 }
 
 // 一个 Session 对应一个 RunCoordinator，它管理 run 的生命周期、事件转换与发布
@@ -60,7 +128,14 @@ export class RunCoordinator {
   private activeRun: ActiveRun | null = null;
   private readonly executionGuard: ToolRegistry["executionGuard"];
   private nextSeq: number;
-  private readonly pendingFileChanges = new Map<string, readonly FileChangedData[]>();
+  private pendingContextError: string | null = null;
+  private readonly pendingFileChanges = new Map<
+    string,
+    readonly FileChangedData[]
+  >();
+  private pendingMilestoneCompaction = false;
+  private pendingWorkingStateReset = false;
+  private readonly successfulToolCallIds = new Set<string>();
   private readonly unsubscribe: () => void;
 
   public constructor(
@@ -72,19 +147,36 @@ export class RunCoordinator {
     private readonly workspaceRoot: string,
     private readonly protectedPaths: readonly string[],
     private readonly requestToolApproval: ToolApprovalRequester,
-    private readonly setSupportsImageInput: (supportsImageInput: boolean) => void,
+    private readonly setSupportsImageInput: (
+      supportsImageInput: boolean,
+    ) => void,
+    private contextCheckpoint: ContextCompactedData | null,
+    private contextCheckpointEventSeq: number | null,
+    private contextCheckpointTailStartMessageIndex: number | null,
+    private readonly contextCheckpointHistory: ContextCheckpointRecord[],
+    private planState: PlanUpdatedData | null,
+    private todoState: TodoUpdatedData | null,
   ) {
     this.executionGuard = toolRegistry.executionGuard;
+    for (const message of agent.state.messages) {
+      if (message.role === "toolResult" && !message.isError) {
+        this.successfulToolCallIds.add(message.toolCallId);
+      }
+    }
     this.nextSeq = initialSeq + 1;
-    this.agent.beforeToolCall = (context, signal) => this.handleBeforeToolCall(context, signal);
+    this.agent.beforeToolCall = (context, signal) =>
+      this.handleBeforeToolCall(context, signal);
     this.agent.afterToolCall = (context) => this.handleAfterToolCall(context);
-    this.agent.transformContext = async (messages) =>
-      limitUserInputContext(messages, this.agent.state.model.contextWindow);
+    this.agent.transformContext = (messages, signal) =>
+      this.transformContext(messages, signal);
     // 构造时会订阅 pi Agent 事件
     this.unsubscribe = agent.subscribe((event) => this.handleAgentEvent(event));
   }
 
-  private async emit(draft: HarnessEventDraft, runId: RunId): Promise<void> {
+  private async emit(
+    draft: HarnessEventDraft,
+    runId: RunId,
+  ): Promise<HarnessEvent> {
     const event: HarnessEvent = {
       data: draft.data,
       id: randomUUID(),
@@ -96,6 +188,293 @@ export class RunCoordinator {
     };
     this.nextSeq += 1;
     await this.onEvent(event);
+    return event;
+  }
+
+  // 每次模型请求前，根据当前 Session 状态生成“这一次真正发送给模型的消息数组”
+  // 返回的新消息数组：仅用于当前模型请求，不会直接删除 agent.state.messages 中的完整历史。
+  private async transformContext(
+    messages: AgentMessage[],
+    signal?: AbortSignal,
+  ): Promise<AgentMessage[]> {
+    /**
+     *  有 activeRun：当前正在执行任务，可以做完整上下文压缩、生成 checkpoint，并将事件关联到当前 runId。
+        没有 activeRun：Session 空闲，没有可关联的任务，只做基础附件/引用裁剪，不执行压缩和 checkpoint 持久化。
+     */
+    const activeRun = this.activeRun;
+    if (activeRun === null) {
+      return limitUserInputContext(
+        messages,
+        this.agent.state.model.contextWindow,
+      );
+    }
+
+    try {
+      /**
+       * 清理上一任务的plan/todos
+       * 表示新的run已经开始，但 Session 里还保留着上一个 Run 的 Plan 或 Todos。
+       * 如果不清理，可能后续的任务会错误的继承到之前的plan/todos
+       */
+      if (this.pendingWorkingStateReset) {
+        await this.clearWorkingState(
+          "新的顶层 Run 是任务边界，Runtime 自动清理上一 Run 的 Plan/Todos",
+          activeRun.runId,
+        );
+        this.pendingWorkingStateReset = false;
+      }
+      // 调用真正的 Context Pipeline（真正的 Token 计算、裁剪和压缩都在这里）
+      const projected = await projectContext({
+        /**
+         * 当前 Run 开始时，Agent 已有消息的长度
+         * 假设：
+         *  0..99：之前 Session 的消息
+            100：当前 Run 的用户请求
+            101：Assistant
+            102：Tool Result
+           如果activeRun.startMessageIndex==100，那么压缩旧消息时，即使消息 100 落入被压缩区域，也会重新把它注入模型：
+            [当前 Run 的原始任务契约]
+            用户最初的请求
+           目的是为了防止长任务压缩几轮后，模型忘记用户最初要求做什么
+         */
+        activeRunStartMessageIndex: activeRun.startMessageIndex,
+        // 当前的checkpoint
+        checkpoint: this.contextCheckpoint,
+        /**
+         * 这里的判断是因为checkpoint是可以回退的
+         * 如果用户恢复到旧 checkpoint，就不能继续自动携带恢复前的后续分支。
+         * 例如：
+         *  checkpoint A
+            → 消息 50
+            → checkpoint B
+            → 消息 80
+            → 用户恢复 checkpoint A
+            → 新消息 100
+           恢复后主模型应该看到：
+            checkpoint A
+            + 新消息 100 之后的内容
+           不应该自动看到被放弃的 50..99 分支。
+         */
+        ...(this.contextCheckpointTailStartMessageIndex === null
+          ? {}
+          : {
+              checkpointTailStartMessageIndex:
+                this.contextCheckpointTailStartMessageIndex,
+            }),
+        //
+        /**
+         * 里程碑压缩：当 Plan 中有步骤完成后，提前在上下文达到 60% 时压缩。
+         * 如果没有 Plan 或没有步骤完成，就不会触发里程碑压缩，只按普通的 80% 阈值压缩。
+         *
+         * 一个阶段完成后，趁信息还清晰，提前把该阶段总结成 checkpoint，好处是：
+         * 1、给后续阶段留出更多上下文空间
+         * 2、减少模型继续携带大量已完成过程
+         * 3、降低长任务后期才压缩导致的信息遗漏风险
+         */
+        ...(this.pendingMilestoneCompaction
+          ? { compactionReason: ContextCompactionReason.MILESTONE }
+          : {}),
+        // 完整消息，Context Pipeline 根据 contextWindow 和 maxTokens 算出真正的输入预算
+        messages,
+        model: this.agent.state.model,
+        // 压缩开始事件，projectContext() 只有确认确实需要压缩后，才调用它
+        // 主要用于展示压缩状态的（web ui）
+        onCompactionStarted: async () => {
+          await this.emit(
+            { data: null, type: HarnessEventType.CONTEXT_COMPACTION_STARTED },
+            activeRun.runId,
+          );
+        },
+        /**
+         * plan和todos作用在两个地方：
+         * 1、生成 checkpoint 时提供给压缩模型，避免摘要遗漏未完成工作
+         * 2、生成本次主模型上下文时，与 checkpoint 一起注入：checkpoint + plan + todos
+         * 因此，即使详细历史被压缩，模型仍知道：
+            - 当前计划走到哪里
+            - 哪些 Todo 未完成
+            - 下一步是什么
+         */
+        plan: this.planState,
+        todos: this.todoState,
+        sessionId: this.sessionId,
+        // 取消信号，当用户中止 Run 时，不需要继续等待最长 120 秒的 checkpoint 生成请求。
+        ...(signal === undefined ? {} : { signal }),
+        streamFn: activeRun.streamFn,
+        /**
+         * systemPrompt和tools用于 Token 预算计算，如果只计算 messages，工具很多时会严重低估上下文占用。
+         */
+        systemPrompt: this.agent.state.systemPrompt,
+        tools: this.agent.state.tools,
+      });
+      if (projected.compacted !== undefined) {
+        const event = await this.emit(
+          {
+            data: projected.compacted,
+            type: HarnessEventType.CONTEXT_COMPACTED,
+          },
+          activeRun.runId,
+        );
+        this.contextCheckpoint = projected.compacted;
+        this.contextCheckpointEventSeq = event.seq;
+        this.contextCheckpointTailStartMessageIndex = null;
+        this.contextCheckpointHistory.push({
+          data: projected.compacted,
+          eventSeq: event.seq,
+        });
+        this.pendingMilestoneCompaction = false;
+      }
+      this.pendingContextError = projected.error ?? null;
+      return projected.messages;
+    } catch {
+      this.pendingContextError = "上下文 checkpoint 无法安全生成或持久化";
+      return limitUserInputContext(
+        messages,
+        this.agent.state.model.contextWindow,
+      );
+    }
+  }
+
+  public async updatePlan(data: PlanUpdatedData): Promise<void> {
+    const activeRun = this.activeRun;
+    if (activeRun === null) throw new Error("当前没有活动 Run");
+    const previousCompleted =
+      this.planState?.plan.filter(
+        (item) => item.status === PlanStepStatus.COMPLETED,
+      ).length ?? 0;
+    const nextCompleted = data.plan.filter(
+      (item) => item.status === PlanStepStatus.COMPLETED,
+    ).length;
+    await this.emit(
+      { data, type: HarnessEventType.PLAN_UPDATED },
+      activeRun.runId,
+    );
+    this.planState = data;
+    if (nextCompleted > previousCompleted)
+      this.pendingMilestoneCompaction = true;
+  }
+
+  public async updateTodos(data: TodoUpdatedData): Promise<TodoUpdatedData> {
+    const activeRun = this.activeRun;
+    if (activeRun === null) throw new Error("当前没有活动 Run");
+    const updated = attachSuccessfulTodoEvidence(data, [
+      ...this.successfulToolCallIds,
+    ]);
+    await this.emit(
+      { data: updated, type: HarnessEventType.TODO_UPDATED },
+      activeRun.runId,
+    );
+    this.todoState = updated;
+    return updated;
+  }
+
+  public async restoreContextCheckpoint(steps: number): Promise<number> {
+    const activeRun = this.activeRun;
+    if (activeRun === null) throw new Error("当前没有活动 Run");
+    let target =
+      this.contextCheckpointHistory.find(
+        (record) => record.eventSeq === this.contextCheckpointEventSeq,
+      ) ?? null;
+    for (let remaining = steps; remaining > 0; remaining -= 1) {
+      const parentId = target?.data.previousCompactionId;
+      const parent =
+        parentId === undefined
+          ? this.contextCheckpointHistory
+              .filter(
+                (record) =>
+                  record.eventSeq <
+                  (target?.eventSeq ?? Number.POSITIVE_INFINITY),
+              )
+              .at(-1)
+          : this.contextCheckpointHistory.find(
+              (record) => record.data.compactionId === parentId,
+            );
+      target = parent ?? null;
+      if (target === null) break;
+    }
+    if (target === null) throw new Error("没有可恢复的更早 checkpoint");
+    await this.emit(
+      {
+        data: {
+          sourceEventSeq: target.eventSeq,
+        } satisfies ContextCheckpointRestoredData,
+        type: HarnessEventType.CONTEXT_CHECKPOINT_RESTORED,
+      },
+      activeRun.runId,
+    );
+    this.contextCheckpoint = target.data;
+    this.contextCheckpointEventSeq = target.eventSeq;
+    this.contextCheckpointTailStartMessageIndex =
+      this.agent.state.messages.length;
+    return target.eventSeq;
+  }
+
+  public async resetWorkingState(reason: string): Promise<void> {
+    const activeRun = this.activeRun;
+    if (activeRun === null) throw new Error("当前没有活动 Run");
+    await this.clearWorkingState(reason, activeRun.runId);
+  }
+
+  private async clearWorkingState(reason: string, runId: RunId): Promise<void> {
+    await this.emit(
+      {
+        data: { reason } satisfies ContextWorkingStateResetData,
+        type: HarnessEventType.CONTEXT_WORKING_STATE_RESET,
+      },
+      runId,
+    );
+    this.planState = null;
+    this.todoState = null;
+    this.pendingMilestoneCompaction = false;
+    this.pendingWorkingStateReset = false;
+  }
+
+  public applyContextCheckpointRestore(eventSeq: number): boolean {
+    if (this.activeRun !== null) return false;
+    const target = this.contextCheckpointHistory.find(
+      (record) => record.eventSeq === eventSeq,
+    );
+    if (target === undefined) return false;
+    this.contextCheckpoint = target.data;
+    this.contextCheckpointEventSeq = target.eventSeq;
+    this.contextCheckpointTailStartMessageIndex =
+      this.agent.state.messages.length;
+    return true;
+  }
+
+  public searchSessionHistory(input: {
+    maxResults?: number;
+    query: string;
+  }): SessionHistorySearchResult {
+    const query = input.query.trim().toLocaleLowerCase();
+    if (!query) throw new Error("历史检索关键词不能为空");
+    const matches: SessionHistorySearchResult["matches"] = [];
+    const messages = this.agent.state.messages;
+    // ponytail: 先线性扫描完整 Session；历史达到万级消息并出现延迟后再加可重建索引。
+    for (
+      let messageIndex = messages.length - 1;
+      messageIndex >= 0;
+      messageIndex -= 1
+    ) {
+      const message = messages[messageIndex];
+      if (
+        message === undefined ||
+        (message.role !== "user" &&
+          message.role !== "assistant" &&
+          message.role !== "toolResult")
+      ) {
+        continue;
+      }
+      const text = JSON.stringify(message.content);
+      const matchIndex = text.toLocaleLowerCase().indexOf(query);
+      if (matchIndex < 0) continue;
+      const excerptStart = Math.max(0, matchIndex - 240);
+      matches.push({
+        excerpt: text.slice(excerptStart, excerptStart + 800),
+        messageIndex,
+        role: message.role,
+      });
+      if (matches.length >= (input.maxResults ?? 8)) break;
+    }
+    return { matches, query: input.query.trim() };
   }
 
   // 工具调用前
@@ -131,7 +510,10 @@ export class RunCoordinator {
         toolCallFingerprint,
       );
       if (blockReason !== null) return { block: true, reason: blockReason };
-      this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+      this.executionGuard.recordApproved(
+        context.toolCall.id,
+        toolCallFingerprint,
+      );
       return undefined;
     }
 
@@ -189,7 +571,10 @@ export class RunCoordinator {
       // 表示当前 Run 进入“等待用户输入”状态
       await this.emit(
         {
-          data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+          data: {
+            interactionId: approvalId,
+            kind: "tool_approval",
+          } satisfies RunInteractionData,
           type: HarnessEventType.RUN_AWAITING_INPUT,
         },
         activeRun.runId,
@@ -221,7 +606,10 @@ export class RunCoordinator {
       // 表示 Run 已经离开等待状态
       await this.emit(
         {
-          data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+          data: {
+            interactionId: approvalId,
+            kind: "tool_approval",
+          } satisfies RunInteractionData,
           type: HarnessEventType.RUN_RESUMED,
         },
         activeRun.runId,
@@ -242,7 +630,10 @@ export class RunCoordinator {
           currentPolicy.summary !== policy.summary ||
           currentPolicy.target !== policy.target
         ) {
-          return { block: true, reason: "审批期间工具目标已变化，请重新读取后再修改" };
+          return {
+            block: true,
+            reason: "审批期间工具目标已变化，请重新读取后再修改",
+          };
         }
         const currentBlockReason = this.executionGuard.getBlockReason(
           context.toolCall.id,
@@ -251,12 +642,18 @@ export class RunCoordinator {
         if (currentBlockReason !== null) {
           return { block: true, reason: currentBlockReason };
         }
-        this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+        this.executionGuard.recordApproved(
+          context.toolCall.id,
+          toolCallFingerprint,
+        );
         return undefined;
       }
       return {
         block: true,
-        reason: decision === ApprovalDecision.EXPIRED ? "工具审批已超时" : "用户拒绝了工具审批",
+        reason:
+          decision === ApprovalDecision.EXPIRED
+            ? "工具审批已超时"
+            : "用户拒绝了工具审批",
       };
     } catch (error: unknown) {
       approval.cancel();
@@ -265,8 +662,11 @@ export class RunCoordinator {
   }
 
   // 工具执行成功后捕获其一项或多项文件变更，等待对应 tool_execution_end 后顺序发出。
-  private async handleAfterToolCall(context: AfterToolCallContext): Promise<undefined> {
+  private async handleAfterToolCall(
+    context: AfterToolCallContext,
+  ): Promise<undefined> {
     if (context.isError) return undefined;
+    this.successfulToolCallIds.add(context.toolCall.id);
     const fileChanges = readFileChangeDetails(context.result.details);
     if (fileChanges.length === 0) return undefined;
     this.pendingFileChanges.set(
@@ -325,7 +725,10 @@ export class RunCoordinator {
 
     this.agent.state.model = input.model;
     this.setSupportsImageInput(input.model.input.includes("image"));
-    this.agent.state.thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
+    this.agent.state.thinkingLevel = clampThinkingLevel(
+      input.model,
+      input.thinkingLevel,
+    );
     this.agent.state.systemPrompt = input.systemPrompt;
     let requestIndex = 0;
     this.agent.streamFunction = async (model, context, options) => {
@@ -340,18 +743,34 @@ export class RunCoordinator {
         },
         input.runId,
       );
-      return input.streamFn(model, context, options);
+      const contextError = this.pendingContextError;
+      this.pendingContextError = null;
+      if (contextError !== null)
+        return createContextWindowErrorStream(model, contextError);
+      return input.streamFn(model, context, {
+        ...options,
+        cacheRetention: "long",
+        sessionId: this.sessionId,
+      });
     };
     this.executionGuard.reset();
     const preparationAbortController = new AbortController();
     this.activeRun = {
       approvalPolicy: input.approvalPolicy,
-      handleAutoFollowUp: createAutoFollowUpHandler((message) => this.agent.followUp(message)),
+      handleAutoFollowUp: createAutoFollowUpHandler((message) =>
+        this.agent.followUp(message),
+      ),
       modelId: input.modelId,
       preparationAbortController,
       providerId: input.providerId,
       runId: input.runId,
+      startMessageIndex: this.agent.state.messages.length,
+      streamFn: input.streamFn,
     };
+    this.pendingWorkingStateReset = shouldResetWorkingStateForNewRun(
+      this.planState,
+      this.todoState,
+    );
 
     try {
       let message: AgentMessage;
@@ -383,7 +802,9 @@ export class RunCoordinator {
                       ? error.message
                       : "无法读取附件或引用上下文，请确认文件仍然存在且可访问",
                 },
-            type: isAborted ? HarnessEventType.RUN_ABORTED : HarnessEventType.RUN_FAILED,
+            type: isAborted
+              ? HarnessEventType.RUN_ABORTED
+              : HarnessEventType.RUN_FAILED,
           },
           input.runId,
         );
@@ -393,6 +814,8 @@ export class RunCoordinator {
     } finally {
       this.executionGuard.reset();
       this.pendingFileChanges.clear();
+      this.pendingContextError = null;
+      this.pendingWorkingStateReset = false;
       this.activeRun = null;
     }
   }

@@ -42,7 +42,7 @@ function estimateContentTokens(content: Message["content"]): number {
   return tokens;
 }
 
-function estimateMessageTokens(message: Message): number {
+export function estimateMessageTokens(message: Message): number {
   if (message.role === "user" || message.role === "toolResult") {
     return estimateContentTokens(message.content);
   }

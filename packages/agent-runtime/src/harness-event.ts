@@ -1,4 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { Usage } from "@earendil-works/pi-ai";
+import { isPlainObject } from "es-toolkit";
 
 export type SessionId = string;
 export type RunId = string;
@@ -10,7 +12,8 @@ export const ApprovalDecision = {
   EXPIRED: "expired", // 审批超时
 } as const;
 
-export type ApprovalDecision = (typeof ApprovalDecision)[keyof typeof ApprovalDecision];
+export type ApprovalDecision =
+  (typeof ApprovalDecision)[keyof typeof ApprovalDecision];
 // 审批最终返回的只有批准和拒绝
 export type ApprovalResponseDecision =
   | typeof ApprovalDecision.APPROVED
@@ -109,11 +112,18 @@ export const HarnessEventType = {
    */
   // 每次模型请求发送前的上下文用量快照，只保存分类 Token 估算值
   CONTEXT_USAGE_SNAPSHOT: "context.usage_snapshot",
+  // Runtime 开始自动压缩历史上下文
+  CONTEXT_COMPACTION_STARTED: "context.compaction_started",
   // 为避免超过模型上下文窗口，历史上下文被裁剪或摘要压缩
   CONTEXT_COMPACTED: "context.compacted",
+  // 当前工作 checkpoint 回退到历史版本；原始消息不变
+  CONTEXT_CHECKPOINT_RESTORED: "context.checkpoint_restored",
+  // 新任务替换旧任务时清空 Plan/Todos；Session 历史和 checkpoint 不变
+  CONTEXT_WORKING_STATE_RESET: "context.working_state_reset",
 } as const;
 
-export type HarnessEventType = (typeof HarnessEventType)[keyof typeof HarnessEventType];
+export type HarnessEventType =
+  (typeof HarnessEventType)[keyof typeof HarnessEventType];
 
 // 消息的增量chunk片段类型
 export const MessageDeltaKind = {
@@ -125,7 +135,8 @@ export const MessageDeltaKind = {
   TOOL_CALL: "tool_call",
 } as const;
 
-export type MessageDeltaKind = (typeof MessageDeltaKind)[keyof typeof MessageDeltaKind];
+export type MessageDeltaKind =
+  (typeof MessageDeltaKind)[keyof typeof MessageDeltaKind];
 
 /**
  * 事件核心：HarnessEvent 和 HarnessEventDraft
@@ -180,6 +191,174 @@ export interface ContextUsageSnapshotData {
   requestIndex: number;
   systemPromptTokens: number;
   toolTokens: number;
+}
+
+// 上下文压缩后的结构化数据
+export interface ContextCheckpoint {
+  blockers: string[]; // 当前阻止任务继续的具体问题。没有阻塞时就是空数组。
+  completed: string[]; // 已经实际完成的事项。不能记录尚未验证的计划。
+  constraints: string[]; // 后续工作必须持续遵守的限制
+  decisions: string[]; // 已经确定的技术选择，避免压缩后重复讨论或改回旧方案。
+  nextAction: string; // 恢复工作后应该立即执行的下一步，只保留一个最明确的动作。
+  objective: string; // 当前任务最终要完成什么
+  pending: string[]; // 还需要完成的事项，但不一定立即执行。
+}
+
+// 触发这次上下文压缩的原因
+export const ContextCompactionReason = {
+  MILESTONE: "milestone", // 普通压缩（80%）
+  THRESHOLD: "threshold", // 里程碑压缩（60%）
+} as const;
+
+export type ContextCompactionReason =
+  (typeof ContextCompactionReason)[keyof typeof ContextCompactionReason];
+
+// checkpoint 生成方式
+export const ContextCompactionStrategy = {
+  FALLBACK: "fallback", // AI 调用失败、超时、中止，或者返回内容格式不正确，改用本地代码生成保底 checkpoint
+  MODEL: "model", // 成功调用 AI，并且返回内容能解析成合法的 ContextCheckpoint
+} as const;
+
+export type ContextCompactionStrategy =
+  (typeof ContextCompactionStrategy)[keyof typeof ContextCompactionStrategy];
+
+// context.compacted：随 Session 持久化的工作状态 checkpoint，不替代原始消息
+// 一次上下文压缩产生的完整记录
+export interface ContextCompactedData {
+  afterTokens: number; // 使用 checkpoint 替换旧历史后，预计发送给主模型的 Token 数
+  beforeTokens: number; // 压缩前预计发送给主模型的上下文 Token 数，包含 System Prompt、Tools 和消息
+  checkpoint: ContextCheckpoint; // 本次压缩得到的结构化工作记忆
+  compactionId?: string;
+  compactionReason?: ContextCompactionReason; // 触发压缩的原因
+  compactionStrategy?: ContextCompactionStrategy; // checkpoint生成方式
+  compactedMessageCount: number; // 本次被压缩的原始消息数量
+  compactionUsage?: Usage; // 生成 checkpoint 的独立 AI 请求所消耗的 Token 和费用
+  coveredMessageRange?: { end: number; start: number }; // 本次压缩覆盖的原始消息下标范围
+  previousCompactionId?: string; // 上一个 checkpoint 的 ID，用于建立版本链和回退
+  sourceMessageCount: number; // 生成该 checkpoint 时，已经处理到的原始消息边界
+}
+
+export interface ContextCheckpointRecord {
+  data: ContextCompactedData;
+  eventSeq: number;
+}
+
+export interface ContextCheckpointRestoredData {
+  sourceEventSeq: number;
+}
+
+export interface ContextWorkingStateResetData {
+  reason: string;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
+function isUsage(value: unknown): value is Usage {
+  if (!isPlainObject(value) || !isPlainObject(value.cost)) return false;
+  const fields = [
+    value.input,
+    value.output,
+    value.cacheRead,
+    value.cacheWrite,
+    value.totalTokens,
+    value.cost.input,
+    value.cost.output,
+    value.cost.cacheRead,
+    value.cost.cacheWrite,
+    value.cost.total,
+  ];
+  return (
+    fields.every(
+      (field) =>
+        typeof field === "number" && Number.isFinite(field) && field >= 0,
+    ) &&
+    (value.reasoning === undefined ||
+      (typeof value.reasoning === "number" && Number.isFinite(value.reasoning)))
+  );
+}
+
+function isCoveredMessageRange(
+  value: unknown,
+  sourceMessageCount: number,
+  compactedMessageCount: number,
+): boolean {
+  return (
+    isPlainObject(value) &&
+    Number.isInteger(value.start) &&
+    Number.isInteger(value.end) &&
+    value.start >= 0 &&
+    value.end > value.start &&
+    value.end === sourceMessageCount &&
+    value.end - value.start === compactedMessageCount
+  );
+}
+
+export function isContextCompactedData(
+  value: unknown,
+): value is ContextCompactedData {
+  if (!isPlainObject(value) || !isPlainObject(value.checkpoint)) return false;
+  const checkpoint = value.checkpoint;
+  return (
+    Number.isInteger(value.afterTokens) &&
+    Number.isInteger(value.beforeTokens) &&
+    Number.isInteger(value.compactedMessageCount) &&
+    Number.isInteger(value.sourceMessageCount) &&
+    value.afterTokens >= 0 &&
+    value.beforeTokens >= 0 &&
+    value.compactedMessageCount > 0 &&
+    value.sourceMessageCount > 0 &&
+    typeof checkpoint.objective === "string" &&
+    typeof checkpoint.nextAction === "string" &&
+    isStringArray(checkpoint.constraints) &&
+    isStringArray(checkpoint.decisions) &&
+    isStringArray(checkpoint.completed) &&
+    isStringArray(checkpoint.pending) &&
+    isStringArray(checkpoint.blockers) &&
+    (value.compactionId === undefined ||
+      typeof value.compactionId === "string") &&
+    (value.previousCompactionId === undefined ||
+      typeof value.previousCompactionId === "string") &&
+    (value.compactionReason === undefined ||
+      Object.values(ContextCompactionReason).includes(
+        value.compactionReason as ContextCompactionReason,
+      )) &&
+    (value.compactionStrategy === undefined ||
+      Object.values(ContextCompactionStrategy).includes(
+        value.compactionStrategy as ContextCompactionStrategy,
+      )) &&
+    (value.coveredMessageRange === undefined ||
+      isCoveredMessageRange(
+        value.coveredMessageRange,
+        value.sourceMessageCount,
+        value.compactedMessageCount,
+      )) &&
+    (value.compactionUsage === undefined || isUsage(value.compactionUsage))
+  );
+}
+
+export function isContextCheckpointRestoredData(
+  value: unknown,
+): value is ContextCheckpointRestoredData {
+  return (
+    isPlainObject(value) &&
+    Number.isInteger(value.sourceEventSeq) &&
+    value.sourceEventSeq > 0
+  );
+}
+
+export function isContextWorkingStateResetData(
+  value: unknown,
+): value is ContextWorkingStateResetData {
+  return (
+    isPlainObject(value) &&
+    typeof value.reason === "string" &&
+    value.reason.length > 0 &&
+    value.reason.length <= 1_000
+  );
 }
 
 // run.failed / run.aborted

@@ -94,7 +94,12 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
 
       const input: ProviderInput = {
         baseUrl: baseUrl.trim(),
-        modelIds: provider?.models.map((model) => model.id) ?? [],
+        models:
+          provider?.models.map(({ contextWindow, id, maxTokens }) => ({
+            contextWindow,
+            id,
+            maxTokens,
+          })) ?? [],
         name: name.trim(),
         protocol,
         requiresApiKey,

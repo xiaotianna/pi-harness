@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import {
   type AgentManager,
   type ApprovalResponseDecision,
+  type ContextCheckpointRestoredData,
   type FileChangedData,
   type HarnessEvent,
   HarnessEventType,
@@ -32,6 +33,7 @@ import type { SessionEventService } from "./session-event-service.js";
 
 const SessionErrorCode = {
   BUSY: "SESSION_BUSY",
+  CHECKPOINT_NOT_FOUND: "CONTEXT_CHECKPOINT_NOT_FOUND",
   EMPTY_PROMPT: "EMPTY_RUN_PROMPT",
   EMPTY_TITLE: "EMPTY_SESSION_TITLE",
   NOT_FOUND: "SESSION_NOT_FOUND",
@@ -239,6 +241,34 @@ export class SessionService {
     return { events: snapshot.events, session: this.getRequiredSession(sessionId) };
   }
 
+  public async restoreContextCheckpoint(sessionId: SessionId, eventSeq: number): Promise<void> {
+    this.assertSessionIdle(sessionId);
+    const session = this.getRequiredSession(sessionId);
+    this.activeSessionIds.add(sessionId);
+    try {
+      const snapshot = await this.eventStore.load(sessionId);
+      if (!snapshot.contextCheckpointHistory.some((record) => record.eventSeq === eventSeq)) {
+        throw new SessionServiceError(
+          SessionErrorCode.CHECKPOINT_NOT_FOUND,
+          "Context checkpoint 不存在",
+        );
+      }
+      await this.sessionEvents.handle({
+        data: { sourceEventSeq: eventSeq } satisfies ContextCheckpointRestoredData,
+        id: randomUUID(),
+        seq: Math.max(session.lastSeq, snapshot.lastPersistedSeq) + 1,
+        sessionId,
+        timestamp: Date.now(),
+        type: HarnessEventType.CONTEXT_CHECKPOINT_RESTORED,
+      });
+      if (!this.agents.applyContextCheckpointRestore(sessionId, eventSeq)) {
+        throw new Error("Runtime context checkpoint restoration failed");
+      }
+    } finally {
+      this.activeSessionIds.delete(sessionId);
+    }
+  }
+
   public async updateModel(
     sessionId: SessionId,
     providerId: string,
@@ -308,15 +338,21 @@ export class SessionService {
       const task = this.agents.startRun({
         approvalPolicy: this.settings.getApprovalPolicy(),
         initialSeq: Math.max(session.lastSeq, snapshot.lastPersistedSeq),
+        contextCheckpoint: snapshot.contextCheckpoint,
+        contextCheckpointEventSeq: snapshot.contextCheckpointEventSeq,
+        contextCheckpointHistory: snapshot.contextCheckpointHistory,
+        contextCheckpointTailStartMessageIndex: snapshot.contextCheckpointTailStartMessageIndex,
         messages: snapshot.messages,
         model,
         modelId: session.modelId,
+        plan: snapshot.plan,
         userInput,
         providerId: session.providerId,
         runId,
         sessionId,
         streamFn,
         thinkingLevel: session.thinkingLevel,
+        todos: snapshot.todos,
         workspaceRoot: session.workspaceRoot,
       });
       this.trackBackgroundTask(task, { providerId: session.providerId, runId, sessionId });

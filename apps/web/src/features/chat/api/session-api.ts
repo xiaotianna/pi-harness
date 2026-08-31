@@ -189,6 +189,16 @@ export async function reapplySessionRunChanges(sessionId: string, runId: string)
   );
 }
 
+export async function restoreSessionContextCheckpoint(
+  sessionId: string,
+  eventSeq: number,
+): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/context-checkpoints/${eventSeq}/restore`,
+    { method: "POST" },
+  );
+}
+
 export async function resolveToolApproval(
   sessionId: string,
   runId: string,

@@ -27,6 +27,7 @@ import {
   Tooltip,
   toast,
 } from "@heroui/react";
+import type { HarnessEvent } from "@pi-harness/agent-runtime/harness-event";
 import {
   DEFAULT_THINKING_LEVEL,
   ThinkingLevel,
@@ -99,6 +100,7 @@ function revokeAttachmentUrls(items: readonly PendingAttachment[]) {
 export interface ChatComposerProps {
   className?: string;
   conversationId?: string;
+  events?: readonly HarnessEvent[];
   initialPrompt?: string;
   initialSkillLabel?: string;
   initialSkillName?: string;
@@ -182,6 +184,7 @@ function getSkillOptionLabel(name: string, scope: keyof typeof SKILL_SCOPE_LABEL
 export function ChatComposer({
   className,
   conversationId,
+  events,
   initialPrompt = "",
   initialSkillLabel,
   initialSkillName,
@@ -981,10 +984,12 @@ export function ChatComposer({
             {!isHero && usage && providersQuery.isPending ? (
               <Skeleton aria-hidden className="h-8 w-12 rounded-full" />
             ) : null}
-            {!isHero && usage && !providersQuery.isPending && selectedModel ? (
+            {!isHero && usage && conversationId && !providersQuery.isPending && selectedModel ? (
               <ContextUsagePopover
                 contextWindow={selectedModel.contextWindow}
+                events={events ?? []}
                 isGenerating={isGenerating}
+                sessionId={conversationId}
                 summary={usage}
               />
             ) : null}

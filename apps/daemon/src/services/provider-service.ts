@@ -24,7 +24,13 @@ import {
   CustomProviderProtocol,
   type UpdateProviderDto,
 } from "../dto/provider-dto.js";
-import type { CustomProviderRecord, ProviderSettingRepository } from "../storage/database.js";
+import {
+  type CustomProviderModelRecord,
+  type CustomProviderRecord,
+  DEFAULT_CUSTOM_MODEL_CONTEXT_WINDOW,
+  DEFAULT_CUSTOM_MODEL_MAX_TOKENS,
+  type ProviderSettingRepository,
+} from "../storage/database.js";
 import {
   type ProviderOAuthStateVo,
   ProviderOAuthStatus,
@@ -102,8 +108,22 @@ function validateBaseUrl(value: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
-function normalizeModelIds(values: readonly string[]): readonly string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+function normalizeModels(
+  values: readonly CustomProviderModelRecord[],
+): readonly CustomProviderModelRecord[] {
+  const models = new Map<string, CustomProviderModelRecord>();
+  for (const value of values) {
+    const id = value.id.trim();
+    if (!id) continue;
+    if (value.maxTokens > value.contextWindow) {
+      throw new ProviderServiceError(
+        ProviderErrorCode.INVALID_CONFIG,
+        `模型 ${id} 的最大输出不能超过上下文窗口`,
+      );
+    }
+    models.set(id, { ...value, id });
+  }
+  return [...models.values()];
 }
 
 function normalizeName(value: string): string {
@@ -223,20 +243,19 @@ function createCustomProvider(record: CustomProviderRecord): Provider {
           return { auth: {}, source: "无需认证" };
         },
       };
-  const models: readonly Model<CustomProviderProtocol>[] = record.modelIds.map((id) => ({
+  const models: readonly Model<CustomProviderProtocol>[] = record.models.map((model) => ({
     api: protocol,
     baseUrl: record.baseUrl,
-    contextWindow: 128_000,
+    contextWindow: model.contextWindow,
     cost: { cacheRead: 0, cacheWrite: 0, input: 0, output: 0 },
-    id,
+    id: model.id,
     input: ["text"],
-    maxTokens: 32_000,
-    name: id,
+    maxTokens: model.maxTokens,
+    name: model.id,
     provider: record.id,
     reasoning: false,
   }));
 
-  // ponytail: 自定义模型先使用保守默认上限；确实需要逐模型调参时再扩展表单和表结构。
   return createProvider({
     api,
     auth: { apiKey: auth },
@@ -352,6 +371,7 @@ export class ProviderService {
           models: provider.getModels().map((model) => ({
             contextWindow: model.contextWindow,
             id: model.id,
+            maxTokens: model.maxTokens,
             name: model.name,
             thinkingLevels: getSupportedThinkingLevels(model).filter(isThinkingLevel),
           })),
@@ -371,7 +391,7 @@ export class ProviderService {
       createdAt: now,
       enabled: true,
       id: `custom:${randomUUID()}`,
-      modelIds: normalizeModelIds(input.modelIds),
+      models: normalizeModels(input.models),
       name: normalizeName(input.name),
       protocol: input.protocol,
       requiresApiKey: input.requiresApiKey,
@@ -404,8 +424,7 @@ export class ProviderService {
         ...custom,
         baseUrl: input.baseUrl === undefined ? custom.baseUrl : validateBaseUrl(input.baseUrl),
         enabled: input.enabled ?? custom.enabled,
-        modelIds:
-          input.modelIds === undefined ? custom.modelIds : normalizeModelIds(input.modelIds),
+        models: input.models === undefined ? custom.models : normalizeModels(input.models),
         name: input.name === undefined ? custom.name : normalizeName(input.name),
         protocol: input.protocol ?? custom.protocol,
         requiresApiKey: input.requiresApiKey ?? custom.requiresApiKey,
@@ -577,7 +596,13 @@ export class ProviderService {
       createdAt: now,
       enabled: true,
       id: "custom:connection-test",
-      modelIds: normalizeModelIds([input.modelId]),
+      models: normalizeModels([
+        {
+          contextWindow: DEFAULT_CUSTOM_MODEL_CONTEXT_WINDOW,
+          id: input.modelId,
+          maxTokens: DEFAULT_CUSTOM_MODEL_MAX_TOKENS,
+        },
+      ]),
       name: "Connection test",
       protocol: input.protocol,
       requiresApiKey: input.requiresApiKey,

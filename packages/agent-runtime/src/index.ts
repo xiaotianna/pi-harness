@@ -1,5 +1,15 @@
 export type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 export {
+  isPlanUpdatedData,
+  isTodoUpdatedData,
+  PlanStepStatus,
+  type PlanStepStatusValue,
+  type PlanUpdatedData,
+  TodoStatus,
+  type TodoStatusValue,
+  type TodoUpdatedData,
+} from "@pi-harness/tools";
+export {
   AgentManager,
   type RestoreAgentInput,
   type StartSessionRunInput,
@@ -11,12 +21,24 @@ export {
   type ApprovalRequestedData,
   type ApprovalResolvedData,
   type ApprovalResponseDecision,
+  type ContextCheckpoint,
+  type ContextCheckpointRecord,
+  type ContextCheckpointRestoredData,
+  type ContextCompactedData,
+  ContextCompactionReason,
+  type ContextCompactionReason as ContextCompactionReasonValue,
+  ContextCompactionStrategy,
+  type ContextCompactionStrategy as ContextCompactionStrategyValue,
   type ContextUsageSnapshotData,
+  type ContextWorkingStateResetData,
   type FileChangedData,
   type HarnessEvent,
   type HarnessEventDraft,
   HarnessEventType,
   type HarnessEventType as HarnessEventTypeValue,
+  isContextCheckpointRestoredData,
+  isContextCompactedData,
+  isContextWorkingStateResetData,
   type MessageDeltaData,
   MessageDeltaKind,
   type MessageDeltaKind as MessageDeltaKindValue,
@@ -37,6 +59,7 @@ export type {
   HarnessEventListener,
   StartRunInput,
 } from "./run-coordinator.js";
+export { shouldResetWorkingStateForNewRun } from "./run-coordinator.js";
 export {
   DEFAULT_THINKING_LEVEL,
   isThinkingLevel,

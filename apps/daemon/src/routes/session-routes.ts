@@ -10,6 +10,8 @@ import {
   ResolveApprovalDtoSchema,
   type SessionApprovalParamsDto,
   SessionApprovalParamsDtoSchema,
+  type SessionCheckpointParamsDto,
+  SessionCheckpointParamsDtoSchema,
   type SessionEventsQueryDto,
   SessionEventsQueryDtoSchema,
   type SessionListQueryDto,
@@ -107,6 +109,17 @@ export async function registerSessionRoutes(
       },
     },
     controller.updateModel,
+  );
+
+  server.post<{ Params: SessionCheckpointParamsDto }>(
+    "/api/sessions/:sessionId/context-checkpoints/:eventSeq/restore",
+    {
+      schema: {
+        params: SessionCheckpointParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.restoreContextCheckpoint,
   );
 
   server.post<{ Body: StartRunDto; Params: SessionParamsDto }>(

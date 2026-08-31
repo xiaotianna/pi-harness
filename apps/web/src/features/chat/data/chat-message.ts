@@ -3,6 +3,7 @@ import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness
 export const ChatMessageType = {
   ASSISTANT: "assistant",
   CODE: "code",
+  CONTEXT_COMPACTION: "context-compaction",
   ERROR: "error",
   IMAGE_GENERATION: "image-generation",
   LOADING: "loading",
@@ -155,6 +156,11 @@ export type ChatCodeMessage = ChatMessageBase & {
   type: typeof ChatMessageType.CODE;
 };
 
+export type ChatContextCompactionMessage = ChatMessageBase & {
+  isActive: boolean;
+  type: typeof ChatMessageType.CONTEXT_COMPACTION;
+};
+
 export type ChatSourcesMessage = ChatMessageBase & {
   defaultExpanded?: boolean;
   label: string;
@@ -210,6 +216,7 @@ export type ChatTaskListMessage = ChatMessageBase & {
 export type ChatMessage =
   | ChatAssistantMessage
   | ChatCodeMessage
+  | ChatContextCompactionMessage
   | ChatErrorMessage
   | ChatImageGenerationMessage
   | ChatLoadingMessage

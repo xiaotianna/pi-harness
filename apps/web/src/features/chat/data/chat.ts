@@ -8,6 +8,7 @@ import type { ComponentType } from "react";
 export type {
   ChatAssistantMessage,
   ChatCodeMessage,
+  ChatContextCompactionMessage,
   ChatErrorMessage,
   ChatFileChange,
   ChatImageGenerationMessage,

@@ -4,6 +4,7 @@ import type {
   CreateSessionDto,
   ResolveApprovalDto,
   SessionApprovalParamsDto,
+  SessionCheckpointParamsDto,
   SessionListQueryDto,
   SessionParamsDto,
   SessionRunParamsDto,
@@ -54,6 +55,22 @@ export class SessionController {
     try {
       const snapshot = await this.sessions.getSnapshot(request.params.sessionId);
       return { events: [...snapshot.events], session: snapshot.session };
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public restoreContextCheckpoint = async (
+    request: FastifyRequest<{ Params: SessionCheckpointParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.sessions.restoreContextCheckpoint(
+        request.params.sessionId,
+        request.params.eventSeq,
+      );
+      return reply.status(204).send();
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     }
@@ -193,7 +210,9 @@ export class SessionController {
   private sendError(request: FastifyRequest, reply: FastifyReply, error: unknown): FastifyReply {
     if (error instanceof SessionServiceError) {
       const status =
-        error.code === "SESSION_NOT_FOUND" || error.code === "RUN_NOT_FOUND"
+        error.code === "SESSION_NOT_FOUND" ||
+        error.code === "RUN_NOT_FOUND" ||
+        error.code === "CONTEXT_CHECKPOINT_NOT_FOUND"
           ? 404
           : error.code === "SESSION_BUSY" || error.code === "RUN_CHANGES_CONFLICT"
             ? 409

@@ -15,11 +15,15 @@ const CustomProviderProtocolSchema = Type.Union([
   Type.Literal(CustomProviderProtocol.ANTHROPIC_MESSAGES),
 ]);
 
+const CustomProviderModelSchema = Type.Object({
+  contextWindow: Type.Integer({ maximum: 10_000_000, minimum: 1_024 }),
+  id: Type.String({ minLength: 1, maxLength: 200 }),
+  maxTokens: Type.Integer({ maximum: 10_000_000, minimum: 1 }),
+});
+
 const ProviderFieldsSchema = Type.Object({
   baseUrl: Type.String({ minLength: 1, maxLength: 2_048 }),
-  modelIds: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), {
-    maxItems: 100,
-  }),
+  models: Type.Array(CustomProviderModelSchema, { maxItems: 100 }),
   name: Type.String({ minLength: 1, maxLength: 100 }),
   protocol: CustomProviderProtocolSchema,
   requiresApiKey: Type.Boolean(),
@@ -31,9 +35,7 @@ export type CreateProviderDto = Static<typeof CreateProviderDtoSchema>;
 export const UpdateProviderDtoSchema = Type.Object({
   baseUrl: Type.Optional(Type.String({ minLength: 1, maxLength: 2_048 })),
   enabled: Type.Optional(Type.Boolean()),
-  modelIds: Type.Optional(
-    Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 100 }),
-  ),
+  models: Type.Optional(Type.Array(CustomProviderModelSchema, { maxItems: 100 })),
   name: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
   protocol: Type.Optional(CustomProviderProtocolSchema),
   requiresApiKey: Type.Optional(Type.Boolean()),

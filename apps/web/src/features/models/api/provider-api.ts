@@ -16,6 +16,7 @@ const ProviderSchema = Type.Object({
     Type.Object({
       contextWindow: Type.Integer({ minimum: 1 }),
       id: Type.String(),
+      maxTokens: Type.Integer({ minimum: 1 }),
       name: Type.String(),
       thinkingLevels: Type.Array(
         Type.Union([
@@ -101,10 +102,16 @@ export type ProviderOAuthState = Static<typeof ProviderOAuthStateSchema>;
 
 export interface ProviderInput {
   baseUrl: string;
-  modelIds: readonly string[];
+  models: readonly ProviderModelInput[];
   name: string;
   protocol: "anthropic-messages" | "openai-completions" | "openai-responses";
   requiresApiKey: boolean;
+}
+
+export interface ProviderModelInput {
+  contextWindow: number;
+  id: string;
+  maxTokens: number;
 }
 
 export type ProviderUpdate = Partial<ProviderInput & { enabled: boolean }>;

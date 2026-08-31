@@ -10,6 +10,7 @@ import { isPlainObject } from "es-toolkit";
 import type { Session, SessionSnapshot } from "../api/session-api";
 import {
   type ChatAssistantMessage,
+  type ChatContextCompactionMessage,
   type ChatMessage,
   type ChatMessageTool,
   ChatMessageType,
@@ -271,6 +272,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   const fileChangesByRunId = summarizeSessionFileChangesByRun(events);
   const revertedRunIds = readRevertedSessionRunIds(events);
   const activeAssistantMessageIdByRunId = new Map<string, string>();
+  const activeCompactionByRunId = new Map<string, ChatContextCompactionMessage>();
   const lastAssistantMessageByRunId = new Map<string, ChatAssistantMessage>();
   const runStartedAtById = new Map<string, number>();
   const streamingContentByRunId = new Map<string, Map<number, StreamingContent>>();
@@ -288,6 +290,34 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   for (const event of events) {
     if (event.type === HarnessEventType.RUN_STARTED && event.runId) {
       runStartedAtById.set(event.runId, event.timestamp);
+      continue;
+    }
+
+    if (event.type === HarnessEventType.CONTEXT_COMPACTION_STARTED && event.runId) {
+      const message: ChatContextCompactionMessage = {
+        id: `context-compaction-${event.id}`,
+        isActive: true,
+        turnId: event.runId,
+        type: ChatMessageType.CONTEXT_COMPACTION,
+      };
+      activeCompactionByRunId.set(event.runId, message);
+      pushMessage(message);
+      continue;
+    }
+
+    if (event.type === HarnessEventType.CONTEXT_COMPACTED && event.runId) {
+      const activeMessage = activeCompactionByRunId.get(event.runId);
+      if (activeMessage) {
+        activeMessage.isActive = false;
+        activeCompactionByRunId.delete(event.runId);
+      } else {
+        pushMessage({
+          id: `context-compaction-${event.id}`,
+          isActive: false,
+          turnId: event.runId,
+          type: ChatMessageType.CONTEXT_COMPACTION,
+        });
+      }
       continue;
     }
 
@@ -518,7 +548,12 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       (message.type === ChatMessageType.TOOL_GROUP &&
         message.tools.some((tool) => tool.state === ChatToolState.REQUIRES_ACTION)),
   );
-  if (activeRunId && !isAwaitingApproval && !hasActiveTool) {
+  if (
+    activeRunId &&
+    !isAwaitingApproval &&
+    !hasActiveTool &&
+    !activeCompactionByRunId.has(activeRunId)
+  ) {
     const messageId =
       activeAssistantMessageIdByRunId.get(activeRunId) ?? `streaming-${activeRunId}`;
     const content = [...(streamingContentByRunId.get(activeRunId)?.entries() ?? [])].sort(

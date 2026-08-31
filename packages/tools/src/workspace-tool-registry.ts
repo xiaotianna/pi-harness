@@ -6,12 +6,19 @@ import { createFindSkillTool } from "./skills/find-skill.js";
 import { createGetSkillTool } from "./skills/get-skill.js";
 import { createLoadSkillTool } from "./skills/load-skill.js";
 import { createSkillCreatorTool, skillCreatorToolPolicy } from "./skills/skill-creator.js";
+import {
+  createResetWorkingStateTool,
+  createRestoreContextCheckpointTool,
+  createSearchSessionHistoryTool,
+} from "./tools/context-runtime.js";
 import { createEditFileTool } from "./tools/edit-file.js";
 import { createListFilesTool } from "./tools/list-files.js";
+import { createUpdatePlanTool } from "./tools/planner.js";
 import { createReadDocumentTool } from "./tools/read-document.js";
 import { createReadFileTool } from "./tools/read-file.js";
 import { createRunCommandTool } from "./tools/run-command.js";
 import { createSearchTextTool } from "./tools/search-text.js";
+import { createUpdateTodosTool } from "./tools/todos.js";
 import { createViewImageTool } from "./tools/view-image.js";
 import { createViewPdfPageTool } from "./tools/view-pdf-page.js";
 import { createWriteFileTool } from "./tools/write-file.js";
@@ -116,5 +123,57 @@ export function createWorkspaceToolRegistry(context: WorkspaceToolContext): Tool
       tool: createSkillCreatorTool(skillRegistry),
     },
   ];
-  return new ToolRegistry([...builtInTools, ...builtInSkills]);
+  const controlTools: ToolRegistration[] = [
+    ...(context.onSessionHistorySearched === undefined
+      ? []
+      : [
+          {
+            policy: readOnlyPolicy,
+            source: BUILT_IN_SOURCE,
+            timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
+            tool: createSearchSessionHistoryTool(context.onSessionHistorySearched),
+          },
+        ]),
+    ...(context.onPlanUpdated === undefined
+      ? []
+      : [
+          {
+            policy: readOnlyPolicy,
+            source: BUILT_IN_SOURCE,
+            timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
+            tool: createUpdatePlanTool(context.onPlanUpdated),
+          },
+        ]),
+    ...(context.onTodosUpdated === undefined
+      ? []
+      : [
+          {
+            policy: readOnlyPolicy,
+            source: BUILT_IN_SOURCE,
+            timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
+            tool: createUpdateTodosTool(context.onTodosUpdated),
+          },
+        ]),
+    ...(context.onContextCheckpointRestored === undefined
+      ? []
+      : [
+          {
+            policy: readOnlyPolicy,
+            source: BUILT_IN_SOURCE,
+            timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
+            tool: createRestoreContextCheckpointTool(context.onContextCheckpointRestored),
+          },
+        ]),
+    ...(context.onWorkingStateReset === undefined
+      ? []
+      : [
+          {
+            policy: readOnlyPolicy,
+            source: BUILT_IN_SOURCE,
+            timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
+            tool: createResetWorkingStateTool(context.onWorkingStateReset),
+          },
+        ]),
+  ];
+  return new ToolRegistry([...builtInTools, ...builtInSkills, ...controlTools]);
 }

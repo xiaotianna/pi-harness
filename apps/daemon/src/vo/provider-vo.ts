@@ -4,6 +4,7 @@ import { type Static, Type } from "typebox";
 const ProviderModelVoSchema = Type.Object({
   contextWindow: Type.Integer({ minimum: 1 }),
   id: Type.String({ minLength: 1 }),
+  maxTokens: Type.Integer({ minimum: 1 }),
   name: Type.String({ minLength: 1 }),
   thinkingLevels: Type.Array(
     Type.Union([

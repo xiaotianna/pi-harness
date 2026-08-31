@@ -302,6 +302,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
               <ChatComposer
                 className="w-full"
                 conversationId={snapshot.session.id}
+                events={events}
                 modelId={snapshot.session.modelId}
                 providerId={snapshot.session.providerId}
                 status={status}

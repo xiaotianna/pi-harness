@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
+import { CONTEXT_WINDOW_EXCEEDED_ERROR_CODE } from "./context/context-pipeline.js";
 import {
   type HarnessEventDraft,
   HarnessEventType,
@@ -18,6 +19,7 @@ const RunErrorCode = {
   ABORTED: "RUN_ABORTED",
   // 模型调用或agent执行失败
   FAILED: "RUN_FAILED",
+  CONTEXT_WINDOW_EXCEEDED: CONTEXT_WINDOW_EXCEEDED_ERROR_CODE,
 } as const;
 
 function sanitizeAgentMessage(message: AgentMessage): AgentMessage {
@@ -59,6 +61,16 @@ function readRunOutcome(messages: AgentMessage[]): HarnessEventDraft<RunFailureD
   }
 
   if (lastMessage.stopReason === "error") {
+    const contextErrorPrefix = `${CONTEXT_WINDOW_EXCEEDED_ERROR_CODE}:`;
+    if (lastMessage.errorMessage?.startsWith(contextErrorPrefix)) {
+      return {
+        data: {
+          code: RunErrorCode.CONTEXT_WINDOW_EXCEEDED,
+          message: lastMessage.errorMessage.slice(contextErrorPrefix.length).trim(),
+        },
+        type: HarnessEventType.RUN_FAILED,
+      };
+    }
     return {
       data: {
         code: RunErrorCode.FAILED,

@@ -1,9 +1,21 @@
 import { resolveWorkspacePath } from "@pi-harness/policy";
+import type {
+  ContextCheckpointRestoreHandler,
+  SessionHistorySearchHandler,
+  WorkingStateResetHandler,
+} from "../tools/context-runtime.js";
+import type { PlanUpdateHandler } from "../tools/planner.js";
+import type { TodoUpdateHandler } from "../tools/todos.js";
 
 // 保存固定的 globalRoot、workspaceRoot 和受保护路径。
 export interface WorkspaceToolContext {
   globalRoot: string;
   isSkillEnabled?: (directory: string) => boolean;
+  onContextCheckpointRestored?: ContextCheckpointRestoreHandler;
+  onPlanUpdated?: PlanUpdateHandler;
+  onSessionHistorySearched?: SessionHistorySearchHandler;
+  onTodosUpdated?: TodoUpdateHandler;
+  onWorkingStateReset?: WorkingStateResetHandler;
   protectedPaths?: readonly string[];
   supportsImageInput?: () => boolean;
   workspaceRoot: string;

@@ -2,9 +2,18 @@ import { mkdir, open, readFile, truncate } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type AgentMessage,
+  type ContextCheckpointRecord,
+  type ContextCompactedData,
   type HarnessEvent,
   HarnessEventType,
+  isContextCheckpointRestoredData,
+  isContextCompactedData,
+  isContextWorkingStateResetData,
+  isPlanUpdatedData,
+  isTodoUpdatedData,
+  type PlanUpdatedData,
   type SessionId,
+  type TodoUpdatedData,
 } from "@pi-harness/agent-runtime";
 import { isError, isPlainObject } from "es-toolkit";
 import { type Static, Type } from "typebox";
@@ -30,9 +39,15 @@ const StoredHarnessEventSchema = Type.Object({
 type StoredHarnessEvent = Static<typeof StoredHarnessEventSchema>;
 
 export interface SessionEventSnapshot {
+  contextCheckpoint: ContextCompactedData | null;
+  contextCheckpointEventSeq: number | null;
+  contextCheckpointHistory: readonly ContextCheckpointRecord[];
+  contextCheckpointTailStartMessageIndex: number | null;
   events: readonly HarnessEvent[];
   lastPersistedSeq: number;
   messages: readonly AgentMessage[];
+  plan: PlanUpdatedData | null;
+  todos: TodoUpdatedData | null;
 }
 
 function isAgentMessage(value: unknown): value is AgentMessage {
@@ -71,6 +86,27 @@ function parseHarnessEvent(value: unknown, expectedSessionId: SessionId): Harnes
     !isAgentMessage(event.data)
   ) {
     throw new Error("Session message event is invalid");
+  }
+  if (event.type === HarnessEventType.CONTEXT_COMPACTED && !isContextCompactedData(event.data)) {
+    throw new Error("Session context checkpoint event is invalid");
+  }
+  if (
+    event.type === HarnessEventType.CONTEXT_CHECKPOINT_RESTORED &&
+    !isContextCheckpointRestoredData(event.data)
+  ) {
+    throw new Error("Session context checkpoint restoration event is invalid");
+  }
+  if (
+    event.type === HarnessEventType.CONTEXT_WORKING_STATE_RESET &&
+    !isContextWorkingStateResetData(event.data)
+  ) {
+    throw new Error("Session working state reset event is invalid");
+  }
+  if (event.type === HarnessEventType.PLAN_UPDATED && !isPlanUpdatedData(event.data)) {
+    throw new Error("Session plan event is invalid");
+  }
+  if (event.type === HarnessEventType.TODO_UPDATED && !isTodoUpdatedData(event.data)) {
+    throw new Error("Session todo event is invalid");
   }
 
   return event as unknown as HarnessEvent;
@@ -113,7 +149,17 @@ export class SessionEventStore {
     } catch (error: unknown) {
       if (isError(error) && "code" in error && error.code === "ENOENT") {
         if (!this.lastSeqBySession.has(sessionId)) this.lastSeqBySession.set(sessionId, 0);
-        return { events: [], lastPersistedSeq: 0, messages: [] };
+        return {
+          contextCheckpoint: null,
+          contextCheckpointEventSeq: null,
+          contextCheckpointHistory: [],
+          contextCheckpointTailStartMessageIndex: null,
+          events: [],
+          lastPersistedSeq: 0,
+          messages: [],
+          plan: null,
+          todos: null,
+        };
       }
       throw error;
     }
@@ -144,14 +190,69 @@ export class SessionEventStore {
       }
     }
 
-    const messages = events.flatMap((event) =>
-      event.type === HarnessEventType.MESSAGE_COMPLETED && isAgentMessage(event.data)
-        ? [event.data]
-        : [],
-    );
+    const messages: AgentMessage[] = [];
+    const contextCheckpointHistory: ContextCheckpointRecord[] = [];
+    let contextCheckpointRecord: ContextCheckpointRecord | null = null;
+    let contextCheckpointTailStartMessageIndex: number | null = null;
+    let plan: PlanUpdatedData | null = null;
+    let todos: TodoUpdatedData | null = null;
+    for (const event of events) {
+      if (event.type === HarnessEventType.MESSAGE_COMPLETED && isAgentMessage(event.data)) {
+        messages.push(event.data);
+      }
+      if (event.type === HarnessEventType.CONTEXT_COMPACTED && isContextCompactedData(event.data)) {
+        const compactedData = event.data;
+        if (
+          compactedData.previousCompactionId !== undefined &&
+          !contextCheckpointHistory.some(
+            (record) => record.data.compactionId === compactedData.previousCompactionId,
+          )
+        ) {
+          throw new Error("Session context checkpoint parent is invalid");
+        }
+        const record = { data: compactedData, eventSeq: event.seq };
+        contextCheckpointHistory.push(record);
+        contextCheckpointRecord = record;
+        contextCheckpointTailStartMessageIndex = null;
+      } else if (
+        event.type === HarnessEventType.CONTEXT_CHECKPOINT_RESTORED &&
+        isContextCheckpointRestoredData(event.data)
+      ) {
+        const restoredData = event.data;
+        const restored = contextCheckpointHistory.find(
+          (record) => record.eventSeq === restoredData.sourceEventSeq,
+        );
+        if (restored === undefined) {
+          throw new Error("Session context checkpoint restoration target is invalid");
+        }
+        contextCheckpointRecord = restored;
+        contextCheckpointTailStartMessageIndex = messages.length;
+      } else if (event.type === HarnessEventType.CONTEXT_WORKING_STATE_RESET) {
+        plan = null;
+        todos = null;
+      } else if (event.type === HarnessEventType.PLAN_UPDATED && isPlanUpdatedData(event.data)) {
+        plan = event.data;
+      } else if (event.type === HarnessEventType.TODO_UPDATED && isTodoUpdatedData(event.data)) {
+        todos = event.data;
+      }
+    }
+    const contextCheckpoint = contextCheckpointRecord?.data ?? null;
+    if (contextCheckpoint !== null && contextCheckpoint.sourceMessageCount > messages.length) {
+      throw new Error("Session context checkpoint exceeds the stored message history");
+    }
     const knownSeq = this.lastSeqBySession.get(sessionId) ?? 0;
     if (previousSeq > knownSeq) this.lastSeqBySession.set(sessionId, previousSeq);
-    return { events, lastPersistedSeq: previousSeq, messages };
+    return {
+      contextCheckpoint,
+      contextCheckpointEventSeq: contextCheckpointRecord?.eventSeq ?? null,
+      contextCheckpointHistory,
+      contextCheckpointTailStartMessageIndex,
+      events,
+      lastPersistedSeq: previousSeq,
+      messages,
+      plan,
+      todos,
+    };
   }
 
   public async append(event: HarnessEvent): Promise<void> {

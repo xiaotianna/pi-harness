@@ -12,6 +12,8 @@
     "dev": "pnpm --parallel --filter @pi-harness/daemon --filter @pi-harness/web dev",
     "dev:daemon": "pnpm --filter @pi-harness/daemon dev",
     "dev:web": "pnpm --filter @pi-harness/web dev",
+    "eval:context": "pnpm --filter @pi-harness/evals eval:context",
+    "eval:context:live": "pnpm --filter @pi-harness/evals eval:context:live",
     "dev:docker": "docker compose -f docker-compose.dev.yml up -d",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
