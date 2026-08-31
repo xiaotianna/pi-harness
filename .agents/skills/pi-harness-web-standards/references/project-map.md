@@ -55,6 +55,7 @@
 | 危险确认 | HeroUI `AlertDialog`，明确说明后果 | `features/chat/components/chat-shell-dialogs.tsx`、`features/auth/components/user-menu.tsx` |
 | 状态与反馈 | `Alert`、`Chip`、全局 `toast` | `features/auth/views/login-page.tsx`、`features/settings/components/model-settings-panel.tsx` |
 | AI 等待与生成状态 | assistant-ui Elements `GenerationLoader`、`ThinkingIndicator` | `components/ai/` |
+| 当前 Plans / Todos | assistant-ui Elements `AgentPlan`、`TodoList`；只重放活动 Run 的非空最新状态，在输入器上方左右双栏展示，各自保留官网结构并使用独立 `ScrollShadow`；HeroUI `Disclosure` 默认完整展开，可折叠为带图标和独立语义色的两组 `Chip` 进度摘要，Run 终态后隐藏，不加入思考链 | `components/ai/agent-plan.tsx`、`components/ai/todo-list.tsx`、`features/chat/components/working-state-panel.tsx` |
 | 页面数据加载 | 骨架屏；不要用于 AI 处理状态 | `features/chat/views/chat-page.tsx` |
 | 折叠详情 | HeroUI `Disclosure`；带阴影提示的滚动正文使用 `ScrollShadow` | `components/ai/reasoning-panel.tsx` |
 | 设置面板标题 | 复用 `SettingsPanelHeader` | `features/settings/components/settings-panel-header.tsx` |

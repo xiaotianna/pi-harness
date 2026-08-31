@@ -10,6 +10,8 @@ export const PlanStepStatus = {
 
 export type PlanStepStatus = (typeof PlanStepStatus)[keyof typeof PlanStepStatus];
 
+export const UpdatePlanToolName = "update_plan";
+
 const PlanStepSchema = Type.Object({
   status: Type.Union([
     Type.Literal(PlanStepStatus.PENDING),
@@ -45,7 +47,7 @@ export function createUpdatePlanTool(
       "更新当前任务的执行计划。计划应反映真实进度，同时最多只有一个步骤处于 in_progress。",
     executionMode: "sequential",
     label: "Update plan",
-    name: "update_plan",
+    name: UpdatePlanToolName,
     parameters: UpdatePlanParameters,
     async execute(_toolCallId, input) {
       const activeSteps = input.plan.filter((item) => item.status === PlanStepStatus.IN_PROGRESS);

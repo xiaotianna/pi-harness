@@ -10,7 +10,8 @@
     "./harness-event": "./src/harness-event.ts",
     "./thinking-level": "./src/thinking-level.ts",
     "./tool-approval": "./src/tool-approval.ts",
-    "./user-input": "./src/user-input.ts"
+    "./user-input": "./src/user-input.ts",
+    "./working-state": "./src/working-state.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

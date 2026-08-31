@@ -8,11 +8,12 @@ export function TaskListThreadMessage({ message }: { message: ChatTaskListMessag
       <ChatMessagePrimitive.Body>
         <TodoList
           items={message.items.map((item) => ({
-            id: item.label,
+            id: item.id,
             status: item.status,
             text: item.label,
           }))}
           label={message.label}
+          {...(message.revision === undefined ? {} : { revision: message.revision })}
         />
       </ChatMessagePrimitive.Body>
     </ChatMessagePrimitive.Assistant>

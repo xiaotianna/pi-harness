@@ -12,6 +12,8 @@ export const TodoStatus = {
 
 export type TodoStatus = (typeof TodoStatus)[keyof typeof TodoStatus];
 
+export const UpdateTodosToolName = "update_todos";
+
 const TodoItemFields = {
   content: Type.String({ maxLength: 1_000, minLength: 1 }),
   id: Type.String({ maxLength: 100, minLength: 1 }),
@@ -83,7 +85,7 @@ export function createUpdateTodosTool(
       "替换当前任务的 Todo 清单。completed 项的 evidence 由 Runtime 自动关联最近成功的工具结果，不要传入或猜测 toolCallId。",
     executionMode: "sequential",
     label: "Update todos",
-    name: "update_todos",
+    name: UpdateTodosToolName,
     parameters: UpdateTodosParameters,
     async execute(_toolCallId, input) {
       const ids = new Set(input.todos.map((todo) => todo.id));

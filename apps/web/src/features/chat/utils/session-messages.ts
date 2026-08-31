@@ -6,6 +6,7 @@ import {
   MessageDeltaKind,
 } from "@pi-harness/agent-runtime/harness-event";
 import { isHarnessUserMessage } from "@pi-harness/agent-runtime/user-input";
+import { UpdatePlanToolName, UpdateTodosToolName } from "@pi-harness/agent-runtime/working-state";
 import { isPlainObject } from "es-toolkit";
 import type { Session, SessionSnapshot } from "../api/session-api";
 import {
@@ -28,6 +29,8 @@ const TERMINAL_RUN_EVENTS = new Set<HarnessEvent["type"]>([
   HarnessEventType.RUN_COMPLETED,
   HarnessEventType.RUN_FAILED,
 ]);
+
+const WORKING_STATE_TOOL_NAMES = new Set<string>([UpdatePlanToolName, UpdateTodosToolName]);
 
 function readContentText(value: unknown): string {
   if (typeof value === "string") return value;
@@ -103,6 +106,7 @@ function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatM
     ) {
       return [];
     }
+    if (WORKING_STATE_TOOL_NAMES.has(part.name)) return [];
     return [
       {
         input: part.arguments,
@@ -337,6 +341,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       typeof event.data.toolCallId === "string" &&
       typeof event.data.toolName === "string"
     ) {
+      if (WORKING_STATE_TOOL_NAMES.has(event.data.toolName)) continue;
       const existingTool = toolsByCallId.get(event.data.toolCallId);
       if (existingTool) {
         existingTool.input = event.data.arguments;

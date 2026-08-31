@@ -206,10 +206,12 @@ export type ChatImageGenerationMessage = ChatMessageBase & {
 export type ChatTaskListMessage = ChatMessageBase & {
   defaultExpanded?: boolean;
   items: ReadonlyArray<{
+    id: string;
     label: string;
-    status: "completed" | "in-progress" | "pending";
+    status: "blocked" | "cancelled" | "completed" | "in-progress" | "pending";
   }>;
   label: string;
+  revision?: number;
   type: typeof ChatMessageType.TASK_LIST;
 };
 

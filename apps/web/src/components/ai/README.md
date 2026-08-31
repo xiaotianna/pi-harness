@@ -15,6 +15,7 @@
 | `ToolCall` | [Tool call](https://www.assistant-ui.com/elements/tool-call) | 可展开的工具请求、结果与执行状态 |
 | `WebSearch` | [Chat Source：Stacked Favicons + Grouped](https://heroui.pro/docs/react/components/chat-source) | 叠放站点图标与分组来源 |
 | `ImageGeneration` | [Image generation](https://www.assistant-ui.com/elements/image-generation) | 图片生成占位与完成结果 |
-| `TodoList` | [Todo list](https://www.assistant-ui.com/elements/todo-list) | 已完成、进行中、待处理任务列表 |
+| `AgentPlan` | [Agent plan](https://www.assistant-ui.com/elements/agent-plan) | 输入器上方当前 Run 的 Plans 左栏 |
+| `TodoList` | [Todo list](https://www.assistant-ui.com/elements/todo-list) | 输入器上方当前 Run 的 Todos 右栏 |
 
 每个组件独立成文件。消息状态继续由项目的 `HarnessEvent` 和聊天消息数据驱动，不引入 assistant-ui runtime，也不重复接管现有消息外壳、Markdown 和输入器。

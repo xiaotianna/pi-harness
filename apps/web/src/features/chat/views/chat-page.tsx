@@ -24,12 +24,14 @@ import { ChatComposer } from "../components/chat-composer";
 import { ConversationTurnToc } from "../components/conversation-turn-toc";
 import { ThreadMessageList, type ThreadMessageListHandle } from "../components/thread-message-list";
 import { ToolApprovalCard } from "../components/tool-approval-card";
+import { WorkingStatePanel } from "../components/working-state-panel";
 import { ChatPageView } from "../constants/chat-page-view";
 import { ChatMessageType } from "../data/chat";
 import { useSessionEvents } from "../hooks/use-session-events";
 import { useChatPageViewStore } from "../state/chat-page-view-store";
 import { findActiveRunId, sessionEventsToMessages } from "../utils/session-messages";
 import { summarizeSessionUsage } from "../utils/session-usage";
+import { readSessionWorkingState } from "../utils/session-working-state";
 
 const CHAT_VIEW_TRANSITION = {
   duration: 0.18,
@@ -126,6 +128,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const events = snapshot?.events ?? EMPTY_SESSION_EVENTS;
   const messages = useMemo(() => sessionEventsToMessages(events), [events]);
   const usage = useMemo(() => summarizeSessionUsage(events), [events]);
+  const workingState = useMemo(() => readSessionWorkingState(events), [events]);
   const eventActiveRunId = useMemo(() => findActiveRunId(events), [events]);
   const pendingApprovalTool = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -297,7 +300,12 @@ export function ChatPage({ sessionId }: ChatPageProps) {
           className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
         />
         <div className="mx-auto w-full max-w-[714px]">
-          <div className="relative">
+          <WorkingStatePanel
+            plan={workingState.plan}
+            todoRevision={workingState.todoRevision}
+            todos={workingState.todos}
+          />
+          <div className="relative z-10">
             <div inert={pendingApproval !== undefined}>
               <ChatComposer
                 className="w-full"

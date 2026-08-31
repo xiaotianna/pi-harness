@@ -32,6 +32,7 @@ export type SessionHistorySearchHandler = (
 export type ContextCheckpointRestoreHandler = (steps: number) => Promise<number> | number;
 export type WorkingStateResetHandler = (reason: string) => Promise<void> | void;
 
+// checkpoint 缺少旧事实时检索完整历史，可从完整 Session 历史倒序检索有界片段，不把摘要当唯一事实源
 export function createSearchSessionHistoryTool(
   onSearch: SessionHistorySearchHandler,
 ): AgentTool<typeof SearchSessionHistoryParameters, SessionHistorySearchResult> {

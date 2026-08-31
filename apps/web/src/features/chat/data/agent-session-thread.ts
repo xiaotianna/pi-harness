@@ -90,12 +90,13 @@ export const AGENT_SESSION_THREAD: ChatThread = {
       defaultExpanded: true,
       id: "agent-3d",
       items: [
-        { label: "检查现有消息渲染入口", status: "completed" },
-        { label: "接入 assistant-ui Elements", status: "completed" },
-        { label: "实现右侧工作区面板", status: "in-progress" },
-        { label: "核对组件来源文档", status: "pending" },
+        { id: "inspect", label: "检查现有消息渲染入口", status: "completed" },
+        { id: "elements", label: "接入 assistant-ui Elements", status: "completed" },
+        { id: "panel", label: "实现右侧工作区面板", status: "in-progress" },
+        { id: "docs", label: "核对组件来源文档", status: "pending" },
       ],
       label: "实现清单",
+      revision: 1,
       type: ChatMessageType.TASK_LIST,
     },
     {
