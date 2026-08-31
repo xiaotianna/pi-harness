@@ -1,5 +1,6 @@
 import { ChatMessage as ChatMessagePrimitive } from "@agile-avocation/ui-pro";
 import { renderSkillMentions } from "../../../../components/ai/skill-mention";
+import { SearchHighlightedText } from "../../../../components/ui/search-highlighted-text";
 import type { ChatUserMessage } from "../../data/chat";
 import { renderChatContextMentions } from "../chat-context-mention";
 import { MessageActions } from "../message-actions";
@@ -12,7 +13,9 @@ export function UserThreadMessage({ message }: { message: ChatUserMessage }) {
       {message.content ? (
         <ChatMessagePrimitive.Bubble>
           <ChatMessagePrimitive.Content>
-            {renderChatContextMentions(renderSkillMentions(message.content))}
+            <SearchHighlightedText>
+              {renderChatContextMentions(renderSkillMentions(message.content))}
+            </SearchHighlightedText>
           </ChatMessagePrimitive.Content>
         </ChatMessagePrimitive.Bubble>
       ) : null}

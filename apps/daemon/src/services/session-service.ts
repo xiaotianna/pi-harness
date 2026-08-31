@@ -27,6 +27,7 @@ import type {
   WorkspaceRepository,
 } from "../storage/database.js";
 import type { SessionEventSnapshot, SessionEventStore } from "../storage/session-event-store.js";
+import { normalizeSessionSearchQuery, readSessionSearchContent } from "../utils/session-search.js";
 import type { HumanInteractionService, PendingToolApproval } from "./human-interaction-service.js";
 import type { ProviderService } from "./provider-service.js";
 import type { SessionEventService } from "./session-event-service.js";
@@ -78,6 +79,13 @@ export interface UpdateSessionInput {
 
 export interface SessionSnapshot {
   events: readonly HarnessEvent[];
+  session: SessionRecord;
+}
+
+export interface SessionSearchResult {
+  description: string;
+  excerpt: string;
+  messageEventId: string | null;
   session: SessionRecord;
 }
 
@@ -228,6 +236,35 @@ export class SessionService {
 
   public list(archived = false): readonly SessionRecord[] {
     return this.sessions.list(archived);
+  }
+
+  public async search(query: string): Promise<readonly SessionSearchResult[]> {
+    const normalizedQuery = normalizeSessionSearchQuery(query);
+    const sessions = this.sessions.list(false);
+
+    // ponytail: 先按 SQLite Session 索引线性读取 JSONL；会话量导致可测延迟后再加可重建 FTS 索引。
+    const results = await Promise.all(
+      sessions.map(async (session): Promise<SessionSearchResult | null> => {
+        const snapshot = await this.eventStore.load(session.id);
+        const content = readSessionSearchContent(snapshot.messages, normalizedQuery);
+        const hasTitleMatch = session.title.toLocaleLowerCase().includes(normalizedQuery);
+        if (normalizedQuery && !hasTitleMatch && !content.hasMessageMatch) return null;
+        const messageEventIds = snapshot.events.flatMap((event) =>
+          event.type === HarnessEventType.MESSAGE_COMPLETED ? [event.id] : [],
+        );
+        return {
+          description: content.description,
+          excerpt: content.excerpt,
+          messageEventId:
+            content.matchingMessageIndex === null
+              ? null
+              : (messageEventIds[content.matchingMessageIndex] ?? null),
+          session,
+        };
+      }),
+    );
+
+    return results.flatMap((result) => (result === null ? [] : [result]));
   }
 
   public isProviderActive(providerId: string): boolean {

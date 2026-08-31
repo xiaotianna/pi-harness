@@ -29,6 +29,12 @@ export const SessionListQueryDtoSchema = Type.Object({
 
 export type SessionListQueryDto = Static<typeof SessionListQueryDtoSchema>;
 
+export const SessionSearchQueryDtoSchema = Type.Object({
+  query: Type.Optional(Type.String({ maxLength: 500 })),
+});
+
+export type SessionSearchQueryDto = Static<typeof SessionSearchQueryDtoSchema>;
+
 export const SessionRunParamsDtoSchema = Type.Object({
   runId: Type.String({ format: "uuid" }),
   sessionId: Type.String({ format: "uuid" }),

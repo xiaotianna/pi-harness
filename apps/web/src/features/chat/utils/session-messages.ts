@@ -88,6 +88,7 @@ function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatM
             ...(attachments.length === 0 ? {} : { attachments }),
             content: displayContent,
             id: event.id,
+            sourceEventId: event.id,
             timestamp: event.timestamp,
             type: ChatMessageType.USER,
           },
@@ -135,6 +136,7 @@ function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatM
       messages.push({
         content: part.text,
         id: `${messageId}-text-${index}`,
+        sourceEventId: event.id,
         timestamp: event.timestamp,
         type: ChatMessageType.ASSISTANT,
         ...turn,

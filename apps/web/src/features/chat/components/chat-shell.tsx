@@ -26,9 +26,12 @@ import {
   updateWorkspace,
 } from "../api/workspace-api";
 import { workspaceListQueryOptions, workspaceQueryKeys } from "../api/workspace-queries";
+import { ChatPageView } from "../constants/chat-page-view";
 import type { ChatActivePage, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
 import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
 import { useAddWorkspace } from "../hooks/use-add-workspace";
+import { useChatPageViewStore } from "../state/chat-page-view-store";
+import { type ChatSearchTarget, useChatSearchTargetStore } from "../state/chat-search-target-store";
 import { useNewChatStore } from "../state/new-chat-store";
 import { useWorkspaceInspectorStore } from "../state/workspace-inspector-store";
 import { sessionToChatThread } from "../utils/session-messages";
@@ -69,6 +72,9 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const newChatWorkspaceId = useNewChatStore((state) => state.workspaceId);
   const setNewChatWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
   const startNewChatDraft = useNewChatStore((state) => state.startDraft);
+  const setActiveView = useChatPageViewStore((state) => state.setActiveView);
+  const clearSearchTarget = useChatSearchTargetStore((state) => state.clearTarget);
+  const setSearchTarget = useChatSearchTargetStore((state) => state.setTarget);
   const inspectorFiles = useWorkspaceInspectorStore((state) => state.files);
   const inspectorSelectedPath = useWorkspaceInspectorStore((state) => state.selectedPath);
   const inspectorTurnId = useWorkspaceInspectorStore((state) => state.turnId);
@@ -153,11 +159,15 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   );
 
   const handleThreadSelect = useCallback(
-    (thread: ChatThread) => {
+    (target: ChatSearchTarget) => {
       setIsSearchOpen(false);
-      if (!disableNavigation) router.history.push(`${basePath}/${thread.id}`);
+      if (disableNavigation) return;
+      setActiveView(ChatPageView.CONVERSATION);
+      if (target.messageEventId) setSearchTarget(target);
+      else clearSearchTarget();
+      router.history.push(`${basePath}/${target.sessionId}`);
     },
-    [router, basePath, disableNavigation],
+    [basePath, clearSearchTarget, disableNavigation, router, setActiveView, setSearchTarget],
   );
 
   const handleInspectorOpenChange = useCallback(
@@ -403,7 +413,6 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       {children}
       <ChatSearchDialog
         isOpen={isSearchOpen}
-        threads={threads}
         onOpenChange={setIsSearchOpen}
         onSelect={handleThreadSelect}
       />

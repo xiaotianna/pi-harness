@@ -3,33 +3,83 @@
 import { Command } from "@agile-avocation/ui-pro";
 import { Comment as MessageCircle, Magnifier as Search } from "@gravity-ui/icons";
 import { Kbd } from "@heroui/react";
-import { memo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { memo, useEffect, useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
-import type { ChatThread } from "../data/chat";
+import { sessionSearchQueryOptions } from "../api/session-queries";
+import type { ChatSearchTarget } from "../state/chat-search-target-store";
 
 export interface ChatSearchDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  threads: readonly ChatThread[];
-  onSelect: (thread: ChatThread) => void;
+  onSelect: (target: ChatSearchTarget) => void;
+}
+
+function HighlightedText({ query, text }: { query: string; text: string }) {
+  const matchIndex = query ? text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase()) : -1;
+  if (matchIndex < 0) return text;
+
+  return (
+    <>
+      {text.slice(0, matchIndex)}
+      <mark className="bg-transparent font-semibold text-accent">
+        {text.slice(matchIndex, matchIndex + query.length)}
+      </mark>
+      {text.slice(matchIndex + query.length)}
+    </>
+  );
 }
 
 export const ChatSearchDialog = memo(function ChatSearchDialog({
   isOpen,
   onOpenChange,
   onSelect,
-  threads,
 }: ChatSearchDialogProps) {
+  const [inputValue, setInputValue] = useState("");
+  const [query, setQuery] = useState("");
+  const resultsQuery = useQuery({
+    ...sessionSearchQueryOptions(query),
+    enabled: isOpen,
+  });
+
+  useEffect(() => {
+    if (!isOpen) {
+      setInputValue("");
+      setQuery("");
+      return;
+    }
+    const timeout = window.setTimeout(() => setQuery(inputValue.trim()), 180);
+    return () => window.clearTimeout(timeout);
+  }, [inputValue, isOpen]);
+
+  const normalizedInput = inputValue.trim();
+  const visibleResults = normalizedInput === query ? (resultsQuery.data ?? []) : [];
+  const emptyMessage =
+    resultsQuery.isPending || normalizedInput !== query || resultsQuery.isFetching
+      ? normalizedInput
+        ? "正在搜索对话…"
+        : "正在加载对话…"
+      : resultsQuery.isError
+        ? "搜索对话失败，请稍后重试"
+        : normalizedInput
+          ? "没有找到匹配的对话"
+          : "暂无对话";
+
   return (
     <Command>
       <Command.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
-        <Command.Container>
-          <Command.Dialog aria-label="搜索对话">
+        <Command.Container size="lg">
+          <Command.Dialog
+            aria-label="搜索对话"
+            filter={() => true}
+            inputValue={inputValue}
+            onInputChange={setInputValue}
+          >
             <Command.InputGroup aria-label="搜索对话">
               <Command.InputGroup.Prefix>
                 <Search />
               </Command.InputGroup.Prefix>
-              <Command.InputGroup.Input placeholder="搜索你的对话" />
+              <Command.InputGroup.Input maxLength={500} placeholder="搜索标题、描述和对话内容" />
               <Command.InputGroup.ClearButton aria-label="清空搜索" />
               <Command.InputGroup.Suffix>
                 <Kbd className="text-xs">
@@ -37,30 +87,32 @@ export const ChatSearchDialog = memo(function ChatSearchDialog({
                 </Kbd>
               </Command.InputGroup.Suffix>
             </Command.InputGroup>
-            <Command.List
-              renderEmptyState={() => (
-                <div className="flex h-16 items-center justify-center text-sm text-muted">
-                  没有找到匹配的对话
-                </div>
-              )}
-            >
-              <Command.Group heading="最近对话">
-                {threads.map((thread) => (
+            <Command.List aria-label="对话搜索结果" renderEmptyState={() => emptyMessage}>
+              <Command.Group heading={normalizedInput ? "搜索结果" : "最近对话"}>
+                {visibleResults.map(({ excerpt, messageEventId, session }) => (
                   <Command.Item
-                    key={thread.id}
-                    textValue={`${thread.title} ${thread.preview}`}
-                    onAction={() => onSelect(thread)}
+                    className="items-start"
+                    key={session.id}
+                    textValue={`${session.title} ${excerpt}`}
+                    onAction={() => onSelect({ messageEventId, query, sessionId: session.id })}
                   >
-                    <MessageCircle />
-                    <div className="flex min-w-0 flex-col">
-                      <span className="truncate text-sm font-medium text-foreground">
-                        {thread.title}
+                    <MessageCircle className="mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-3">
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          <HighlightedText query={query} text={session.title} />
+                        </span>
+                        <time
+                          className="shrink-0 text-xs font-normal tabular-nums text-muted"
+                          dateTime={new Date(session.updatedAt).toISOString()}
+                        >
+                          {formatChatTimestamp(new Date(session.updatedAt).toISOString())}
+                        </time>
+                      </div>
+                      <span className="mt-1 block truncate text-xs text-muted">
+                        {excerpt ? <HighlightedText query={query} text={excerpt} /> : "暂无消息"}
                       </span>
-                      <span className="truncate text-xs text-muted">{thread.preview}</span>
                     </div>
-                    <span className="ml-auto shrink-0 text-[11px] text-muted">
-                      {formatChatTimestamp(thread.updatedAt)}
-                    </span>
                   </Command.Item>
                 ))}
               </Command.Group>

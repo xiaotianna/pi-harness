@@ -209,6 +209,7 @@ export function ChatComposer({
     setApprovalPolicy,
   } = useApprovalPolicySetting();
   const defaultModelKey = useModelSettingsStore((state) => state.defaultModelKey);
+  const setDefaultModelKey = useModelSettingsStore((state) => state.setDefaultModelKey);
   const conversationModelKey = useModelSettingsStore((state) =>
     conversationId ? state.conversationModelKeys[conversationId] : undefined,
   );
@@ -250,7 +251,6 @@ export function ChatComposer({
     return [skillToken, initialPrompt].filter(Boolean).join(" ");
   }, [initialPrompt, initialSkillLabel, initialSkillName]);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const [draftModelKey, setDraftModelKey] = useState<string | null>(null);
   const [draftThinkingLevel, setDraftThinkingLevel] =
     useState<ThinkingLevelValue>(DEFAULT_THINKING_LEVEL);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
@@ -397,8 +397,7 @@ export function ChatComposer({
 
   const isGenerating = status === "submitted" || status === "streaming";
   const hasDraftContent = hasEditorContent || attachments.length > 0;
-  const preferredModelKey =
-    initialConversationModelKey ?? conversationModelKey ?? draftModelKey ?? defaultModelKey;
+  const preferredModelKey = initialConversationModelKey ?? conversationModelKey ?? defaultModelKey;
   const selectedModelKey =
     preferredModelKey && availableModelKeys.includes(preferredModelKey)
       ? preferredModelKey
@@ -504,7 +503,7 @@ export function ChatComposer({
 
   const handleModelChange = (modelKey: string) => {
     if (!conversationId) {
-      setDraftModelKey(modelKey);
+      setDefaultModelKey(modelKey);
       return;
     }
 

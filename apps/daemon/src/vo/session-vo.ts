@@ -32,6 +32,17 @@ export type SessionVo = Static<typeof SessionVoSchema>;
 
 export const SessionListVoSchema = Type.Array(SessionVoSchema);
 
+export const SessionSearchResultVoSchema = Type.Object({
+  description: Type.String({ maxLength: 160 }),
+  excerpt: Type.String({ maxLength: 502 }),
+  messageEventId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+  session: SessionVoSchema,
+});
+
+export const SessionSearchResultListVoSchema = Type.Array(SessionSearchResultVoSchema);
+
+export type SessionSearchResultVo = Static<typeof SessionSearchResultVoSchema>;
+
 export const SessionSnapshotVoSchema = Type.Object({
   events: Type.Array(HarnessEventVoSchema),
   session: SessionVoSchema,

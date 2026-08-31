@@ -29,6 +29,7 @@ import { ChatPageView } from "../constants/chat-page-view";
 import { ChatMessageType } from "../data/chat";
 import { useSessionEvents } from "../hooks/use-session-events";
 import { useChatPageViewStore } from "../state/chat-page-view-store";
+import { useChatSearchTargetStore } from "../state/chat-search-target-store";
 import { findActiveRunId, sessionEventsToMessages } from "../utils/session-messages";
 import { summarizeSessionUsage } from "../utils/session-usage";
 import { readSessionWorkingState } from "../utils/session-working-state";
@@ -123,6 +124,10 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const isSnapshotReady = snapshot !== undefined;
   useSessionEvents(sessionId, snapshot?.session.lastSeq ?? 0);
   const activeView = useChatPageViewStore((state) => state.activeView);
+  const clearSearchTarget = useChatSearchTargetStore((state) => state.clearTarget);
+  const searchTarget = useChatSearchTargetStore((state) =>
+    state.target?.sessionId === sessionId ? state.target : null,
+  );
   const shouldReduceMotion = useReducedMotion();
   const transition = shouldReduceMotion ? { duration: 0 } : CHAT_VIEW_TRANSITION;
   const events = snapshot?.events ?? EMPTY_SESSION_EVENTS;
@@ -272,9 +277,11 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                     ref={messageListRef}
                     messages={messages}
                     onBeforeTurnNavigate={stopFollowingConversation}
+                    onSearchTargetComplete={clearSearchTarget}
                     scrollContainerRef={conversationRef}
                     workspaceId={snapshot.session.workspaceId}
                     workspaceRoot={snapshot.session.workspaceRoot}
+                    {...(searchTarget ? { searchTarget } : {})}
                   />
                 </ChatConversation.Content>
                 <ChatConversation.ScrollButton aria-label="滚动到底部" />

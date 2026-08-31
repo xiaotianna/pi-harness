@@ -6,7 +6,6 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
-  notFound,
   Outlet,
   redirect,
 } from "@tanstack/react-router";
@@ -21,7 +20,6 @@ import { ChatShell } from "../features/chat/components/chat-shell";
 import { ChatPageSkeleton } from "../features/chat/views/chat-page";
 import { BoardPage } from "../pages/board-page";
 import { ChatThreadPage } from "../pages/chat-thread-page";
-import { ExplorePage } from "../pages/explore-page";
 import { LoginPage } from "../pages/login-page";
 import { NewChatPage } from "../pages/new-chat-page";
 import { queryClient } from "./query-client";
@@ -145,10 +143,12 @@ const boardRoute = createRoute({
   component: BoardPage,
 });
 
-const exploreRoute = createRoute({
+const unknownRoute = createRoute({
   getParentRoute: () => chatLayoutRoute,
-  path: "/explore",
-  component: ExplorePage,
+  path: "$",
+  beforeLoad: () => {
+    throw redirect({ replace: true, to: "/new" });
+  },
 });
 
 const chatThreadRoute = createRoute({
@@ -171,8 +171,11 @@ const chatThreadRoute = createRoute({
           finalError = retryError;
         }
       }
-      if (finalError instanceof ApiRequestError && finalError.status === 404)
-        throw notFound();
+      if (
+        finalError instanceof ApiRequestError &&
+        (finalError.status === 400 || finalError.status === 404)
+      )
+        throw redirect({ replace: true, to: "/new" });
       throw finalError;
     }
   },
@@ -193,12 +196,7 @@ function LoginRoute() {
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  chatLayoutRoute.addChildren([
-    newChatRoute,
-    boardRoute,
-    exploreRoute,
-    chatThreadRoute,
-  ]),
+  chatLayoutRoute.addChildren([newChatRoute, boardRoute, chatThreadRoute, unknownRoute]),
 ]);
 
 export const router = createRouter({ routeTree });

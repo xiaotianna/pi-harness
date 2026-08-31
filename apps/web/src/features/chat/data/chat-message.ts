@@ -101,6 +101,7 @@ type ChatMessageBase = {
   id: string;
   isIntermediate?: boolean;
   sessionId?: string;
+  sourceEventId?: string;
   timestamp?: number;
   turnDurationMs?: number;
   turnId?: string;

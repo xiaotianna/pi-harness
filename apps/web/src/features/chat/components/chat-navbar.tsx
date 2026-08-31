@@ -8,10 +8,6 @@ import type { ChatActivePage } from "../data/chat";
 import { ChatViewToggle } from "./chat-view-toggle";
 
 const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: string }> = {
-  explore: {
-    subtitle: "从示例提示词开始探索工作台能力",
-    title: "探索",
-  },
   board: {
     subtitle: "拖动任务卡片，跟踪项目从待处理到完成的进度",
     title: "项目看板",

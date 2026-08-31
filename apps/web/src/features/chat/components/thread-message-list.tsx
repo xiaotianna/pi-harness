@@ -1,26 +1,33 @@
 import { ChevronRight } from "@gravity-ui/icons";
 import { Disclosure, Separator, toast } from "@heroui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useReducedMotion } from "motion/react";
 import {
   Fragment,
   forwardRef,
   type MouseEvent,
   memo,
   type RefObject,
+  useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { AssistantMarkdownLinkProvider } from "../../../components/ai/assistant-markdown-link";
+import { SearchHighlightProvider } from "../../../components/ui/search-highlighted-text";
 import { openWorkspacePath } from "../api/workspace-api";
 import { type ChatMessage, ChatMessageType } from "../data/chat";
+import type { ChatSearchTarget } from "../state/chat-search-target-store";
 import { getConversationTurnAnchorId } from "../utils/conversation-turns";
 import { ThreadMessage } from "./thread-message/index";
 
 export interface ThreadMessageListProps {
   messages: readonly ChatMessage[];
   onBeforeTurnNavigate?: () => void;
+  onSearchTargetComplete?: () => void;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
+  searchTarget?: ChatSearchTarget;
   workspaceId?: string;
   workspaceRoot?: string;
 }
@@ -75,9 +82,44 @@ function getItemMessage(item: ThreadMessageListItem): ChatMessage | undefined {
   return item.kind === "message" ? item.message : item.messages[0];
 }
 
-function IntermediateTurn({ messages }: { messages: readonly ChatMessage[] }) {
+function SearchTargetMessage({
+  message,
+  onComplete,
+  query,
+  targetMessageId,
+}: {
+  message: ChatMessage;
+  onComplete?: () => void;
+  query: string;
+  targetMessageId: string | null;
+}) {
+  if (message.id !== targetMessageId) return <ThreadMessage message={message} />;
+  return (
+    <div data-search-target="true">
+      <SearchHighlightProvider query={query} {...(onComplete ? { onComplete } : {})}>
+        <ThreadMessage message={message} />
+      </SearchHighlightProvider>
+    </div>
+  );
+}
+
+function IntermediateTurn({
+  messages,
+  onSearchTargetComplete,
+  searchQuery,
+  targetMessageId,
+}: {
+  messages: readonly ChatMessage[];
+  onSearchTargetComplete?: () => void;
+  searchQuery: string;
+  targetMessageId: string | null;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const durationMs = messages[0]?.turnDurationMs;
+
+  useEffect(() => {
+    if (messages.some((message) => message.id === targetMessageId)) setIsOpen(true);
+  }, [messages, targetMessageId]);
 
   return (
     <Disclosure isExpanded={isOpen} onExpandedChange={setIsOpen}>
@@ -98,7 +140,13 @@ function IntermediateTurn({ messages }: { messages: readonly ChatMessage[] }) {
         <Disclosure.Body style={{ paddingInline: 0 }}>
           <div className="flex flex-col gap-2 pt-2">
             {messages.map((message) => (
-              <ThreadMessage key={message.id} message={message} />
+              <SearchTargetMessage
+                key={message.id}
+                message={message}
+                query={searchQuery}
+                targetMessageId={targetMessageId}
+                {...(onSearchTargetComplete ? { onComplete: onSearchTargetComplete } : {})}
+              />
             ))}
           </div>
         </Disclosure.Body>
@@ -109,9 +157,19 @@ function IntermediateTurn({ messages }: { messages: readonly ChatMessage[] }) {
 
 const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessageListProps>(
   function ThreadMessageList(
-    { messages, onBeforeTurnNavigate, scrollContainerRef, workspaceId, workspaceRoot },
+    {
+      messages,
+      onBeforeTurnNavigate,
+      onSearchTargetComplete,
+      scrollContainerRef,
+      searchTarget,
+      workspaceId,
+      workspaceRoot,
+    },
     ref,
   ) {
+    const listRef = useRef<HTMLDivElement>(null);
+    const shouldReduceMotion = useReducedMotion();
     const items = useMemo(() => groupIntermediateMessages(messages), [messages]);
     const isVirtualized = scrollContainerRef !== undefined;
     const { turnIdByItemIndex, turnItemIndexById } = useMemo(() => {
@@ -142,6 +200,68 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       paddingStart: 40,
       scrollPaddingStart: 40,
     });
+    const targetMessageId = useMemo(() => {
+      if (!searchTarget?.messageEventId) return null;
+      const query = searchTarget.query.toLocaleLowerCase();
+      const candidates = messages.filter(
+        (message) => message.sourceEventId === searchTarget.messageEventId,
+      );
+      return (
+        candidates.find(
+          (message) =>
+            (message.type === ChatMessageType.USER || message.type === ChatMessageType.ASSISTANT) &&
+            message.content.toLocaleLowerCase().includes(query),
+        )?.id ??
+        candidates.find(
+          (message) =>
+            message.type === ChatMessageType.USER || message.type === ChatMessageType.ASSISTANT,
+        )?.id ??
+        null
+      );
+    }, [messages, searchTarget]);
+    const targetItemIndex = useMemo(
+      () =>
+        targetMessageId === null
+          ? -1
+          : items.findIndex((item) =>
+              item.kind === "message"
+                ? item.message.id === targetMessageId
+                : item.messages.some((message) => message.id === targetMessageId),
+            ),
+      [items, targetMessageId],
+    );
+
+    useEffect(() => {
+      if (!searchTarget) return;
+      if (targetMessageId === null || targetItemIndex < 0) {
+        onSearchTargetComplete?.();
+        return;
+      }
+
+      onBeforeTurnNavigate?.();
+      if (isVirtualized) virtualizer.scrollToIndex(targetItemIndex, { align: "center" });
+      const scrollTimeout = window.setTimeout(() => {
+        listRef.current?.querySelector('[data-search-target="true"]')?.scrollIntoView({
+          behavior: shouldReduceMotion ? "auto" : "smooth",
+          block: "center",
+        });
+      }, 180);
+      const completionTimeout = window.setTimeout(() => onSearchTargetComplete?.(), 2_800);
+
+      return () => {
+        window.clearTimeout(scrollTimeout);
+        window.clearTimeout(completionTimeout);
+      };
+    }, [
+      isVirtualized,
+      onBeforeTurnNavigate,
+      onSearchTargetComplete,
+      searchTarget,
+      shouldReduceMotion,
+      targetItemIndex,
+      targetMessageId,
+      virtualizer,
+    ]);
 
     useImperativeHandle(
       ref,
@@ -203,9 +323,19 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
           id={turnAnchorId}
         >
           {item.kind === "message" ? (
-            <ThreadMessage message={item.message} />
+            <SearchTargetMessage
+              message={item.message}
+              query={searchTarget?.query ?? ""}
+              targetMessageId={targetMessageId}
+              {...(onSearchTargetComplete ? { onComplete: onSearchTargetComplete } : {})}
+            />
           ) : (
-            <IntermediateTurn messages={item.messages} />
+            <IntermediateTurn
+              messages={item.messages}
+              searchQuery={searchTarget?.query ?? ""}
+              targetMessageId={targetMessageId}
+              {...(onSearchTargetComplete ? { onSearchTargetComplete } : {})}
+            />
           )}
         </div>
       );
@@ -213,7 +343,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
 
     return (
       <AssistantMarkdownLinkProvider workspaceRoot={workspaceRoot}>
-        <div onClickCapture={handleClickCapture}>
+        <div ref={listRef} onClickCapture={handleClickCapture}>
           {isVirtualized ? (
             <div
               className="relative mx-auto w-full max-w-[714px] px-4"

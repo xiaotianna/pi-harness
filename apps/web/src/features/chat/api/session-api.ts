@@ -44,6 +44,13 @@ const SessionSnapshotSchema = Type.Object({
   events: Type.Array(HarnessEventSchema),
   session: SessionSchema,
 });
+const SessionSearchResultSchema = Type.Object({
+  description: Type.String({ maxLength: 160 }),
+  excerpt: Type.String({ maxLength: 502 }),
+  messageEventId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+  session: SessionSchema,
+});
+const SessionSearchResultListSchema = Type.Array(SessionSearchResultSchema);
 const RunAcceptedSchema = Type.Object({ runId: Type.String({ minLength: 1 }) });
 
 export type Session = Static<typeof SessionSchema>;
@@ -51,6 +58,7 @@ export interface SessionSnapshot {
   events: HarnessEvent[];
   session: Session;
 }
+export type SessionSearchResult = Static<typeof SessionSearchResultSchema>;
 export type RunAccepted = Static<typeof RunAcceptedSchema>;
 
 export interface CreateSessionInput {
@@ -92,6 +100,22 @@ export async function listSessions(
     )
   ).json()) as unknown;
   if (!Value.Check(SessionListSchema, body)) throw new Error("daemon 返回了无效的 Session 列表");
+  return body;
+}
+
+export async function searchSessions(
+  query: string,
+  signal?: AbortSignal,
+): Promise<readonly SessionSearchResult[]> {
+  const body = (await (
+    await apiRequest(
+      `/api/sessions/search?query=${encodeURIComponent(query.trim())}`,
+      signal ? { signal } : undefined,
+    )
+  ).json()) as unknown;
+  if (!Value.Check(SessionSearchResultListSchema, body)) {
+    throw new Error("daemon 返回了无效的 Session 搜索结果");
+  }
   return body;
 }
 

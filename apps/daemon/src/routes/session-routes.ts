@@ -20,6 +20,8 @@ import {
   SessionParamsDtoSchema,
   type SessionRunParamsDto,
   SessionRunParamsDtoSchema,
+  type SessionSearchQueryDto,
+  SessionSearchQueryDtoSchema,
   type StartRunDto,
   StartRunDtoSchema,
   type UpdateSessionDto,
@@ -34,6 +36,7 @@ import {
   PendingToolApprovalVoSchema,
   RunAcceptedVoSchema,
   SessionListVoSchema,
+  SessionSearchResultListVoSchema,
   SessionSnapshotVoSchema,
   SessionVoSchema,
 } from "../vo/session-vo.js";
@@ -63,6 +66,17 @@ export async function registerSessionRoutes(
       },
     },
     controller.list,
+  );
+
+  server.get<{ Querystring: SessionSearchQueryDto }>(
+    "/api/sessions/search",
+    {
+      schema: {
+        querystring: SessionSearchQueryDtoSchema,
+        response: { 200: SessionSearchResultListVoSchema, ...errors },
+      },
+    },
+    controller.search,
   );
 
   server.post<{ Body: CreateSessionDto }>(

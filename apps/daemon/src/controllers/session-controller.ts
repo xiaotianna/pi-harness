@@ -8,6 +8,7 @@ import type {
   SessionListQueryDto,
   SessionParamsDto,
   SessionRunParamsDto,
+  SessionSearchQueryDto,
   StartRunDto,
   UpdateSessionDto,
   UpdateSessionModelDto,
@@ -22,6 +23,7 @@ import { isMutationRequestAllowed, rejectMutation } from "../utils/request-secur
 import type {
   PendingToolApprovalVo,
   RunAcceptedVo,
+  SessionSearchResultVo,
   SessionSnapshotVo,
   SessionVo,
 } from "../vo/session-vo.js";
@@ -35,6 +37,17 @@ export class SessionController {
   public list = async (
     request: FastifyRequest<{ Querystring: SessionListQueryDto }>,
   ): Promise<readonly SessionVo[]> => this.sessions.list(request.query.archived ?? false);
+
+  public search = async (
+    request: FastifyRequest<{ Querystring: SessionSearchQueryDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | readonly SessionSearchResultVo[]> => {
+    try {
+      return await this.sessions.search(request.query.query ?? "");
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
 
   public create = async (
     request: FastifyRequest<{ Body: CreateSessionDto }>,

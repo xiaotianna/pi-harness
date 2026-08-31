@@ -17,6 +17,32 @@
   --text-sm: 15px;
 }
 
+.search-keyword-highlight {
+  color: inherit;
+  background-color: transparent;
+  border-radius: 0.25rem;
+  box-decoration-break: clone;
+  animation: search-keyword-pulse 700ms ease-in-out 3;
+}
+
+@keyframes search-keyword-pulse {
+  50% {
+    background-color: var(--accent-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-keyword-highlight {
+    animation: search-keyword-fade 900ms ease-out;
+  }
+
+  @keyframes search-keyword-fade {
+    from {
+      background-color: var(--accent-soft);
+    }
+  }
+}
+
 .markdown ul,
 .markdown ol {
   list-style-position: outside;

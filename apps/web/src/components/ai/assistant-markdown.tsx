@@ -7,6 +7,7 @@ import { Checkbox, Table } from "@heroui/react";
 import { Children, Fragment, isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 import { cn } from "../../shared/utils/cn";
+import { SearchHighlightedText } from "../ui/search-highlighted-text";
 import { AssistantMarkdownLink, isAssistantMarkdownLinkTarget } from "./assistant-markdown-link";
 import { ChartBlock } from "./chart-block";
 import { FlowDiagram } from "./flow-diagram";
@@ -19,9 +20,13 @@ function getLanguage(className?: string): string {
   return className?.match(/language-(\w+)/)?.[1] ?? "plaintext";
 }
 
+function renderMarkdownText(children: ReactNode): ReactNode {
+  return <SearchHighlightedText>{renderSkillMentions(children)}</SearchHighlightedText>;
+}
+
 const ASSISTANT_MARKDOWN_COMPONENTS = {
   a: AssistantMarkdownLink,
-  blockquote: ({ children }) => <blockquote>{renderSkillMentions(children)}</blockquote>,
+  blockquote: ({ children }) => <blockquote>{renderMarkdownText(children)}</blockquote>,
   code: ({ children, className, node, ...props }) => {
     const isInline =
       !node?.position?.start.line || node.position.start.line === node.position.end.line;
@@ -60,7 +65,7 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
           data-slot="markdown-inline-code"
           {...props}
         >
-          {children}
+          <SearchHighlightedText>{children}</SearchHighlightedText>
         </code>
       );
     }
@@ -95,7 +100,7 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
   tr: ({ children }) => <Table.Row>{children}</Table.Row>,
   th: ({ children, style }) => (
     <Table.Column className="!border-0 !px-4 !py-2.5" {...(style === undefined ? {} : { style })}>
-      {children}
+      <SearchHighlightedText>{children}</SearchHighlightedText>
     </Table.Column>
   ),
   td: ({ children, style }) => (
@@ -103,7 +108,7 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
       className="!border-x-0 !border-t-0 !border-b !border-separator-tertiary/50 !px-4 !py-3"
       {...(style === undefined ? {} : { style })}
     >
-      {children}
+      <SearchHighlightedText>{children}</SearchHighlightedText>
     </Table.Cell>
   ),
   input: ({ checked, type }) =>
@@ -121,14 +126,14 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
         </Checkbox.Content>
       </Checkbox>
     ) : null,
-  h1: ({ children }) => <h1>{renderSkillMentions(children)}</h1>,
-  h2: ({ children }) => <h2>{renderSkillMentions(children)}</h2>,
-  h3: ({ children }) => <h3>{renderSkillMentions(children)}</h3>,
-  h4: ({ children }) => <h4>{renderSkillMentions(children)}</h4>,
-  h5: ({ children }) => <h5>{renderSkillMentions(children)}</h5>,
-  h6: ({ children }) => <h6>{renderSkillMentions(children)}</h6>,
-  li: ({ children }) => <li>{renderSkillMentions(children)}</li>,
-  p: ({ children }) => <p>{renderSkillMentions(children)}</p>,
+  h1: ({ children }) => <h1>{renderMarkdownText(children)}</h1>,
+  h2: ({ children }) => <h2>{renderMarkdownText(children)}</h2>,
+  h3: ({ children }) => <h3>{renderMarkdownText(children)}</h3>,
+  h4: ({ children }) => <h4>{renderMarkdownText(children)}</h4>,
+  h5: ({ children }) => <h5>{renderMarkdownText(children)}</h5>,
+  h6: ({ children }) => <h6>{renderMarkdownText(children)}</h6>,
+  li: ({ children }) => <li>{renderMarkdownText(children)}</li>,
+  p: ({ children }) => <p>{renderMarkdownText(children)}</p>,
 } satisfies Components;
 
 export function AssistantMarkdown(props: Omit<MarkdownProps, "components">) {
