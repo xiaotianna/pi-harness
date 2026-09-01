@@ -2,7 +2,7 @@
 
 import { ChatMessage as ChatMessagePrimitive } from "@agile-avocation/ui-pro";
 import { Button, TextArea } from "@heroui/react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { renderSkillMentions } from "../../../../components/ai/skill-mention";
 import { SearchHighlightedText } from "../../../../components/ui/search-highlighted-text";
 import type { ChatUserMessage } from "../../data/chat";
@@ -19,6 +19,12 @@ export function UserThreadMessage({
 }) {
   const [content, setContent] = useState(message.content);
   const [draft, setDraft] = useState<string | null>(null);
+
+  const setDraftTextAreaRef = useCallback((textArea: HTMLTextAreaElement | null) => {
+    if (!textArea) return;
+    const end = textArea.value.length;
+    textArea.setSelectionRange(end, end);
+  }, []);
 
   const handleSave = () => {
     if (draft === null || !draft.trim()) return;
@@ -43,12 +49,13 @@ export function UserThreadMessage({
                   fullWidth
                   aria-label="改写消息"
                   className="resize-none p-1 [--textarea-bg-focus:transparent] [--textarea-bg-hover:transparent] [--textarea-bg:transparent]"
+                  ref={setDraftTextAreaRef}
                   rows={2}
                   value={draft}
                   variant="secondary"
                   onChange={(event) => setDraft(event.target.value)}
                 />
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex justify-end gap-2 px-1 pt-2 pb-1">
                   <Button size="sm" type="button" variant="tertiary" onPress={() => setDraft(null)}>
                     取消
                   </Button>
