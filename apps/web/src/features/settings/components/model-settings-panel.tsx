@@ -151,11 +151,11 @@ export function ModelSettingsPanel() {
           title="默认模型"
         >
           {providersQuery.isPending || isLoading ? (
-            <Skeleton aria-label="正在加载默认模型" className="h-10 w-56 rounded-xl" />
+            <Skeleton aria-label="正在加载默认模型" className="h-10 w-full rounded-xl sm:w-56" />
           ) : (
             <Select
               aria-label="默认模型"
-              className="min-w-56 max-w-64"
+              className="w-full sm:min-w-56 sm:max-w-64"
               isDisabled={isSaving}
               placeholder="暂无可用模型"
               value={defaultModelKey ?? ""}
@@ -181,11 +181,11 @@ export function ModelSettingsPanel() {
                 });
               }}
             >
-              <Select.Trigger>
+              <Select.Trigger className="ps-0 sm:ps-3">
                 <Select.Value className="flex items-center gap-2" />
-                <Select.Indicator />
+                <Select.Indicator className="end-0 sm:end-2" />
               </Select.Trigger>
-              <Select.Popover>
+              <Select.Popover className="w-(--trigger-width) sm:w-auto">
                 <ListBox>
                   {enabledProviders.length === 0 ? (
                     <ListBox.Item isDisabled id="no-default-model" textValue="暂无可用模型">

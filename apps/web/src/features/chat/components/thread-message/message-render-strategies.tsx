@@ -17,7 +17,11 @@ import { UserThreadMessage } from "./user-thread-message";
 import { WebSearchThreadMessage } from "./web-search-thread-message";
 
 type MessageOfType<T extends ChatMessageType> = Extract<ChatMessage, { type: T }>;
-type MessageRenderStrategy = (message: ChatMessage) => ReactNode;
+interface MessageRenderContext {
+  isLastUserMessage: boolean;
+}
+
+type MessageRenderStrategy = (message: ChatMessage, context: MessageRenderContext) => ReactNode;
 
 function isMessageType<T extends ChatMessageType>(
   message: ChatMessage,
@@ -28,9 +32,9 @@ function isMessageType<T extends ChatMessageType>(
 
 function createMessageRenderStrategy<T extends ChatMessageType>(
   type: T,
-  render: (message: MessageOfType<T>) => ReactNode,
+  render: (message: MessageOfType<T>, context: MessageRenderContext) => ReactNode,
 ): MessageRenderStrategy {
-  return (message) => (isMessageType(message, type) ? render(message) : null);
+  return (message, context) => (isMessageType(message, type) ? render(message, context) : null);
 }
 
 export const MESSAGE_RENDER_STRATEGIES = {
@@ -76,8 +80,8 @@ export const MESSAGE_RENDER_STRATEGIES = {
     ChatMessageType.TOOL_GROUP,
     (message) => <ToolGroupThreadMessage message={message} />,
   ),
-  [ChatMessageType.USER]: createMessageRenderStrategy(ChatMessageType.USER, (message) => (
-    <UserThreadMessage message={message} />
+  [ChatMessageType.USER]: createMessageRenderStrategy(ChatMessageType.USER, (message, context) => (
+    <UserThreadMessage isLastUserMessage={context.isLastUserMessage} message={message} />
   )),
   [ChatMessageType.WEB_SEARCH]: createMessageRenderStrategy(
     ChatMessageType.WEB_SEARCH,

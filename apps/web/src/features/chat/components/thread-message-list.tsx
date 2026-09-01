@@ -1,5 +1,5 @@
 import { ChevronRight } from "@gravity-ui/icons";
-import { Disclosure, Separator, toast } from "@heroui/react";
+import { Disclosure, Separator, toast, useMediaQuery } from "@heroui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useReducedMotion } from "motion/react";
 import {
@@ -34,6 +34,7 @@ export interface ThreadMessageListProps {
 
 export interface ThreadMessageListHandle {
   getTurnIdAtOffset: (offset: number) => string | null;
+  scrollToEnd: () => void;
   scrollToTurn: (turnId: string) => void;
 }
 
@@ -83,21 +84,25 @@ function getItemMessage(item: ThreadMessageListItem): ChatMessage | undefined {
 }
 
 function SearchTargetMessage({
+  isLastUserMessage = false,
   message,
   onComplete,
   query,
   targetMessageId,
 }: {
+  isLastUserMessage?: boolean;
   message: ChatMessage;
   onComplete?: () => void;
   query: string;
   targetMessageId: string | null;
 }) {
-  if (message.id !== targetMessageId) return <ThreadMessage message={message} />;
+  if (message.id !== targetMessageId) {
+    return <ThreadMessage isLastUserMessage={isLastUserMessage} message={message} />;
+  }
   return (
     <div data-search-target="true">
       <SearchHighlightProvider query={query} {...(onComplete ? { onComplete } : {})}>
-        <ThreadMessage message={message} />
+        <ThreadMessage isLastUserMessage={isLastUserMessage} message={message} />
       </SearchHighlightProvider>
     </div>
   );
@@ -170,9 +175,13 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
   ) {
     const [hoveredTurnId, setHoveredTurnId] = useState<string | null>(null);
     const listRef = useRef<HTMLDivElement>(null);
+    const isMobile = useMediaQuery("(max-width: 767px)");
     const shouldReduceMotion = useReducedMotion();
     const items = useMemo(() => groupIntermediateMessages(messages), [messages]);
-    const isVirtualized = scrollContainerRef !== undefined;
+    const lastUserMessageId = messages.findLast(
+      (message) => message.type === ChatMessageType.USER,
+    )?.id;
+    const isVirtualized = scrollContainerRef !== undefined && !isMobile;
     const { turnIdByItemIndex, turnItemIndexById } = useMemo(() => {
       const turnIdByItemIndex: Array<string | null> = [];
       const turnItemIndexById = new Map<string, number>();
@@ -190,6 +199,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       return { turnIdByItemIndex, turnItemIndexById };
     }, [items]);
     const virtualizer = useVirtualizer({
+      anchorTo: "end",
       count: isVirtualized ? items.length : 0,
       enabled: isVirtualized,
       estimateSize: () => 180,
@@ -271,6 +281,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
           const item = virtualizer.getVirtualItemForOffset(offset);
           return item ? (turnIdByItemIndex[item.index] ?? null) : null;
         },
+        scrollToEnd: () => virtualizer.scrollToEnd(),
         scrollToTurn: (turnId) => {
           const index = turnItemIndexById.get(turnId);
           if (index !== undefined) {
@@ -330,6 +341,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
         >
           {item.kind === "message" ? (
             <SearchTargetMessage
+              isLastUserMessage={item.message.id === lastUserMessageId}
               message={item.message}
               query={searchTarget?.query ?? ""}
               targetMessageId={targetMessageId}

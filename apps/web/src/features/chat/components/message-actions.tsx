@@ -1,11 +1,13 @@
 "use client";
 
-import { ChatMessageActions } from "@agile-avocation/ui-pro";
+import { ChatMessage, ChatMessageActions } from "@agile-avocation/ui-pro";
+import { Pencil } from "@gravity-ui/icons";
 import { toast } from "@heroui/react";
 import { formatMessageTimestamp } from "../utils/format-message-timestamp";
 
 interface MessageActionsProps {
   content: string;
+  onEdit?: () => void;
   timestamp?: number;
   timestampPosition: "start" | "end";
   variant: "full" | "minimal" | "timestamp";
@@ -13,6 +15,7 @@ interface MessageActionsProps {
 
 export function MessageActions({
   content,
+  onEdit,
   timestamp,
   timestampPosition,
   variant,
@@ -45,6 +48,11 @@ export function MessageActions({
       {variant === "timestamp" ? null : (
         <ChatMessageActions.Copy aria-label="复制消息" tooltip="复制" onPress={handleCopy} />
       )}
+      {onEdit ? (
+        <ChatMessage.Action aria-label="编辑消息" tooltip="编辑" onPress={onEdit}>
+          <Pencil aria-hidden className="size-4" />
+        </ChatMessage.Action>
+      ) : null}
       {variant === "full" ? (
         <>
           <ChatMessageActions.Regenerate aria-label="重新生成" tooltip="重新生成" />

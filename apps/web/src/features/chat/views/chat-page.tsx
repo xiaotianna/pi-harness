@@ -8,7 +8,7 @@ import type { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import type { RunUserInput } from "@pi-harness/agent-runtime/user-input";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AgentTraceView } from "../../trace";
 import {
   abortSessionRun,
@@ -51,7 +51,7 @@ export function ChatPageSkeleton() {
   return (
     <div
       aria-busy
-      className={`relative flex h-[calc(100svh-var(--chat-navbar-height,64px))] flex-col overflow-hidden ${
+      className={`relative z-30 flex h-[calc(100svh-var(--chat-navbar-height,64px))] flex-col overflow-hidden bg-background ${
         shouldReduceMotion ? "" : "skeleton--shimmer"
       }`}
       role="status"
@@ -153,6 +153,11 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const conversationContentRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<ThreadMessageListHandle>(null);
   const shouldFollowConversationRef = useRef(true);
+  const [positionedSessionId, setPositionedSessionId] = useState<string | null>(null);
+  const isPageReady =
+    activeView !== ChatPageView.CONVERSATION ||
+    searchTarget !== null ||
+    positionedSessionId === sessionId;
   const stopFollowingConversation = useCallback(() => {
     shouldFollowConversationRef.current = false;
   }, []);
@@ -164,15 +169,31 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     if (!conversation || !content) return;
 
     shouldFollowConversationRef.current = true;
-    conversation.scrollTop = conversation.scrollHeight;
-
-    const observer = new ResizeObserver(() => {
-      if (shouldFollowConversationRef.current) {
+    let frameId = 0;
+    const positionAtEnd = () => {
+      if (!shouldFollowConversationRef.current) return;
+      messageListRef.current?.scrollToEnd();
+      conversation.scrollTop = conversation.scrollHeight;
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        messageListRef.current?.scrollToEnd();
         conversation.scrollTop = conversation.scrollHeight;
-      }
-    });
+        frameId = window.requestAnimationFrame(() => {
+          conversation.scrollTop = conversation.scrollHeight;
+          const isAtBottom =
+            conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight <= 1;
+          if (isAtBottom) setPositionedSessionId(sessionId);
+        });
+      });
+    };
+
+    positionAtEnd();
+    const observer = new ResizeObserver(positionAtEnd);
     observer.observe(content);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frameId);
+    };
   }, [activeView, isSnapshotReady, sessionId]);
 
   const startMutation = useMutation({
@@ -246,126 +267,141 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   if (!snapshot) return null;
 
   return (
-    <div className="session-scrollbars flex h-[calc(100svh-var(--chat-navbar-height,64px))] flex-col overflow-hidden">
-      <div className="@container/conversation relative min-h-0 flex-1 overflow-hidden">
-        <AnimatePresence initial={false} mode="wait">
-          <motion.div
-            animate={{ opacity: 1, y: 0 }}
-            className="h-full"
-            exit={{ opacity: 0, y: -4 }}
-            initial={{ opacity: 0, y: 4 }}
-            key={activeView}
-            transition={transition}
-          >
-            {activeView === ChatPageView.CONVERSATION ? (
-              <ChatConversation
-                ref={conversationRef}
-                className="session-scrollbar h-full min-h-0"
-                initial="instant"
-                resize="instant"
-                onScroll={(event) => {
-                  const conversation = event.currentTarget;
-                  shouldFollowConversationRef.current =
-                    conversation.scrollHeight -
-                      conversation.scrollTop -
-                      conversation.clientHeight <=
-                    CHAT_AUTO_SCROLL_THRESHOLD_PX;
-                }}
-              >
-                <ChatConversation.Content ref={conversationContentRef} className="flex flex-col">
-                  <ThreadMessageList
-                    ref={messageListRef}
-                    messages={messages}
-                    onBeforeTurnNavigate={stopFollowingConversation}
-                    onSearchTargetComplete={clearSearchTarget}
-                    scrollContainerRef={conversationRef}
-                    workspaceId={snapshot.session.workspaceId}
-                    workspaceRoot={snapshot.session.workspaceRoot}
-                    {...(searchTarget ? { searchTarget } : {})}
-                  />
-                </ChatConversation.Content>
-                <ChatConversation.ScrollButton aria-label="滚动到底部" />
-                <ChatConversation.ScrollAnchor />
-              </ChatConversation>
-            ) : (
-              <AgentTraceView />
-            )}
-          </motion.div>
-        </AnimatePresence>
-        {activeView === ChatPageView.CONVERSATION ? (
-          <ConversationTurnToc
-            messageListRef={messageListRef}
-            messages={messages}
-            scrollContainerRef={conversationRef}
-          />
-        ) : null}
-      </div>
-
-      <div className="relative z-10 shrink-0 bg-background px-4 pb-2">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
-        />
-        <div className="mx-auto w-full max-w-[714px]">
-          <WorkingStatePanel
-            plan={workingState.plan}
-            todoRevision={workingState.todoRevision}
-            todos={workingState.todos}
-          />
-          <div className="relative z-10">
-            <div inert={pendingApproval !== undefined}>
-              <ChatComposer
-                className="w-full"
-                conversationId={snapshot.session.id}
-                events={events}
-                modelId={snapshot.session.modelId}
-                providerId={snapshot.session.providerId}
-                status={status}
-                thinkingLevel={snapshot.session.thinkingLevel}
-                usage={usage}
-                workspaceId={snapshot.session.workspaceId}
-                onModelChange={(selection) =>
-                  modelMutation.mutateAsync(selection).then(() => undefined)
-                }
-                onStopRun={() =>
-                  activeRunId
-                    ? abortMutation.mutateAsync(activeRunId)
-                    : Promise.reject(new Error("活动 Run 不存在"))
-                }
-                onSubmitMessage={(input) =>
-                  activeRunId
-                    ? followUpMutation.mutateAsync({ input, runId: activeRunId })
-                    : startMutation.mutateAsync(input).then(() => undefined)
-                }
-              />
-            </div>
-            <AnimatePresence initial={false}>
-              {pendingApproval && pendingApprovalTool ? (
-                <motion.div
-                  animate={{ opacity: 1, y: 0 }}
-                  className="absolute inset-x-0 bottom-0 z-20 min-h-full"
-                  exit={{ opacity: 0, y: 4 }}
-                  initial={{ opacity: 0, y: 4 }}
-                  transition={transition}
+    <div className="session-scrollbars relative h-[calc(100svh-var(--chat-navbar-height,64px))] overflow-hidden">
+      <div aria-hidden={!isPageReady} className="flex h-full flex-col" inert={!isPageReady}>
+        <div className="@container/conversation relative min-h-0 flex-1 overflow-hidden">
+          <AnimatePresence initial={false} mode="wait">
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              className="h-full"
+              exit={{ opacity: 0, y: -4 }}
+              initial={{ opacity: 0, y: 4 }}
+              key={activeView}
+              transition={transition}
+            >
+              {activeView === ChatPageView.CONVERSATION ? (
+                <ChatConversation
+                  ref={conversationRef}
+                  className="session-scrollbar h-full min-h-0"
+                  initial="instant"
+                  resize="instant"
+                  onPointerDown={(event) => {
+                    if (event.target === event.currentTarget) stopFollowingConversation();
+                  }}
+                  onScroll={(event) => {
+                    const conversation = event.currentTarget;
+                    const isNearBottom =
+                      conversation.scrollHeight -
+                        conversation.scrollTop -
+                        conversation.clientHeight <=
+                      CHAT_AUTO_SCROLL_THRESHOLD_PX;
+                    if (isNearBottom) shouldFollowConversationRef.current = true;
+                  }}
+                  onTouchMove={stopFollowingConversation}
+                  onWheel={(event) => {
+                    if (event.deltaY < 0) stopFollowingConversation();
+                  }}
                 >
-                  <ToolApprovalCard
-                    key={pendingApproval.approvalId}
-                    approval={pendingApproval}
-                    toolName={pendingApprovalTool.toolName}
-                    onResolve={(approval, decision) =>
-                      approvalMutation.mutateAsync({
-                        approvalId: approval.approvalId,
-                        decision,
-                        runId: approval.runId,
-                      })
-                    }
-                  />
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
+                  <ChatConversation.Content ref={conversationContentRef} className="flex flex-col">
+                    <ThreadMessageList
+                      ref={messageListRef}
+                      messages={messages}
+                      onBeforeTurnNavigate={stopFollowingConversation}
+                      onSearchTargetComplete={clearSearchTarget}
+                      scrollContainerRef={conversationRef}
+                      workspaceId={snapshot.session.workspaceId}
+                      workspaceRoot={snapshot.session.workspaceRoot}
+                      {...(searchTarget ? { searchTarget } : {})}
+                    />
+                  </ChatConversation.Content>
+                  <ChatConversation.ScrollButton aria-label="滚动到底部" />
+                  <ChatConversation.ScrollAnchor />
+                </ChatConversation>
+              ) : (
+                <AgentTraceView />
+              )}
+            </motion.div>
+          </AnimatePresence>
+          {activeView === ChatPageView.CONVERSATION ? (
+            <ConversationTurnToc
+              messageListRef={messageListRef}
+              messages={messages}
+              scrollContainerRef={conversationRef}
+            />
+          ) : null}
+        </div>
+
+        <div className="relative z-10 shrink-0 bg-background px-4 pb-2">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
+          />
+          <div className="mx-auto w-full max-w-[714px]">
+            <WorkingStatePanel
+              plan={workingState.plan}
+              todoRevision={workingState.todoRevision}
+              todos={workingState.todos}
+            />
+            <div className="relative z-10">
+              <div inert={pendingApproval !== undefined}>
+                <ChatComposer
+                  className="w-full"
+                  conversationId={snapshot.session.id}
+                  events={events}
+                  modelId={snapshot.session.modelId}
+                  providerId={snapshot.session.providerId}
+                  status={status}
+                  thinkingLevel={snapshot.session.thinkingLevel}
+                  usage={usage}
+                  workspaceId={snapshot.session.workspaceId}
+                  onModelChange={(selection) =>
+                    modelMutation.mutateAsync(selection).then(() => undefined)
+                  }
+                  onStopRun={() =>
+                    activeRunId
+                      ? abortMutation.mutateAsync(activeRunId)
+                      : Promise.reject(new Error("活动 Run 不存在"))
+                  }
+                  onSubmitMessage={(input) =>
+                    activeRunId
+                      ? followUpMutation.mutateAsync({ input, runId: activeRunId })
+                      : startMutation.mutateAsync(input).then(() => undefined)
+                  }
+                />
+              </div>
+              <AnimatePresence initial={false}>
+                {pendingApproval && pendingApprovalTool ? (
+                  <motion.div
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute inset-x-0 bottom-0 z-20 min-h-full"
+                    exit={{ opacity: 0, y: 4 }}
+                    initial={{ opacity: 0, y: 4 }}
+                    transition={transition}
+                  >
+                    <ToolApprovalCard
+                      key={pendingApproval.approvalId}
+                      approval={pendingApproval}
+                      toolName={pendingApprovalTool.toolName}
+                      onResolve={(approval, decision) =>
+                        approvalMutation.mutateAsync({
+                          approvalId: approval.approvalId,
+                          decision,
+                          runId: approval.runId,
+                        })
+                      }
+                    />
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
       </div>
+      {isPageReady ? null : (
+        <div className="absolute inset-0 z-30 bg-background">
+          <ChatPageSkeleton />
+        </div>
+      )}
     </div>
   );
 }
