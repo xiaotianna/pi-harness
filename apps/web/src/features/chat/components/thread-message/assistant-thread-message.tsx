@@ -6,11 +6,13 @@ import { TurnFileChanges } from "../turn-file-changes";
 
 export function AssistantThreadMessage({ message }: { message: ChatAssistantMessage }) {
   return (
-    <ChatMessagePrimitive.Assistant>
+    <ChatMessagePrimitive.Assistant className={message.content ? undefined : "!py-0"}>
       <ChatMessagePrimitive.Body>
-        <ChatMessagePrimitive.Content>
-          <AssistantMarkdown>{message.content}</AssistantMarkdown>
-        </ChatMessagePrimitive.Content>
+        {message.content ? (
+          <ChatMessagePrimitive.Content>
+            <AssistantMarkdown>{message.content}</AssistantMarkdown>
+          </ChatMessagePrimitive.Content>
+        ) : null}
         {message.fileChanges?.length && message.turnId ? (
           <TurnFileChanges
             files={message.fileChanges}
@@ -21,7 +23,7 @@ export function AssistantThreadMessage({ message }: { message: ChatAssistantMess
         ) : null}
         {message.actions ? (
           <MessageActions
-            content={message.content}
+            content={message.actionContent ?? message.content}
             {...(message.timestamp === undefined ? {} : { timestamp: message.timestamp })}
             timestampPosition="end"
             variant={message.actions}

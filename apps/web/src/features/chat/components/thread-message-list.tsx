@@ -168,6 +168,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
     },
     ref,
   ) {
+    const [hoveredTurnId, setHoveredTurnId] = useState<string | null>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const shouldReduceMotion = useReducedMotion();
     const items = useMemo(() => groupIntermediateMessages(messages), [messages]);
@@ -297,6 +298,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
 
     const renderItem = (item: ThreadMessageListItem, index: number, isVirtualItem: boolean) => {
       const message = getItemMessage(item);
+      const turnId = turnIdByItemIndex[index] ?? null;
       const previousItem = items[index - 1];
       const previousMessage = previousItem ? getItemMessage(previousItem) : undefined;
       const startsNewTurn =
@@ -308,6 +310,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
           : undefined;
 
       return (
+        // biome-ignore lint/a11y/noStaticElementInteractions: hover only reveals actions; keyboard focus is handled by the action controls.
         <div
           className={
             isVirtualItem
@@ -320,7 +323,10 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
                   ? "scroll-mt-10"
                   : undefined
           }
+          data-turn-hovered={turnId !== null && turnId === hoveredTurnId}
           id={turnAnchorId}
+          onMouseEnter={() => setHoveredTurnId(turnId)}
+          onMouseLeave={() => setHoveredTurnId(null)}
         >
           {item.kind === "message" ? (
             <SearchTargetMessage

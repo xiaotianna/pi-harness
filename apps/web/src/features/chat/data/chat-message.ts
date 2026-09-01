@@ -114,7 +114,8 @@ export type ChatUserMessage = ChatMessageBase & {
 };
 
 export type ChatAssistantMessage = ChatMessageBase & {
-  actions?: "full" | "minimal";
+  actionContent?: string;
+  actions?: "full" | "minimal" | "timestamp";
   areFileChangesReverted?: boolean;
   content: string;
   fileChanges?: readonly ChatFileChange[];

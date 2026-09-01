@@ -293,6 +293,24 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     messagesByRunId.set(message.turnId, runMessages);
   };
 
+  const placeTurnActions = (event: HarnessEvent, message?: ChatAssistantMessage) => {
+    if (!event.runId) return;
+    if (message && messagesByRunId.get(event.runId)?.at(-1) === message) {
+      message.actions = "full";
+      message.timestamp = event.timestamp;
+      return;
+    }
+    pushMessage({
+      ...(message ? { actionContent: message.content } : {}),
+      actions: message ? "full" : "timestamp",
+      content: "",
+      id: `turn-footer-${event.id}`,
+      timestamp: event.timestamp,
+      turnId: event.runId,
+      type: ChatMessageType.ASSISTANT,
+    });
+  };
+
   for (const event of events) {
     if (event.type === HarnessEventType.RUN_STARTED && event.runId) {
       runStartedAtById.set(event.runId, event.timestamp);
@@ -492,22 +510,22 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
 
     if (event.type === HarnessEventType.RUN_COMPLETED && event.runId) {
       const message = lastAssistantMessageByRunId.get(event.runId);
+      const startedAt = runStartedAtById.get(event.runId);
+      const fileChanges = fileChangesByRunId.get(event.runId);
       if (message) {
-        const startedAt = runStartedAtById.get(event.runId);
-        const fileChanges = fileChangesByRunId.get(event.runId);
-        message.actions = "full";
         if (fileChanges?.length) {
           message.areFileChangesReverted = revertedRunIds.has(event.runId);
           message.fileChanges = fileChanges;
           message.sessionId = event.sessionId;
         }
-        markRunIntermediateMessages(
-          messagesByRunId.get(event.runId) ?? [],
-          event.runId,
-          startedAt === undefined ? undefined : Math.max(0, event.timestamp - startedAt),
-          message.id,
-        );
       }
+      markRunIntermediateMessages(
+        messagesByRunId.get(event.runId) ?? [],
+        event.runId,
+        startedAt === undefined ? undefined : Math.max(0, event.timestamp - startedAt),
+        message?.id,
+      );
+      placeTurnActions(event, message);
     }
 
     if (event.type === HarnessEventType.RUN_FAILED && event.runId) {
@@ -527,6 +545,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
         type: ChatMessageType.ERROR,
         turnId: event.runId,
       });
+      placeTurnActions(event, lastAssistantMessageByRunId.get(event.runId));
       streamingContentByRunId.delete(event.runId);
     }
 
@@ -538,6 +557,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
         message.fileChanges = fileChanges;
         message.sessionId = event.sessionId;
       }
+      placeTurnActions(event, message);
       streamingContentByRunId.delete(event.runId);
     }
   }

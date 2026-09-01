@@ -212,6 +212,10 @@
   opacity: 1;
 }
 
+[data-turn-hovered="true"] .chat-message--assistant .chat-message__actions {
+  opacity: 1;
+}
+
 @media (hover: none) {
   .chat-message__actions {
     opacity: 1;

@@ -2,18 +2,13 @@
 
 import { ChatMessageActions } from "@agile-avocation/ui-pro";
 import { toast } from "@heroui/react";
-
-const MESSAGE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  hourCycle: "h23",
-  minute: "2-digit",
-});
+import { formatMessageTimestamp } from "../utils/format-message-timestamp";
 
 interface MessageActionsProps {
   content: string;
   timestamp?: number;
   timestampPosition: "start" | "end";
-  variant: "full" | "minimal";
+  variant: "full" | "minimal" | "timestamp";
 }
 
 export function MessageActions({
@@ -33,19 +28,23 @@ export function MessageActions({
   };
 
   const timestampDate = timestamp === undefined ? null : new Date(timestamp);
-  const timestampElement = timestampDate ? (
-    <time
-      className="mx-1 self-center text-xs font-normal tabular-nums text-foreground/40"
-      dateTime={timestampDate.toISOString()}
-    >
-      {MESSAGE_TIME_FORMATTER.format(timestampDate)}
-    </time>
-  ) : null;
+  const timestampLabel = timestamp === undefined ? "" : formatMessageTimestamp(timestamp);
+  const timestampElement =
+    timestampDate && timestampLabel ? (
+      <time
+        className="mx-1 self-center text-xs font-normal tabular-nums text-foreground/40"
+        dateTime={timestampDate.toISOString()}
+      >
+        {timestampLabel}
+      </time>
+    ) : null;
 
   return (
     <ChatMessageActions>
       {timestampPosition === "start" ? timestampElement : null}
-      <ChatMessageActions.Copy aria-label="复制消息" tooltip="复制" onPress={handleCopy} />
+      {variant === "timestamp" ? null : (
+        <ChatMessageActions.Copy aria-label="复制消息" tooltip="复制" onPress={handleCopy} />
+      )}
       {variant === "full" ? (
         <>
           <ChatMessageActions.Regenerate aria-label="重新生成" tooltip="重新生成" />
