@@ -11,6 +11,7 @@ import { sessionQueryKeys } from "../api/session-queries";
 import { updateSnapshotWithEvents } from "../utils/session-messages";
 
 const RECONNECT_DELAY_MS = 2_000;
+const STALE_CONNECTION_TIMEOUT_MS = 45_000;
 const EVENT_TYPES = Object.values(HarnessEventType);
 
 export function useSessionEvents(sessionId: string, initialSeq: number): void {
@@ -30,7 +31,30 @@ export function useSessionEvents(sessionId: string, initialSeq: number): void {
   useEffect(() => {
     let source: EventSource | null = null;
     let reconnectTimer: number | undefined;
+    let staleConnectionTimer: number | undefined;
     let isClosed = false;
+
+    const clearStaleConnectionTimer = () => {
+      if (staleConnectionTimer === undefined) return;
+      window.clearTimeout(staleConnectionTimer);
+      staleConnectionTimer = undefined;
+    };
+
+    const reconnect = () => {
+      source?.close();
+      source = null;
+      clearStaleConnectionTimer();
+      if (isClosed || reconnectTimer !== undefined) return;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = undefined;
+        connect();
+      }, RECONNECT_DELAY_MS);
+    };
+
+    const markConnectionAlive = () => {
+      clearStaleConnectionTimer();
+      staleConnectionTimer = window.setTimeout(reconnect, STALE_CONNECTION_TIMEOUT_MS);
+    };
 
     const commit = (events: readonly HarnessEvent[]) => {
       if (events.length === 0) return;
@@ -53,6 +77,7 @@ export function useSessionEvents(sessionId: string, initialSeq: number): void {
     };
 
     const receive = (message: MessageEvent<string>) => {
+      markConnectionAlive();
       try {
         const event = parseSessionEvent(message.data);
         if (event.sessionId !== sessionId || event.seq <= lastSeqRef.current) return;
@@ -64,11 +89,13 @@ export function useSessionEvents(sessionId: string, initialSeq: number): void {
 
     const connect = () => {
       if (isClosed) return;
-      source = new EventSource(sessionEventsUrl(sessionId, lastSeqRef.current));
-      for (const type of EVENT_TYPES) source.addEventListener(type, receive as EventListener);
-      source.onerror = () => {
-        source?.close();
-        if (!isClosed) reconnectTimer = window.setTimeout(connect, RECONNECT_DELAY_MS);
+      const nextSource = new EventSource(sessionEventsUrl(sessionId, lastSeqRef.current));
+      source = nextSource;
+      for (const type of EVENT_TYPES) nextSource.addEventListener(type, receive as EventListener);
+      nextSource.onmessage = markConnectionAlive;
+      nextSource.onopen = markConnectionAlive;
+      nextSource.onerror = () => {
+        if (source === nextSource) reconnect();
       };
     };
 
@@ -77,6 +104,7 @@ export function useSessionEvents(sessionId: string, initialSeq: number): void {
       isClosed = true;
       source?.close();
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      clearStaleConnectionTimer();
     };
   }, [queryClient, sessionId]);
 }

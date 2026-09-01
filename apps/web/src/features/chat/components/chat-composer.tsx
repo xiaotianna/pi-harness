@@ -50,7 +50,7 @@ import {
   providerQueryOptions,
   useModelSettingsStore,
 } from "../../models";
-import { ApprovalPolicySelect, useApprovalPolicySetting } from "../../settings";
+import { ApprovalPolicySelect, useAppSettings } from "../../settings";
 import { skillListQueryOptions } from "../../skills";
 import { workspaceContextItemsQueryOptions } from "../api/workspace-queries";
 import type { ChatWorkspace } from "../data/chat";
@@ -203,13 +203,11 @@ export function ChatComposer({
   workspaceId,
   workspaces = [],
 }: ChatComposerProps) {
-  const {
-    approvalPolicy,
-    isPending: isApprovalPolicyPending,
-    setApprovalPolicy,
-  } = useApprovalPolicySetting();
-  const defaultModelKey = useModelSettingsStore((state) => state.defaultModelKey);
-  const setDefaultModelKey = useModelSettingsStore((state) => state.setDefaultModelKey);
+  const { isLoading: isAppSettingsLoading, isSaving, settings, updateSettings } = useAppSettings();
+  const approvalPolicy = settings?.approvalPolicy;
+  const defaultModelKey = settings?.defaultModel
+    ? createModelSelectionKey(settings.defaultModel.providerId, settings.defaultModel.modelId)
+    : null;
   const conversationModelKey = useModelSettingsStore((state) =>
     conversationId ? state.conversationModelKeys[conversationId] : undefined,
   );
@@ -251,8 +249,6 @@ export function ChatComposer({
     return [skillToken, initialPrompt].filter(Boolean).join(" ");
   }, [initialPrompt, initialSkillLabel, initialSkillName]);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const [draftThinkingLevel, setDraftThinkingLevel] =
-    useState<ThinkingLevelValue>(DEFAULT_THINKING_LEVEL);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
   const [internalStatus, setInternalStatus] = useState<ChatStatus>("ready");
   const [hasEditorContent, setHasEditorContent] = useState(() =>
@@ -413,7 +409,8 @@ export function ChatComposer({
   const selectedModel = selectedModelProvider?.models.find(
     (model) => createModelSelectionKey(selectedModelProvider.id, model.id) === selectedModelKey,
   );
-  const selectedThinkingLevel = thinkingLevel ?? draftThinkingLevel;
+  const selectedThinkingLevel =
+    thinkingLevel ?? settings?.defaultModel?.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
   const selectedThinkingLevelOption = THINKING_LEVEL_OPTIONS.find(
     (option) => option.value === selectedThinkingLevel,
   );
@@ -502,18 +499,26 @@ export function ChatComposer({
   }, []);
 
   const handleModelChange = (modelKey: string) => {
-    if (!conversationId) {
-      setDefaultModelKey(modelKey);
-      return;
-    }
-
     const provider = availableModelProviders.find((item) =>
       item.models.some((model) => createModelSelectionKey(item.id, model.id) === modelKey),
     );
     const model = provider?.models.find(
       (item) => createModelSelectionKey(provider.id, item.id) === modelKey,
     );
-    if (!onModelChange || !provider || !model) {
+    if (!provider || !model) return;
+    if (!conversationId) {
+      void updateSettings({
+        defaultModel: {
+          modelId: model.id,
+          providerId: provider.id,
+          thinkingLevel: selectedThinkingLevel,
+        },
+      }).catch((error: unknown) => {
+        toast.danger(error instanceof Error ? error.message : "保存默认模型失败");
+      });
+      return;
+    }
+    if (!onModelChange) {
       setConversationModelKey(conversationId, modelKey);
       return;
     }
@@ -532,7 +537,16 @@ export function ChatComposer({
   const handleThinkingLevelChange = (nextThinkingLevel: ThinkingLevelValue) => {
     if (!selectedModel?.thinkingLevels.includes(nextThinkingLevel)) return;
     if (!conversationId) {
-      setDraftThinkingLevel(nextThinkingLevel);
+      if (!selectedModelProvider) return;
+      void updateSettings({
+        defaultModel: {
+          modelId: selectedModel.id,
+          providerId: selectedModelProvider.id,
+          thinkingLevel: nextThinkingLevel,
+        },
+      }).catch((error: unknown) => {
+        toast.danger(error instanceof Error ? error.message : "保存默认模型配置失败");
+      });
       return;
     }
     if (!onModelChange || !selectedModelProvider) return;
@@ -547,7 +561,7 @@ export function ChatComposer({
   };
 
   const handleApprovalPolicyChange = (nextApprovalPolicy: ApprovalPolicy) => {
-    void setApprovalPolicy(nextApprovalPolicy).catch((error: unknown) => {
+    void updateSettings({ approvalPolicy: nextApprovalPolicy }).catch((error: unknown) => {
       toast.danger(error instanceof Error ? error.message : "保存权限审批设置失败");
     });
   };
@@ -824,13 +838,13 @@ export function ChatComposer({
             ) : (
               <ApprovalPolicySelect
                 className="max-w-36 gap-2 px-2"
-                isDisabled={isApprovalPolicyPending}
+                isDisabled={isSaving}
                 showDescription
                 value={approvalPolicy}
                 onChange={handleApprovalPolicyChange}
               />
             )}
-            {providersQuery.isPending ? (
+            {providersQuery.isPending || isAppSettingsLoading ? (
               <Skeleton aria-hidden className="h-8 w-40 rounded-full" />
             ) : (
               <Dropdown>
@@ -841,6 +855,7 @@ export function ChatComposer({
                       : ""
                   }`}
                   className="gap-2 px-2"
+                  isDisabled={isSaving}
                   size="sm"
                   variant="ghost"
                 >

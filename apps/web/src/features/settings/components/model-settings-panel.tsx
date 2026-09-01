@@ -12,9 +12,11 @@ import {
   Select,
   Skeleton,
   Switch,
+  toast,
 } from "@heroui/react";
+import { DEFAULT_THINKING_LEVEL } from "@pi-harness/agent-runtime/thinking-level";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   createModelSelectionKey,
   type ModelProvider,
@@ -22,8 +24,8 @@ import {
   providerQueryKeys,
   providerQueryOptions,
   updateProvider,
-  useModelSettingsStore,
 } from "../../models";
+import { useAppSettings } from "../hooks/use-app-settings";
 import { ProviderEditorDialog } from "./provider-editor-dialog";
 import { ProviderModelsDialog } from "./provider-models-dialog";
 import { SettingsPanelHeader } from "./settings-panel-header";
@@ -48,8 +50,10 @@ function getProviderAuthenticationStatus(provider: ModelProvider): string {
 export function ModelSettingsPanel() {
   const queryClient = useQueryClient();
   const providersQuery = useQuery(providerQueryOptions());
-  const defaultModelKey = useModelSettingsStore((state) => state.defaultModelKey);
-  const setDefaultModelKey = useModelSettingsStore((state) => state.setDefaultModelKey);
+  const { isLoading, isSaving, settings, updateSettings } = useAppSettings();
+  const storedDefaultModelKey = settings?.defaultModel
+    ? createModelSelectionKey(settings.defaultModel.providerId, settings.defaultModel.modelId)
+    : null;
   const [editor, setEditor] = useState<{ isOpen: boolean; provider: ModelProvider | null }>({
     isOpen: false,
     provider: null,
@@ -68,23 +72,17 @@ export function ModelSettingsPanel() {
     [enabledProviders],
   );
   const configuredProviderCount = providers.filter((provider) => provider.isConfigured).length;
-
-  useEffect(() => {
-    if (
-      availableModels.length > 0 &&
-      !enabledProviders.some((provider) =>
-        provider.models.some(
-          (model) => createModelSelectionKey(provider.id, model.id) === defaultModelKey,
-        ),
-      )
-    ) {
-      const firstProvider = enabledProviders.find((provider) => provider.models.length > 0);
-      const firstModel = firstProvider?.models[0];
-      if (firstProvider && firstModel) {
-        setDefaultModelKey(createModelSelectionKey(firstProvider.id, firstModel.id));
-      }
-    }
-  }, [availableModels.length, defaultModelKey, enabledProviders, setDefaultModelKey]);
+  const firstProvider = enabledProviders.find((provider) => provider.models.length > 0);
+  const firstModel = firstProvider?.models[0];
+  const defaultModelKey = enabledProviders.some((provider) =>
+    provider.models.some(
+      (model) => createModelSelectionKey(provider.id, model.id) === storedDefaultModelKey,
+    ),
+  )
+    ? storedDefaultModelKey
+    : firstProvider && firstModel
+      ? createModelSelectionKey(firstProvider.id, firstModel.id)
+      : null;
 
   const enabledMutation = useMutation<
     ModelProvider,
@@ -152,17 +150,35 @@ export function ModelSettingsPanel() {
           description="所有工作区的新对话都会使用；对话内切换只影响该对话。"
           title="默认模型"
         >
-          {providersQuery.isPending ? (
+          {providersQuery.isPending || isLoading ? (
             <Skeleton aria-label="正在加载默认模型" className="h-10 w-56 rounded-xl" />
           ) : (
             <Select
               aria-label="默认模型"
               className="min-w-56 max-w-64"
+              isDisabled={isSaving}
               placeholder="暂无可用模型"
               value={defaultModelKey ?? ""}
               variant="secondary"
               onChange={(key) => {
-                if (typeof key === "string") setDefaultModelKey(key);
+                if (typeof key !== "string") return;
+                const provider = enabledProviders.find((item) =>
+                  item.models.some((model) => createModelSelectionKey(item.id, model.id) === key),
+                );
+                const model = provider?.models.find(
+                  (item) => createModelSelectionKey(provider.id, item.id) === key,
+                );
+                if (!provider || !model) return;
+
+                void updateSettings({
+                  defaultModel: {
+                    modelId: model.id,
+                    providerId: provider.id,
+                    thinkingLevel: settings?.defaultModel?.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+                  },
+                }).catch((error: unknown) => {
+                  toast.danger(error instanceof Error ? error.message : "保存默认模型失败");
+                });
               }}
             >
               <Select.Trigger>

@@ -27,7 +27,7 @@ import {
 import { Brain } from "lucide-react";
 import { type ComponentType, type SVGProps, useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
-import { useApprovalPolicySetting } from "../hooks/use-approval-policy-setting";
+import { useAppSettings } from "../hooks/use-app-settings";
 import { useAppTheme } from "../theme-provider";
 import { ApprovalPolicySelect } from "./approval-policy-select";
 import { MemorySettingsPanel } from "./memory-settings-panel";
@@ -111,7 +111,8 @@ type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
 
 function GeneralSettingsPanel() {
   const { setTheme, theme } = useAppTheme();
-  const { approvalPolicy, isPending, setApprovalPolicy } = useApprovalPolicySetting();
+  const { isSaving, settings, updateSettings } = useAppSettings();
+  const approvalPolicy = settings?.approvalPolicy;
 
   return (
     <section aria-label="通用设置" className="w-full max-w-[720px]">
@@ -121,10 +122,10 @@ function GeneralSettingsPanel() {
         ) : (
           <ApprovalPolicySelect
             className="min-w-40 max-w-56"
-            isDisabled={isPending}
+            isDisabled={isSaving}
             value={approvalPolicy}
             onChange={(approvalPolicy) => {
-              void setApprovalPolicy(approvalPolicy).catch((error: unknown) => {
+              void updateSettings({ approvalPolicy }).catch((error: unknown) => {
                 toast.danger(error instanceof Error ? error.message : "保存权限审批设置失败");
               });
             }}

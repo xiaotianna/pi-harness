@@ -86,7 +86,7 @@ export class SessionEventsController {
       heartbeat = setInterval(() => {
         if (isClosed) return;
         try {
-          reply.raw.write(": heartbeat\n\n");
+          reply.raw.write("data: heartbeat\n\n");
         } catch {
           close();
         }

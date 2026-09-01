@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isThinkingLevel, type ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { ApprovalPolicy, type ApprovalPolicyValue, isApprovalPolicy } from "@pi-harness/policy";
+import { isPlainObject } from "es-toolkit";
 import { DATABASE_MIGRATIONS } from "./migrations.js";
 
 export interface AuthUser {
@@ -66,9 +67,17 @@ export interface ProviderSettingRepository {
 
 export interface AppSettingRepository {
   getApprovalPolicy(): ApprovalPolicyValue;
+  getDefaultModel(): DefaultModelSetting | null;
   getDisabledSkillDirectories(): readonly string[];
   setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void;
+  setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void;
   setDisabledSkillDirectories(directories: readonly string[], updatedAt: number): void;
+}
+
+export interface DefaultModelSetting {
+  modelId: string;
+  providerId: string;
+  thinkingLevel: ThinkingLevel;
 }
 
 export interface SessionRecord {
@@ -459,6 +468,7 @@ class SqliteProviderSettingRepository implements ProviderSettingRepository {
 }
 
 const APPROVAL_POLICY_KEY = "approval_policy";
+const DEFAULT_MODEL_KEY = "default_model";
 const DISABLED_SKILL_DIRECTORIES_KEY = "disabled_skill_directories";
 
 class SqliteAppSettingRepository implements AppSettingRepository {
@@ -475,6 +485,30 @@ class SqliteAppSettingRepository implements AppSettingRepository {
       throw new Error("Invalid database value for approval policy");
     }
     return value;
+  }
+
+  public getDefaultModel(): DefaultModelSetting | null {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(DEFAULT_MODEL_KEY) as DatabaseRow | undefined;
+    if (!row) return null;
+
+    const value = JSON.parse(readRequiredString(row, "value")) as unknown;
+    if (
+      !isPlainObject(value) ||
+      typeof value.providerId !== "string" ||
+      value.providerId.length === 0 ||
+      typeof value.modelId !== "string" ||
+      value.modelId.length === 0 ||
+      !isThinkingLevel(value.thinkingLevel)
+    ) {
+      throw new Error("Invalid database value for default model");
+    }
+    return {
+      modelId: value.modelId,
+      providerId: value.providerId,
+      thinkingLevel: value.thinkingLevel,
+    };
   }
 
   public getDisabledSkillDirectories(): readonly string[] {
@@ -497,6 +531,15 @@ class SqliteAppSettingRepository implements AppSettingRepository {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       )
       .run(APPROVAL_POLICY_KEY, approvalPolicy, updatedAt);
+  }
+
+  public setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(DEFAULT_MODEL_KEY, JSON.stringify(defaultModel), updatedAt);
   }
 
   public setDisabledSkillDirectories(directories: readonly string[], updatedAt: number): void {

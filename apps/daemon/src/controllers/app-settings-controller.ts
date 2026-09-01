@@ -28,7 +28,7 @@ export class AppSettingsController {
   ): Promise<AppSettingsVo | FastifyReply> => {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
-      return this.settings.update(request.body.approvalPolicy);
+      return this.settings.update(request.body);
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     }

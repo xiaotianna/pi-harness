@@ -24,7 +24,7 @@ export function WorkingStatePanel({
   todoRevision,
   todos,
 }: WorkingStatePanelProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   if (plan === null && todos === null) return null;
 
   const activeIndex =
@@ -36,7 +36,7 @@ export function WorkingStatePanel({
 
   return (
     <Surface
-      className={cn("relative -mb-6 rounded-t-[32px] bg-default pb-7", className)}
+      className={cn("relative -mb-6 rounded-t-[32px] bg-default pb-6", className)}
       variant="secondary"
     >
       <Disclosure isExpanded={isExpanded} onExpandedChange={setIsExpanded}>
