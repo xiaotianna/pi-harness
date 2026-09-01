@@ -8,12 +8,12 @@ export interface SettingsPanelHeaderProps {
 
 export function SettingsPanelHeader({ action, description, title }: SettingsPanelHeaderProps) {
   return (
-    <header className="flex items-start justify-between gap-6">
+    <header className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between sm:gap-6">
       <div className="min-w-0">
         <h2 className="text-lg font-medium text-foreground">{title}</h2>
         <p className="mt-2 max-w-xl text-sm text-muted">{description}</p>
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="shrink-0 self-start">{action}</div> : null}
     </header>
   );
 }

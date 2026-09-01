@@ -1,5 +1,6 @@
 "use client";
 
+import { useSidebar } from "@agile-avocation/ui-pro";
 import {
   Archive,
   Shapes4 as Blocks,
@@ -23,6 +24,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   toast,
+  useMediaQuery,
 } from "@heroui/react";
 import { Brain } from "lucide-react";
 import { type ComponentType, type SVGProps, useState } from "react";
@@ -115,13 +117,16 @@ function GeneralSettingsPanel() {
   const approvalPolicy = settings?.approvalPolicy;
 
   return (
-    <section aria-label="通用设置" className="w-full max-w-[720px]">
+    <section
+      aria-label="通用设置"
+      className="w-full max-w-[720px] [&>:first-child]:pt-0 sm:[&>:first-child]:pt-6"
+    >
       <SettingsRow description="所有会话共用的权限模式。" title="权限">
         {approvalPolicy === undefined ? (
-          <Skeleton aria-hidden className="h-10 w-40 rounded-xl" />
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
         ) : (
           <ApprovalPolicySelect
-            className="min-w-40 max-w-56"
+            className="w-full sm:min-w-40 sm:max-w-56"
             isDisabled={isSaving}
             value={approvalPolicy}
             onChange={(approvalPolicy) => {
@@ -141,7 +146,7 @@ function GeneralSettingsPanel() {
       >
         <Select
           aria-label="繁忙时 Enter 键行为"
-          className="min-w-40 max-w-56"
+          className="w-full sm:min-w-40 sm:max-w-56"
           defaultSelectedKey="queue"
           variant="secondary"
         >
@@ -296,50 +301,92 @@ export function SettingsDialog({
   workspaces,
 }: SettingsDialogProps) {
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
+  const isMobile = useMediaQuery("(max-width: 639px)");
+  const { setMobileOpen } = useSidebar();
 
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
       <Modal.Container size="cover">
-        <Modal.Dialog className="h-[640px] min-h-0 max-w-5xl overflow-hidden p-0">
+        <Modal.Dialog className="h-full min-h-0 max-w-5xl overflow-hidden p-0 sm:h-[640px]">
           <Modal.CloseTrigger aria-label="关闭设置" className="z-20" />
           <Modal.Body className="m-0 overflow-hidden p-0">
-            <div className="grid h-full min-h-0 grid-cols-[15rem_minmax(0,1fr)]">
-              <aside className="min-h-0 overflow-y-auto p-4">
+            <div className="flex h-full min-h-0 flex-col sm:grid sm:grid-cols-[15rem_minmax(0,1fr)]">
+              <aside className="shrink-0 p-4 pb-2 sm:min-h-0 sm:overflow-y-auto sm:pb-4">
                 <Modal.Heading className="px-2 py-2">设置</Modal.Heading>
-                <ListBox
-                  aria-label="设置分类"
-                  className="mt-4 p-0"
-                  selectedKeys={new Set([activeSectionId])}
-                  selectionMode="single"
-                  onSelectionChange={(keys) => {
-                    if (keys === "all") return;
+                {isMobile ? (
+                  <Select
+                    aria-label="设置分类"
+                    className="mt-3 w-full"
+                    value={activeSectionId}
+                    variant="secondary"
+                    onChange={(key) => {
+                      if (typeof key !== "string") return;
+                      const nextSection = SETTINGS_SECTIONS.find((section) => section.id === key);
+                      if (nextSection) {
+                        setActiveSectionId(nextSection.id);
+                      }
+                    }}
+                  >
+                    <Select.Trigger>
+                      <Select.Value className="flex items-center gap-2" />
+                      <Select.Indicator />
+                    </Select.Trigger>
+                    <Select.Popover>
+                      <ListBox>
+                        {SETTINGS_SECTIONS.map((section) => {
+                          const Icon = section.icon;
 
-                    const [key] = keys;
-                    const nextSection = SETTINGS_SECTIONS.find((section) => section.id === key);
-                    if (nextSection) {
-                      setActiveSectionId(nextSection.id);
-                    }
-                  }}
-                >
-                  {SETTINGS_SECTIONS.map((section) => {
-                    const Icon = section.icon;
+                          return (
+                            <ListBox.Item
+                              id={section.id}
+                              key={section.id}
+                              textValue={section.label}
+                            >
+                              <Icon aria-hidden className="size-4 shrink-0 text-muted" />
+                              <Label>{section.label}</Label>
+                              <ListBox.ItemIndicator />
+                            </ListBox.Item>
+                          );
+                        })}
+                      </ListBox>
+                    </Select.Popover>
+                  </Select>
+                ) : (
+                  <ListBox
+                    aria-label="设置分类"
+                    className="mt-4 p-0"
+                    selectedKeys={new Set([activeSectionId])}
+                    selectionMode="single"
+                    onSelectionChange={(keys) => {
+                      if (keys === "all") return;
 
-                    return (
-                      <ListBox.Item
-                        className="data-[selected=true]:bg-default data-[selected=true]:text-foreground data-[selected=true]:shadow-surface"
-                        id={section.id}
-                        key={section.id}
-                        textValue={section.label}
-                      >
-                        <Icon aria-hidden className="size-4 shrink-0 text-muted" />
-                        <Label className="text-foreground">{section.label}</Label>
-                      </ListBox.Item>
-                    );
-                  })}
-                </ListBox>
+                      const [key] = keys;
+                      const nextSection = SETTINGS_SECTIONS.find((section) => section.id === key);
+                      if (nextSection) {
+                        setActiveSectionId(nextSection.id);
+                      }
+                    }}
+                  >
+                    {SETTINGS_SECTIONS.map((section) => {
+                      const Icon = section.icon;
+
+                      return (
+                        <ListBox.Item
+                          className="data-[selected=true]:bg-default data-[selected=true]:text-foreground data-[selected=true]:shadow-surface"
+                          id={section.id}
+                          key={section.id}
+                          textValue={section.label}
+                        >
+                          <Icon aria-hidden className="size-4 shrink-0 text-muted" />
+                          <Label className="text-foreground">{section.label}</Label>
+                        </ListBox.Item>
+                      );
+                    })}
+                  </ListBox>
+                )}
               </aside>
 
-              <main className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto py-8 pr-16 pl-8">
+              <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-2 pb-6 sm:py-8 sm:pr-16 sm:pl-8">
                 {activeSectionId === "general" ? (
                   <GeneralSettingsPanel />
                 ) : activeSectionId === "models" ? (
@@ -352,7 +399,10 @@ export function SettingsDialog({
                   <SkillSettingsPanel
                     currentWorkspaceId={currentWorkspaceId}
                     workspaces={workspaces}
-                    onStartChat={onStartSkillChat}
+                    onStartChat={(draft) => {
+                      setMobileOpen(false);
+                      onStartSkillChat(draft);
+                    }}
                   />
                 ) : activeSectionId === "archived" ? (
                   <ArchivedSettingsPanel

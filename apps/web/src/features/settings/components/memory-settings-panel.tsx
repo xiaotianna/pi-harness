@@ -134,7 +134,7 @@ export function MemorySettingsPanel() {
             </Card.Description>
           </div>
         </Card.Header>
-        <Card.Content className="mt-4 grid grid-cols-2 gap-3">
+        <Card.Content className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="flex items-center gap-2 rounded-xl bg-default p-3 text-sm text-foreground">
             <ShieldCheck aria-hidden className="size-4 shrink-0 text-success" />
             敏感内容不会被记住
