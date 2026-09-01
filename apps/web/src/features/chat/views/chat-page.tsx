@@ -247,7 +247,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
 
   return (
     <div className="session-scrollbars flex h-[calc(100svh-var(--chat-navbar-height,64px))] flex-col overflow-hidden">
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div className="@container/conversation relative min-h-0 flex-1 overflow-hidden">
         <AnimatePresence initial={false} mode="wait">
           <motion.div
             animate={{ opacity: 1, y: 0 }}

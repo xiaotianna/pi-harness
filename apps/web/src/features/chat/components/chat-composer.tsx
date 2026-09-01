@@ -20,12 +20,17 @@ import {
 import {
   Button,
   Description,
+  Disclosure,
   Dropdown,
   Label,
+  ListBox,
+  Popover,
+  ScrollShadow,
   Separator,
   Skeleton,
   Tooltip,
   toast,
+  useMediaQuery,
 } from "@heroui/react";
 import type { HarnessEvent } from "@pi-harness/agent-runtime/harness-event";
 import {
@@ -46,6 +51,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { ListLayout, Virtualizer } from "react-aria-components";
 import {
   createModelSelectionKey,
+  type ModelProvider,
   ModelProviderIcon,
   providerQueryOptions,
   useModelSettingsStore,
@@ -181,6 +187,179 @@ function getSkillOptionLabel(name: string, scope: keyof typeof SKILL_SCOPE_LABEL
     .join(" ");
 }
 
+function MobileModelPicker({
+  isDisabled,
+  onModelChange,
+  onThinkingLevelChange,
+  providers,
+  selectedModel,
+  selectedModelKey,
+  selectedProvider,
+  selectedThinkingLevel,
+  selectedThinkingLevelLabel,
+}: {
+  isDisabled: boolean;
+  onModelChange: (modelKey: string) => void;
+  onThinkingLevelChange: (thinkingLevel: ThinkingLevelValue) => void;
+  providers: readonly ModelProvider[];
+  selectedModel: ModelProvider["models"][number] | undefined;
+  selectedModelKey: string | null;
+  selectedProvider: ModelProvider | undefined;
+  selectedThinkingLevel: ThinkingLevelValue;
+  selectedThinkingLevelLabel: string;
+}) {
+  const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const triggerLabel = `选择模型，当前 ${selectedModel?.name ?? "未选择模型"}${
+    selectedModel?.thinkingLevels.length ? `，推理强度${selectedThinkingLevelLabel}` : ""
+  }`;
+
+  return (
+    <Popover isOpen={isOpen} onOpenChange={setIsOpen}>
+      <Tooltip delay={0}>
+        <Button
+          isIconOnly
+          aria-label={triggerLabel}
+          isDisabled={isDisabled}
+          size="sm"
+          variant="ghost"
+        >
+          {selectedProvider ? (
+            <ModelProviderIcon isColor providerId={selectedProvider.id} size={16} />
+          ) : (
+            <CircleAlert className="size-4 text-muted" />
+          )}
+        </Button>
+        <Tooltip.Content placement="top">{selectedModel?.name ?? "选择模型"}</Tooltip.Content>
+      </Tooltip>
+      <Popover.Content
+        className="w-max min-w-52 max-w-[calc(100vw-2rem)] overflow-hidden"
+        placement="top start"
+      >
+        <Popover.Dialog className="p-0">
+          <ScrollShadow className="max-h-[min(70dvh,32rem)] p-1.5" orientation="vertical">
+            <Disclosure>
+              <Disclosure.Heading>
+                <Disclosure.Trigger className="flex min-h-9 w-full items-center gap-3 rounded-2xl px-2.5 py-1.5 text-sm hover:bg-default">
+                  <Label>推理强度</Label>
+                  <Description className="ms-auto text-sm">
+                    {selectedModel?.thinkingLevels.length
+                      ? selectedThinkingLevelLabel
+                      : "当前模型不支持"}
+                  </Description>
+                  <Disclosure.Indicator className="ms-0" />
+                </Disclosure.Trigger>
+              </Disclosure.Heading>
+              <Disclosure.Content>
+                <Disclosure.Body style={{ padding: 0 }}>
+                  <ListBox
+                    aria-label="推理强度"
+                    className="px-1"
+                    disallowEmptySelection
+                    selectedKeys={new Set([selectedThinkingLevel])}
+                    selectionMode="single"
+                    onSelectionChange={(keys) => {
+                      if (keys === "all") return;
+                      const [key] = keys;
+                      const option = THINKING_LEVEL_OPTIONS.find((item) => item.value === key);
+                      if (option) onThinkingLevelChange(option.value);
+                    }}
+                  >
+                    {THINKING_LEVEL_OPTIONS.map((option) => (
+                      <ListBox.Item
+                        id={option.value}
+                        isDisabled={!selectedModel?.thinkingLevels.includes(option.value)}
+                        key={option.value}
+                        textValue={`${option.label} ${option.description}`}
+                      >
+                        <div className="flex flex-col">
+                          <Label>{option.label}</Label>
+                          <Description>{option.description}</Description>
+                        </div>
+                        <ListBox.ItemIndicator />
+                      </ListBox.Item>
+                    ))}
+                  </ListBox>
+                </Disclosure.Body>
+              </Disclosure.Content>
+            </Disclosure>
+            <Separator className="my-1" />
+            {providers.length === 0 ? (
+              <div className="flex min-h-9 items-center gap-3 px-2.5 py-1.5">
+                <CircleAlert className="size-4 shrink-0 text-muted" />
+                <div className="flex flex-col">
+                  <Label>暂无可用模型</Label>
+                  <Description>请先在设置中连接并启用 Provider</Description>
+                </div>
+              </div>
+            ) : (
+              providers.map((provider) => {
+                const isExpanded = expandedProviderId === provider.id;
+
+                return (
+                  <Disclosure
+                    isExpanded={isExpanded}
+                    key={provider.id}
+                    onExpandedChange={(nextIsExpanded) =>
+                      setExpandedProviderId(nextIsExpanded ? provider.id : null)
+                    }
+                  >
+                    <Disclosure.Heading
+                      {...(isExpanded ? { className: "sticky top-0 z-10 bg-overlay" } : {})}
+                    >
+                      <Disclosure.Trigger className="flex min-h-9 w-full items-center gap-3 rounded-2xl px-2.5 py-1.5 text-sm hover:bg-default">
+                        <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                        <Label>{provider.name}</Label>
+                        <Disclosure.Indicator />
+                      </Disclosure.Trigger>
+                    </Disclosure.Heading>
+                    <Disclosure.Content>
+                      <Disclosure.Body style={{ padding: 0 }}>
+                        <Virtualizer layout={ListLayout} layoutOptions={MODEL_MENU_LAYOUT_OPTIONS}>
+                          <ListBox
+                            aria-label={`${provider.name} 模型`}
+                            className="max-h-[min(50dvh,20rem)] overflow-y-auto p-0!"
+                            disallowEmptySelection
+                            items={provider.models}
+                            selectedKeys={
+                              selectedModelKey ? new Set([selectedModelKey]) : new Set()
+                            }
+                            selectionMode="single"
+                            onSelectionChange={(keys) => {
+                              if (keys === "all") return;
+                              const [key] = keys;
+                              if (typeof key !== "string") return;
+                              onModelChange(key);
+                              setIsOpen(false);
+                            }}
+                          >
+                            {(model) => (
+                              <ListBox.Item
+                                className="ps-2 pe-7"
+                                id={createModelSelectionKey(provider.id, model.id)}
+                                key={createModelSelectionKey(provider.id, model.id)}
+                                textValue={model.name}
+                              >
+                                <ModelProviderIcon isColor providerId={provider.id} size={16} />
+                                <Label className="min-w-0 truncate">{model.name}</Label>
+                                <ListBox.ItemIndicator className="start-auto end-2" />
+                              </ListBox.Item>
+                            )}
+                          </ListBox>
+                        </Virtualizer>
+                      </Disclosure.Body>
+                    </Disclosure.Content>
+                  </Disclosure>
+                );
+              })
+            )}
+          </ScrollShadow>
+        </Popover.Dialog>
+      </Popover.Content>
+    </Popover>
+  );
+}
+
 export function ChatComposer({
   className,
   conversationId,
@@ -204,6 +383,7 @@ export function ChatComposer({
   workspaces = [],
 }: ChatComposerProps) {
   const { isLoading: isAppSettingsLoading, isSaving, settings, updateSettings } = useAppSettings();
+  const isMobile = useMediaQuery("(max-width: 639px)");
   const approvalPolicy = settings?.approvalPolicy;
   const defaultModelKey = settings?.defaultModel
     ? createModelSelectionKey(settings.defaultModel.providerId, settings.defaultModel.modelId)
@@ -249,6 +429,10 @@ export function ChatComposer({
     return [skillToken, initialPrompt].filter(Boolean).join(" ");
   }, [initialPrompt, initialSkillLabel, initialSkillName]);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [expandedMobileAddMenuSection, setExpandedMobileAddMenuSection] = useState<
+    "commands" | "skills" | null
+  >(null);
+  const [isMobileAddMenuOpen, setIsMobileAddMenuOpen] = useState(false);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
   const [internalStatus, setInternalStatus] = useState<ChatStatus>("ready");
   const [hasEditorContent, setHasEditorContent] = useState(() =>
@@ -582,6 +766,26 @@ export function ChatComposer({
       });
   };
 
+  const closeMobileAddMenu = () => {
+    setIsMobileAddMenuOpen(false);
+    setExpandedMobileAddMenuSection(null);
+  };
+
+  const addMenuTrigger = (
+    <Tooltip delay={0}>
+      <Button
+        isIconOnly
+        aria-label="添加文件等内容"
+        className="size-8 min-w-8 p-0"
+        size="sm"
+        variant="ghost"
+      >
+        <Plus className="size-4" />
+      </Button>
+      <Tooltip.Content placement="top">添加文件等内容</Tooltip.Content>
+    </Tooltip>
+  );
+
   return (
     <PromptInput
       allowSubmitWhileRunning
@@ -686,104 +890,243 @@ export function ChatComposer({
         </PromptInput.Content>
         <PromptInput.Toolbar>
           <PromptInput.ToolbarStart className="translate-y-1">
-            <Dropdown>
-              <Tooltip delay={0}>
-                <Button
-                  isIconOnly
-                  aria-label="添加文件等内容"
-                  className="size-8 min-w-8 p-0"
-                  size="sm"
-                  variant="ghost"
+            {isMobile ? (
+              <Popover
+                isOpen={isMobileAddMenuOpen}
+                onOpenChange={(nextIsOpen) => {
+                  setIsMobileAddMenuOpen(nextIsOpen);
+                  if (!nextIsOpen) setExpandedMobileAddMenuSection(null);
+                }}
+              >
+                {addMenuTrigger}
+                <Popover.Content
+                  className="w-max min-w-48 max-w-[calc(100vw-2rem)] overflow-hidden"
+                  placement="top start"
                 >
-                  <Plus className="size-4" />
-                </Button>
-                <Tooltip.Content placement="top">添加文件等内容</Tooltip.Content>
-              </Tooltip>
-              <Dropdown.Popover className="min-w-48" placement="bottom start">
-                <Dropdown.Menu
-                  aria-label="添加文件等内容"
-                  onAction={(key) => {
-                    if (key === "attach") fileInputRef.current?.click();
-                  }}
-                >
-                  <Dropdown.Item id="attach" textValue="添加附件">
-                    <Paperclip className="size-4 text-muted" />
-                    <Label>添加附件</Label>
-                  </Dropdown.Item>
-                  <Dropdown.SubmenuTrigger>
-                    <Dropdown.Item id="commands" textValue="命令">
-                      <SquareTerminal className="size-4 text-muted" />
-                      <Label>命令</Label>
-                      <Dropdown.SubmenuIndicator />
-                    </Dropdown.Item>
-                    <Dropdown.Popover className="min-w-40" placement="right bottom">
-                      <Dropdown.Menu
-                        aria-label="命令"
-                        onAction={(key) =>
-                          handleInsertToken(ChatComposerTokenKind.COMMAND, COMMAND_OPTIONS, key)
+                  <Popover.Dialog className="p-0">
+                    <ScrollShadow className="max-h-[min(70dvh,32rem)] p-1.5" orientation="vertical">
+                      <Button
+                        className="min-h-9 w-full justify-start gap-3 px-2.5 py-1.5"
+                        size="sm"
+                        variant="ghost"
+                        onPress={() => {
+                          fileInputRef.current?.click();
+                          closeMobileAddMenu();
+                        }}
+                      >
+                        <Paperclip className="size-4 text-muted" />
+                        <Label>添加附件</Label>
+                      </Button>
+                      <Disclosure
+                        isExpanded={expandedMobileAddMenuSection === "commands"}
+                        onExpandedChange={(isExpanded) =>
+                          setExpandedMobileAddMenuSection(isExpanded ? "commands" : null)
                         }
                       >
-                        {COMMAND_OPTIONS.map((option) => (
-                          <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
-                            <Label>{option.label}</Label>
-                          </Dropdown.Item>
-                        ))}
-                      </Dropdown.Menu>
-                    </Dropdown.Popover>
-                  </Dropdown.SubmenuTrigger>
-                  <Dropdown.SubmenuTrigger>
-                    <Dropdown.Item id="skills" textValue="Skills">
-                      <WandSparkles className="size-4 text-muted" />
-                      <Label>Skills</Label>
-                      <Dropdown.SubmenuIndicator />
-                    </Dropdown.Item>
-                    <Dropdown.Popover className="min-w-40" placement="right bottom">
-                      <Dropdown.Menu
-                        aria-label="Skills"
-                        onAction={(key) =>
-                          handleInsertToken(ChatComposerTokenKind.SKILL, skillOptions, key)
-                        }
-                      >
-                        {!activeWorkspaceId ? (
-                          <Dropdown.Item id="skills-workspace-required" isDisabled>
-                            <Label>请先选择工作区</Label>
-                          </Dropdown.Item>
-                        ) : skillsQuery.isPending ? (
-                          <Dropdown.Item id="skills-loading" isDisabled>
-                            <Label>正在加载 Skills...</Label>
-                          </Dropdown.Item>
-                        ) : skillsQuery.isError ? (
-                          <Dropdown.Item id="skills-error" isDisabled>
-                            <Label>Skills 加载失败</Label>
-                          </Dropdown.Item>
-                        ) : skillOptions.length === 0 ? (
-                          <Dropdown.Item id="skills-empty" isDisabled>
-                            <Label>暂无可用 Skill</Label>
-                          </Dropdown.Item>
-                        ) : (
-                          skillOptions.map((option) => (
-                            <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
-                              <div className="flex min-w-0 flex-1 items-center gap-3">
-                                <WandSparkles aria-hidden className="size-4 shrink-0 text-muted" />
-                                <div className="flex min-w-0 flex-1 flex-col">
+                        <Disclosure.Heading>
+                          <Disclosure.Trigger className="flex min-h-9 w-full items-center gap-3 rounded-2xl px-2.5 py-1.5 text-sm hover:bg-default">
+                            <SquareTerminal className="size-4 text-muted" />
+                            <Label>命令</Label>
+                            <Disclosure.Indicator />
+                          </Disclosure.Trigger>
+                        </Disclosure.Heading>
+                        <Disclosure.Content>
+                          <Disclosure.Body style={{ padding: 0 }}>
+                            <ListBox
+                              aria-label="命令"
+                              className="px-1"
+                              selectionMode="none"
+                              onAction={(key) => {
+                                handleInsertToken(
+                                  ChatComposerTokenKind.COMMAND,
+                                  COMMAND_OPTIONS,
+                                  key,
+                                );
+                                closeMobileAddMenu();
+                              }}
+                            >
+                              {COMMAND_OPTIONS.map((option) => (
+                                <ListBox.Item
+                                  key={option.id}
+                                  id={option.id}
+                                  textValue={option.label}
+                                >
                                   <Label>{option.label}</Label>
-                                  <Description className="max-w-72 truncate">
-                                    {option.description}
-                                  </Description>
-                                </div>
-                                <span className="shrink-0 text-sm text-muted">
-                                  {option.scopeLabel}
-                                </span>
-                              </div>
+                                </ListBox.Item>
+                              ))}
+                            </ListBox>
+                          </Disclosure.Body>
+                        </Disclosure.Content>
+                      </Disclosure>
+                      <Disclosure
+                        isExpanded={expandedMobileAddMenuSection === "skills"}
+                        onExpandedChange={(isExpanded) =>
+                          setExpandedMobileAddMenuSection(isExpanded ? "skills" : null)
+                        }
+                      >
+                        <Disclosure.Heading>
+                          <Disclosure.Trigger className="flex min-h-9 w-full items-center gap-3 rounded-2xl px-2.5 py-1.5 text-sm hover:bg-default">
+                            <WandSparkles className="size-4 text-muted" />
+                            <Label>Skills</Label>
+                            <Disclosure.Indicator />
+                          </Disclosure.Trigger>
+                        </Disclosure.Heading>
+                        <Disclosure.Content>
+                          <Disclosure.Body style={{ padding: 0 }}>
+                            <ListBox
+                              aria-label="Skills"
+                              className="px-1"
+                              selectionMode="none"
+                              onAction={(key) => {
+                                handleInsertToken(ChatComposerTokenKind.SKILL, skillOptions, key);
+                                closeMobileAddMenu();
+                              }}
+                            >
+                              {!activeWorkspaceId ? (
+                                <ListBox.Item id="skills-workspace-required" isDisabled>
+                                  <Label>请先选择工作区</Label>
+                                </ListBox.Item>
+                              ) : skillsQuery.isPending ? (
+                                <ListBox.Item id="skills-loading" isDisabled>
+                                  <Label>正在加载 Skills...</Label>
+                                </ListBox.Item>
+                              ) : skillsQuery.isError ? (
+                                <ListBox.Item id="skills-error" isDisabled>
+                                  <Label>Skills 加载失败</Label>
+                                </ListBox.Item>
+                              ) : skillOptions.length === 0 ? (
+                                <ListBox.Item id="skills-empty" isDisabled>
+                                  <Label>暂无可用 Skill</Label>
+                                </ListBox.Item>
+                              ) : (
+                                skillOptions.map((option) => (
+                                  <ListBox.Item
+                                    key={option.id}
+                                    id={option.id}
+                                    textValue={option.label}
+                                  >
+                                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                                      <WandSparkles
+                                        aria-hidden
+                                        className="size-4 shrink-0 text-muted"
+                                      />
+                                      <div className="flex min-w-0 flex-1 flex-col">
+                                        <Label>{option.label}</Label>
+                                        <Description className="max-w-72 truncate">
+                                          {option.description}
+                                        </Description>
+                                      </div>
+                                      <span className="shrink-0 text-sm text-muted">
+                                        {option.scopeLabel}
+                                      </span>
+                                    </div>
+                                  </ListBox.Item>
+                                ))
+                              )}
+                            </ListBox>
+                          </Disclosure.Body>
+                        </Disclosure.Content>
+                      </Disclosure>
+                    </ScrollShadow>
+                  </Popover.Dialog>
+                </Popover.Content>
+              </Popover>
+            ) : (
+              <Dropdown>
+                {addMenuTrigger}
+                <Dropdown.Popover className="min-w-48" placement="bottom start">
+                  <Dropdown.Menu
+                    aria-label="添加文件等内容"
+                    onAction={(key) => {
+                      if (key === "attach") fileInputRef.current?.click();
+                    }}
+                  >
+                    <Dropdown.Item id="attach" textValue="添加附件">
+                      <Paperclip className="size-4 text-muted" />
+                      <Label>添加附件</Label>
+                    </Dropdown.Item>
+                    <Dropdown.SubmenuTrigger>
+                      <Dropdown.Item id="commands" textValue="命令">
+                        <SquareTerminal className="size-4 text-muted" />
+                        <Label>命令</Label>
+                        <Dropdown.SubmenuIndicator />
+                      </Dropdown.Item>
+                      <Dropdown.Popover className="min-w-40" placement="right bottom">
+                        <Dropdown.Menu
+                          aria-label="命令"
+                          onAction={(key) =>
+                            handleInsertToken(ChatComposerTokenKind.COMMAND, COMMAND_OPTIONS, key)
+                          }
+                        >
+                          {COMMAND_OPTIONS.map((option) => (
+                            <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
+                              <Label>{option.label}</Label>
                             </Dropdown.Item>
-                          ))
-                        )}
-                      </Dropdown.Menu>
-                    </Dropdown.Popover>
-                  </Dropdown.SubmenuTrigger>
-                </Dropdown.Menu>
-              </Dropdown.Popover>
-            </Dropdown>
+                          ))}
+                        </Dropdown.Menu>
+                      </Dropdown.Popover>
+                    </Dropdown.SubmenuTrigger>
+                    <Dropdown.SubmenuTrigger>
+                      <Dropdown.Item id="skills" textValue="Skills">
+                        <WandSparkles className="size-4 text-muted" />
+                        <Label>Skills</Label>
+                        <Dropdown.SubmenuIndicator />
+                      </Dropdown.Item>
+                      <Dropdown.Popover className="min-w-40" placement="right bottom">
+                        <Dropdown.Menu
+                          aria-label="Skills"
+                          onAction={(key) =>
+                            handleInsertToken(ChatComposerTokenKind.SKILL, skillOptions, key)
+                          }
+                        >
+                          {!activeWorkspaceId ? (
+                            <Dropdown.Item id="skills-workspace-required" isDisabled>
+                              <Label>请先选择工作区</Label>
+                            </Dropdown.Item>
+                          ) : skillsQuery.isPending ? (
+                            <Dropdown.Item id="skills-loading" isDisabled>
+                              <Label>正在加载 Skills...</Label>
+                            </Dropdown.Item>
+                          ) : skillsQuery.isError ? (
+                            <Dropdown.Item id="skills-error" isDisabled>
+                              <Label>Skills 加载失败</Label>
+                            </Dropdown.Item>
+                          ) : skillOptions.length === 0 ? (
+                            <Dropdown.Item id="skills-empty" isDisabled>
+                              <Label>暂无可用 Skill</Label>
+                            </Dropdown.Item>
+                          ) : (
+                            skillOptions.map((option) => (
+                              <Dropdown.Item
+                                key={option.id}
+                                id={option.id}
+                                textValue={option.label}
+                              >
+                                <div className="flex min-w-0 flex-1 items-center gap-3">
+                                  <WandSparkles
+                                    aria-hidden
+                                    className="size-4 shrink-0 text-muted"
+                                  />
+                                  <div className="flex min-w-0 flex-1 flex-col">
+                                    <Label>{option.label}</Label>
+                                    <Description className="max-w-72 truncate">
+                                      {option.description}
+                                    </Description>
+                                  </div>
+                                  <span className="shrink-0 text-sm text-muted">
+                                    {option.scopeLabel}
+                                  </span>
+                                </div>
+                              </Dropdown.Item>
+                            ))
+                          )}
+                        </Dropdown.Menu>
+                      </Dropdown.Popover>
+                    </Dropdown.SubmenuTrigger>
+                  </Dropdown.Menu>
+                </Dropdown.Popover>
+              </Dropdown>
+            )}
             {isHero ? (
               <Dropdown>
                 <Button
@@ -834,7 +1177,7 @@ export function ChatComposer({
               </Dropdown>
             ) : null}
             {approvalPolicy === undefined ? (
-              <Skeleton aria-hidden className="h-8 w-32 rounded-full" />
+              <Skeleton aria-hidden className="h-8 w-8 rounded-full sm:w-32" />
             ) : (
               <ApprovalPolicySelect
                 className="max-w-36 gap-2 px-2"
@@ -845,7 +1188,19 @@ export function ChatComposer({
               />
             )}
             {providersQuery.isPending || isAppSettingsLoading ? (
-              <Skeleton aria-hidden className="h-8 w-40 rounded-full" />
+              <Skeleton aria-hidden className="h-8 w-8 rounded-full sm:w-40" />
+            ) : isMobile ? (
+              <MobileModelPicker
+                isDisabled={isSaving}
+                providers={availableModelProviders}
+                selectedModel={selectedModel}
+                selectedModelKey={selectedModelKey}
+                selectedProvider={selectedModelProvider}
+                selectedThinkingLevel={selectedThinkingLevel}
+                selectedThinkingLevelLabel={selectedThinkingLevelLabel}
+                onModelChange={handleModelChange}
+                onThinkingLevelChange={handleThinkingLevelChange}
+              />
             ) : (
               <Dropdown>
                 <Button

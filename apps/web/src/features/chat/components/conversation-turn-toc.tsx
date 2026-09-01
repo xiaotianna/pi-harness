@@ -67,7 +67,7 @@ export function ConversationTurnToc({
   };
 
   return (
-    <div className="absolute top-1/2 left-3 z-20 hidden -translate-y-1/2 md:block">
+    <div className="absolute top-1/2 left-3 z-20 hidden -translate-y-1/2 @min-[48rem]/conversation:block">
       <FloatingToc
         closeDelay={120}
         open={isPreviewOpen}

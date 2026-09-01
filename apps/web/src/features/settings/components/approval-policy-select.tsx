@@ -1,7 +1,17 @@
 "use client";
 
 import { ChevronDown } from "@gravity-ui/icons";
-import { AlertDialog, Button, Description, Dropdown, Label, ListBox, Select } from "@heroui/react";
+import {
+  AlertDialog,
+  Button,
+  Description,
+  Dropdown,
+  Label,
+  ListBox,
+  Select,
+  Tooltip,
+  useMediaQuery,
+} from "@heroui/react";
 import {
   ApprovalPolicy,
   type ApprovalPolicy as ApprovalPolicyValue,
@@ -47,6 +57,7 @@ export function ApprovalPolicySelect({
   onChange: (value: ApprovalPolicyValue) => void;
 }) {
   const [isFullAccessDialogOpen, setIsFullAccessDialogOpen] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 639px)");
   const handleChange = (nextValue: ApprovalPolicyValue) => {
     if (nextValue === value) return;
     if (nextValue === ApprovalPolicy.FULL_ACCESS) {
@@ -128,17 +139,25 @@ export function ApprovalPolicySelect({
   return (
     <>
       <Dropdown>
-        <Button
-          aria-label="选择权限审批模式"
-          isDisabled={isDisabled}
-          size="sm"
-          variant="ghost"
-          {...(className ? { className } : {})}
-        >
-          <SelectedIcon className={`size-4 ${triggerTextClassName}`} />
-          <span className={triggerTextClassName}>{selected?.label}</span>
-          <ChevronDown className={`size-3.5 ${triggerTextClassName}`} />
-        </Button>
+        <Tooltip delay={0}>
+          <Button
+            isIconOnly={isMobile}
+            aria-label="选择权限审批模式"
+            isDisabled={isDisabled}
+            size="sm"
+            variant="ghost"
+            {...(className ? { className } : {})}
+          >
+            <SelectedIcon className={`size-4 ${triggerTextClassName}`} />
+            {isMobile ? null : (
+              <>
+                <span className={triggerTextClassName}>{selected?.label}</span>
+                <ChevronDown className={`size-3.5 ${triggerTextClassName}`} />
+              </>
+            )}
+          </Button>
+          <Tooltip.Content placement="top">{selected?.label}</Tooltip.Content>
+        </Tooltip>
         <Dropdown.Popover placement="bottom start">
           <Dropdown.Menu
             aria-label="权限审批模式"

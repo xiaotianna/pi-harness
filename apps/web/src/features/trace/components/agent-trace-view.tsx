@@ -6,8 +6,8 @@ import {
   Magnifier as Search,
   Wrench,
 } from "@gravity-ui/icons";
-import { Chip, Input, TextField } from "@heroui/react";
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
+import { Chip, Drawer, Input, ScrollShadow, TextField, useMediaQuery } from "@heroui/react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { MOCK_AGENT_TRACE } from "../data/mock-agent-trace";
 import {
   type AgentTraceRange,
@@ -23,10 +23,16 @@ import { TraceTimeline } from "./trace-timeline";
 export function AgentTraceView() {
   const [range, setRange] = useState<AgentTraceRange | null>(null);
   const [search, setSearch] = useState("");
+  const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(
     MOCK_AGENT_TRACE.records[3]?.id ?? null,
   );
+  const isMobile = useMediaQuery("(max-width: 767px)");
   const deferredSearch = useDeferredValue(search);
+
+  useEffect(() => {
+    if (!isMobile) setIsMobileDetailOpen(false);
+  }, [isMobile]);
 
   const records = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
@@ -56,35 +62,49 @@ export function AgentTraceView() {
       .map((record) => record.raw.toolCallId),
   ).size;
   const hasRange = range !== null;
-  const handleRecordSelect = useCallback((record: AgentTraceRecord) => {
-    setSelectedRecordId(record.id);
-  }, []);
+  const handleRecordSelect = useCallback(
+    (record: AgentTraceRecord) => {
+      setSelectedRecordId(record.id);
+      if (isMobile) setIsMobileDetailOpen(true);
+    },
+    [isMobile],
+  );
 
   const handleDetailClose = useCallback(() => {
     setSelectedRecordId(null);
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background pr-6 pl-10">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background px-4 md:pr-6 md:pl-10">
       <div className="shrink-0">
-        <div className="flex flex-wrap items-center gap-2 border-b border-separator py-1">
-          <span className="flex items-center gap-1 text-[11px] tabular-nums text-muted">
-            <Clock3 className="size-3" />
-            {formatTraceDuration(MOCK_AGENT_TRACE.durationMs)}
-          </span>
-          <span className="flex items-center gap-1 text-[11px] text-muted">
-            <ListTree className="size-3" />
-            {turnCount} 轮
-          </span>
-          <span className="flex items-center gap-1 text-[11px] text-muted">
-            <Wrench className="size-3" />
-            {toolCallCount} 次调用
-          </span>
-          <Chip className="h-5 min-h-5 text-[11px]" size="sm" variant="soft">
-            {hasRange ? `范围内 ${visibleRecordCount}/${records.length}` : `全部 ${records.length}`}
-          </Chip>
-          <span className="min-w-0 flex-1" />
-          <div className="relative min-w-40 max-w-56 flex-1 sm:flex-none">
+        <div className="flex flex-col gap-2 border-b border-separator py-2 sm:flex-row sm:items-center sm:py-1">
+          <ScrollShadow
+            hideScrollBar
+            className="w-full sm:w-auto sm:shrink-0"
+            orientation="horizontal"
+            size={16}
+          >
+            <div className="flex w-max items-center gap-2 pr-2 sm:pr-0">
+              <span className="flex items-center gap-1 text-[11px] tabular-nums text-muted">
+                <Clock3 className="size-3" />
+                {formatTraceDuration(MOCK_AGENT_TRACE.durationMs)}
+              </span>
+              <span className="flex items-center gap-1 text-[11px] text-muted">
+                <ListTree className="size-3" />
+                {turnCount} 轮
+              </span>
+              <span className="flex items-center gap-1 text-[11px] text-muted">
+                <Wrench className="size-3" />
+                {toolCallCount} 次调用
+              </span>
+              <Chip className="h-5 min-h-5 text-[11px]" size="sm" variant="soft">
+                {hasRange
+                  ? `范围内 ${visibleRecordCount}/${records.length}`
+                  : `全部 ${records.length}`}
+              </Chip>
+            </div>
+          </ScrollShadow>
+          <div className="relative w-full sm:ml-auto sm:min-w-40 sm:max-w-56 sm:flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-2 z-10 size-3.5 -translate-y-1/2 text-muted" />
             <TextField
               aria-label="搜索轨迹记录"
@@ -119,7 +139,7 @@ export function AgentTraceView() {
         </div>
 
         {selectedRecord ? (
-          <div className="flex min-h-0 min-w-0 w-[clamp(320px,38%,440px)] max-w-[calc(100%-280px)] flex-col border-l border-separator">
+          <div className="hidden min-h-0 min-w-0 w-[clamp(320px,38%,440px)] max-w-[calc(100%-280px)] flex-col border-l border-separator md:flex">
             <TraceDetailPanel
               key={selectedRecord.id}
               record={selectedRecord}
@@ -129,6 +149,27 @@ export function AgentTraceView() {
           </div>
         ) : null}
       </div>
+
+      {isMobile && selectedRecord ? (
+        <Drawer.Backdrop isOpen={isMobileDetailOpen} onOpenChange={setIsMobileDetailOpen}>
+          <Drawer.Content placement="bottom">
+            <Drawer.Dialog
+              aria-label={`轨迹详情：${selectedRecord.label}`}
+              className="h-[min(78dvh,640px)] bg-background p-0!"
+            >
+              <Drawer.Handle className="pt-2" />
+              <Drawer.Body className="m-0! min-h-0 p-0!">
+                <TraceDetailPanel
+                  key={selectedRecord.id}
+                  record={selectedRecord}
+                  step={selectedStep}
+                  onClose={() => setIsMobileDetailOpen(false)}
+                />
+              </Drawer.Body>
+            </Drawer.Dialog>
+          </Drawer.Content>
+        </Drawer.Backdrop>
+      ) : null}
     </div>
   );
 }

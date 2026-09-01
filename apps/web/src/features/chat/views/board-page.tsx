@@ -283,7 +283,7 @@ export function BoardPage() {
   });
 
   return (
-    <div className="h-full min-h-0 overflow-hidden pb-6 pr-6 pl-9! sm:pt-4 sm:pb-6">
+    <div className="h-full min-h-0 overflow-hidden px-4 pb-6 sm:pt-4 sm:pr-6 sm:pb-6 sm:pl-9!">
       <div className="relative h-full min-h-0">
         <Kanban
           className="session-scrollbar session-scrollbars h-full"

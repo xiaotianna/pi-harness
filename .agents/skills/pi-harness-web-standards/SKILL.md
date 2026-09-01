@@ -93,6 +93,7 @@ description: PI Harness 前端工程规范，约束 apps/web 的架构边界、�
 - 需要用阴影提示滚动溢出的列表统一使用 HeroUI `ScrollShadow` 的内置阴影样式，不手写或叠加 `shadow-*`、渐变遮罩或 `box-shadow`。
 - 让内联控件保持内容宽度，并提供合理的最小和最大宽度。
 - 让 `Dropdown`、`Select` 等下拉弹层默认按内容自适应宽度，不添加无业务依据的固定 `w-*`；可以按内容类型设置最小宽度，但必须保留视口最大宽度约束。虚拟列表或固定列布局需要覆盖宽度时，根据实际内容计算。
+- 移动端弹层中的二级菜单使用 HeroUI `Disclosure` 在当前弹层内折叠展开，不横向打开独立子弹层；同组二级入口一次只展开一个，子项继续使用对应 Collection 组件保留点击、键盘与无障碍语义。桌面端可以继续使用 `Dropdown.SubmenuTrigger`。
 - 不添加 `ring-*`、`focus:ring-*`、`focus-visible:ring-*` 或模拟 ring 的 box-shadow。
 - 让宽屏侧栏、移动端覆盖层、滚动容器和弹窗尺寸遵循已有 AppLayout 与 HeroUI 模式。
 - 只在组件库没有对应抽象时使用 `div`、`span`、`p`、标题、列表、section 和 image 等语义或布局元素，并保持交互样式最少。
