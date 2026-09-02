@@ -8,6 +8,7 @@ import {
   type MouseEvent,
   memo,
   type RefObject,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -24,6 +25,7 @@ import { ThreadMessage } from "./thread-message/index";
 
 export interface ThreadMessageListProps {
   messages: readonly ChatMessage[];
+  onBeforeMessageEdit?: () => void;
   onBeforeTurnNavigate?: () => void;
   onSearchTargetComplete?: () => void;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
@@ -87,22 +89,34 @@ function SearchTargetMessage({
   isLastUserMessage = false,
   message,
   onComplete,
+  onEditingChange,
   query,
   targetMessageId,
 }: {
   isLastUserMessage?: boolean;
   message: ChatMessage;
   onComplete?: () => void;
+  onEditingChange?: (isEditing: boolean) => void;
   query: string;
   targetMessageId: string | null;
 }) {
   if (message.id !== targetMessageId) {
-    return <ThreadMessage isLastUserMessage={isLastUserMessage} message={message} />;
+    return (
+      <ThreadMessage
+        isLastUserMessage={isLastUserMessage}
+        message={message}
+        {...(onEditingChange ? { onEditingChange } : {})}
+      />
+    );
   }
   return (
     <div data-search-target="true">
       <SearchHighlightProvider query={query} {...(onComplete ? { onComplete } : {})}>
-        <ThreadMessage isLastUserMessage={isLastUserMessage} message={message} />
+        <ThreadMessage
+          isLastUserMessage={isLastUserMessage}
+          message={message}
+          {...(onEditingChange ? { onEditingChange } : {})}
+        />
       </SearchHighlightProvider>
     </div>
   );
@@ -164,6 +178,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
   function ThreadMessageList(
     {
       messages,
+      onBeforeMessageEdit,
       onBeforeTurnNavigate,
       onSearchTargetComplete,
       scrollContainerRef,
@@ -174,6 +189,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
     ref,
   ) {
     const [hoveredTurnId, setHoveredTurnId] = useState<string | null>(null);
+    const [isEditingMessage, setIsEditingMessage] = useState(false);
     const listRef = useRef<HTMLDivElement>(null);
     const isMobile = useMediaQuery("(max-width: 767px)");
     const shouldReduceMotion = useReducedMotion();
@@ -182,6 +198,13 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       (message) => message.type === ChatMessageType.USER,
     )?.id;
     const isVirtualized = scrollContainerRef !== undefined && !isMobile;
+    const handleEditingChange = useCallback(
+      (isEditing: boolean) => {
+        if (isEditing) onBeforeMessageEdit?.();
+        setIsEditingMessage(isEditing);
+      },
+      [onBeforeMessageEdit],
+    );
     const { turnIdByItemIndex, turnItemIndexById } = useMemo(() => {
       const turnIdByItemIndex: Array<string | null> = [];
       const turnItemIndexById = new Map<string, number>();
@@ -199,7 +222,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       return { turnIdByItemIndex, turnItemIndexById };
     }, [items]);
     const virtualizer = useVirtualizer({
-      anchorTo: "end",
+      anchorTo: isEditingMessage ? "start" : "end",
       count: isVirtualized ? items.length : 0,
       enabled: isVirtualized,
       estimateSize: () => 180,
@@ -343,6 +366,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
             <SearchTargetMessage
               isLastUserMessage={item.message.id === lastUserMessageId}
               message={item.message}
+              onEditingChange={handleEditingChange}
               query={searchTarget?.query ?? ""}
               targetMessageId={targetMessageId}
               {...(onSearchTargetComplete ? { onComplete: onSearchTargetComplete } : {})}

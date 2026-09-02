@@ -328,10 +328,11 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                     if (event.deltaY < 0) stopFollowingConversation();
                   }}
                 >
-                  <ChatConversation.Content ref={conversationContentRef} className="flex flex-col">
+                  <div ref={conversationContentRef} className="mx-auto flex w-full flex-col">
                     <ThreadMessageList
                       ref={messageListRef}
                       messages={messages}
+                      onBeforeMessageEdit={stopFollowingConversation}
                       onBeforeTurnNavigate={stopFollowingConversation}
                       onSearchTargetComplete={clearSearchTarget}
                       scrollContainerRef={conversationRef}
@@ -339,7 +340,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                       workspaceRoot={snapshot.session.workspaceRoot}
                       {...(searchTarget ? { searchTarget } : {})}
                     />
-                  </ChatConversation.Content>
+                  </div>
                   <ChatConversation.ScrollButton aria-label="滚动到底部" />
                   <ChatConversation.ScrollAnchor />
                 </ChatConversation>

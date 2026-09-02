@@ -13,15 +13,18 @@ import { MessageAttachments } from "./message-attachments";
 export function UserThreadMessage({
   isLastUserMessage,
   message,
+  onEditingChange,
 }: {
   isLastUserMessage: boolean;
   message: ChatUserMessage;
+  onEditingChange?: (isEditing: boolean) => void;
 }) {
   const [content, setContent] = useState(message.content);
   const [draft, setDraft] = useState<string | null>(null);
 
   const setDraftTextAreaRef = useCallback((textArea: HTMLTextAreaElement | null) => {
     if (!textArea) return;
+    textArea.focus({ preventScroll: true });
     const end = textArea.value.length;
     textArea.setSelectionRange(end, end);
   }, []);
@@ -30,6 +33,7 @@ export function UserThreadMessage({
     if (draft === null || !draft.trim()) return;
     setContent(draft);
     setDraft(null);
+    window.requestAnimationFrame(() => onEditingChange?.(false));
   };
 
   return (
@@ -47,7 +51,6 @@ export function UserThreadMessage({
             ) : (
               <>
                 <TextArea
-                  autoFocus
                   fullWidth
                   aria-label="改写消息"
                   className="resize-none p-1 [--textarea-bg-focus:transparent] [--textarea-bg-hover:transparent] [--textarea-bg:transparent]"
@@ -58,7 +61,15 @@ export function UserThreadMessage({
                   onChange={(event) => setDraft(event.target.value)}
                 />
                 <div className="flex justify-end gap-2 px-1 pt-2 pb-1">
-                  <Button size="sm" type="button" variant="tertiary" onPress={() => setDraft(null)}>
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="tertiary"
+                    onPress={() => {
+                      setDraft(null);
+                      window.requestAnimationFrame(() => onEditingChange?.(false));
+                    }}
+                  >
                     取消
                   </Button>
                   <Button
@@ -79,7 +90,14 @@ export function UserThreadMessage({
       {draft === null ? (
         <MessageActions
           content={content}
-          {...(isLastUserMessage && content ? { onEdit: () => setDraft(content) } : {})}
+          {...(isLastUserMessage && content
+            ? {
+                onEdit: () => {
+                  onEditingChange?.(true);
+                  setDraft(content);
+                },
+              }
+            : {})}
           {...(message.timestamp === undefined ? {} : { timestamp: message.timestamp })}
           timestampPosition="start"
           variant="minimal"

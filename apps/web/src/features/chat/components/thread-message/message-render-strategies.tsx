@@ -19,6 +19,7 @@ import { WebSearchThreadMessage } from "./web-search-thread-message";
 type MessageOfType<T extends ChatMessageType> = Extract<ChatMessage, { type: T }>;
 interface MessageRenderContext {
   isLastUserMessage: boolean;
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
 type MessageRenderStrategy = (message: ChatMessage, context: MessageRenderContext) => ReactNode;
@@ -81,7 +82,11 @@ export const MESSAGE_RENDER_STRATEGIES = {
     (message) => <ToolGroupThreadMessage message={message} />,
   ),
   [ChatMessageType.USER]: createMessageRenderStrategy(ChatMessageType.USER, (message, context) => (
-    <UserThreadMessage isLastUserMessage={context.isLastUserMessage} message={message} />
+    <UserThreadMessage
+      isLastUserMessage={context.isLastUserMessage}
+      message={message}
+      {...(context.onEditingChange ? { onEditingChange: context.onEditingChange } : {})}
+    />
   )),
   [ChatMessageType.WEB_SEARCH]: createMessageRenderStrategy(
     ChatMessageType.WEB_SEARCH,
