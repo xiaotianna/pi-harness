@@ -65,7 +65,7 @@ export interface ChatComposerEditorProps {
   maxHeight?: number | string;
   minHeight?: number | string;
   onEmptyChange?: (isEmpty: boolean) => void;
-  onSubmit: () => void;
+  onSubmit: (useAlternateBusyBehavior?: boolean) => void;
   placeholder?: string;
   slashMenuItems?: readonly ChatComposerToken[];
 }
@@ -506,7 +506,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
           if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
 
           event.preventDefault();
-          if (!isDisabledRef.current) onSubmitRef.current();
+          if (!isDisabledRef.current) onSubmitRef.current(event.metaKey || event.ctrlKey);
           return true;
         },
       },

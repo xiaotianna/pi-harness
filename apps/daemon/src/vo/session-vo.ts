@@ -58,6 +58,30 @@ export const RunAcceptedVoSchema = Type.Object({
 
 export type RunAcceptedVo = Static<typeof RunAcceptedVoSchema>;
 
+export const QueuedRunInputVoSchema = Type.Object({
+  attachments: Type.Array(
+    Type.Object({
+      contentIndex: Type.Optional(Type.Integer({ minimum: 0 })),
+      mimeType: Type.String(),
+      name: Type.String({ minLength: 1 }),
+      size: Type.Integer({ minimum: 0 }),
+    }),
+  ),
+  createdAt: Type.Integer({ minimum: 0 }),
+  id: Type.String({ format: "uuid" }),
+  prompt: Type.String(),
+  references: Type.Array(
+    Type.Object({
+      kind: Type.String({ minLength: 1 }),
+      path: Type.String({ minLength: 1 }),
+    }),
+  ),
+});
+
+export const QueuedRunInputListVoSchema = Type.Array(QueuedRunInputVoSchema);
+
+export type QueuedRunInputVo = Static<typeof QueuedRunInputVoSchema>;
+
 export const PendingToolApprovalVoSchema = Type.Object({
   approvalId: Type.String({ format: "uuid" }),
   expiresAt: Type.Integer({ minimum: 0 }),

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChatMessage as ChatMessagePrimitive } from "@agile-avocation/ui-pro";
-import { Button, TextArea } from "@heroui/react";
+import { Button, TextArea, toast } from "@heroui/react";
 import { useCallback, useState } from "react";
 import { renderSkillMentions } from "../../../../components/ai/skill-mention";
 import { SearchHighlightedText } from "../../../../components/ui/search-highlighted-text";
@@ -14,13 +14,16 @@ export function UserThreadMessage({
   isLastUserMessage,
   message,
   onEditingChange,
+  onRetryUserMessage,
 }: {
   isLastUserMessage: boolean;
   message: ChatUserMessage;
   onEditingChange?: (isEditing: boolean) => void;
+  onRetryUserMessage?: (messageEventId: string, prompt: string) => Promise<void>;
 }) {
   const [content, setContent] = useState(message.content);
   const [draft, setDraft] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   const setDraftTextAreaRef = useCallback((textArea: HTMLTextAreaElement | null) => {
     if (!textArea) return;
@@ -29,11 +32,19 @@ export function UserThreadMessage({
     textArea.setSelectionRange(end, end);
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (draft === null || !draft.trim()) return;
-    setContent(draft);
-    setDraft(null);
-    window.requestAnimationFrame(() => onEditingChange?.(false));
+    setIsSending(true);
+    try {
+      if (onRetryUserMessage) await onRetryUserMessage(message.sourceEventId ?? message.id, draft);
+      else setContent(draft);
+      setDraft(null);
+      window.requestAnimationFrame(() => onEditingChange?.(false));
+    } catch (error: unknown) {
+      toast.danger(error instanceof Error ? error.message : "重新发送消息失败");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -62,6 +73,7 @@ export function UserThreadMessage({
                 />
                 <div className="flex justify-end gap-2 px-1 pt-2 pb-1">
                   <Button
+                    isDisabled={isSending}
                     size="sm"
                     type="button"
                     variant="tertiary"
@@ -74,10 +86,11 @@ export function UserThreadMessage({
                   </Button>
                   <Button
                     isDisabled={!draft.trim() || draft === content}
+                    isPending={isSending}
                     size="sm"
                     type="button"
                     variant="primary"
-                    onPress={handleSave}
+                    onPress={() => void handleSave()}
                   >
                     发送
                   </Button>
@@ -90,7 +103,7 @@ export function UserThreadMessage({
       {draft === null ? (
         <MessageActions
           content={content}
-          {...(isLastUserMessage && content
+          {...(isLastUserMessage && content && onRetryUserMessage
             ? {
                 onEdit: () => {
                   onEditingChange?.(true);

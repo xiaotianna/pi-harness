@@ -4,6 +4,7 @@ import {
   type HarnessEvent,
   HarnessEventType,
   MessageDeltaKind,
+  selectActiveSessionEvents,
 } from "@pi-harness/agent-runtime/harness-event";
 import { isHarnessUserMessage } from "@pi-harness/agent-runtime/user-input";
 import { UpdatePlanToolName, UpdateTodosToolName } from "@pi-harness/agent-runtime/working-state";
@@ -277,6 +278,7 @@ export function findActiveRunId(events: readonly HarnessEvent[]): string | null 
   let activeRunId: string | null = null;
   for (const event of events) {
     if (event.type === HarnessEventType.RUN_STARTED && event.runId) activeRunId = event.runId;
+    if (event.type === HarnessEventType.MESSAGE_BRANCH_STARTED) activeRunId = null;
     if (TERMINAL_RUN_EVENTS.has(event.type) && event.runId === activeRunId) activeRunId = null;
   }
   return activeRunId;
@@ -287,6 +289,7 @@ export function findActiveRunId(events: readonly HarnessEvent[]): string | null 
  * 通过遍历，将工具调用的中间状态数据合并为最终状态
  */
 export function sessionEventsToMessages(events: readonly HarnessEvent[]): readonly ChatMessage[] {
+  events = selectActiveSessionEvents(events);
   const messages: ChatMessage[] = [];
   const messagesByRunId = new Map<string, ChatMessage[]>();
   const fileChangesByRunId = summarizeSessionFileChangesByRun(events);

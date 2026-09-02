@@ -15,11 +15,7 @@ import {
   createAssistantMessageEventStream,
   type Model,
 } from "@earendil-works/pi-ai";
-import {
-  type ApprovalPolicyValue,
-  evaluateToolCall,
-  ToolPolicyDecision,
-} from "@pi-harness/policy";
+import { type ApprovalPolicyValue, evaluateToolCall, ToolPolicyDecision } from "@pi-harness/policy";
 import {
   attachSuccessfulTodoEvidence,
   PlanStepStatus,
@@ -30,10 +26,7 @@ import {
   type ToolRegistry,
 } from "@pi-harness/tools";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
-import {
-  CONTEXT_WINDOW_EXCEEDED_ERROR_CODE,
-  projectContext,
-} from "./context/context-pipeline.js";
+import { CONTEXT_WINDOW_EXCEEDED_ERROR_CODE, projectContext } from "./context/context-pipeline.js";
 import { adaptAgentEvent } from "./event-adapter.js";
 import {
   ApprovalDecision,
@@ -55,7 +48,13 @@ import {
 } from "./harness-event.js";
 import type { ThinkingLevel } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
-import { type RunUserInput, UserInputContextError } from "./user-input.js";
+import {
+  type HarnessUserMessage,
+  isHarnessUserMessage,
+  type QueuedRunInput,
+  type RunUserInput,
+  UserInputContextError,
+} from "./user-input.js";
 import { estimateContextUsage } from "./utils/context-usage.js";
 import {
   createHarnessUserMessage,
@@ -73,11 +72,21 @@ export interface StartRunInput {
   streamFn: StreamFn;
   systemPrompt: string;
   thinkingLevel: ThinkingLevel;
+  userMessage?: HarnessUserMessage;
 }
 
-export type HarnessEventListener = (
-  event: HarnessEvent,
-) => Promise<void> | void;
+export interface RestoreRunHistoryInput {
+  contextCheckpoint: ContextCompactedData | null;
+  contextCheckpointEventSeq: number | null;
+  contextCheckpointHistory: readonly ContextCheckpointRecord[];
+  contextCheckpointTailStartMessageIndex: number | null;
+  initialSeq: number;
+  messages: readonly AgentMessage[];
+  plan: PlanUpdatedData | null;
+  todos: TodoUpdatedData | null;
+}
+
+export type HarnessEventListener = (event: HarnessEvent) => Promise<void> | void;
 
 interface ActiveRun {
   approvalPolicy: ApprovalPolicyValue;
@@ -88,6 +97,12 @@ interface ActiveRun {
   runId: RunId;
   startMessageIndex: number;
   streamFn: StreamFn;
+}
+
+interface PendingFollowUp {
+  input: RunUserInput;
+  message: HarnessUserMessage;
+  queued: QueuedRunInput;
 }
 
 export function shouldResetWorkingStateForNewRun(
@@ -130,10 +145,11 @@ export class RunCoordinator {
   private readonly executionGuard: ToolRegistry["executionGuard"];
   private nextSeq: number;
   private pendingContextError: string | null = null;
-  private readonly pendingFileChanges = new Map<
-    string,
-    readonly FileChangedData[]
-  >();
+  private readonly pendingFileChanges = new Map<string, readonly FileChangedData[]>();
+  private readonly pendingFollowUps = new Map<string, PendingFollowUp>();
+  private isContinuingSteer = false;
+  private readonly pendingSteerInterrupts: HarnessUserMessage[] = [];
+  private queueMutationTail: Promise<void> = Promise.resolve();
   private pendingMilestoneCompaction = false;
   private pendingWorkingStateReset = false;
   private readonly successfulToolCallIds = new Set<string>();
@@ -148,9 +164,7 @@ export class RunCoordinator {
     private readonly workspaceRoot: string,
     private readonly protectedPaths: readonly string[],
     private readonly requestToolApproval: ToolApprovalRequester,
-    private readonly setSupportsImageInput: (
-      supportsImageInput: boolean,
-    ) => void,
+    private readonly setSupportsImageInput: (supportsImageInput: boolean) => void,
     private contextCheckpoint: ContextCompactedData | null,
     private contextCheckpointEventSeq: number | null,
     private contextCheckpointTailStartMessageIndex: number | null,
@@ -165,19 +179,14 @@ export class RunCoordinator {
       }
     }
     this.nextSeq = initialSeq + 1;
-    this.agent.beforeToolCall = (context, signal) =>
-      this.handleBeforeToolCall(context, signal);
+    this.agent.beforeToolCall = (context, signal) => this.handleBeforeToolCall(context, signal);
     this.agent.afterToolCall = (context) => this.handleAfterToolCall(context);
-    this.agent.transformContext = (messages, signal) =>
-      this.transformContext(messages, signal);
+    this.agent.transformContext = (messages, signal) => this.transformContext(messages, signal);
     // 构造时会订阅 pi Agent 事件
     this.unsubscribe = agent.subscribe((event) => this.handleAgentEvent(event));
   }
 
-  private async emit(
-    draft: HarnessEventDraft,
-    runId: RunId,
-  ): Promise<HarnessEvent> {
+  private async emit(draft: HarnessEventDraft, runId: RunId): Promise<HarnessEvent> {
     const event: HarnessEvent = {
       data: draft.data,
       id: randomUUID(),
@@ -204,10 +213,7 @@ export class RunCoordinator {
      */
     const activeRun = this.activeRun;
     if (activeRun === null) {
-      return limitUserInputContext(
-        messages,
-        this.agent.state.model.contextWindow,
-      );
+      return limitUserInputContext(messages, this.agent.state.model.contextWindow);
     }
 
     try {
@@ -258,8 +264,7 @@ export class RunCoordinator {
         ...(this.contextCheckpointTailStartMessageIndex === null
           ? {}
           : {
-              checkpointTailStartMessageIndex:
-                this.contextCheckpointTailStartMessageIndex,
+              checkpointTailStartMessageIndex: this.contextCheckpointTailStartMessageIndex,
             }),
         //
         /**
@@ -327,10 +332,7 @@ export class RunCoordinator {
       return projected.messages;
     } catch {
       this.pendingContextError = "上下文 checkpoint 无法安全生成或持久化";
-      return limitUserInputContext(
-        messages,
-        this.agent.state.model.contextWindow,
-      );
+      return limitUserInputContext(messages, this.agent.state.model.contextWindow);
     }
   }
 
@@ -338,31 +340,20 @@ export class RunCoordinator {
     const activeRun = this.activeRun;
     if (activeRun === null) throw new Error("当前没有活动 Run");
     const previousCompleted =
-      this.planState?.plan.filter(
-        (item) => item.status === PlanStepStatus.COMPLETED,
-      ).length ?? 0;
+      this.planState?.plan.filter((item) => item.status === PlanStepStatus.COMPLETED).length ?? 0;
     const nextCompleted = data.plan.filter(
       (item) => item.status === PlanStepStatus.COMPLETED,
     ).length;
-    await this.emit(
-      { data, type: HarnessEventType.PLAN_UPDATED },
-      activeRun.runId,
-    );
+    await this.emit({ data, type: HarnessEventType.PLAN_UPDATED }, activeRun.runId);
     this.planState = data;
-    if (nextCompleted > previousCompleted)
-      this.pendingMilestoneCompaction = true;
+    if (nextCompleted > previousCompleted) this.pendingMilestoneCompaction = true;
   }
 
   public async updateTodos(data: TodoUpdatedData): Promise<TodoUpdatedData> {
     const activeRun = this.activeRun;
     if (activeRun === null) throw new Error("当前没有活动 Run");
-    const updated = attachSuccessfulTodoEvidence(data, [
-      ...this.successfulToolCallIds,
-    ]);
-    await this.emit(
-      { data: updated, type: HarnessEventType.TODO_UPDATED },
-      activeRun.runId,
-    );
+    const updated = attachSuccessfulTodoEvidence(data, [...this.successfulToolCallIds]);
+    await this.emit({ data: updated, type: HarnessEventType.TODO_UPDATED }, activeRun.runId);
     this.todoState = updated;
     return updated;
   }
@@ -379,15 +370,9 @@ export class RunCoordinator {
       const parent =
         parentId === undefined
           ? this.contextCheckpointHistory
-              .filter(
-                (record) =>
-                  record.eventSeq <
-                  (target?.eventSeq ?? Number.POSITIVE_INFINITY),
-              )
+              .filter((record) => record.eventSeq < (target?.eventSeq ?? Number.POSITIVE_INFINITY))
               .at(-1)
-          : this.contextCheckpointHistory.find(
-              (record) => record.data.compactionId === parentId,
-            );
+          : this.contextCheckpointHistory.find((record) => record.data.compactionId === parentId);
       target = parent ?? null;
       if (target === null) break;
     }
@@ -403,8 +388,7 @@ export class RunCoordinator {
     );
     this.contextCheckpoint = target.data;
     this.contextCheckpointEventSeq = target.eventSeq;
-    this.contextCheckpointTailStartMessageIndex =
-      this.agent.state.messages.length;
+    this.contextCheckpointTailStartMessageIndex = this.agent.state.messages.length;
     return target.eventSeq;
   }
 
@@ -430,14 +414,11 @@ export class RunCoordinator {
 
   public applyContextCheckpointRestore(eventSeq: number): boolean {
     if (this.activeRun !== null) return false;
-    const target = this.contextCheckpointHistory.find(
-      (record) => record.eventSeq === eventSeq,
-    );
+    const target = this.contextCheckpointHistory.find((record) => record.eventSeq === eventSeq);
     if (target === undefined) return false;
     this.contextCheckpoint = target.data;
     this.contextCheckpointEventSeq = target.eventSeq;
-    this.contextCheckpointTailStartMessageIndex =
-      this.agent.state.messages.length;
+    this.contextCheckpointTailStartMessageIndex = this.agent.state.messages.length;
     return true;
   }
 
@@ -450,17 +431,11 @@ export class RunCoordinator {
     const matches: SessionHistorySearchResult["matches"] = [];
     const messages = this.agent.state.messages;
     // ponytail: 先线性扫描完整 Session；历史达到万级消息并出现延迟后再加可重建索引。
-    for (
-      let messageIndex = messages.length - 1;
-      messageIndex >= 0;
-      messageIndex -= 1
-    ) {
+    for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
       const message = messages[messageIndex];
       if (
         message === undefined ||
-        (message.role !== "user" &&
-          message.role !== "assistant" &&
-          message.role !== "toolResult")
+        (message.role !== "user" && message.role !== "assistant" && message.role !== "toolResult")
       ) {
         continue;
       }
@@ -511,10 +486,7 @@ export class RunCoordinator {
         toolCallFingerprint,
       );
       if (blockReason !== null) return { block: true, reason: blockReason };
-      this.executionGuard.recordApproved(
-        context.toolCall.id,
-        toolCallFingerprint,
-      );
+      this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
       return undefined;
     }
 
@@ -643,18 +615,12 @@ export class RunCoordinator {
         if (currentBlockReason !== null) {
           return { block: true, reason: currentBlockReason };
         }
-        this.executionGuard.recordApproved(
-          context.toolCall.id,
-          toolCallFingerprint,
-        );
+        this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
         return undefined;
       }
       return {
         block: true,
-        reason:
-          decision === ApprovalDecision.EXPIRED
-            ? "工具审批已超时"
-            : "用户拒绝了工具审批",
+        reason: decision === ApprovalDecision.EXPIRED ? "工具审批已超时" : "用户拒绝了工具审批",
       };
     } catch (error: unknown) {
       approval.cancel();
@@ -663,9 +629,7 @@ export class RunCoordinator {
   }
 
   // 工具执行成功后捕获其一项或多项文件变更，等待对应 tool_execution_end 后顺序发出。
-  private async handleAfterToolCall(
-    context: AfterToolCallContext,
-  ): Promise<undefined> {
+  private async handleAfterToolCall(context: AfterToolCallContext): Promise<undefined> {
     if (context.isError) return undefined;
     this.successfulToolCallIds.add(context.toolCall.id);
     const fileChanges = readFileChangeDetails(context.result.details);
@@ -692,6 +656,15 @@ export class RunCoordinator {
   private async handleAgentEvent(event: AgentEvent): Promise<void> {
     const activeRun = this.activeRun;
     if (activeRun === null) return;
+    if (event.type === "agent_start" && this.isContinuingSteer) return;
+    if (event.type === "agent_end" && this.pendingSteerInterrupts.length > 0) return;
+    if (
+      event.type === "message_start" &&
+      isHarnessUserMessage(event.message) &&
+      event.message.queuedInputId !== undefined
+    ) {
+      this.pendingFollowUps.delete(event.message.queuedInputId);
+    }
     const draft = adaptAgentEvent(event, activeRun);
     if (draft === null) return;
 
@@ -726,10 +699,7 @@ export class RunCoordinator {
 
     this.agent.state.model = input.model;
     this.setSupportsImageInput(input.model.input.includes("image"));
-    this.agent.state.thinkingLevel = clampThinkingLevel(
-      input.model,
-      input.thinkingLevel,
-    );
+    this.agent.state.thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
     this.agent.state.systemPrompt = input.systemPrompt;
     let requestIndex = 0;
     this.agent.streamFunction = async (model, context, options) => {
@@ -746,8 +716,7 @@ export class RunCoordinator {
       );
       const contextError = this.pendingContextError;
       this.pendingContextError = null;
-      if (contextError !== null)
-        return createContextWindowErrorStream(model, contextError);
+      if (contextError !== null) return createContextWindowErrorStream(model, contextError);
       return input.streamFn(model, context, {
         ...options,
         cacheRetention: "long",
@@ -758,9 +727,7 @@ export class RunCoordinator {
     const preparationAbortController = new AbortController();
     this.activeRun = {
       approvalPolicy: input.approvalPolicy,
-      handleAutoFollowUp: createAutoFollowUpHandler((message) =>
-        this.agent.followUp(message),
-      ),
+      handleAutoFollowUp: createAutoFollowUpHandler((message) => this.agent.followUp(message)),
       modelId: input.modelId,
       preparationAbortController,
       providerId: input.providerId,
@@ -776,13 +743,15 @@ export class RunCoordinator {
     try {
       let message: AgentMessage;
       try {
-        message = await createHarnessUserMessage({
-          input: input.userInput,
-          model: input.model,
-          protectedPaths: this.protectedPaths,
-          signal: preparationAbortController.signal,
-          workspaceRoot: this.workspaceRoot,
-        });
+        message =
+          input.userMessage ??
+          (await createHarnessUserMessage({
+            input: input.userInput,
+            model: input.model,
+            protectedPaths: this.protectedPaths,
+            signal: preparationAbortController.signal,
+            workspaceRoot: this.workspaceRoot,
+          }));
       } catch (error: unknown) {
         await this.emit(
           {
@@ -812,19 +781,34 @@ export class RunCoordinator {
                       ? error.message
                       : "无法读取附件或引用上下文，请确认文件仍然存在且可访问",
                 },
-            type: isAborted
-              ? HarnessEventType.RUN_ABORTED
-              : HarnessEventType.RUN_FAILED,
+            type: isAborted ? HarnessEventType.RUN_ABORTED : HarnessEventType.RUN_FAILED,
           },
           input.runId,
         );
         return;
       }
-      await this.agent.prompt(message);
+      const initialPrompt = this.agent.prompt(message);
+      if (this.pendingSteerInterrupts.length > 0) this.agent.abort();
+      await initialPrompt;
+      while (this.pendingSteerInterrupts.length > 0) {
+        for (const steerMessage of this.pendingSteerInterrupts.splice(0)) {
+          this.agent.steer(steerMessage);
+        }
+        this.isContinuingSteer = true;
+        try {
+          await this.agent.continue();
+        } finally {
+          this.isContinuingSteer = false;
+        }
+      }
     } finally {
       this.executionGuard.reset();
       this.pendingFileChanges.clear();
+      this.pendingFollowUps.clear();
+      this.agent.clearAllQueues();
       this.pendingContextError = null;
+      this.isContinuingSteer = false;
+      this.pendingSteerInterrupts.length = 0;
       this.pendingWorkingStateReset = false;
       this.activeRun = null;
     }
@@ -833,29 +817,155 @@ export class RunCoordinator {
   public abort(runId: RunId): boolean {
     if (this.activeRun?.runId !== runId) return false;
     this.activeRun.preparationAbortController.abort();
+    this.pendingSteerInterrupts.length = 0;
+    this.agent.clearSteeringQueue();
     this.agent.abort();
     return true;
   }
 
-  public steer(runId: RunId, message: AgentMessage): boolean {
-    if (this.activeRun?.runId !== runId) return false;
-    this.agent.steer(message);
+  public restoreHistory(input: RestoreRunHistoryInput): boolean {
+    if (this.activeRun !== null || this.agent.state.isStreaming) return false;
+    this.agent.state.messages = [...input.messages];
+    this.contextCheckpoint = input.contextCheckpoint;
+    this.contextCheckpointEventSeq = input.contextCheckpointEventSeq;
+    this.contextCheckpointTailStartMessageIndex = input.contextCheckpointTailStartMessageIndex;
+    this.contextCheckpointHistory.splice(
+      0,
+      this.contextCheckpointHistory.length,
+      ...input.contextCheckpointHistory,
+    );
+    this.planState = input.plan;
+    this.todoState = input.todos;
+    this.nextSeq = input.initialSeq + 1;
+    this.pendingMilestoneCompaction = false;
+    this.pendingWorkingStateReset = false;
+    this.successfulToolCallIds.clear();
+    for (const message of input.messages) {
+      if (message.role === "toolResult" && !message.isError) {
+        this.successfulToolCallIds.add(message.toolCallId);
+      }
+    }
     return true;
   }
 
-  // 将当前活动 run 的消息追加到 Agent 的 follow-up 队列
-  public async followUp(runId: RunId, input: RunUserInput): Promise<boolean> {
-    if (this.activeRun?.runId !== runId) return false;
-    const message = await createHarnessUserMessage({
-      input,
-      model: this.agent.state.model,
-      protectedPaths: this.protectedPaths,
-      signal: this.activeRun.preparationAbortController.signal,
-      workspaceRoot: this.workspaceRoot,
+  public async steer(runId: RunId, input: RunUserInput): Promise<boolean> {
+    return this.runQueueMutation(async () => {
+      const activeRun = this.activeRun;
+      if (activeRun?.runId !== runId) return false;
+      const message = await createHarnessUserMessage({
+        input,
+        model: this.agent.state.model,
+        protectedPaths: this.protectedPaths,
+        signal: activeRun.preparationAbortController.signal,
+        workspaceRoot: this.workspaceRoot,
+      });
+      if (this.activeRun?.runId !== runId) return false;
+      this.pendingSteerInterrupts.push(message);
+      this.agent.abort();
+      return true;
     });
-    if (this.activeRun?.runId !== runId) return false;
-    this.agent.followUp(message);
+  }
+
+  public listQueuedFollowUps(runId: RunId): readonly QueuedRunInput[] {
+    return this.activeRun?.runId === runId
+      ? [...this.pendingFollowUps.values()].map((item) => item.queued)
+      : [];
+  }
+
+  // 将当前活动 run 的消息追加到 Agent 的 follow-up 队列。
+  public async followUp(runId: RunId, input: RunUserInput): Promise<QueuedRunInput | null> {
+    return this.runQueueMutation(async () => {
+      const activeRun = this.activeRun;
+      if (activeRun?.runId !== runId) return null;
+      const message = await createHarnessUserMessage({
+        input,
+        model: this.agent.state.model,
+        protectedPaths: this.protectedPaths,
+        signal: activeRun.preparationAbortController.signal,
+        workspaceRoot: this.workspaceRoot,
+      });
+      if (this.activeRun?.runId !== runId) return null;
+      const id = randomUUID();
+      const queued = {
+        attachments: message.attachments ?? [],
+        createdAt: message.timestamp,
+        id,
+        prompt: input.prompt,
+        references: input.references,
+      } satisfies QueuedRunInput;
+      const queuedMessage = { ...message, queuedInputId: id };
+      this.pendingFollowUps.set(id, { input, message: queuedMessage, queued });
+      this.agent.followUp(queuedMessage);
+      return queued;
+    });
+  }
+
+  public async updateFollowUp(
+    runId: RunId,
+    queuedInputId: string,
+    prompt: string,
+  ): Promise<QueuedRunInput | null> {
+    return this.runQueueMutation(async () => {
+      const activeRun = this.activeRun;
+      const current = this.pendingFollowUps.get(queuedInputId);
+      if (activeRun?.runId !== runId || current === undefined) return null;
+      const input = { ...current.input, prompt };
+      const message = await createHarnessUserMessage({
+        input,
+        model: this.agent.state.model,
+        protectedPaths: this.protectedPaths,
+        signal: activeRun.preparationAbortController.signal,
+        workspaceRoot: this.workspaceRoot,
+      });
+      if (this.activeRun?.runId !== runId || !this.pendingFollowUps.has(queuedInputId)) {
+        return null;
+      }
+      const queued = {
+        ...current.queued,
+        prompt,
+      } satisfies QueuedRunInput;
+      this.pendingFollowUps.set(queuedInputId, {
+        input,
+        message: { ...message, queuedInputId },
+        queued,
+      });
+      this.syncFollowUpQueue();
+      return queued;
+    });
+  }
+
+  public async removeFollowUp(runId: RunId, queuedInputId: string): Promise<boolean> {
+    return this.runQueueMutation(async () => {
+      if (this.activeRun?.runId !== runId || !this.pendingFollowUps.delete(queuedInputId)) {
+        return false;
+      }
+      this.syncFollowUpQueue();
+      return true;
+    });
+  }
+
+  public async steerFollowUp(runId: RunId, queuedInputId: string): Promise<boolean> {
+    const current = this.pendingFollowUps.get(queuedInputId);
+    if (this.activeRun?.runId !== runId || current === undefined) return false;
+    this.pendingFollowUps.delete(queuedInputId);
+    this.syncFollowUpQueue();
+    this.pendingSteerInterrupts.push(current.message);
+    this.agent.abort();
     return true;
+  }
+
+  private syncFollowUpQueue(): void {
+    this.agent.clearFollowUpQueue();
+    for (const item of this.pendingFollowUps.values()) this.agent.followUp(item.message);
+  }
+
+  private runQueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
+    const result = this.queueMutationTail.then(mutation, mutation);
+    this.queueMutationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   public async close(): Promise<void> {

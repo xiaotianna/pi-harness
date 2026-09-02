@@ -26,6 +26,7 @@ import {
   toast,
   useMediaQuery,
 } from "@heroui/react";
+import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { Brain } from "lucide-react";
 import { type ComponentType, type SVGProps, useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
@@ -115,6 +116,7 @@ function GeneralSettingsPanel() {
   const { setTheme, theme } = useAppTheme();
   const { isSaving, settings, updateSettings } = useAppSettings();
   const approvalPolicy = settings?.approvalPolicy;
+  const busySubmitBehavior = settings?.busySubmitBehavior;
 
   return (
     <section
@@ -144,29 +146,40 @@ function GeneralSettingsPanel() {
         description="仅在 Agent 运行时生效；Cmd/Ctrl+Enter 使用另一行为。"
         title="繁忙时 Enter 键行为"
       >
-        <Select
-          aria-label="繁忙时 Enter 键行为"
-          className="w-full sm:min-w-40 sm:max-w-56"
-          defaultSelectedKey="queue"
-          variant="secondary"
-        >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              <ListBox.Item id="queue" textValue="排队发送">
-                <Label>排队发送</Label>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="steer" textValue="插话发送">
-                <Label>插话发送</Label>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            </ListBox>
-          </Select.Popover>
-        </Select>
+        {busySubmitBehavior === undefined ? (
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
+        ) : (
+          <Select
+            aria-label="繁忙时 Enter 键行为"
+            className="w-full sm:min-w-40 sm:max-w-56"
+            isDisabled={isSaving}
+            selectedKey={busySubmitBehavior}
+            variant="secondary"
+            onSelectionChange={(key) => {
+              if (key !== BusySubmitBehavior.QUEUE && key !== BusySubmitBehavior.STEER) return;
+              void updateSettings({ busySubmitBehavior: key }).catch((error: unknown) => {
+                toast.danger(error instanceof Error ? error.message : "保存繁忙发送行为失败");
+              });
+            }}
+          >
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                <ListBox.Item id={BusySubmitBehavior.QUEUE} textValue="排队发送">
+                  <Label>排队发送</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+                <ListBox.Item id={BusySubmitBehavior.STEER} textValue="插话发送">
+                  <Label>插话发送</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              </ListBox>
+            </Select.Popover>
+          </Select>
+        )}
       </SettingsRow>
 
       <Separator />

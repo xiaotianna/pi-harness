@@ -20,6 +20,7 @@
 |---|---|---|
 | daemon/服务端数据 | TanStack Query | Provider 列表、连接状态 |
 | 全局审批策略 | TanStack Query 读写 daemon `app_settings` | 设置页与消息输入器共享权限模式 |
+| 繁忙发送偏好 | TanStack Query 读写 daemon `app_settings` | 运行中 Enter 使用排队或插话，Cmd/Ctrl+Enter 临时反转 |
 | 跨组件纯 UI 状态 | Zustand | 当前页面视图、会话模型切换的短暂 UI 状态 |
 | 全局默认模型 | TanStack Query 读写 daemon `app_settings` | 设置页与新会话输入器共享模型和推理强度 |
 | 局部交互状态 | React 组件状态 | 弹窗开关、输入草稿、展开状态 |
@@ -40,6 +41,7 @@
 | Tool 调用与分组 | assistant-ui Element `ToolCall`；分组使用紧凑列表 | `components/ai/tool-call.tsx`、`features/chat/components/thread-message/` |
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor` | `features/chat/components/chat-composer.tsx` |
+| 排队消息 | 输入器上方使用约三项后滚动、无独立卡片底色的紧凑单行 `ScrollShadow` 列表；正文可原位编辑、按 ID 删除或“调整方向”立即中止当前步骤并转入 steer 队列 | `features/chat/components/queued-run-inputs.tsx`、`features/chat/views/chat-page.tsx` |
 | 上下文与用量 | 发送按钮左侧使用 HeroUI `ProgressCircle` 触发 264px 宽的紧凑 `Popover`，详情取最近一次模型请求实际携带的完整 Session Context，在 HeroUI `ProgressBar` 轨道内按上下文窗口占比无间隙地连续组合 System Prompt、Tool 定义和按顺序累积的消息（含 tool call/result）；默认只展示当前窗口占用，最近 Run、Session 累计和说明通过 HeroUI `Disclosure` 展开，弹层正文使用限高 HeroUI `ScrollShadow` 适配可用视口；已有 checkpoint 时提供管理入口，使用 HeroUI `Modal` 和两个 `Select` 选择任意版本并排查看，空闲时恢复所选版本 | `features/chat/components/context-usage-popover.tsx`、`context-checkpoint-dialog.tsx`、`features/chat/utils/session-usage.ts` |
 | 文件附件 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发；输入框粘贴文件时复用同一套附件校验和提交链路；不使用扩展名 `accept` 白名单，所有普通文件都可作为结构化 Run 附件提交；图片、文本和可解析文档展开到 Context，其他二进制保留元数据并明确降级；附件准备失败时先持久化原始文本和附件元数据，再展示 Run 错误 | `features/chat/components/chat-composer.tsx`、`features/chat/utils/run-input.ts`、`packages/agent-runtime/src/utils/user-input.ts`、`packages/agent-runtime/src/run-coordinator.ts` |
 | `@` Workspace 上下文 | `ChatComposerEditor` 输入 `@` 时展示当前 Workspace 的真实图片、文件和文件夹候选；候选搜索预建索引，长列表使用 HeroUI 导出的 `Virtualizer`，并通过 Collection `items` 驱动动态分组，确保各候选类型完整参与虚拟布局；选中后保留内联标签并作为结构化引用提交，不改成 Tool Call | `features/chat/components/chat-composer-editor.tsx`、`chat-context-mention.tsx`、`features/chat/api/workspace-queries.ts` |

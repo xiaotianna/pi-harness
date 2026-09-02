@@ -8,6 +8,8 @@ import {
   CreateSessionDtoSchema,
   type ResolveApprovalDto,
   ResolveApprovalDtoSchema,
+  type RetryUserMessageDto,
+  RetryUserMessageDtoSchema,
   type SessionApprovalParamsDto,
   SessionApprovalParamsDtoSchema,
   type SessionCheckpointParamsDto,
@@ -16,14 +18,20 @@ import {
   SessionEventsQueryDtoSchema,
   type SessionListQueryDto,
   SessionListQueryDtoSchema,
+  type SessionMessageParamsDto,
+  SessionMessageParamsDtoSchema,
   type SessionParamsDto,
   SessionParamsDtoSchema,
+  type SessionQueuedInputParamsDto,
+  SessionQueuedInputParamsDtoSchema,
   type SessionRunParamsDto,
   SessionRunParamsDtoSchema,
   type SessionSearchQueryDto,
   SessionSearchQueryDtoSchema,
   type StartRunDto,
   StartRunDtoSchema,
+  type UpdateQueuedInputDto,
+  UpdateQueuedInputDtoSchema,
   type UpdateSessionDto,
   UpdateSessionDtoSchema,
   type UpdateSessionModelDto,
@@ -34,6 +42,8 @@ import type { SessionEventBroker } from "../sse/session-event-broker.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
   PendingToolApprovalVoSchema,
+  QueuedRunInputListVoSchema,
+  QueuedRunInputVoSchema,
   RunAcceptedVoSchema,
   SessionListVoSchema,
   SessionSearchResultListVoSchema,
@@ -160,8 +170,33 @@ export async function registerSessionRoutes(
     controller.abortRun,
   );
 
+  server.post<{ Body: RetryUserMessageDto; Params: SessionMessageParamsDto }>(
+    "/api/sessions/:sessionId/messages/:messageEventId/retry",
+    {
+      schema: {
+        body: RetryUserMessageDtoSchema,
+        params: SessionMessageParamsDtoSchema,
+        response: { 202: RunAcceptedVoSchema, ...errors },
+      },
+    },
+    controller.retryUserMessage,
+  );
+
   server.post<{ Body: StartRunDto; Params: SessionRunParamsDto }>(
     "/api/sessions/:sessionId/runs/:runId/follow-ups",
+    {
+      bodyLimit: 16 * 1024 * 1024,
+      schema: {
+        body: StartRunDtoSchema,
+        params: SessionRunParamsDtoSchema,
+        response: { 201: QueuedRunInputVoSchema, ...errors },
+      },
+    },
+    controller.followUpRun,
+  );
+
+  server.post<{ Body: StartRunDto; Params: SessionRunParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/steers",
     {
       bodyLimit: 16 * 1024 * 1024,
       schema: {
@@ -170,7 +205,52 @@ export async function registerSessionRoutes(
         response: { 204: Type.Null(), ...errors },
       },
     },
-    controller.followUpRun,
+    controller.steerRun,
+  );
+
+  server.get<{ Params: SessionRunParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/follow-ups",
+    {
+      schema: {
+        params: SessionRunParamsDtoSchema,
+        response: { 200: QueuedRunInputListVoSchema, ...errors },
+      },
+    },
+    controller.listQueuedFollowUps,
+  );
+
+  server.patch<{ Body: UpdateQueuedInputDto; Params: SessionQueuedInputParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/follow-ups/:queuedInputId",
+    {
+      schema: {
+        body: UpdateQueuedInputDtoSchema,
+        params: SessionQueuedInputParamsDtoSchema,
+        response: { 200: QueuedRunInputVoSchema, ...errors },
+      },
+    },
+    controller.updateQueuedFollowUp,
+  );
+
+  server.delete<{ Params: SessionQueuedInputParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/follow-ups/:queuedInputId",
+    {
+      schema: {
+        params: SessionQueuedInputParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.removeQueuedFollowUp,
+  );
+
+  server.post<{ Params: SessionQueuedInputParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/follow-ups/:queuedInputId/steer",
+    {
+      schema: {
+        params: SessionQueuedInputParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.steerQueuedFollowUp,
   );
 
   server.post<{ Params: SessionRunParamsDto }>(

@@ -13,7 +13,6 @@ import {
   PencilToLine as PencilLine,
   Plus,
   Magnifier as Search,
-  Square,
   Terminal as SquareTerminal,
   MagicWand as WandSparkles,
 } from "@gravity-ui/icons";
@@ -39,6 +38,9 @@ import {
   type ThinkingLevel as ThinkingLevelValue,
 } from "@pi-harness/agent-runtime/thinking-level";
 import {
+  BusySubmitBehavior,
+  type BusySubmitBehavior as BusySubmitBehaviorValue,
+  type QueuedRunInput,
   type RunInputContextReference,
   type RunUserInput,
   UserContextReferenceKind,
@@ -78,6 +80,7 @@ import {
   createChatComposerTokenValue,
 } from "./chat-composer-editor";
 import { ContextUsagePopover } from "./context-usage-popover";
+import { QueuedRunInputs } from "./queued-run-inputs";
 
 type PendingAttachment = {
   file: File;
@@ -115,10 +118,14 @@ export interface ChatComposerProps {
   onAddWorkspace?: () => Promise<ChatWorkspace | null>;
   onModelChange?: (selection: ChatComposerModelSelection) => Promise<void>;
   onStopRun?: () => Promise<void>;
+  onRemoveQueuedInput?: (queuedInputId: string) => Promise<void>;
+  onSteerQueuedInput?: (queuedInputId: string) => Promise<void>;
   onSubmitMessage?: (input: ChatComposerSubmitInput) => Promise<void>;
+  onUpdateQueuedInput?: (queuedInputId: string, prompt: string) => Promise<void>;
   placeholder?: string;
   presentation?: "dock" | "hero";
   providerId?: string;
+  queuedInputs?: readonly QueuedRunInput[];
   status?: ChatStatus;
   thinkingLevel?: ThinkingLevelValue;
   usage?: SessionUsageSummary;
@@ -133,6 +140,7 @@ export interface ChatComposerModelSelection {
 }
 
 export interface ChatComposerSubmitInput extends ChatComposerModelSelection, RunUserInput {
+  busySubmitBehavior?: BusySubmitBehaviorValue;
   workspaceId?: string;
 }
 
@@ -371,11 +379,15 @@ export function ChatComposer({
   modelId,
   onAddWorkspace,
   onModelChange,
+  onRemoveQueuedInput,
+  onSteerQueuedInput,
   onStopRun,
   onSubmitMessage,
+  onUpdateQueuedInput,
   placeholder = "输入任何问题",
   presentation = "dock",
   providerId,
+  queuedInputs = [],
   status: statusProp,
   thinkingLevel,
   usage,
@@ -513,7 +525,7 @@ export function ChatComposer({
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = (useAlternateBusyBehavior = false) => {
     const value = editorRef.current?.getValue() ?? "";
     const trimmed = value.trim();
     const hasAttachments = attachments.length > 0;
@@ -558,6 +570,15 @@ export function ChatComposer({
       .then((runAttachments) =>
         onSubmitMessage({
           attachments: runAttachments,
+          ...(isGenerating
+            ? {
+                busySubmitBehavior: useAlternateBusyBehavior
+                  ? settings?.busySubmitBehavior === BusySubmitBehavior.STEER
+                    ? BusySubmitBehavior.QUEUE
+                    : BusySubmitBehavior.STEER
+                  : (settings?.busySubmitBehavior ?? BusySubmitBehavior.QUEUE),
+              }
+            : {}),
           modelId: selectedModel.id,
           prompt: trimmed,
           providerId: selectedModelProvider.id,
@@ -584,6 +605,8 @@ export function ChatComposer({
       : (availableModelKeys[0] ?? null);
   const sendLabel =
     isGenerating && !hasDraftContent ? "停止生成" : isGenerating ? "发送后续消息" : "发送消息";
+  const busyActionLabel =
+    settings?.busySubmitBehavior === BusySubmitBehavior.STEER ? "调整方向" : "排队发送";
   const isHero = presentation === "hero";
   const selectedModelProvider = availableModelProviders.find((provider) =>
     provider.models.some(
@@ -803,10 +826,22 @@ export function ChatComposer({
       value={hasDraftContent ? "content" : ""}
       variant="primary"
       onStop={handleStop}
-      onSubmit={handleSubmit}
+      onSubmit={() => handleSubmit(false)}
     >
+      {onRemoveQueuedInput && onSteerQueuedInput && onUpdateQueuedInput ? (
+        <QueuedRunInputs
+          items={queuedInputs}
+          onRemove={onRemoveQueuedInput}
+          onSteer={onSteerQueuedInput}
+          onUpdate={onUpdateQueuedInput}
+        />
+      ) : null}
       {attachments.length ? (
-        <div className="relative rounded-t-[32px] bg-default pb-7">
+        <div
+          className={`relative bg-default pb-7 ${
+            queuedInputs.length ? "-mt-6 pt-6" : "rounded-t-[32px]"
+          }`}
+        >
           <div className="relative flex h-8 items-center">
             {isAttachmentDrawerExpanded ? (
               <Button
@@ -863,7 +898,7 @@ export function ChatComposer({
       ) : null}
       <PromptInput.Shell
         className={`relative z-10 overflow-visible! rounded-[32px] bg-field opacity-100! shadow-field ${
-          attachments.length ? "-mt-6" : ""
+          attachments.length || queuedInputs.length ? "-mt-6" : ""
         }`}
       >
         <PromptInput.Content className="px-1 pt-1" onPaste={handlePaste}>
@@ -1353,11 +1388,6 @@ export function ChatComposer({
             )}
           </PromptInput.ToolbarStart>
           <PromptInput.ToolbarEnd>
-            {isGenerating && hasDraftContent ? (
-              <PromptInput.Action aria-label="停止生成" tooltip="停止生成" onPress={handleStop}>
-                <Square aria-hidden className="size-3.5 fill-current" />
-              </PromptInput.Action>
-            ) : null}
             {!isHero && usage && providersQuery.isPending ? (
               <Skeleton aria-hidden className="h-8 w-12 rounded-full" />
             ) : null}
@@ -1370,10 +1400,29 @@ export function ChatComposer({
                 summary={usage}
               />
             ) : null}
-            <PromptInput.Send
-              aria-label={sendLabel}
-              {...(isGenerating ? {} : { isDisabled: !canSend })}
-            />
+            {isGenerating && hasDraftContent ? (
+              <Button
+                className="h-8 min-w-0 px-2"
+                size="sm"
+                variant="tertiary"
+                onPress={handleStop}
+              >
+                停止
+              </Button>
+            ) : null}
+            {isGenerating && hasDraftContent ? (
+              <Button
+                className="h-8 min-w-0 px-3"
+                isDisabled={!canSend}
+                size="sm"
+                variant="primary"
+                onPress={() => handleSubmit(false)}
+              >
+                {busyActionLabel}
+              </Button>
+            ) : (
+              <PromptInput.Send aria-label={sendLabel} isDisabled={!isGenerating && !canSend} />
+            )}
           </PromptInput.ToolbarEnd>
         </PromptInput.Toolbar>
       </PromptInput.Shell>

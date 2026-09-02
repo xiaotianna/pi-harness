@@ -27,6 +27,7 @@ export interface ThreadMessageListProps {
   messages: readonly ChatMessage[];
   onBeforeMessageEdit?: () => void;
   onBeforeTurnNavigate?: () => void;
+  onRetryUserMessage?: (messageEventId: string, prompt: string) => Promise<void>;
   onSearchTargetComplete?: () => void;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   searchTarget?: ChatSearchTarget;
@@ -66,7 +67,7 @@ function groupIntermediateMessages(messages: readonly ChatMessage[]): ThreadMess
       index += 1;
     }
     items.push({
-      id: `intermediate-${message.turnId}`,
+      id: `intermediate-${message.turnId}-${message.id}`,
       kind: "intermediate",
       messages: intermediateMessages,
     });
@@ -90,6 +91,7 @@ function SearchTargetMessage({
   message,
   onComplete,
   onEditingChange,
+  onRetryUserMessage,
   query,
   targetMessageId,
 }: {
@@ -97,6 +99,7 @@ function SearchTargetMessage({
   message: ChatMessage;
   onComplete?: () => void;
   onEditingChange?: (isEditing: boolean) => void;
+  onRetryUserMessage?: (messageEventId: string, prompt: string) => Promise<void>;
   query: string;
   targetMessageId: string | null;
 }) {
@@ -106,6 +109,7 @@ function SearchTargetMessage({
         isLastUserMessage={isLastUserMessage}
         message={message}
         {...(onEditingChange ? { onEditingChange } : {})}
+        {...(onRetryUserMessage ? { onRetryUserMessage } : {})}
       />
     );
   }
@@ -116,6 +120,7 @@ function SearchTargetMessage({
           isLastUserMessage={isLastUserMessage}
           message={message}
           {...(onEditingChange ? { onEditingChange } : {})}
+          {...(onRetryUserMessage ? { onRetryUserMessage } : {})}
         />
       </SearchHighlightProvider>
     </div>
@@ -180,6 +185,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       messages,
       onBeforeMessageEdit,
       onBeforeTurnNavigate,
+      onRetryUserMessage,
       onSearchTargetComplete,
       scrollContainerRef,
       searchTarget,
@@ -367,6 +373,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
               isLastUserMessage={item.message.id === lastUserMessageId}
               message={item.message}
               onEditingChange={handleEditingChange}
+              {...(onRetryUserMessage ? { onRetryUserMessage } : {})}
               query={searchTarget?.query ?? ""}
               targetMessageId={targetMessageId}
               {...(onSearchTargetComplete ? { onComplete: onSearchTargetComplete } : {})}

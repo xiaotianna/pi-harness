@@ -11,6 +11,17 @@ export const UserContextReferenceKind = {
 export type UserContextReferenceKind =
   (typeof UserContextReferenceKind)[keyof typeof UserContextReferenceKind];
 
+export const BusySubmitBehavior = {
+  QUEUE: "queue",
+  STEER: "steer",
+} as const;
+
+export type BusySubmitBehavior = (typeof BusySubmitBehavior)[keyof typeof BusySubmitBehavior];
+
+export function isBusySubmitBehavior(value: unknown): value is BusySubmitBehavior {
+  return Object.values(BusySubmitBehavior).includes(value as BusySubmitBehavior);
+}
+
 // 用户直接上传的一个附件
 export interface RunInputAttachment {
   data: string;
@@ -66,6 +77,16 @@ export interface HarnessUserMessage extends UserMessage {
   contextReferences?: readonly RunInputContextReference[];
   // 用户原始输入的文字，用于 Web 界面展示
   displayText: string;
+  // 由排队消息进入 Agent 时携带，供 Web 从待处理队列中移除对应项。
+  queuedInputId?: string;
+}
+
+export interface QueuedRunInput {
+  attachments: readonly HarnessUserAttachment[];
+  createdAt: number;
+  id: string;
+  prompt: string;
+  references: readonly RunInputContextReference[];
 }
 
 export class UserInputContextError extends Error {
@@ -75,13 +96,35 @@ export class UserInputContextError extends Error {
   }
 }
 
-export function isHarnessUserMessage(
-  value: unknown,
-): value is HarnessUserMessage {
+export function isHarnessUserMessage(value: unknown): value is HarnessUserMessage {
   return (
     isPlainObject(value) &&
     value.role === "user" &&
     typeof value.displayText === "string" &&
     (typeof value.content === "string" || Array.isArray(value.content))
   );
+}
+
+export function rewriteHarnessUserMessage(
+  message: HarnessUserMessage,
+  prompt: string,
+): HarnessUserMessage {
+  const previousPrompt = message.displayText.trim();
+  const rewriteText = (text: string) =>
+    previousPrompt && text.startsWith(previousPrompt)
+      ? `${prompt}${text.slice(previousPrompt.length)}`
+      : prompt;
+  const rewritten: HarnessUserMessage = {
+    ...message,
+    content:
+      typeof message.content === "string"
+        ? rewriteText(message.content)
+        : message.content.map((part) =>
+            part.type === "text" ? { ...part, text: rewriteText(part.text) } : part,
+          ),
+    displayText: prompt,
+    timestamp: Date.now(),
+  };
+  delete rewritten.queuedInputId;
+  return rewritten;
 }

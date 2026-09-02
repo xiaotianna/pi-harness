@@ -3,6 +3,11 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isThinkingLevel, type ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
+import {
+  BusySubmitBehavior,
+  type BusySubmitBehavior as BusySubmitBehaviorValue,
+  isBusySubmitBehavior,
+} from "@pi-harness/agent-runtime/user-input";
 import { ApprovalPolicy, type ApprovalPolicyValue, isApprovalPolicy } from "@pi-harness/policy";
 import { isPlainObject } from "es-toolkit";
 import { DATABASE_MIGRATIONS } from "./migrations.js";
@@ -68,9 +73,11 @@ export interface ProviderSettingRepository {
 
 export interface AppSettingRepository {
   getApprovalPolicy(): ApprovalPolicyValue;
+  getBusySubmitBehavior(): BusySubmitBehaviorValue;
   getDefaultModel(): DefaultModelSetting | null;
   getDisabledSkillDirectories(): readonly string[];
   setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void;
+  setBusySubmitBehavior(behavior: BusySubmitBehaviorValue, updatedAt: number): void;
   setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void;
   setDisabledSkillDirectories(directories: readonly string[], updatedAt: number): void;
 }
@@ -472,6 +479,7 @@ class SqliteProviderSettingRepository implements ProviderSettingRepository {
 }
 
 const APPROVAL_POLICY_KEY = "approval_policy";
+const BUSY_SUBMIT_BEHAVIOR_KEY = "busy_submit_behavior";
 const DEFAULT_MODEL_KEY = "default_model";
 const DISABLED_SKILL_DIRECTORIES_KEY = "disabled_skill_directories";
 
@@ -487,6 +495,19 @@ class SqliteAppSettingRepository implements AppSettingRepository {
     const value = readRequiredString(row, "value");
     if (!isApprovalPolicy(value)) {
       throw new Error("Invalid database value for approval policy");
+    }
+    return value;
+  }
+
+  public getBusySubmitBehavior(): BusySubmitBehaviorValue {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(BUSY_SUBMIT_BEHAVIOR_KEY) as DatabaseRow | undefined;
+    if (!row) return BusySubmitBehavior.QUEUE;
+
+    const value = readRequiredString(row, "value");
+    if (!isBusySubmitBehavior(value)) {
+      throw new Error("Invalid database value for busy submit behavior");
     }
     return value;
   }
@@ -535,6 +556,15 @@ class SqliteAppSettingRepository implements AppSettingRepository {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       )
       .run(APPROVAL_POLICY_KEY, approvalPolicy, updatedAt);
+  }
+
+  public setBusySubmitBehavior(behavior: BusySubmitBehaviorValue, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(BUSY_SUBMIT_BEHAVIOR_KEY, behavior, updatedAt);
   }
 
   public setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void {

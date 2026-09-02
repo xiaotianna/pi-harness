@@ -7,7 +7,7 @@ import {
   ThinkingLevel,
   type ThinkingLevel as ThinkingLevelValue,
 } from "@pi-harness/agent-runtime/thinking-level";
-import type { RunUserInput } from "@pi-harness/agent-runtime/user-input";
+import type { QueuedRunInput, RunUserInput } from "@pi-harness/agent-runtime/user-input";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
@@ -56,6 +56,26 @@ const RunAcceptedSchema = Type.Object({
   runId: Type.String({ minLength: 1 }),
   title: Type.String({ maxLength: 200, minLength: 1 }),
 });
+const QueuedRunInputSchema = Type.Object({
+  attachments: Type.Array(
+    Type.Object({
+      contentIndex: Type.Optional(Type.Integer({ minimum: 0 })),
+      mimeType: Type.String({ minLength: 1 }),
+      name: Type.String({ minLength: 1 }),
+      size: Type.Integer({ minimum: 0 }),
+    }),
+  ),
+  createdAt: Type.Integer({ minimum: 0 }),
+  id: Type.String({ minLength: 1 }),
+  prompt: Type.String(),
+  references: Type.Array(
+    Type.Object({
+      kind: Type.Union([Type.Literal("file"), Type.Literal("folder"), Type.Literal("image")]),
+      path: Type.String({ minLength: 1 }),
+    }),
+  ),
+});
+const QueuedRunInputListSchema = Type.Array(QueuedRunInputSchema);
 
 export type Session = Static<typeof SessionSchema>;
 export interface SessionSnapshot {
@@ -185,6 +205,21 @@ export async function startSessionRun(
   return body;
 }
 
+export async function retrySessionUserMessage(
+  sessionId: string,
+  messageEventId: string,
+  prompt: string,
+): Promise<RunAccepted> {
+  const body = (await (
+    await apiRequest(
+      `/api/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageEventId)}/retry`,
+      { body: JSON.stringify({ prompt }), method: "POST" },
+    )
+  ).json()) as unknown;
+  if (!Value.Check(RunAcceptedSchema, body)) throw new Error("daemon 返回了无效的 Run 响应");
+  return body;
+}
+
 export async function abortSessionRun(sessionId: string, runId: string): Promise<void> {
   await apiRequest(
     `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}`,
@@ -196,10 +231,84 @@ export async function followUpSessionRun(
   sessionId: string,
   runId: string,
   input: RunUserInput,
+): Promise<QueuedRunInput> {
+  const body = (await (
+    await apiRequest(
+      `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/follow-ups`,
+      { body: JSON.stringify(input), method: "POST" },
+    )
+  ).json()) as unknown;
+  if (!Value.Check(QueuedRunInputSchema, body)) {
+    throw new Error("daemon 返回了无效的排队消息");
+  }
+  return body;
+}
+
+export async function steerSessionRun(
+  sessionId: string,
+  runId: string,
+  input: RunUserInput,
 ): Promise<void> {
   await apiRequest(
-    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/follow-ups`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/steers`,
     { body: JSON.stringify(input), method: "POST" },
+  );
+}
+
+export async function listQueuedSessionRunInputs(
+  sessionId: string,
+  runId: string,
+  signal?: AbortSignal,
+): Promise<readonly QueuedRunInput[]> {
+  const body = (await (
+    await apiRequest(
+      `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/follow-ups`,
+      signal ? { signal } : undefined,
+    )
+  ).json()) as unknown;
+  if (!Value.Check(QueuedRunInputListSchema, body)) {
+    throw new Error("daemon 返回了无效的排队消息列表");
+  }
+  return body;
+}
+
+export async function updateQueuedSessionRunInput(
+  sessionId: string,
+  runId: string,
+  queuedInputId: string,
+  prompt: string,
+): Promise<QueuedRunInput> {
+  const body = (await (
+    await apiRequest(
+      `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/follow-ups/${encodeURIComponent(queuedInputId)}`,
+      { body: JSON.stringify({ prompt }), method: "PATCH" },
+    )
+  ).json()) as unknown;
+  if (!Value.Check(QueuedRunInputSchema, body)) {
+    throw new Error("daemon 返回了无效的排队消息");
+  }
+  return body;
+}
+
+export async function removeQueuedSessionRunInput(
+  sessionId: string,
+  runId: string,
+  queuedInputId: string,
+): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/follow-ups/${encodeURIComponent(queuedInputId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function steerQueuedSessionRunInput(
+  sessionId: string,
+  runId: string,
+  queuedInputId: string,
+): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/follow-ups/${encodeURIComponent(queuedInputId)}/steer`,
+    { method: "POST" },
   );
 }
 

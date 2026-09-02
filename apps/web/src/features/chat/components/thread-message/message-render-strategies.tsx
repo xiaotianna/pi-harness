@@ -20,6 +20,7 @@ type MessageOfType<T extends ChatMessageType> = Extract<ChatMessage, { type: T }
 interface MessageRenderContext {
   isLastUserMessage: boolean;
   onEditingChange?: (isEditing: boolean) => void;
+  onRetryUserMessage?: (messageEventId: string, prompt: string) => Promise<void>;
 }
 
 type MessageRenderStrategy = (message: ChatMessage, context: MessageRenderContext) => ReactNode;
@@ -86,6 +87,7 @@ export const MESSAGE_RENDER_STRATEGIES = {
       isLastUserMessage={context.isLastUserMessage}
       message={message}
       {...(context.onEditingChange ? { onEditingChange: context.onEditingChange } : {})}
+      {...(context.onRetryUserMessage ? { onRetryUserMessage: context.onRetryUserMessage } : {})}
     />
   )),
   [ChatMessageType.WEB_SEARCH]: createMessageRenderStrategy(

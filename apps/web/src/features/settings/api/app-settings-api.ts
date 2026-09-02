@@ -1,4 +1,5 @@
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
+import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { ApprovalPolicy } from "@pi-harness/policy/approval-policy";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
@@ -22,11 +23,18 @@ const DefaultModelSettingSchema = Type.Object({
 
 const AppSettingsSchema = Type.Object({
   approvalPolicy: ApprovalPolicySchema,
+  busySubmitBehavior: Type.Union([
+    Type.Literal(BusySubmitBehavior.QUEUE),
+    Type.Literal(BusySubmitBehavior.STEER),
+  ]),
   defaultModel: Type.Union([DefaultModelSettingSchema, Type.Null()]),
 });
 
 const UpdateAppSettingsSchema = Type.Object({
   approvalPolicy: Type.Optional(ApprovalPolicySchema),
+  busySubmitBehavior: Type.Optional(
+    Type.Union([Type.Literal(BusySubmitBehavior.QUEUE), Type.Literal(BusySubmitBehavior.STEER)]),
+  ),
   defaultModel: Type.Optional(DefaultModelSettingSchema),
 });
 

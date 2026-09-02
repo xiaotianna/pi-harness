@@ -39,6 +39,8 @@ export {
   isContextCheckpointRestoredData,
   isContextCompactedData,
   isContextWorkingStateResetData,
+  isMessageBranchStartedData,
+  type MessageBranchStartedData,
   type MessageDeltaData,
   MessageDeltaKind,
   type MessageDeltaKind as MessageDeltaKindValue,
@@ -50,6 +52,7 @@ export {
   type RunInteractionData,
   type RunStartedData,
   type SessionId,
+  selectActiveSessionEvents,
   type ToolCompletedData,
   type ToolStartedData,
   type ToolUpdatedData,
@@ -57,6 +60,7 @@ export {
 export { buildSystemPrompt } from "./prompts/system-prompt.js";
 export type {
   HarnessEventListener,
+  RestoreRunHistoryInput,
   StartRunInput,
 } from "./run-coordinator.js";
 export { shouldResetWorkingStateForNewRun } from "./run-coordinator.js";
@@ -73,12 +77,17 @@ export type {
   ToolApprovalRequester,
 } from "./tool-approval.js";
 export {
+  BusySubmitBehavior,
+  type BusySubmitBehavior as BusySubmitBehaviorValue,
   type HarnessUserAttachment,
   type HarnessUserMessage,
+  isBusySubmitBehavior,
   isHarnessUserMessage,
+  type QueuedRunInput,
   type RunInputAttachment,
   type RunInputContextReference,
   type RunUserInput,
+  rewriteHarnessUserMessage,
   UserContextReferenceKind,
   type UserContextReferenceKind as UserContextReferenceKindValue,
   UserInputContextError,

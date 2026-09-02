@@ -8,11 +8,17 @@ import {
   type FileChangedData,
   type HarnessEvent,
   HarnessEventType,
+  type HarnessUserMessage,
+  isHarnessUserMessage,
+  type MessageBranchStartedData,
+  type QueuedRunInput,
   RunFileChangeOperation,
   type RunId,
   type RunUserInput,
+  rewriteHarnessUserMessage,
   type SessionId,
   type StreamFn,
+  selectActiveSessionEvents,
   UserInputContextError,
 } from "@pi-harness/agent-runtime";
 import {
@@ -53,6 +59,8 @@ const SessionErrorCode = {
   RUN_CHANGES_CONFLICT: "RUN_CHANGES_CONFLICT",
   RUN_CHANGES_NOT_FOUND: "RUN_CHANGES_NOT_FOUND",
   RUN_NOT_FOUND: "RUN_NOT_FOUND",
+  QUEUED_INPUT_NOT_FOUND: "QUEUED_INPUT_NOT_FOUND",
+  MESSAGE_NOT_FOUND: "MESSAGE_NOT_FOUND",
   USER_CONTEXT_INVALID: "USER_CONTEXT_INVALID",
   WORKSPACE_INVALID: "WORKSPACE_INVALID",
 } as const;
@@ -108,6 +116,22 @@ export interface SessionBackgroundErrorContext {
   providerId: string;
   runId: RunId;
   sessionId: SessionId;
+}
+
+function normalizeRunUserInput(input: RunUserInput): RunUserInput {
+  const normalized = {
+    attachments: input.attachments ?? [],
+    prompt: input.prompt.trim(),
+    references: input.references ?? [],
+  } satisfies RunUserInput;
+  if (
+    !normalized.prompt &&
+    normalized.attachments.length === 0 &&
+    normalized.references.length === 0
+  ) {
+    throw new SessionServiceError(SessionErrorCode.EMPTY_PROMPT, "消息内容不能为空");
+  }
+  return normalized;
 }
 
 export type SessionBackgroundErrorHandler = (
@@ -267,7 +291,7 @@ export class SessionService {
         const content = readSessionSearchContent(snapshot.messages, normalizedQuery);
         const hasTitleMatch = session.title.toLocaleLowerCase().includes(normalizedQuery);
         if (normalizedQuery && !hasTitleMatch && !content.hasMessageMatch) return null;
-        const messageEventIds = snapshot.events.flatMap((event) =>
+        const messageEventIds = selectActiveSessionEvents(snapshot.events).flatMap((event) =>
           event.type === HarnessEventType.MESSAGE_COMPLETED ? [event.id] : [],
         );
         return {
@@ -366,63 +390,91 @@ export class SessionService {
   public async startRun(sessionId: SessionId, input: RunUserInput): Promise<RunAccepted> {
     // 1. Session 是否空闲
     this.assertSessionIdle(sessionId);
-    const prompt = input.prompt.trim();
-    const userInput = {
-      attachments: input.attachments ?? [],
-      prompt,
-      references: input.references ?? [],
-    } satisfies RunUserInput;
-    if (!prompt && userInput.attachments.length === 0 && userInput.references.length === 0) {
+    const userInput = normalizeRunUserInput(input);
+
+    this.activeSessionIds.add(sessionId);
+    try {
+      const session = this.getRequiredSession(sessionId);
+      const snapshot = await this.eventStore.load(sessionId);
+      this.reconcileIndex(session, snapshot);
+      const resolvedModel = await this.providers.resolveRunModel(
+        session.providerId,
+        session.modelId,
+      );
+      return this.launchRun(session, snapshot, resolvedModel, userInput);
+    } catch (error: unknown) {
+      this.activeSessionIds.delete(sessionId);
+      this.activeProviderBySession.delete(sessionId);
+      throw error;
+    }
+  }
+
+  public async retryUserMessage(
+    sessionId: SessionId,
+    sourceEventId: string,
+    prompt: string,
+  ): Promise<RunAccepted> {
+    this.assertSessionIdle(sessionId);
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedPrompt) {
       throw new SessionServiceError(SessionErrorCode.EMPTY_PROMPT, "消息内容不能为空");
     }
 
     this.activeSessionIds.add(sessionId);
     try {
       const session = this.getRequiredSession(sessionId);
-      this.activeProviderBySession.set(sessionId, session.providerId);
-      // 2. 从 JSONL 恢复事件和完整消息
       const snapshot = await this.eventStore.load(sessionId);
       this.reconcileIndex(session, snapshot);
-      // 3. 获取模型和流函数
-      const { model, streamFn } = await this.providers.resolveRunModel(
+      const source = selectActiveSessionEvents(snapshot.events).findLast(
+        (event) =>
+          event.type === HarnessEventType.MESSAGE_COMPLETED && isHarnessUserMessage(event.data),
+      );
+      if (source?.id !== sourceEventId || !isHarnessUserMessage(source.data)) {
+        throw new SessionServiceError(
+          SessionErrorCode.MESSAGE_NOT_FOUND,
+          "只能编辑当前分支的最后一条用户消息",
+        );
+      }
+      const resolvedModel = await this.providers.resolveRunModel(
         session.providerId,
         session.modelId,
       );
-      const runId = randomUUID();
-      // 4. 生成 runId 并启动
-      const task = this.agents.startRun({
-        approvalPolicy: this.settings.getApprovalPolicy(),
-        initialSeq: Math.max(session.lastSeq, snapshot.lastPersistedSeq),
-        contextCheckpoint: snapshot.contextCheckpoint,
-        contextCheckpointEventSeq: snapshot.contextCheckpointEventSeq,
-        contextCheckpointHistory: snapshot.contextCheckpointHistory,
-        contextCheckpointTailStartMessageIndex: snapshot.contextCheckpointTailStartMessageIndex,
-        messages: snapshot.messages,
-        model,
-        modelId: session.modelId,
-        plan: snapshot.plan,
-        userInput,
-        providerId: session.providerId,
-        runId,
+      await this.sessionEvents.handle({
+        data: { sourceEventId } satisfies MessageBranchStartedData,
+        id: randomUUID(),
+        seq: Math.max(session.lastSeq, snapshot.lastPersistedSeq) + 1,
         sessionId,
-        streamFn,
-        thinkingLevel: session.thinkingLevel,
-        todos: snapshot.todos,
-        workspaceRoot: session.workspaceRoot,
+        timestamp: Date.now(),
+        type: HarnessEventType.MESSAGE_BRANCH_STARTED,
       });
-      this.trackBackgroundTask(task, { providerId: session.providerId, runId, sessionId });
-      let title = session.title;
-      if (snapshot.messages.length === 0 && title === DEFAULT_SESSION_TITLE) {
-        const source = buildSessionTitleSource(
-          userInput.prompt,
-          userInput.attachments.map((attachment) => attachment.name),
-          userInput.references.map((reference) => reference.path),
-        );
-        const generatedTitle = await this.generateSessionTitle(model, streamFn, source);
-        if (this.sessions.updateTitle(sessionId, generatedTitle, Date.now()))
-          title = generatedTitle;
+      const branchedSnapshot = await this.eventStore.load(sessionId);
+      if (
+        !this.agents.restoreHistory(sessionId, {
+          contextCheckpoint: branchedSnapshot.contextCheckpoint,
+          contextCheckpointEventSeq: branchedSnapshot.contextCheckpointEventSeq,
+          contextCheckpointHistory: branchedSnapshot.contextCheckpointHistory,
+          contextCheckpointTailStartMessageIndex:
+            branchedSnapshot.contextCheckpointTailStartMessageIndex,
+          initialSeq: branchedSnapshot.lastPersistedSeq,
+          messages: branchedSnapshot.messages,
+          plan: branchedSnapshot.plan,
+          todos: branchedSnapshot.todos,
+        })
+      ) {
+        throw new SessionServiceError(SessionErrorCode.BUSY, "Session 正在运行");
       }
-      return { runId, title };
+      const userInput = {
+        attachments: [],
+        prompt: normalizedPrompt,
+        references: source.data.contextReferences ?? [],
+      } satisfies RunUserInput;
+      return this.launchRun(
+        session,
+        branchedSnapshot,
+        resolvedModel,
+        userInput,
+        rewriteHarnessUserMessage(source.data, normalizedPrompt),
+      );
     } catch (error: unknown) {
       this.activeSessionIds.delete(sessionId);
       this.activeProviderBySession.delete(sessionId);
@@ -437,23 +489,36 @@ export class SessionService {
     }
   }
 
-  public async followUpRun(sessionId: SessionId, runId: RunId, input: RunUserInput): Promise<void> {
+  public async followUpRun(
+    sessionId: SessionId,
+    runId: RunId,
+    input: RunUserInput,
+  ): Promise<QueuedRunInput> {
     this.getRequiredSession(sessionId);
-    const userInput = {
-      attachments: input.attachments ?? [],
-      prompt: input.prompt.trim(),
-      references: input.references ?? [],
-    } satisfies RunUserInput;
-    if (
-      !userInput.prompt &&
-      userInput.attachments.length === 0 &&
-      userInput.references.length === 0
-    ) {
-      throw new SessionServiceError(SessionErrorCode.EMPTY_PROMPT, "消息内容不能为空");
+    const userInput = normalizeRunUserInput(input);
+    let queued: QueuedRunInput | null;
+    try {
+      queued = await this.agents.followUp(sessionId, runId, userInput);
+    } catch (error: unknown) {
+      throw new SessionServiceError(
+        SessionErrorCode.USER_CONTEXT_INVALID,
+        error instanceof UserInputContextError
+          ? error.message
+          : "无法读取附件或引用上下文，请确认文件仍然存在且可访问",
+      );
     }
+    if (queued === null) {
+      throw new SessionServiceError(SessionErrorCode.RUN_NOT_FOUND, "活动 Run 不存在");
+    }
+    return queued;
+  }
+
+  public async steerRun(sessionId: SessionId, runId: RunId, input: RunUserInput): Promise<void> {
+    this.getRequiredSession(sessionId);
+    const userInput = normalizeRunUserInput(input);
     let wasQueued: boolean;
     try {
-      wasQueued = await this.agents.followUp(sessionId, runId, userInput);
+      wasQueued = await this.agents.steer(sessionId, runId, userInput);
     } catch (error: unknown) {
       throw new SessionServiceError(
         SessionErrorCode.USER_CONTEXT_INVALID,
@@ -464,6 +529,70 @@ export class SessionService {
     }
     if (!wasQueued) {
       throw new SessionServiceError(SessionErrorCode.RUN_NOT_FOUND, "活动 Run 不存在");
+    }
+  }
+
+  public listQueuedFollowUps(sessionId: SessionId, runId: RunId): readonly QueuedRunInput[] {
+    this.getRequiredSession(sessionId);
+    return this.agents.listQueuedFollowUps(sessionId, runId);
+  }
+
+  public async updateQueuedFollowUp(
+    sessionId: SessionId,
+    runId: RunId,
+    queuedInputId: string,
+    prompt: string,
+  ): Promise<QueuedRunInput> {
+    this.getRequiredSession(sessionId);
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedPrompt) {
+      throw new SessionServiceError(SessionErrorCode.EMPTY_PROMPT, "消息内容不能为空");
+    }
+    let queued: QueuedRunInput | null;
+    try {
+      queued = await this.agents.updateFollowUp(sessionId, runId, queuedInputId, normalizedPrompt);
+    } catch (error: unknown) {
+      throw new SessionServiceError(
+        SessionErrorCode.USER_CONTEXT_INVALID,
+        error instanceof UserInputContextError
+          ? error.message
+          : "无法读取附件或引用上下文，请确认文件仍然存在且可访问",
+      );
+    }
+    if (queued === null) {
+      throw new SessionServiceError(
+        SessionErrorCode.QUEUED_INPUT_NOT_FOUND,
+        "排队消息不存在或已经开始处理",
+      );
+    }
+    return queued;
+  }
+
+  public async removeQueuedFollowUp(
+    sessionId: SessionId,
+    runId: RunId,
+    queuedInputId: string,
+  ): Promise<void> {
+    this.getRequiredSession(sessionId);
+    if (!(await this.agents.removeFollowUp(sessionId, runId, queuedInputId))) {
+      throw new SessionServiceError(
+        SessionErrorCode.QUEUED_INPUT_NOT_FOUND,
+        "排队消息不存在或已经开始处理",
+      );
+    }
+  }
+
+  public async steerQueuedFollowUp(
+    sessionId: SessionId,
+    runId: RunId,
+    queuedInputId: string,
+  ): Promise<void> {
+    this.getRequiredSession(sessionId);
+    if (!(await this.agents.steerFollowUp(sessionId, runId, queuedInputId))) {
+      throw new SessionServiceError(
+        SessionErrorCode.QUEUED_INPUT_NOT_FOUND,
+        "排队消息不存在或已经开始处理",
+      );
     }
   }
 
@@ -673,6 +802,55 @@ export class SessionService {
     } catch {
       return fallback;
     }
+  }
+
+  private async launchRun(
+    session: SessionRecord,
+    snapshot: SessionEventSnapshot,
+    resolvedModel: { model: Model<Api>; streamFn: StreamFn },
+    userInput: RunUserInput,
+    userMessage?: HarnessUserMessage,
+  ): Promise<RunAccepted> {
+    const { model, streamFn } = resolvedModel;
+    const runId = randomUUID();
+    this.activeProviderBySession.set(session.id, session.providerId);
+    const task = this.agents.startRun({
+      approvalPolicy: this.settings.getApprovalPolicy(),
+      initialSeq: Math.max(session.lastSeq, snapshot.lastPersistedSeq),
+      contextCheckpoint: snapshot.contextCheckpoint,
+      contextCheckpointEventSeq: snapshot.contextCheckpointEventSeq,
+      contextCheckpointHistory: snapshot.contextCheckpointHistory,
+      contextCheckpointTailStartMessageIndex: snapshot.contextCheckpointTailStartMessageIndex,
+      messages: snapshot.messages,
+      model,
+      modelId: session.modelId,
+      plan: snapshot.plan,
+      userInput,
+      ...(userMessage === undefined ? {} : { userMessage }),
+      providerId: session.providerId,
+      runId,
+      sessionId: session.id,
+      streamFn,
+      thinkingLevel: session.thinkingLevel,
+      todos: snapshot.todos,
+      workspaceRoot: session.workspaceRoot,
+    });
+    this.trackBackgroundTask(task, {
+      providerId: session.providerId,
+      runId,
+      sessionId: session.id,
+    });
+    let title = session.title;
+    if (snapshot.messages.length === 0 && title === DEFAULT_SESSION_TITLE) {
+      const source = buildSessionTitleSource(
+        userInput.prompt,
+        userInput.attachments.map((attachment) => attachment.name),
+        userInput.references.map((reference) => reference.path),
+      );
+      const generatedTitle = await this.generateSessionTitle(model, streamFn, source);
+      if (this.sessions.updateTitle(session.id, generatedTitle, Date.now())) title = generatedTitle;
+    }
+    return { runId, title };
   }
 
   private trackBackgroundTask(task: Promise<void>, context: SessionBackgroundErrorContext): void {

@@ -3,13 +3,17 @@ import type { HarnessConfig } from "../config/index.js";
 import type {
   CreateSessionDto,
   ResolveApprovalDto,
+  RetryUserMessageDto,
   SessionApprovalParamsDto,
   SessionCheckpointParamsDto,
   SessionListQueryDto,
+  SessionMessageParamsDto,
   SessionParamsDto,
+  SessionQueuedInputParamsDto,
   SessionRunParamsDto,
   SessionSearchQueryDto,
   StartRunDto,
+  UpdateQueuedInputDto,
   UpdateSessionDto,
   UpdateSessionModelDto,
 } from "../dto/session-dto.js";
@@ -22,6 +26,7 @@ import { type SessionService, SessionServiceError } from "../services/session-se
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
 import type {
   PendingToolApprovalVo,
+  QueuedRunInputVo,
   RunAcceptedVo,
   SessionSearchResultVo,
   SessionSnapshotVo,
@@ -148,17 +153,131 @@ export class SessionController {
     }
   };
 
+  public retryUserMessage = async (
+    request: FastifyRequest<{ Body: RetryUserMessageDto; Params: SessionMessageParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | RunAcceptedVo> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      const accepted = await this.sessions.retryUserMessage(
+        request.params.sessionId,
+        request.params.messageEventId,
+        request.body.prompt,
+      );
+      return reply.status(202).send(accepted);
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
   public followUpRun = async (
+    request: FastifyRequest<{ Body: StartRunDto; Params: SessionRunParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | QueuedRunInputVo> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      const queued = await this.sessions.followUpRun(
+        request.params.sessionId,
+        request.params.runId,
+        {
+          attachments: request.body.attachments ?? [],
+          prompt: request.body.prompt,
+          references: request.body.references ?? [],
+        },
+      );
+      return reply.status(201).send(queued);
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public steerRun = async (
     request: FastifyRequest<{ Body: StartRunDto; Params: SessionRunParamsDto }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
-      await this.sessions.followUpRun(request.params.sessionId, request.params.runId, {
+      await this.sessions.steerRun(request.params.sessionId, request.params.runId, {
         attachments: request.body.attachments ?? [],
         prompt: request.body.prompt,
         references: request.body.references ?? [],
       });
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public listQueuedFollowUps = async (
+    request: FastifyRequest<{ Params: SessionRunParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | readonly QueuedRunInputVo[]> => {
+    try {
+      return this.sessions
+        .listQueuedFollowUps(request.params.sessionId, request.params.runId)
+        .map((item) => ({
+          ...item,
+          attachments: [...item.attachments],
+          references: [...item.references],
+        }));
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public updateQueuedFollowUp = async (
+    request: FastifyRequest<{
+      Body: UpdateQueuedInputDto;
+      Params: SessionQueuedInputParamsDto;
+    }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | QueuedRunInputVo> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      const item = await this.sessions.updateQueuedFollowUp(
+        request.params.sessionId,
+        request.params.runId,
+        request.params.queuedInputId,
+        request.body.prompt,
+      );
+      return {
+        ...item,
+        attachments: [...item.attachments],
+        references: [...item.references],
+      };
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public removeQueuedFollowUp = async (
+    request: FastifyRequest<{ Params: SessionQueuedInputParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.sessions.removeQueuedFollowUp(
+        request.params.sessionId,
+        request.params.runId,
+        request.params.queuedInputId,
+      );
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public steerQueuedFollowUp = async (
+    request: FastifyRequest<{ Params: SessionQueuedInputParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.sessions.steerQueuedFollowUp(
+        request.params.sessionId,
+        request.params.runId,
+        request.params.queuedInputId,
+      );
       return reply.status(204).send();
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
@@ -225,6 +344,8 @@ export class SessionController {
       const status =
         error.code === "SESSION_NOT_FOUND" ||
         error.code === "RUN_NOT_FOUND" ||
+        error.code === "MESSAGE_NOT_FOUND" ||
+        error.code === "QUEUED_INPUT_NOT_FOUND" ||
         error.code === "CONTEXT_CHECKPOINT_NOT_FOUND"
           ? 404
           : error.code === "SESSION_BUSY" || error.code === "RUN_CHANGES_CONFLICT"

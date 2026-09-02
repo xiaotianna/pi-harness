@@ -1,4 +1,5 @@
 import { type HarnessEvent, HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
+import { isHarnessUserMessage, type QueuedRunInput } from "@pi-harness/agent-runtime/user-input";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import {
@@ -88,6 +89,21 @@ export function useSessionEvents(sessionId: string, initialSeq: number, isRead: 
             : session,
         ),
       );
+      for (const event of events) {
+        if (
+          event.type !== HarnessEventType.MESSAGE_STARTED ||
+          event.runId === undefined ||
+          !isHarnessUserMessage(event.data) ||
+          event.data.queuedInputId === undefined
+        ) {
+          continue;
+        }
+        const queuedInputId = event.data.queuedInputId;
+        queryClient.setQueryData<readonly QueuedRunInput[]>(
+          sessionQueryKeys.queuedInputs(sessionId, event.runId),
+          (items) => items?.filter((item) => item.id !== queuedInputId),
+        );
+      }
     };
 
     const receive = (message: MessageEvent<string>) => {

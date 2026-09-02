@@ -3,9 +3,13 @@
 import { ChatConversation, ChatMessage as ChatMessagePrimitive } from "@agile-avocation/ui-pro";
 import { Skeleton } from "@heroui/react";
 import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness-event";
-import { HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
+import {
+  HarnessEventType,
+  selectActiveSessionEvents,
+} from "@pi-harness/agent-runtime/harness-event";
 import type { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import type { RunUserInput } from "@pi-harness/agent-runtime/user-input";
+import { BusySubmitBehavior, type QueuedRunInput } from "@pi-harness/agent-runtime/user-input";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -13,13 +17,22 @@ import { AgentTraceView } from "../../trace";
 import {
   abortSessionRun,
   followUpSessionRun,
+  removeQueuedSessionRunInput,
   resolveToolApproval,
+  retrySessionUserMessage,
   type Session,
   type SessionSnapshot,
   startSessionRun,
+  steerQueuedSessionRunInput,
+  steerSessionRun,
+  updateQueuedSessionRunInput,
   updateSessionModel,
 } from "../api/session-api";
-import { sessionQueryKeys, sessionSnapshotQueryOptions } from "../api/session-queries";
+import {
+  queuedSessionRunInputsQueryOptions,
+  sessionQueryKeys,
+  sessionSnapshotQueryOptions,
+} from "../api/session-queries";
 import { ChatComposer } from "../components/chat-composer";
 import { ConversationTurnToc } from "../components/conversation-turn-toc";
 import { ThreadMessageList, type ThreadMessageListHandle } from "../components/thread-message-list";
@@ -131,10 +144,11 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const shouldReduceMotion = useReducedMotion();
   const transition = shouldReduceMotion ? { duration: 0 } : CHAT_VIEW_TRANSITION;
   const events = snapshot?.events ?? EMPTY_SESSION_EVENTS;
+  const activeEvents = useMemo(() => selectActiveSessionEvents(events), [events]);
   const messages = useMemo(() => sessionEventsToMessages(events), [events]);
-  const usage = useMemo(() => summarizeSessionUsage(events), [events]);
-  const workingState = useMemo(() => readSessionWorkingState(events), [events]);
-  const eventActiveRunId = useMemo(() => findActiveRunId(events), [events]);
+  const usage = useMemo(() => summarizeSessionUsage(activeEvents), [activeEvents]);
+  const workingState = useMemo(() => readSessionWorkingState(activeEvents), [activeEvents]);
+  const eventActiveRunId = useMemo(() => findActiveRunId(activeEvents), [activeEvents]);
   const pendingApprovalTool = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
@@ -154,6 +168,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const messageListRef = useRef<ThreadMessageListHandle>(null);
   const shouldFollowConversationRef = useRef(true);
   const [positionedSessionId, setPositionedSessionId] = useState<string | null>(null);
+  const [acceptedRunId, setAcceptedRunId] = useState<string | null>(null);
   const isPageReady =
     activeView !== ChatPageView.CONVERSATION ||
     searchTarget !== null ||
@@ -202,19 +217,82 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.list() });
     },
     onMutate: () => {
+      setAcceptedRunId(null);
       queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
         sessions?.map((session) =>
           session.id === sessionId ? { ...session, isRunning: true } : session,
         ),
       );
     },
+    onSuccess: (accepted) => setAcceptedRunId(accepted.runId),
   });
   const abortMutation = useMutation({
     mutationFn: (runId: string) => abortSessionRun(sessionId, runId),
   });
+  const retryMutation = useMutation({
+    mutationFn: ({ messageEventId, prompt }: { messageEventId: string; prompt: string }) =>
+      retrySessionUserMessage(sessionId, messageEventId, prompt),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.list() });
+    },
+    onMutate: () => {
+      setAcceptedRunId(null);
+      queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
+        sessions?.map((session) =>
+          session.id === sessionId ? { ...session, isRunning: true } : session,
+        ),
+      );
+    },
+    onSuccess: (accepted) => setAcceptedRunId(accepted.runId),
+  });
   const followUpMutation = useMutation({
     mutationFn: ({ input, runId }: { input: RunUserInput; runId: string }) =>
       followUpSessionRun(sessionId, runId, input),
+    onSuccess: (_, { runId }) =>
+      queryClient.invalidateQueries({
+        queryKey: sessionQueryKeys.queuedInputs(sessionId, runId),
+      }),
+  });
+  const steerMutation = useMutation({
+    mutationFn: ({ input, runId }: { input: RunUserInput; runId: string }) =>
+      steerSessionRun(sessionId, runId, input),
+  });
+  const updateQueuedInputMutation = useMutation({
+    mutationFn: ({
+      prompt,
+      queuedInputId,
+      runId,
+    }: {
+      prompt: string;
+      queuedInputId: string;
+      runId: string;
+    }) => updateQueuedSessionRunInput(sessionId, runId, queuedInputId, prompt),
+    onSuccess: (updated, { runId }) => {
+      queryClient.setQueryData<readonly QueuedRunInput[]>(
+        sessionQueryKeys.queuedInputs(sessionId, runId),
+        (items) => items?.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    },
+  });
+  const removeQueuedInputMutation = useMutation({
+    mutationFn: ({ queuedInputId, runId }: { queuedInputId: string; runId: string }) =>
+      removeQueuedSessionRunInput(sessionId, runId, queuedInputId),
+    onSuccess: (_, { queuedInputId, runId }) => {
+      queryClient.setQueryData<readonly QueuedRunInput[]>(
+        sessionQueryKeys.queuedInputs(sessionId, runId),
+        (items) => items?.filter((item) => item.id !== queuedInputId),
+      );
+    },
+  });
+  const steerQueuedInputMutation = useMutation({
+    mutationFn: ({ queuedInputId, runId }: { queuedInputId: string; runId: string }) =>
+      steerQueuedSessionRunInput(sessionId, runId, queuedInputId),
+    onSuccess: (_, { queuedInputId, runId }) => {
+      queryClient.setQueryData<readonly QueuedRunInput[]>(
+        sessionQueryKeys.queuedInputs(sessionId, runId),
+        (items) => items?.filter((item) => item.id !== queuedInputId),
+      );
+    },
   });
   const cacheSession = (session: Session) => {
     queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (current) =>
@@ -252,7 +330,6 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     }) => resolveToolApproval(sessionId, runId, approvalId, decision),
   });
 
-  const acceptedRunId = startMutation.data?.runId;
   const isAcceptedRunFinished = useMemo(
     () =>
       acceptedRunId !== undefined &&
@@ -265,10 +342,14 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       ),
     [acceptedRunId, events],
   );
-  const acceptedRunIdWhileStarting = isAcceptedRunFinished ? null : (acceptedRunId ?? null);
+  const acceptedRunIdWhileStarting = isAcceptedRunFinished ? null : acceptedRunId;
   const activeRunId = eventActiveRunId ?? acceptedRunIdWhileStarting;
+  const queuedInputsQuery = useQuery({
+    ...queuedSessionRunInputsQueryOptions(sessionId, activeRunId ?? "inactive"),
+    enabled: activeRunId !== null,
+  });
   const status =
-    startMutation.isPending || (activeRunId && eventActiveRunId === null)
+    startMutation.isPending || retryMutation.isPending || (activeRunId && eventActiveRunId === null)
       ? "submitted"
       : eventActiveRunId === null
         ? "ready"
@@ -338,6 +419,14 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                       scrollContainerRef={conversationRef}
                       workspaceId={snapshot.session.workspaceId}
                       workspaceRoot={snapshot.session.workspaceRoot}
+                      {...(isSessionRunning
+                        ? {}
+                        : {
+                            onRetryUserMessage: (messageEventId: string, prompt: string) =>
+                              retryMutation
+                                .mutateAsync({ messageEventId, prompt })
+                                .then(() => undefined),
+                          })}
                       {...(searchTarget ? { searchTarget } : {})}
                     />
                   </div>
@@ -377,6 +466,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   events={events}
                   modelId={snapshot.session.modelId}
                   providerId={snapshot.session.providerId}
+                  queuedInputs={queuedInputsQuery.data ?? []}
                   status={status}
                   thinkingLevel={snapshot.session.thinkingLevel}
                   usage={usage}
@@ -389,10 +479,36 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                       ? abortMutation.mutateAsync(activeRunId)
                       : Promise.reject(new Error("活动 Run 不存在"))
                   }
-                  onSubmitMessage={(input) =>
+                  onRemoveQueuedInput={(queuedInputId) =>
                     activeRunId
-                      ? followUpMutation.mutateAsync({ input, runId: activeRunId })
-                      : startMutation.mutateAsync(input).then(() => undefined)
+                      ? removeQueuedInputMutation.mutateAsync({ queuedInputId, runId: activeRunId })
+                      : Promise.reject(new Error("活动 Run 不存在"))
+                  }
+                  onSteerQueuedInput={(queuedInputId) =>
+                    activeRunId
+                      ? steerQueuedInputMutation.mutateAsync({ queuedInputId, runId: activeRunId })
+                      : Promise.reject(new Error("活动 Run 不存在"))
+                  }
+                  onSubmitMessage={({ busySubmitBehavior, ...input }) => {
+                    if (!activeRunId) {
+                      return startMutation.mutateAsync(input).then(() => undefined);
+                    }
+                    return busySubmitBehavior === BusySubmitBehavior.STEER
+                      ? steerMutation.mutateAsync({ input, runId: activeRunId })
+                      : followUpMutation
+                          .mutateAsync({ input, runId: activeRunId })
+                          .then(() => undefined);
+                  }}
+                  onUpdateQueuedInput={(queuedInputId, prompt) =>
+                    activeRunId
+                      ? updateQueuedInputMutation
+                          .mutateAsync({
+                            prompt,
+                            queuedInputId,
+                            runId: activeRunId,
+                          })
+                          .then(() => undefined)
+                      : Promise.reject(new Error("活动 Run 不存在"))
                   }
                 />
               </div>

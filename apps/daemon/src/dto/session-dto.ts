@@ -42,6 +42,21 @@ export const SessionRunParamsDtoSchema = Type.Object({
 
 export type SessionRunParamsDto = Static<typeof SessionRunParamsDtoSchema>;
 
+export const SessionQueuedInputParamsDtoSchema = Type.Object({
+  queuedInputId: Type.String({ format: "uuid" }),
+  runId: Type.String({ format: "uuid" }),
+  sessionId: Type.String({ format: "uuid" }),
+});
+
+export type SessionQueuedInputParamsDto = Static<typeof SessionQueuedInputParamsDtoSchema>;
+
+export const SessionMessageParamsDtoSchema = Type.Object({
+  messageEventId: Type.String({ format: "uuid" }),
+  sessionId: Type.String({ format: "uuid" }),
+});
+
+export type SessionMessageParamsDto = Static<typeof SessionMessageParamsDtoSchema>;
+
 export const SessionApprovalParamsDtoSchema = Type.Object({
   approvalId: Type.String({ format: "uuid" }),
   runId: Type.String({ format: "uuid" }),
@@ -110,6 +125,18 @@ export const StartRunDtoSchema = Type.Object({
 });
 
 export type StartRunDto = Static<typeof StartRunDtoSchema>;
+
+export const UpdateQueuedInputDtoSchema = Type.Object({
+  prompt: Type.String({ maxLength: 1_000_000, minLength: 1 }),
+});
+
+export type UpdateQueuedInputDto = Static<typeof UpdateQueuedInputDtoSchema>;
+
+export const RetryUserMessageDtoSchema = Type.Object({
+  prompt: Type.String({ maxLength: 1_000_000, minLength: 1 }),
+});
+
+export type RetryUserMessageDto = Static<typeof RetryUserMessageDtoSchema>;
 
 export const SessionEventsQueryDtoSchema = Type.Object({
   afterSeq: Type.Optional(Type.Integer({ minimum: 0 })),

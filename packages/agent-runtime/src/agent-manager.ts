@@ -16,11 +16,12 @@ import type {
 import { buildSystemPrompt } from "./prompts/system-prompt.js";
 import {
   type HarnessEventListener,
+  type RestoreRunHistoryInput,
   RunCoordinator,
   type StartRunInput,
 } from "./run-coordinator.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
-import type { RunUserInput } from "./user-input.js";
+import type { QueuedRunInput, RunUserInput } from "./user-input.js";
 
 export interface RestoreAgentInput {
   contextCheckpoint: ContextCompactedData | null;
@@ -38,14 +39,6 @@ export interface RestoreAgentInput {
 }
 
 export type StartSessionRunInput = RestoreAgentInput & Omit<StartRunInput, "systemPrompt">;
-
-function createUserMessage(text: string): AgentMessage {
-  return {
-    content: [{ text, type: "text" }],
-    role: "user",
-    timestamp: Date.now(),
-  };
-}
 
 // Session 注册表
 // 核心：Map<SessionId, RunCoordinator>
@@ -88,12 +81,47 @@ export class AgentManager {
     return this.runtimes.get(sessionId)?.abort(runId) ?? false;
   }
 
-  public steer(sessionId: SessionId, runId: RunId, text: string): boolean {
-    return this.runtimes.get(sessionId)?.steer(runId, createUserMessage(text)) ?? false;
+  public async steer(sessionId: SessionId, runId: RunId, input: RunUserInput): Promise<boolean> {
+    return (await this.runtimes.get(sessionId)?.steer(runId, input)) ?? false;
   }
 
-  public async followUp(sessionId: SessionId, runId: RunId, input: RunUserInput): Promise<boolean> {
-    return (await this.runtimes.get(sessionId)?.followUp(runId, input)) ?? false;
+  public async followUp(
+    sessionId: SessionId,
+    runId: RunId,
+    input: RunUserInput,
+  ): Promise<QueuedRunInput | null> {
+    return (await this.runtimes.get(sessionId)?.followUp(runId, input)) ?? null;
+  }
+
+  public listQueuedFollowUps(sessionId: SessionId, runId: RunId): readonly QueuedRunInput[] {
+    return this.runtimes.get(sessionId)?.listQueuedFollowUps(runId) ?? [];
+  }
+
+  public async updateFollowUp(
+    sessionId: SessionId,
+    runId: RunId,
+    queuedInputId: string,
+    prompt: string,
+  ): Promise<QueuedRunInput | null> {
+    return (
+      (await this.runtimes.get(sessionId)?.updateFollowUp(runId, queuedInputId, prompt)) ?? null
+    );
+  }
+
+  public async removeFollowUp(
+    sessionId: SessionId,
+    runId: RunId,
+    queuedInputId: string,
+  ): Promise<boolean> {
+    return (await this.runtimes.get(sessionId)?.removeFollowUp(runId, queuedInputId)) ?? false;
+  }
+
+  public async steerFollowUp(
+    sessionId: SessionId,
+    runId: RunId,
+    queuedInputId: string,
+  ): Promise<boolean> {
+    return (await this.runtimes.get(sessionId)?.steerFollowUp(runId, queuedInputId)) ?? false;
   }
 
   public async close(): Promise<void> {
@@ -105,6 +133,11 @@ export class AgentManager {
   public applyContextCheckpointRestore(sessionId: SessionId, eventSeq: number): boolean {
     const runtime = this.runtimes.get(sessionId);
     return runtime === undefined || runtime.applyContextCheckpointRestore(eventSeq);
+  }
+
+  public restoreHistory(sessionId: SessionId, input: RestoreRunHistoryInput): boolean {
+    const runtime = this.runtimes.get(sessionId);
+    return runtime === undefined || runtime.restoreHistory(input);
   }
 
   private getOrCreate(input: RestoreAgentInput & { systemPrompt: string }): RunCoordinator {

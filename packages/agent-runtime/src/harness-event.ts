@@ -12,8 +12,7 @@ export const ApprovalDecision = {
   EXPIRED: "expired", // 审批超时
 } as const;
 
-export type ApprovalDecision =
-  (typeof ApprovalDecision)[keyof typeof ApprovalDecision];
+export type ApprovalDecision = (typeof ApprovalDecision)[keyof typeof ApprovalDecision];
 // 审批最终返回的只有批准和拒绝
 export type ApprovalResponseDecision =
   | typeof ApprovalDecision.APPROVED
@@ -57,6 +56,8 @@ export const HarnessEventType = {
   MESSAGE_DELTA: "message.delta",
   // 消息生成结束，携带完整 AgentMessage
   MESSAGE_COMPLETED: "message.completed",
+  // 用户改写历史消息后，从该消息开始创建新的当前分支
+  MESSAGE_BRANCH_STARTED: "message.branch_started",
   /**
    * tool工具事件
    */
@@ -122,8 +123,7 @@ export const HarnessEventType = {
   CONTEXT_WORKING_STATE_RESET: "context.working_state_reset",
 } as const;
 
-export type HarnessEventType =
-  (typeof HarnessEventType)[keyof typeof HarnessEventType];
+export type HarnessEventType = (typeof HarnessEventType)[keyof typeof HarnessEventType];
 
 // 消息的增量chunk片段类型
 export const MessageDeltaKind = {
@@ -135,8 +135,7 @@ export const MessageDeltaKind = {
   TOOL_CALL: "tool_call",
 } as const;
 
-export type MessageDeltaKind =
-  (typeof MessageDeltaKind)[keyof typeof MessageDeltaKind];
+export type MessageDeltaKind = (typeof MessageDeltaKind)[keyof typeof MessageDeltaKind];
 
 /**
  * 事件核心：HarnessEvent 和 HarnessEventDraft
@@ -252,9 +251,7 @@ export interface ContextWorkingStateResetData {
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return (
-    Array.isArray(value) && value.every((item) => typeof item === "string")
-  );
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function isUsage(value: unknown): value is Usage {
@@ -272,10 +269,7 @@ function isUsage(value: unknown): value is Usage {
     value.cost.total,
   ];
   return (
-    fields.every(
-      (field) =>
-        typeof field === "number" && Number.isFinite(field) && field >= 0,
-    ) &&
+    fields.every((field) => typeof field === "number" && Number.isFinite(field) && field >= 0) &&
     (value.reasoning === undefined ||
       (typeof value.reasoning === "number" && Number.isFinite(value.reasoning)))
   );
@@ -297,9 +291,7 @@ function isCoveredMessageRange(
   );
 }
 
-export function isContextCompactedData(
-  value: unknown,
-): value is ContextCompactedData {
+export function isContextCompactedData(value: unknown): value is ContextCompactedData {
   if (!isPlainObject(value) || !isPlainObject(value.checkpoint)) return false;
   const checkpoint = value.checkpoint;
   return (
@@ -318,10 +310,8 @@ export function isContextCompactedData(
     isStringArray(checkpoint.completed) &&
     isStringArray(checkpoint.pending) &&
     isStringArray(checkpoint.blockers) &&
-    (value.compactionId === undefined ||
-      typeof value.compactionId === "string") &&
-    (value.previousCompactionId === undefined ||
-      typeof value.previousCompactionId === "string") &&
+    (value.compactionId === undefined || typeof value.compactionId === "string") &&
+    (value.previousCompactionId === undefined || typeof value.previousCompactionId === "string") &&
     (value.compactionReason === undefined ||
       Object.values(ContextCompactionReason).includes(
         value.compactionReason as ContextCompactionReason,
@@ -343,11 +333,7 @@ export function isContextCompactedData(
 export function isContextCheckpointRestoredData(
   value: unknown,
 ): value is ContextCheckpointRestoredData {
-  return (
-    isPlainObject(value) &&
-    Number.isInteger(value.sourceEventSeq) &&
-    value.sourceEventSeq > 0
-  );
+  return isPlainObject(value) && Number.isInteger(value.sourceEventSeq) && value.sourceEventSeq > 0;
 }
 
 export function isContextWorkingStateResetData(
@@ -380,6 +366,43 @@ export interface MessageDeltaData {
   contentIndex: number;
   delta: string;
   kind: MessageDeltaKind;
+}
+
+export interface MessageBranchStartedData {
+  sourceEventId: string;
+}
+
+export function isMessageBranchStartedData(value: unknown): value is MessageBranchStartedData {
+  return (
+    isPlainObject(value) &&
+    typeof value.sourceEventId === "string" &&
+    value.sourceEventId.length > 0
+  );
+}
+
+/** 按 branch 事件折叠为当前有效事件流；JSONL 原始事实保持不变。 */
+export function selectActiveSessionEvents(events: readonly HarnessEvent[]): HarnessEvent[] {
+  const active: HarnessEvent[] = [];
+  for (const event of events) {
+    if (event.type === HarnessEventType.MESSAGE_BRANCH_STARTED) {
+      if (!isMessageBranchStartedData(event.data))
+        throw new Error("Session message branch is invalid");
+      const { sourceEventId } = event.data;
+      const sourceIndex = active.findIndex((item) => item.id === sourceEventId);
+      const source = active[sourceIndex];
+      if (
+        sourceIndex < 0 ||
+        source?.type !== HarnessEventType.MESSAGE_COMPLETED ||
+        !isPlainObject(source.data) ||
+        source.data.role !== "user"
+      ) {
+        throw new Error("Session message branch target is invalid");
+      }
+      active.splice(sourceIndex);
+    }
+    active.push(event);
+  }
+  return active;
 }
 
 // message.started / message.completed -> AgentMessage

@@ -9,10 +9,12 @@ import {
   isContextCheckpointRestoredData,
   isContextCompactedData,
   isContextWorkingStateResetData,
+  isMessageBranchStartedData,
   isPlanUpdatedData,
   isTodoUpdatedData,
   type PlanUpdatedData,
   type SessionId,
+  selectActiveSessionEvents,
   type TodoUpdatedData,
 } from "@pi-harness/agent-runtime";
 import { isError, isPlainObject } from "es-toolkit";
@@ -86,6 +88,12 @@ function parseHarnessEvent(value: unknown, expectedSessionId: SessionId): Harnes
     !isAgentMessage(event.data)
   ) {
     throw new Error("Session message event is invalid");
+  }
+  if (
+    event.type === HarnessEventType.MESSAGE_BRANCH_STARTED &&
+    !isMessageBranchStartedData(event.data)
+  ) {
+    throw new Error("Session message branch event is invalid");
   }
   if (event.type === HarnessEventType.CONTEXT_COMPACTED && !isContextCompactedData(event.data)) {
     throw new Error("Session context checkpoint event is invalid");
@@ -190,13 +198,14 @@ export class SessionEventStore {
       }
     }
 
+    const activeEvents = selectActiveSessionEvents(events);
     const messages: AgentMessage[] = [];
     const contextCheckpointHistory: ContextCheckpointRecord[] = [];
     let contextCheckpointRecord: ContextCheckpointRecord | null = null;
     let contextCheckpointTailStartMessageIndex: number | null = null;
     let plan: PlanUpdatedData | null = null;
     let todos: TodoUpdatedData | null = null;
-    for (const event of events) {
+    for (const event of activeEvents) {
       if (event.type === HarnessEventType.MESSAGE_COMPLETED && isAgentMessage(event.data)) {
         messages.push(event.data);
       }
