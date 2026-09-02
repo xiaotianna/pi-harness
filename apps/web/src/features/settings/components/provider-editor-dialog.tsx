@@ -95,10 +95,11 @@ export function ProviderEditorDialog({ isOpen, onClose, provider }: ProviderEdit
       const input: ProviderInput = {
         baseUrl: baseUrl.trim(),
         models:
-          provider?.models.map(({ contextWindow, id, maxTokens }) => ({
+          provider?.models.map(({ contextWindow, id, maxTokens, reasoning }) => ({
             contextWindow,
             id,
             maxTokens,
+            reasoning,
           })) ?? [],
         name: name.trim(),
         protocol,

@@ -6,6 +6,7 @@ const ProviderModelVoSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
   maxTokens: Type.Integer({ minimum: 1 }),
   name: Type.String({ minLength: 1 }),
+  reasoning: Type.Boolean(),
   thinkingLevels: Type.Array(
     Type.Union([
       Type.Literal(ThinkingLevel.LOW),

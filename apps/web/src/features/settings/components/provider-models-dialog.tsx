@@ -10,6 +10,7 @@ import {
   Label,
   Modal,
   ScrollShadow,
+  Switch,
   TextField,
   Tooltip,
   toast,
@@ -44,10 +45,11 @@ export function ProviderModelsDialog({ isOpen, onClose, provider }: ProviderMode
     if (!isOpen) return;
     setModelIdDraft("");
     setModels(
-      provider?.models.map(({ contextWindow, id, maxTokens }) => ({
+      provider?.models.map(({ contextWindow, id, maxTokens, reasoning }) => ({
         contextWindow,
         id,
         maxTokens,
+        reasoning,
       })) ?? [],
     );
     setTestedModelId(null);
@@ -80,7 +82,12 @@ export function ProviderModelsDialog({ isOpen, onClose, provider }: ProviderMode
     if (!modelId || models.some((model) => model.id === modelId)) return;
     setModels((current) => [
       ...current,
-      { contextWindow: DEFAULT_CONTEXT_WINDOW, id: modelId, maxTokens: DEFAULT_MAX_TOKENS },
+      {
+        contextWindow: DEFAULT_CONTEXT_WINDOW,
+        id: modelId,
+        maxTokens: DEFAULT_MAX_TOKENS,
+        reasoning: false,
+      },
     ]);
     setModelIdDraft("");
     setTestedModelId(null);
@@ -236,6 +243,26 @@ export function ProviderModelsDialog({ isOpen, onClose, provider }: ProviderMode
                                       : "最大输出 Token 数不能超过上下文窗口"}
                                   </FieldError>
                                 </TextField>
+                                <Switch
+                                  aria-label={`${model.id} 推理能力`}
+                                  className="sm:col-span-2"
+                                  isSelected={model.reasoning}
+                                  size="sm"
+                                  onChange={(reasoning) =>
+                                    setModels((current) =>
+                                      current.map((item) =>
+                                        item.id === model.id ? { ...item, reasoning } : item,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <Switch.Content className="flex w-full items-center justify-between">
+                                    <Label>推理模型</Label>
+                                    <Switch.Control>
+                                      <Switch.Thumb />
+                                    </Switch.Control>
+                                  </Switch.Content>
+                                </Switch>
                               </div>
                             ) : (
                               <p className="text-xs tabular-nums text-muted">

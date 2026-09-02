@@ -253,7 +253,7 @@ function createCustomProvider(record: CustomProviderRecord): Provider {
     maxTokens: model.maxTokens,
     name: model.id,
     provider: record.id,
-    reasoning: false,
+    reasoning: model.reasoning,
   }));
 
   return createProvider({
@@ -373,6 +373,7 @@ export class ProviderService {
             id: model.id,
             maxTokens: model.maxTokens,
             name: model.name,
+            reasoning: model.reasoning,
             thinkingLevels: getSupportedThinkingLevels(model).filter(isThinkingLevel),
           })),
           name: provider.name,
@@ -601,6 +602,7 @@ export class ProviderService {
           contextWindow: DEFAULT_CUSTOM_MODEL_CONTEXT_WINDOW,
           id: input.modelId,
           maxTokens: DEFAULT_CUSTOM_MODEL_MAX_TOKENS,
+          reasoning: false,
         },
       ]),
       name: "Connection test",

@@ -19,6 +19,7 @@ const CustomProviderModelSchema = Type.Object({
   contextWindow: Type.Integer({ maximum: 10_000_000, minimum: 1_024 }),
   id: Type.String({ minLength: 1, maxLength: 200 }),
   maxTokens: Type.Integer({ maximum: 10_000_000, minimum: 1 }),
+  reasoning: Type.Boolean(),
 });
 
 const ProviderFieldsSchema = Type.Object({

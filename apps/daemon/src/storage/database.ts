@@ -41,6 +41,7 @@ export interface CustomProviderModelRecord {
   contextWindow: number;
   id: string;
   maxTokens: number;
+  reasoning: boolean;
 }
 
 export interface CustomProviderRecord {
@@ -194,6 +195,7 @@ function mapCustomProvider(row: DatabaseRow): CustomProviderRecord {
         contextWindow: DEFAULT_CUSTOM_MODEL_CONTEXT_WINDOW,
         id: value,
         maxTokens: DEFAULT_CUSTOM_MODEL_MAX_TOKENS,
+        reasoning: false,
       };
     }
     if (
@@ -203,6 +205,7 @@ function mapCustomProvider(row: DatabaseRow): CustomProviderRecord {
       !("contextWindow" in value) ||
       !("maxTokens" in value) ||
       typeof value.id !== "string" ||
+      ("reasoning" in value && typeof value.reasoning !== "boolean") ||
       !Number.isSafeInteger(value.contextWindow) ||
       !Number.isSafeInteger(value.maxTokens) ||
       value.contextWindow < 1_024 ||
@@ -215,6 +218,7 @@ function mapCustomProvider(row: DatabaseRow): CustomProviderRecord {
       contextWindow: value.contextWindow as number,
       id: value.id,
       maxTokens: value.maxTokens as number,
+      reasoning: "reasoning" in value ? (value.reasoning as boolean) : false,
     };
   });
 

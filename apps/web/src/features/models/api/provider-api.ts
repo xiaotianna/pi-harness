@@ -18,6 +18,7 @@ const ProviderSchema = Type.Object({
       id: Type.String(),
       maxTokens: Type.Integer({ minimum: 1 }),
       name: Type.String(),
+      reasoning: Type.Boolean(),
       thinkingLevels: Type.Array(
         Type.Union([
           Type.Literal(ThinkingLevel.LOW),
@@ -112,6 +113,7 @@ export interface ProviderModelInput {
   contextWindow: number;
   id: string;
   maxTokens: number;
+  reasoning: boolean;
 }
 
 export type ProviderUpdate = Partial<ProviderInput & { enabled: boolean }>;

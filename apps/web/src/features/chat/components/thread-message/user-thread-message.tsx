@@ -36,8 +36,10 @@ export function UserThreadMessage({
     <ChatMessagePrimitive.User>
       <MessageAttachments message={message} />
       {content || draft !== null ? (
-        <ChatMessagePrimitive.Bubble className={draft === null ? undefined : "w-full"}>
-          <ChatMessagePrimitive.Content className={draft === null ? undefined : "w-full"}>
+        <ChatMessagePrimitive.Bubble className={draft === null ? "min-w-0 max-w-[80%]" : "w-full"}>
+          <ChatMessagePrimitive.Content
+            className={draft === null ? "[overflow-wrap:anywhere]" : "w-full"}
+          >
             {draft === null ? (
               <SearchHighlightedText>
                 {renderChatContextMentions(renderSkillMentions(content))}
