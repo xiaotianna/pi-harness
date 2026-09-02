@@ -8,13 +8,14 @@ import {
   sessionEventsUrl,
 } from "../api/session-api";
 import { sessionQueryKeys } from "../api/session-queries";
+import { useChatSidebarStore } from "../state/chat-sidebar-store";
 import { updateSnapshotWithEvents } from "../utils/session-messages";
 
 const RECONNECT_DELAY_MS = 2_000;
 const STALE_CONNECTION_TIMEOUT_MS = 45_000;
 const EVENT_TYPES = Object.values(HarnessEventType);
 
-export function useSessionEvents(sessionId: string, initialSeq: number): void {
+export function useSessionEvents(sessionId: string, initialSeq: number, isRead: boolean): void {
   const queryClient = useQueryClient();
   const lastSeqRef = useRef(initialSeq);
   const sessionIdRef = useRef(sessionId);
@@ -58,6 +59,16 @@ export function useSessionEvents(sessionId: string, initialSeq: number): void {
 
     const commit = (events: readonly HarnessEvent[]) => {
       if (events.length === 0) return;
+      const runStateEvent = events.findLast(
+        (event) =>
+          event.type === HarnessEventType.RUN_STARTED ||
+          event.type === HarnessEventType.RUN_COMPLETED ||
+          event.type === HarnessEventType.RUN_FAILED ||
+          event.type === HarnessEventType.RUN_ABORTED,
+      );
+      if (runStateEvent?.type === HarnessEventType.RUN_COMPLETED && !isRead) {
+        useChatSidebarStore.getState().markSessionCompleted(sessionId);
+      }
       lastSeqRef.current = Math.max(lastSeqRef.current, events.at(-1)?.seq ?? 0);
       queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (snapshot) => {
         if (!snapshot) return snapshot;
@@ -68,6 +79,9 @@ export function useSessionEvents(sessionId: string, initialSeq: number): void {
           session.id === sessionId
             ? {
                 ...session,
+                ...(runStateEvent === undefined
+                  ? {}
+                  : { isRunning: runStateEvent.type === HarnessEventType.RUN_STARTED }),
                 lastSeq: lastSeqRef.current,
                 updatedAt: Math.max(session.updatedAt, events.at(-1)?.timestamp ?? 0),
               }
@@ -106,5 +120,5 @@ export function useSessionEvents(sessionId: string, initialSeq: number): void {
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       clearStaleConnectionTimer();
     };
-  }, [queryClient, sessionId]);
+  }, [isRead, queryClient, sessionId]);
 }

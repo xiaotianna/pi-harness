@@ -48,6 +48,7 @@ export type ChatSearchMode = {
 
 export type ChatThread = {
   id: string;
+  isRunning?: boolean;
   workspaceId: string;
   title: string;
   preview: string;
@@ -65,6 +66,7 @@ export type ChatThread = {
 
 export type ChatWorkspace = {
   id: string;
+  isAvailable: boolean;
   name: string;
   path: string;
   createdAt: string;

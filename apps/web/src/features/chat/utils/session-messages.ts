@@ -641,6 +641,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
 export function sessionToChatThread(session: Session, preview = ""): ChatThread {
   return {
     id: session.id,
+    isRunning: session.isRunning ?? false,
     messages: [],
     modelId: session.modelId,
     preview,

@@ -10,6 +10,7 @@ import type { ChatWorkspace } from "../data/chat";
 const WorkspaceSchema = Type.Object({
   createdAt: Type.Integer({ minimum: 0 }),
   id: Type.String({ minLength: 1 }),
+  isAvailable: Type.Boolean(),
   name: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
   rootPath: Type.String({ minLength: 1 }),
   updatedAt: Type.Integer({ minimum: 0 }),
@@ -32,6 +33,7 @@ function toChatWorkspace(workspace: Workspace): ChatWorkspace {
   return {
     createdAt: new Date(workspace.createdAt).toISOString(),
     id: workspace.id,
+    isAvailable: workspace.isAvailable,
     name:
       workspace.name ??
       workspace.rootPath.split(/[\\/]/).filter(Boolean).at(-1) ??

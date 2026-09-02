@@ -14,6 +14,7 @@ export const HarnessEventVoSchema = Type.Object({
 export const SessionVoSchema = Type.Object({
   createdAt: Type.Integer({ minimum: 0 }),
   id: Type.String({ minLength: 1 }),
+  isRunning: Type.Optional(Type.Boolean()),
   lastSeq: Type.Integer({ minimum: 0 }),
   modelId: Type.String({ minLength: 1 }),
   providerId: Type.String({ minLength: 1 }),

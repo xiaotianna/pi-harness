@@ -13,7 +13,7 @@ import {
   SettingsDialog,
   type SkillChatDraft,
 } from "../../settings";
-import { updateSession } from "../api/session-api";
+import { type Session, updateSession } from "../api/session-api";
 import {
   archivedSessionListQueryOptions,
   sessionListQueryOptions,
@@ -30,8 +30,10 @@ import { ChatPageView } from "../constants/chat-page-view";
 import type { ChatActivePage, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
 import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
 import { useAddWorkspace } from "../hooks/use-add-workspace";
+import { useSessionEvents } from "../hooks/use-session-events";
 import { useChatPageViewStore } from "../state/chat-page-view-store";
 import { type ChatSearchTarget, useChatSearchTargetStore } from "../state/chat-search-target-store";
+import { useChatSidebarStore } from "../state/chat-sidebar-store";
 import { useNewChatStore } from "../state/new-chat-store";
 import { useWorkspaceInspectorStore } from "../state/workspace-inspector-store";
 import { sessionToChatThread } from "../utils/session-messages";
@@ -49,6 +51,11 @@ export interface ChatShellProps {
 
 const INSPECTOR_DEFAULT_WIDTH = 460;
 const INSPECTOR_MIN_WIDTH = 360;
+
+function SessionEventBridge({ session }: { session: Session }) {
+  useSessionEvents(session.id, session.lastSeq, false);
+  return null;
+}
 
 export function ChatShell({ basePath = "", children, disableNavigation = false }: ChatShellProps) {
   const router = useRouter();
@@ -69,6 +76,8 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const workspacesQuery = useQuery(workspaceListQueryOptions());
   const addWorkspaceMutation = useAddWorkspace();
   const clearNewChatDraft = useNewChatStore((state) => state.clearDraft);
+  const markSessionRead = useChatSidebarStore((state) => state.markSessionRead);
+  const unreadCompletedSessionIds = useChatSidebarStore((state) => state.unreadCompletedSessionIds);
   const newChatWorkspaceId = useNewChatStore((state) => state.workspaceId);
   const setNewChatWorkspaceId = useNewChatStore((state) => state.setWorkspaceId);
   const startNewChatDraft = useNewChatStore((state) => state.startDraft);
@@ -144,6 +153,12 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     ? activePage.thread.workspaceId
     : (newChatWorkspaceId ?? workspaces[0]?.id ?? null);
   const isInspectorVisible = isThreadPage && inspectorTurnId !== null;
+
+  useEffect(() => {
+    if (activeThreadId && unreadCompletedSessionIds.includes(activeThreadId)) {
+      markSessionRead(activeThreadId);
+    }
+  }, [activeThreadId, markSessionRead, unreadCompletedSessionIds]);
 
   const handleNavAction = useCallback(
     (id: ChatNavItemId) => {
@@ -410,6 +425,11 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         />
       }
     >
+      {sessionsQuery.data?.map((session) =>
+        session.isRunning && session.id !== activeThreadId ? (
+          <SessionEventBridge key={session.id} session={session} />
+        ) : null,
+      )}
       {children}
       <ChatSearchDialog
         isOpen={isSearchOpen}

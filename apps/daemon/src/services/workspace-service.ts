@@ -278,6 +278,14 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+async function isWorkspaceAvailable(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 async function installStagedSkills(
   stagedSkills: readonly { directory: string; name: string }[],
   targetRoot: string,
@@ -382,8 +390,13 @@ export class WorkspaceService {
     private readonly settings: AppSettingRepository,
   ) {}
 
-  public list(): readonly WorkspaceRecord[] {
-    return this.workspaces.list();
+  public async list() {
+    return Promise.all(
+      this.workspaces.list().map(async (workspace) => ({
+        ...workspace,
+        isAvailable: await isWorkspaceAvailable(workspace.rootPath),
+      })),
+    );
   }
 
   public async listContextItems(
@@ -565,7 +578,7 @@ export class WorkspaceService {
     }
   }
 
-  public reorder(workspaceIds: readonly string[]): readonly WorkspaceRecord[] {
+  public async reorder(workspaceIds: readonly string[]) {
     const activeWorkspaceIds = new Set(this.workspaces.list().map((workspace) => workspace.id));
     if (
       workspaceIds.length !== activeWorkspaceIds.size ||
@@ -576,7 +589,7 @@ export class WorkspaceService {
     }
 
     this.workspaces.reorder(workspaceIds, Date.now());
-    return this.workspaces.list();
+    return this.list();
   }
 
   public async openPath(workspaceId: string, path: string, signal: AbortSignal): Promise<void> {
@@ -611,7 +624,7 @@ export class WorkspaceService {
     }
   }
 
-  public async select(requestSignal: AbortSignal): Promise<WorkspaceRecord | null> {
+  public async select(requestSignal: AbortSignal) {
     if (this.activePickerController) {
       throw new WorkspaceServiceError(WorkspaceErrorCode.PICKER_BUSY, "已有目录选择器正在等待操作");
     }
@@ -623,7 +636,11 @@ export class WorkspaceService {
     try {
       const selectedPath = await runPicker(signal);
       if (!selectedPath) return null;
-      return this.workspaces.create(await resolveWorkspaceRoot(selectedPath), Date.now());
+      const workspace = this.workspaces.create(
+        await resolveWorkspaceRoot(selectedPath),
+        Date.now(),
+      );
+      return { ...workspace, isAvailable: true };
     } catch (error: unknown) {
       if (signal.aborted || isPickerCancellation(error)) return null;
       if (error instanceof WorkspaceServiceError) throw error;
@@ -639,7 +656,7 @@ export class WorkspaceService {
     }
   }
 
-  public updateName(workspaceId: string, name: string): WorkspaceRecord {
+  public async updateName(workspaceId: string, name: string) {
     this.getRequired(workspaceId);
     const normalizedName = name.trim();
     if (!normalizedName) {
@@ -649,7 +666,7 @@ export class WorkspaceService {
     if (!workspace) {
       throw new WorkspaceServiceError(WorkspaceErrorCode.NOT_FOUND, "Workspace 不存在");
     }
-    return workspace;
+    return { ...workspace, isAvailable: await isWorkspaceAvailable(workspace.rootPath) };
   }
 
   public close(): void {

@@ -8,7 +8,7 @@ import type { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import type { RunUserInput } from "@pi-harness/agent-runtime/user-input";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AgentTraceView } from "../../trace";
 import {
   abortSessionRun,
@@ -122,7 +122,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const snapshotQuery = useQuery(sessionSnapshotQueryOptions(sessionId));
   const snapshot = snapshotQuery.data;
   const isSnapshotReady = snapshot !== undefined;
-  useSessionEvents(sessionId, snapshot?.session.lastSeq ?? 0);
+  useSessionEvents(sessionId, snapshot?.session.lastSeq ?? 0, true);
   const activeView = useChatPageViewStore((state) => state.activeView);
   const clearSearchTarget = useChatSearchTargetStore((state) => state.clearTarget);
   const searchTarget = useChatSearchTargetStore((state) =>
@@ -198,6 +198,16 @@ export function ChatPage({ sessionId }: ChatPageProps) {
 
   const startMutation = useMutation({
     mutationFn: (input: RunUserInput) => startSessionRun(sessionId, input),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.list() });
+    },
+    onMutate: () => {
+      queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
+        sessions?.map((session) =>
+          session.id === sessionId ? { ...session, isRunning: true } : session,
+        ),
+      );
+    },
   });
   const abortMutation = useMutation({
     mutationFn: (runId: string) => abortSessionRun(sessionId, runId),
@@ -211,7 +221,11 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       current ? { ...current, session } : current,
     );
     queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
-      sessions?.map((item) => (item.id === session.id ? session : item)),
+      sessions?.map((item) =>
+        item.id === session.id
+          ? { ...session, ...(item.isRunning === undefined ? {} : { isRunning: item.isRunning }) }
+          : item,
+      ),
     );
   };
   const modelMutation = useMutation({
@@ -259,6 +273,18 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       : eventActiveRunId === null
         ? "ready"
         : "streaming";
+  const isSessionRunning = status !== "ready";
+
+  useEffect(() => {
+    if (!isSnapshotReady) return;
+    queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
+      sessions?.map((session) =>
+        session.id === sessionId && session.isRunning !== isSessionRunning
+          ? { ...session, isRunning: isSessionRunning }
+          : session,
+      ),
+    );
+  }, [isSessionRunning, isSnapshotReady, queryClient, sessionId]);
 
   if (snapshotQuery.isPending) {
     return <ChatPageSkeleton />;

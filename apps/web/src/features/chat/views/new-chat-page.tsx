@@ -35,7 +35,7 @@ export function NewChatPage() {
         workspaceId,
       });
       queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (current) => [
-        session,
+        { ...session, isRunning: true },
         ...(current ?? []).filter((item) => item.id !== session.id),
       ]);
       const run = startSessionRun(session.id, input);

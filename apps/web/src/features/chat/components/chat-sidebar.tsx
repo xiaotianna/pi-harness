@@ -12,7 +12,7 @@ import {
   Plus,
   TrashBin as Trash2,
 } from "@gravity-ui/icons";
-import { Dropdown, Kbd, Separator, Skeleton, Tooltip } from "@heroui/react";
+import { Dropdown, Kbd, Separator, Skeleton, Spinner, Tooltip } from "@heroui/react";
 import type { DragEvent, KeyboardEvent } from "react";
 import { memo, useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
@@ -262,17 +262,14 @@ function SidebarContents({
         <Sidebar.Group>
           <Sidebar.GroupLabel className="flex items-center justify-between text-sm font-normal">
             <span>工作区</span>
-            <Tooltip delay={0}>
-              <Sidebar.MenuAction
-                aria-label="添加工作区"
-                className="-my-1"
-                isDisabled={isAddingWorkspace || !onAddWorkspace}
-                {...(onAddWorkspace ? { onPress: onAddWorkspace } : {})}
-              >
-                <Plus className="!size-3.5 text-muted" />
-              </Sidebar.MenuAction>
-              <Tooltip.Content placement="right">添加工作区</Tooltip.Content>
-            </Tooltip>
+            <Sidebar.MenuAction
+              aria-label="添加工作区"
+              className="-my-1"
+              isDisabled={isAddingWorkspace || !onAddWorkspace}
+              {...(onAddWorkspace ? { onPress: onAddWorkspace } : {})}
+            >
+              <Plus className="!size-3.5 text-muted" />
+            </Sidebar.MenuAction>
           </Sidebar.GroupLabel>
         </Sidebar.Group>
       </Sidebar.Header>
@@ -478,7 +475,10 @@ function ChatSidebarWorkspaceItem({
       <Sidebar.MenuTrigger className="order-first">
         <Sidebar.MenuIndicator />
       </Sidebar.MenuTrigger>
-      <Sidebar.MenuIcon className="order-first" data-current-workspace={isCurrent || undefined}>
+      <Sidebar.MenuIcon
+        className={workspace.isAvailable ? "order-first" : "order-first opacity-50"}
+        data-current-workspace={(workspace.isAvailable && isCurrent) || undefined}
+      >
         <span aria-hidden className="sidebar__workspace-folder sidebar__workspace-folder-closed">
           <FolderFill className="sidebar__workspace-folder-fill" />
           <Folder />
@@ -488,19 +488,22 @@ function ChatSidebarWorkspaceItem({
           <FolderOpen />
         </span>
       </Sidebar.MenuIcon>
-      <Sidebar.MenuLabel className="pe-16">{workspace.name}</Sidebar.MenuLabel>
+      <Sidebar.MenuLabel
+        className={workspace.isAvailable ? "pe-16" : "pe-16 text-muted opacity-50"}
+      >
+        {workspace.name}
+      </Sidebar.MenuLabel>
       <Sidebar.MenuActions className="absolute end-2 w-16 justify-end">
         {onRenameWorkspace || onReveal || onRemove ? (
           <Dropdown>
-            <Tooltip delay={0}>
-              <Dropdown.Trigger
-                aria-label={`更多操作：${workspace.name}`}
-                className="sidebar__menu-action"
-              >
-                <Ellipsis className="!size-3.5 text-muted" />
-              </Dropdown.Trigger>
-              <Tooltip.Content placement="right">更多操作</Tooltip.Content>
-            </Tooltip>
+            <Dropdown.Trigger
+              aria-label={`更多操作：${workspace.name}`}
+              className={
+                workspace.isAvailable ? "sidebar__menu-action" : "sidebar__menu-action opacity-50"
+              }
+            >
+              <Ellipsis className="!size-3.5 text-muted" />
+            </Dropdown.Trigger>
             <Dropdown.Popover placement="bottom start">
               <Dropdown.Menu
                 aria-label={`${workspace.name}操作`}
@@ -535,15 +538,25 @@ function ChatSidebarWorkspaceItem({
             </Dropdown.Popover>
           </Dropdown>
         ) : null}
-        <Tooltip delay={0}>
+        {workspace.isAvailable ? (
           <Sidebar.MenuAction
             aria-label={`在 ${workspace.name} 中新建对话`}
             onPress={() => onNewThread(workspace)}
           >
             <Plus className="!size-3.5 text-muted" />
           </Sidebar.MenuAction>
-          <Tooltip.Content placement="right">新对话</Tooltip.Content>
-        </Tooltip>
+        ) : (
+          <Tooltip delay={0}>
+            <Sidebar.MenuAction
+              aria-disabled="true"
+              aria-label={`${workspace.name} 的目录不存在或无法访问，无法新建对话`}
+              className="cursor-[var(--cursor-disabled)] opacity-[var(--disabled-opacity)]"
+            >
+              <Plus className="!size-3.5 text-muted" />
+            </Sidebar.MenuAction>
+            <Tooltip.Content placement="right">目录不存在或无法访问</Tooltip.Content>
+          </Tooltip>
+        )}
       </Sidebar.MenuActions>
       <Sidebar.Submenu>
         {threads.length === 0 ? (
@@ -593,6 +606,9 @@ function ChatSidebarThreadItem({
   pathname,
   thread,
 }: ChatSidebarThreadItemProps) {
+  const hasUnreadCompletion = useChatSidebarStore((state) =>
+    state.unreadCompletedSessionIds.includes(thread.id),
+  );
   const fullHref = `${basePath}/${thread.id}`;
   const isCurrent = pathname === fullHref || pathname === thread.id || pathname === `/${thread.id}`;
 
@@ -604,20 +620,27 @@ function ChatSidebarThreadItem({
       textValue={thread.title}
       {...(!disableNavigation ? { href: fullHref } : {})}
     >
+      {thread.isRunning || hasUnreadCompletion ? (
+        <span className="pointer-events-none absolute start-2 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center">
+          {thread.isRunning ? (
+            <Spinner aria-hidden className="text-muted" color="current" size="sm" />
+          ) : (
+            <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+          )}
+          <span className="sr-only">{thread.isRunning ? "正在运行" : "有未读回复"}</span>
+        </span>
+      ) : null}
       <Sidebar.MenuLabel>{thread.title}</Sidebar.MenuLabel>
       <Sidebar.MenuChip>{formatChatTimestamp(thread.updatedAt)}</Sidebar.MenuChip>
       {onRename || onArchive ? (
         <Sidebar.MenuActions className="absolute end-2 w-12 justify-end">
           <Dropdown>
-            <Tooltip delay={0}>
-              <Dropdown.Trigger
-                aria-label={`更多操作：${thread.title}`}
-                className="sidebar__menu-action"
-              >
-                <Ellipsis className="!size-3.5 text-muted" />
-              </Dropdown.Trigger>
-              <Tooltip.Content placement="right">更多操作</Tooltip.Content>
-            </Tooltip>
+            <Dropdown.Trigger
+              aria-label={`更多操作：${thread.title}`}
+              className="sidebar__menu-action"
+            >
+              <Ellipsis className="!size-3.5 text-muted" />
+            </Dropdown.Trigger>
             <Dropdown.Popover placement="bottom start">
               <Dropdown.Menu
                 aria-label={`${thread.title}操作`}

@@ -249,8 +249,11 @@ export class SessionService {
     });
   }
 
-  public list(archived = false): readonly SessionRecord[] {
-    return this.sessions.list(archived);
+  public list(archived = false): readonly (SessionRecord & { isRunning: boolean })[] {
+    return this.sessions.list(archived).map((session) => ({
+      ...session,
+      isRunning: this.activeSessionIds.has(session.id) || this.agents.isSessionActive(session.id),
+    }));
   }
 
   public async search(query: string): Promise<readonly SessionSearchResult[]> {
