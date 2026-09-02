@@ -1,63 +1,89 @@
 "use client";
 
+import { EmptyState } from "@agile-avocation/ui-pro/empty-state";
 import {
   Clock as Clock3,
   Hierarchy as ListTree,
   Magnifier as Search,
   Wrench,
 } from "@gravity-ui/icons";
-import { Chip, Drawer, Input, ScrollShadow, TextField, useMediaQuery } from "@heroui/react";
+import { Drawer, Input, ScrollShadow, TextField, useMediaQuery } from "@heroui/react";
+import type { HarnessEvent } from "@pi-harness/agent-runtime/harness-event";
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
-import { MOCK_AGENT_TRACE } from "../data/mock-agent-trace";
+import { AGENT_TRACE_STATUS_LABELS } from "../constants/agent-trace";
 import {
   type AgentTraceRange,
   type AgentTraceRecord,
   AgentTraceRecordKind,
+  AgentTraceStatus,
 } from "../types/agent-trace";
 import { formatTraceDuration } from "../utils/format-trace-duration";
 import { isTraceRecordInRange } from "../utils/is-trace-record-in-range";
+import { sessionEventsToAgentTraces } from "../utils/session-events-to-agent-traces";
 import { TraceDetailPanel } from "./trace-detail-panel";
 import { TraceEventList } from "./trace-event-list";
 import { TraceTimeline } from "./trace-timeline";
 
-export function AgentTraceView() {
+export interface AgentTraceViewProps {
+  events: readonly HarnessEvent[];
+}
+
+export function AgentTraceView({ events }: AgentTraceViewProps) {
   const [range, setRange] = useState<AgentTraceRange | null>(null);
   const [search, setSearch] = useState("");
   const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
-  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(
-    MOCK_AGENT_TRACE.records[3]?.id ?? null,
-  );
+  const [now, setNow] = useState(() => Date.now());
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const isMobile = useMediaQuery("(max-width: 767px)");
   const deferredSearch = useDeferredValue(search);
+  const trace = useMemo(() => sessionEventsToAgentTraces(events, now)[0] ?? null, [events, now]);
+  const isTraceRunning = trace?.status === AgentTraceStatus.RUNNING;
+  const firstRecordId = trace?.records[0]?.id ?? null;
+
+  useEffect(() => {
+    if (!isTraceRunning) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [isTraceRunning]);
+
+  useEffect(() => {
+    setRange(null);
+    setSearch("");
+    setSelectedRecordId(firstRecordId);
+    setIsMobileDetailOpen(false);
+  }, [firstRecordId, trace?.traceId]);
 
   useEffect(() => {
     if (!isMobile) setIsMobileDetailOpen(false);
   }, [isMobile]);
 
   const records = useMemo(() => {
+    if (!trace) return [];
     const query = deferredSearch.trim().toLowerCase();
-    if (!query) return MOCK_AGENT_TRACE.records;
+    if (!query) return trace.records;
 
-    return MOCK_AGENT_TRACE.records.filter((record) =>
-      `${record.label} ${record.preview} ${record.source}`.toLowerCase().includes(query),
+    return trace.records.filter((record) =>
+      `${record.label} ${record.preview} ${record.source} ${record.errorCode ?? ""}`
+        .toLowerCase()
+        .includes(query),
     );
-  }, [deferredSearch]);
+  }, [deferredSearch, trace]);
 
-  const selectedRecord =
-    MOCK_AGENT_TRACE.records.find((record) => record.id === selectedRecordId) ?? null;
-  const selectedStep = selectedRecord
-    ? MOCK_AGENT_TRACE.records
-        .filter((record) => record.turn === selectedRecord.turn)
-        .findIndex((record) => record.id === selectedRecord.id) + 1
-    : 0;
+  const selectedRecord = trace?.records.find((record) => record.id === selectedRecordId) ?? null;
+  const selectedStep =
+    selectedRecord && trace
+      ? trace.records
+          .filter((record) => record.turn === selectedRecord.turn)
+          .findIndex((record) => record.id === selectedRecord.id) + 1
+      : 0;
   const visibleRecordCount = records.filter((record) =>
     isTraceRecordInRange(record.startMs, record.durationMs, range),
   ).length;
   const turnCount = new Set(
-    MOCK_AGENT_TRACE.records.filter((record) => record.turn > 0).map((record) => record.turn),
+    trace?.records.filter((record) => record.turn > 0).map((record) => record.turn) ?? [],
   ).size;
   const toolCallCount = new Set(
-    MOCK_AGENT_TRACE.records
+    (trace?.records ?? [])
       .filter((record) => record.kind === AgentTraceRecordKind.TOOL)
       .map((record) => record.raw.toolCallId),
   ).size;
@@ -74,36 +100,64 @@ export function AgentTraceView() {
     setSelectedRecordId(null);
   }, []);
 
+  if (!trace) {
+    return (
+      <div className="grid h-full min-h-0 place-items-center bg-background px-4 md:pr-6 md:pl-10">
+        <EmptyState size="sm">
+          <EmptyState.Header>
+            <EmptyState.Media variant="icon">
+              <ListTree className="size-5" />
+            </EmptyState.Media>
+            <EmptyState.Title>暂无运行轨迹</EmptyState.Title>
+            <EmptyState.Description>
+              发送消息后，这里会显示连续的 Session 轨迹。
+            </EmptyState.Description>
+          </EmptyState.Header>
+        </EmptyState>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background px-4 md:pr-6 md:pl-10">
       <div className="shrink-0">
         <div className="flex flex-col gap-2 border-b border-separator py-2 sm:flex-row sm:items-center sm:py-1">
-          <ScrollShadow
-            hideScrollBar
-            className="w-full sm:w-auto sm:shrink-0"
-            orientation="horizontal"
-            size={16}
-          >
-            <div className="flex w-max items-center gap-2 pr-2 sm:pr-0">
-              <span className="flex items-center gap-1 text-[11px] tabular-nums text-muted">
-                <Clock3 className="size-3" />
-                {formatTraceDuration(MOCK_AGENT_TRACE.durationMs)}
-              </span>
-              <span className="flex items-center gap-1 text-[11px] text-muted">
-                <ListTree className="size-3" />
-                {turnCount} 轮
-              </span>
-              <span className="flex items-center gap-1 text-[11px] text-muted">
-                <Wrench className="size-3" />
-                {toolCallCount} 次调用
-              </span>
-              <Chip className="h-5 min-h-5 text-[11px]" size="sm" variant="soft">
-                {hasRange
-                  ? `范围内 ${visibleRecordCount}/${records.length}`
-                  : `全部 ${records.length}`}
-              </Chip>
-            </div>
-          </ScrollShadow>
+          <div className="flex min-w-0 items-center gap-2 sm:flex-1">
+            <ScrollShadow
+              hideScrollBar
+              className="min-w-0 flex-1"
+              orientation="horizontal"
+              size={16}
+            >
+              <div className="flex w-max items-center gap-2 pr-2 sm:pr-0">
+                <span className="flex items-center gap-1 text-[11px] tabular-nums text-muted">
+                  <Clock3 className="size-3" />
+                  {formatTraceDuration(trace.durationMs)}
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-muted">
+                  <ListTree className="size-3" />
+                  {turnCount} 轮
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-muted">
+                  <Wrench className="size-3" />
+                  {toolCallCount} 次调用
+                </span>
+                {trace.tokenUsage.total > 0 ? (
+                  <span className="text-[11px] tabular-nums text-muted">
+                    {trace.tokenUsage.total.toLocaleString()} tokens
+                  </span>
+                ) : null}
+                <span className="text-[11px] text-muted">
+                  {AGENT_TRACE_STATUS_LABELS[trace.status]}
+                </span>
+                <span className="text-[11px] tabular-nums text-muted">
+                  {hasRange
+                    ? `范围内 ${visibleRecordCount}/${records.length}`
+                    : `全部 ${records.length}`}
+                </span>
+              </div>
+            </ScrollShadow>
+          </div>
           <div className="relative w-full sm:ml-auto sm:min-w-40 sm:max-w-56 sm:flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-2 z-10 size-3.5 -translate-y-1/2 text-muted" />
             <TextField
@@ -119,7 +173,7 @@ export function AgentTraceView() {
         </div>
 
         <TraceTimeline
-          durationMs={MOCK_AGENT_TRACE.durationMs}
+          durationMs={trace.durationMs}
           range={range}
           records={records}
           selectedRecordId={selectedRecordId}

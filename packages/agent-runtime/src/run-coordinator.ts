@@ -49,6 +49,7 @@ import {
 import type { ThinkingLevel } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
 import {
+  BusySubmitBehavior,
   type HarnessUserMessage,
   isHarnessUserMessage,
   type QueuedRunInput,
@@ -860,7 +861,10 @@ export class RunCoordinator {
         workspaceRoot: this.workspaceRoot,
       });
       if (this.activeRun?.runId !== runId) return false;
-      this.pendingSteerInterrupts.push(message);
+      this.pendingSteerInterrupts.push({
+        ...message,
+        busySubmitBehavior: BusySubmitBehavior.STEER,
+      });
       this.agent.abort();
       return true;
     });
@@ -893,7 +897,11 @@ export class RunCoordinator {
         prompt: input.prompt,
         references: input.references,
       } satisfies QueuedRunInput;
-      const queuedMessage = { ...message, queuedInputId: id };
+      const queuedMessage = {
+        ...message,
+        busySubmitBehavior: BusySubmitBehavior.QUEUE,
+        queuedInputId: id,
+      };
       this.pendingFollowUps.set(id, { input, message: queuedMessage, queued });
       this.agent.followUp(queuedMessage);
       return queued;
@@ -926,7 +934,11 @@ export class RunCoordinator {
       } satisfies QueuedRunInput;
       this.pendingFollowUps.set(queuedInputId, {
         input,
-        message: { ...message, queuedInputId },
+        message: {
+          ...message,
+          busySubmitBehavior: BusySubmitBehavior.QUEUE,
+          queuedInputId,
+        },
         queued,
       });
       this.syncFollowUpQueue();
@@ -949,7 +961,10 @@ export class RunCoordinator {
     if (this.activeRun?.runId !== runId || current === undefined) return false;
     this.pendingFollowUps.delete(queuedInputId);
     this.syncFollowUpQueue();
-    this.pendingSteerInterrupts.push(current.message);
+    this.pendingSteerInterrupts.push({
+      ...current.message,
+      busySubmitBehavior: BusySubmitBehavior.STEER,
+    });
     this.agent.abort();
     return true;
   }

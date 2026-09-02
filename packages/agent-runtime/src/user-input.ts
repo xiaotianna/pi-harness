@@ -77,6 +77,8 @@ export interface HarnessUserMessage extends UserMessage {
   contextReferences?: readonly RunInputContextReference[];
   // 用户原始输入的文字，用于 Web 界面展示
   displayText: string;
+  // 运行期间提交时记录排队追加或调整方向；普通顶层消息不设置。
+  busySubmitBehavior?: BusySubmitBehavior;
   // 由排队消息进入 Agent 时携带，供 Web 从待处理队列中移除对应项。
   queuedInputId?: string;
 }
@@ -101,7 +103,8 @@ export function isHarnessUserMessage(value: unknown): value is HarnessUserMessag
     isPlainObject(value) &&
     value.role === "user" &&
     typeof value.displayText === "string" &&
-    (typeof value.content === "string" || Array.isArray(value.content))
+    (typeof value.content === "string" || Array.isArray(value.content)) &&
+    (value.busySubmitBehavior === undefined || isBusySubmitBehavior(value.busySubmitBehavior))
   );
 }
 
@@ -125,6 +128,7 @@ export function rewriteHarnessUserMessage(
     displayText: prompt,
     timestamp: Date.now(),
   };
+  delete rewritten.busySubmitBehavior;
   delete rewritten.queuedInputId;
   return rewritten;
 }

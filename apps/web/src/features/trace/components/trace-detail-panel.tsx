@@ -44,7 +44,7 @@ export const TraceDetailPanel = memo(function TraceDetailPanel({
         <TraceKindChip kind={record.kind} />
         <span className="min-w-0 flex-1 truncate text-xs font-medium">{record.label}</span>
         <span className="shrink-0 text-[11px] text-muted">
-          Turn {record.turn} · Step {step}
+          {record.turn > 0 ? `Turn ${record.turn} · Step ${step}` : "Session 事件"}
         </span>
         <Tooltip delay={0}>
           <Button
@@ -101,6 +101,28 @@ export const TraceDetailPanel = memo(function TraceDetailPanel({
             <dd className="tabular-nums">{formatTraceDuration(record.durationMs)}</dd>
             <dt className="text-muted">开始时间</dt>
             <dd className="tabular-nums">{formatTraceDuration(record.startMs)}</dd>
+            {record.errorCode ? (
+              <>
+                <dt className="text-muted">错误码</dt>
+                <dd className="break-all font-mono text-[11px] text-danger">{record.errorCode}</dd>
+              </>
+            ) : null}
+            {record.tokenUsage ? (
+              <>
+                <dt className="text-muted">Token</dt>
+                <dd className="tabular-nums">{record.tokenUsage.total.toLocaleString()} 总计</dd>
+                <dt className="text-muted">输入 / 输出</dt>
+                <dd className="tabular-nums">
+                  {record.tokenUsage.input.toLocaleString()} /{" "}
+                  {record.tokenUsage.output.toLocaleString()}
+                </dd>
+                <dt className="text-muted">缓存读 / 写</dt>
+                <dd className="tabular-nums">
+                  {record.tokenUsage.cacheRead.toLocaleString()} /{" "}
+                  {record.tokenUsage.cacheWrite.toLocaleString()}
+                </dd>
+              </>
+            ) : null}
           </dl>
           <div className="mt-3">
             <h3 className="text-xs font-medium">概要</h3>
@@ -129,7 +151,7 @@ export const TraceDetailPanel = memo(function TraceDetailPanel({
             <dt className="text-muted">通道</dt>
             <dd>{AGENT_TRACE_LANE_LABELS[record.lane]}</dd>
             <dt className="text-muted">轮次</dt>
-            <dd className="tabular-nums">{record.turn}</dd>
+            <dd className="tabular-nums">{record.turn > 0 ? record.turn : "Session"}</dd>
             <dt className="text-muted">采集来源</dt>
             <dd>{record.source}</dd>
           </dl>

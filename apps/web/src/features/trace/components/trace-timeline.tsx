@@ -266,7 +266,7 @@ export const TraceTimeline = memo(function TraceTimeline({
         {TIMELINE_LANES.map((lane) => (
           <div className="relative h-2" key={lane}>
             {records
-              .filter((record) => record.lane === lane)
+              .filter((record) => record.lane === lane && record.durationMs > 0)
               .map((record) => {
                 const isSelected = record.id === selectedRecordId;
 

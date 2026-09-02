@@ -1,0 +1,705 @@
+import {
+  ApprovalDecision,
+  type HarnessEvent,
+  HarnessEventType,
+  isContextCompactedData,
+  isMessageBranchStartedData,
+} from "@pi-harness/agent-runtime/harness-event";
+import { BusySubmitBehavior, isHarnessUserMessage } from "@pi-harness/agent-runtime/user-input";
+import { isPlainObject } from "es-toolkit";
+import {
+  AgentTraceLane,
+  type AgentTraceRecord,
+  AgentTraceRecordKind,
+  type AgentTraceSession,
+  AgentTraceStatus,
+  type AgentTraceTokenUsage,
+} from "../types/agent-trace";
+
+const MAX_PREVIEW_LENGTH = 800;
+const EMPTY_USAGE: AgentTraceTokenUsage = {
+  cacheRead: 0,
+  cacheWrite: 0,
+  input: 0,
+  output: 0,
+  total: 0,
+};
+
+interface PendingEvent {
+  event: HarnessEvent;
+  turn: number;
+}
+
+function clip(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length <= MAX_PREVIEW_LENGTH
+    ? trimmed
+    : `${trimmed.slice(0, MAX_PREVIEW_LENGTH)}…`;
+}
+
+function readText(value: unknown): string {
+  if (typeof value === "string") return clip(value);
+  if (!Array.isArray(value)) return "";
+  return clip(
+    value
+      .flatMap((part) => {
+        if (!isPlainObject(part)) return [];
+        if (typeof part.text === "string") return [part.text];
+        if (typeof part.thinking === "string") return [part.thinking];
+        return [];
+      })
+      .join("\n"),
+  );
+}
+
+function readUnknown(value: unknown): string {
+  if (typeof value === "string") return clip(value);
+  try {
+    return clip(JSON.stringify(value));
+  } catch {
+    return "无法预览该值";
+  }
+}
+
+function readNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function compareRecords(left: AgentTraceRecord, right: AgentTraceRecord): number {
+  const leftSeq = typeof left.raw.seq === "number" ? left.raw.seq : Number.MAX_SAFE_INTEGER;
+  const rightSeq = typeof right.raw.seq === "number" ? right.raw.seq : Number.MAX_SAFE_INTEGER;
+  return left.startMs - right.startMs || leftSeq - rightSeq || left.id.localeCompare(right.id);
+}
+
+function readUsage(value: unknown): AgentTraceTokenUsage | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const cacheRead = readNumber(value.cacheRead);
+  const cacheWrite = readNumber(value.cacheWrite);
+  const input = readNumber(value.input);
+  const output = readNumber(value.output);
+  const usage = {
+    cacheRead,
+    cacheWrite,
+    input,
+    output,
+    total: readNumber(value.totalTokens) || input + output + cacheRead + cacheWrite,
+  };
+  return Object.values(usage).some((item) => item > 0) ? usage : undefined;
+}
+
+function addUsage(
+  left: AgentTraceTokenUsage,
+  right: AgentTraceTokenUsage | undefined,
+): AgentTraceTokenUsage {
+  if (!right) return left;
+  return {
+    cacheRead: left.cacheRead + right.cacheRead,
+    cacheWrite: left.cacheWrite + right.cacheWrite,
+    input: left.input + right.input,
+    output: left.output + right.output,
+    total: left.total + right.total,
+  };
+}
+
+function eventOffset(event: HarnessEvent, startedAt: number): number {
+  return Math.max(0, event.timestamp - startedAt);
+}
+
+function eventDuration(start: HarnessEvent, end: HarnessEvent): number {
+  return Math.max(0, end.timestamp - start.timestamp);
+}
+
+function readToolIdentity(value: unknown): { toolCallId: string; toolName: string } | null {
+  return isPlainObject(value) &&
+    typeof value.toolCallId === "string" &&
+    typeof value.toolName === "string"
+    ? { toolCallId: value.toolCallId, toolName: value.toolName }
+    : null;
+}
+
+function readApprovalIdentity(value: unknown): { approvalId: string; toolName: string } | null {
+  return isPlainObject(value) &&
+    typeof value.approvalId === "string" &&
+    typeof value.toolName === "string"
+    ? { approvalId: value.approvalId, toolName: value.toolName }
+    : null;
+}
+
+function readRunStatus(event: HarnessEvent | undefined): AgentTraceSession["status"] {
+  if (!event) return AgentTraceStatus.RUNNING;
+  if (event.type === HarnessEventType.RUN_ABORTED) return AgentTraceStatus.ABORTED;
+  if (event.type === HarnessEventType.RUN_FAILED) return AgentTraceStatus.FAILED;
+  return AgentTraceStatus.COMPLETED;
+}
+
+function readPendingStatus(event: HarnessEvent | undefined): AgentTraceRecord["status"] {
+  const status = readRunStatus(event);
+  return status === AgentTraceStatus.COMPLETED ? AgentTraceStatus.FAILED : status;
+}
+
+function readRunErrorCode(event: HarnessEvent | undefined): string | undefined {
+  return event && isPlainObject(event.data) && typeof event.data.code === "string"
+    ? event.data.code
+    : undefined;
+}
+
+function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTraceSession | null {
+  const started = runEvents.find((event) => event.type === HarnessEventType.RUN_STARTED);
+  if (!started?.runId) return null;
+
+  const terminal = runEvents.findLast(
+    (event) =>
+      event.type === HarnessEventType.RUN_COMPLETED ||
+      event.type === HarnessEventType.RUN_FAILED ||
+      event.type === HarnessEventType.RUN_ABORTED,
+  );
+  const endedAt = terminal?.timestamp ?? now;
+  const records: AgentTraceRecord[] = [];
+  const userStarts: PendingEvent[] = [];
+  const modelStarts: PendingEvent[] = [];
+  const compactionStarts: PendingEvent[] = [];
+  const toolStarts = new Map<string, PendingEvent>();
+  const toolUpdates = new Map<string, HarnessEvent>();
+  const approvalStarts = new Map<string, PendingEvent>();
+  let currentTurn = 0;
+  let userMessageCount = 0;
+
+  for (const event of runEvents) {
+    if (event.type === HarnessEventType.CONTEXT_USAGE_SNAPSHOT) {
+      const requestIndex =
+        isPlainObject(event.data) && Number.isInteger(event.data.requestIndex)
+          ? event.data.requestIndex
+          : currentTurn + 1;
+      currentTurn = Math.max(1, requestIndex);
+      modelStarts.push({ event, turn: currentTurn });
+      continue;
+    }
+
+    if (event.type === HarnessEventType.MESSAGE_STARTED && isHarnessUserMessage(event.data)) {
+      userStarts.push({ event, turn: Math.max(1, currentTurn + 1) });
+      continue;
+    }
+
+    if (event.type === HarnessEventType.MESSAGE_COMPLETED && isPlainObject(event.data)) {
+      if (event.data.role === "user") {
+        if (!isHarnessUserMessage(event.data)) continue;
+        const pending = userStarts.shift() ?? {
+          event,
+          turn: Math.max(1, currentTurn + 1),
+        };
+        const preview = clip(event.data.displayText);
+        const label =
+          event.data.busySubmitBehavior === BusySubmitBehavior.QUEUE
+            ? "追加消息"
+            : event.data.busySubmitBehavior === BusySubmitBehavior.STEER
+              ? "调整方向"
+              : userMessageCount > 0
+                ? event.data.queuedInputId
+                  ? "追加消息"
+                  : "调整方向"
+                : "用户输入";
+        userMessageCount += 1;
+        records.push({
+          durationMs: eventDuration(pending.event, event),
+          id: pending.event.id,
+          kind: AgentTraceRecordKind.USER,
+          label,
+          lane: AgentTraceLane.INPUT,
+          preview: preview || "用户提交了输入",
+          raw: {
+            attachments: (event.data.attachments ?? []).map(({ mimeType, name, size }) => ({
+              mimeType,
+              name,
+              size,
+            })),
+            busySubmitBehavior: event.data.busySubmitBehavior,
+            contextReferences: event.data.contextReferences ?? [],
+            eventId: event.id,
+            message: preview,
+            seq: event.seq,
+          },
+          source: "message.started → message.completed",
+          startMs: eventOffset(pending.event, started.timestamp),
+          status: AgentTraceStatus.COMPLETED,
+          summary: "用户消息已进入当前 Run。",
+          turn: pending.turn,
+        });
+        continue;
+      }
+
+      if (event.data.role === "assistant") {
+        const pending = modelStarts.shift() ?? { event, turn: Math.max(1, currentTurn) };
+        const preview = readText(event.data.content);
+        const stopReason =
+          typeof event.data.stopReason === "string" ? event.data.stopReason : "stop";
+        const status =
+          stopReason === "aborted"
+            ? AgentTraceStatus.ABORTED
+            : stopReason === "error"
+              ? AgentTraceStatus.FAILED
+              : AgentTraceStatus.COMPLETED;
+        const tokenUsage = readUsage(event.data.usage);
+        records.push({
+          durationMs: eventDuration(pending.event, event),
+          ...(status === AgentTraceStatus.FAILED
+            ? { errorCode: "MODEL_FAILED" }
+            : status === AgentTraceStatus.ABORTED
+              ? { errorCode: "RUN_ABORTED" }
+              : {}),
+          id: pending.event.id,
+          kind: AgentTraceRecordKind.ASSISTANT,
+          label: `模型请求 ${pending.turn}`,
+          lane: AgentTraceLane.MODEL,
+          preview: preview || "模型未返回可见文本",
+          raw: {
+            context: pending.event.data,
+            eventId: event.id,
+            response: {
+              content: preview,
+              stopReason,
+              ...(tokenUsage ? { usage: tokenUsage } : {}),
+            },
+            seq: event.seq,
+          },
+          source: "context.usage_snapshot → message.completed",
+          startMs: eventOffset(pending.event, started.timestamp),
+          status,
+          summary:
+            status === AgentTraceStatus.COMPLETED
+              ? "模型请求已完成。"
+              : status === AgentTraceStatus.ABORTED
+                ? "模型请求已中止。"
+                : "模型请求失败。",
+          ...(tokenUsage ? { tokenUsage } : {}),
+          turn: pending.turn,
+        });
+      }
+      continue;
+    }
+
+    if (event.type === HarnessEventType.TOOL_STARTED) {
+      const identity = readToolIdentity(event.data);
+      if (identity) toolStarts.set(identity.toolCallId, { event, turn: Math.max(1, currentTurn) });
+      continue;
+    }
+
+    if (event.type === HarnessEventType.TOOL_UPDATED) {
+      const identity = readToolIdentity(event.data);
+      if (identity) toolUpdates.set(identity.toolCallId, event);
+      continue;
+    }
+
+    if (
+      event.type === HarnessEventType.TOOL_COMPLETED ||
+      event.type === HarnessEventType.TOOL_FAILED
+    ) {
+      const identity = readToolIdentity(event.data);
+      if (!identity) continue;
+      const pending = toolStarts.get(identity.toolCallId) ?? {
+        event,
+        turn: Math.max(1, currentTurn),
+      };
+      const result = isPlainObject(event.data) ? readUnknown(event.data.result) : "";
+      const isFailed = event.type === HarnessEventType.TOOL_FAILED;
+      records.push({
+        durationMs: eventDuration(pending.event, event),
+        ...(isFailed ? { errorCode: "TOOL_FAILED" } : {}),
+        id: pending.event.id,
+        kind: AgentTraceRecordKind.TOOL,
+        label: identity.toolName,
+        lane: AgentTraceLane.TOOLS,
+        preview: result || `${identity.toolName} 未返回结果`,
+        raw: {
+          arguments: isPlainObject(pending.event.data)
+            ? readUnknown(pending.event.data.arguments)
+            : "",
+          eventId: event.id,
+          result,
+          seq: event.seq,
+          toolCallId: identity.toolCallId,
+          toolName: identity.toolName,
+        },
+        source: `tool.started → ${event.type}`,
+        startMs: eventOffset(pending.event, started.timestamp),
+        status: isFailed ? AgentTraceStatus.FAILED : AgentTraceStatus.COMPLETED,
+        summary: isFailed ? "工具执行失败。" : "工具执行成功。",
+        turn: pending.turn,
+      });
+      toolStarts.delete(identity.toolCallId);
+      toolUpdates.delete(identity.toolCallId);
+      continue;
+    }
+
+    if (event.type === HarnessEventType.APPROVAL_REQUESTED) {
+      const identity = readApprovalIdentity(event.data);
+      if (identity) {
+        approvalStarts.set(identity.approvalId, { event, turn: Math.max(1, currentTurn) });
+      }
+      continue;
+    }
+
+    if (event.type === HarnessEventType.APPROVAL_RESOLVED) {
+      const identity = readApprovalIdentity(event.data);
+      if (!identity) continue;
+      const pending = approvalStarts.get(identity.approvalId) ?? {
+        event,
+        turn: Math.max(1, currentTurn),
+      };
+      const decision = isPlainObject(event.data) ? event.data.decision : undefined;
+      const isExpired = decision === ApprovalDecision.EXPIRED;
+      const preview =
+        decision === ApprovalDecision.APPROVED
+          ? "用户已批准"
+          : decision === ApprovalDecision.REJECTED
+            ? "用户已拒绝"
+            : "审批已超时";
+      records.push({
+        durationMs: eventDuration(pending.event, event),
+        ...(isExpired ? { errorCode: "APPROVAL_EXPIRED" } : {}),
+        id: pending.event.id,
+        kind: AgentTraceRecordKind.APPROVAL,
+        label: `审批 · ${identity.toolName}`,
+        lane: AgentTraceLane.INPUT,
+        preview,
+        raw: {
+          approvalId: identity.approvalId,
+          decision,
+          eventId: event.id,
+          request: pending.event.data,
+          seq: event.seq,
+          toolName: identity.toolName,
+        },
+        source: "approval.requested → approval.resolved",
+        startMs: eventOffset(pending.event, started.timestamp),
+        status: isExpired ? AgentTraceStatus.FAILED : AgentTraceStatus.COMPLETED,
+        summary: `${identity.toolName} 的审批${preview}。`,
+        turn: pending.turn,
+      });
+      approvalStarts.delete(identity.approvalId);
+      continue;
+    }
+
+    if (event.type === HarnessEventType.CONTEXT_COMPACTION_STARTED) {
+      compactionStarts.push({ event, turn: Math.max(1, currentTurn + 1) });
+      continue;
+    }
+
+    if (event.type === HarnessEventType.CONTEXT_COMPACTED) {
+      const pending = compactionStarts.shift() ?? {
+        event,
+        turn: Math.max(1, currentTurn || 1),
+      };
+      const data = isContextCompactedData(event.data) ? event.data : null;
+      const tokenUsage = readUsage(data?.compactionUsage);
+      const preview = data
+        ? `${data.beforeTokens.toLocaleString()} → ${data.afterTokens.toLocaleString()} tokens`
+        : "上下文压缩已完成";
+      records.push({
+        durationMs: eventDuration(pending.event, event),
+        id: pending.event.id,
+        kind: AgentTraceRecordKind.CONTEXT,
+        label: "上下文压缩",
+        lane: AgentTraceLane.MODEL,
+        preview,
+        raw: data
+          ? {
+              afterTokens: data.afterTokens,
+              beforeTokens: data.beforeTokens,
+              checkpoint: {
+                nextAction: clip(data.checkpoint.nextAction),
+                objective: clip(data.checkpoint.objective),
+              },
+              compactedMessageCount: data.compactedMessageCount,
+              compactionReason: data.compactionReason,
+              compactionStrategy: data.compactionStrategy,
+              eventId: event.id,
+              seq: event.seq,
+            }
+          : { eventId: event.id, seq: event.seq },
+        source: "context.compaction_started → context.compacted",
+        startMs: eventOffset(pending.event, started.timestamp),
+        status: AgentTraceStatus.COMPLETED,
+        summary: data ? `已压缩 ${data.compactedMessageCount} 条历史消息。` : "上下文压缩已完成。",
+        ...(tokenUsage ? { tokenUsage } : {}),
+        turn: pending.turn,
+      });
+    }
+  }
+
+  const pendingStatus = readPendingStatus(terminal);
+  const pendingErrorCode = terminal
+    ? (readRunErrorCode(terminal) ?? "TRACE_INCOMPLETE")
+    : undefined;
+  for (const pending of modelStarts) {
+    records.push({
+      durationMs: Math.max(0, endedAt - pending.event.timestamp),
+      ...(pendingErrorCode ? { errorCode: pendingErrorCode } : {}),
+      id: pending.event.id,
+      kind: AgentTraceRecordKind.ASSISTANT,
+      label: `模型请求 ${pending.turn}`,
+      lane: AgentTraceLane.MODEL,
+      preview: "模型正在响应",
+      raw: { context: pending.event.data, eventId: pending.event.id, seq: pending.event.seq },
+      source: "context.usage_snapshot",
+      startMs: eventOffset(pending.event, started.timestamp),
+      status: terminal ? pendingStatus : AgentTraceStatus.RUNNING,
+      summary: terminal ? "模型请求缺少完成事件。" : "模型请求正在执行。",
+      turn: pending.turn,
+    });
+  }
+  for (const [toolCallId, pending] of toolStarts) {
+    const identity = readToolIdentity(pending.event.data);
+    if (!identity) continue;
+    const update = toolUpdates.get(toolCallId);
+    const preview =
+      update && isPlainObject(update.data)
+        ? readUnknown(update.data.partialResult)
+        : "工具正在执行";
+    records.push({
+      durationMs: Math.max(0, endedAt - pending.event.timestamp),
+      ...(pendingErrorCode ? { errorCode: pendingErrorCode } : {}),
+      id: pending.event.id,
+      kind: AgentTraceRecordKind.TOOL,
+      label: identity.toolName,
+      lane: AgentTraceLane.TOOLS,
+      preview,
+      raw: {
+        arguments: isPlainObject(pending.event.data)
+          ? readUnknown(pending.event.data.arguments)
+          : "",
+        toolCallId,
+        toolName: identity.toolName,
+      },
+      source: "tool.started",
+      startMs: eventOffset(pending.event, started.timestamp),
+      status: terminal ? pendingStatus : AgentTraceStatus.RUNNING,
+      summary: terminal ? "工具调用缺少完成事件。" : "工具正在执行。",
+      turn: pending.turn,
+    });
+  }
+  for (const [approvalId, pending] of approvalStarts) {
+    const identity = readApprovalIdentity(pending.event.data);
+    if (!identity) continue;
+    records.push({
+      durationMs: Math.max(0, endedAt - pending.event.timestamp),
+      ...(pendingErrorCode ? { errorCode: pendingErrorCode } : {}),
+      id: pending.event.id,
+      kind: AgentTraceRecordKind.APPROVAL,
+      label: `审批 · ${identity.toolName}`,
+      lane: AgentTraceLane.INPUT,
+      preview: "等待用户审批",
+      raw: { approvalId, request: pending.event.data, toolName: identity.toolName },
+      source: "approval.requested",
+      startMs: eventOffset(pending.event, started.timestamp),
+      status: terminal ? pendingStatus : AgentTraceStatus.RUNNING,
+      summary: terminal ? "审批缺少完成事件。" : "正在等待用户审批。",
+      turn: pending.turn,
+    });
+  }
+  for (const pending of compactionStarts) {
+    records.push({
+      durationMs: Math.max(0, endedAt - pending.event.timestamp),
+      ...(pendingErrorCode ? { errorCode: pendingErrorCode } : {}),
+      id: pending.event.id,
+      kind: AgentTraceRecordKind.CONTEXT,
+      label: "上下文压缩",
+      lane: AgentTraceLane.MODEL,
+      preview: "正在压缩上下文",
+      raw: { eventId: pending.event.id, seq: pending.event.seq },
+      source: "context.compaction_started",
+      startMs: eventOffset(pending.event, started.timestamp),
+      status: terminal ? pendingStatus : AgentTraceStatus.RUNNING,
+      summary: terminal ? "上下文压缩缺少完成事件。" : "上下文正在压缩。",
+      turn: pending.turn,
+    });
+  }
+
+  records.sort(compareRecords);
+  const tokenUsage = records.reduce(
+    (total, record) => addUsage(total, record.tokenUsage),
+    EMPTY_USAGE,
+  );
+  const runData = isPlainObject(started.data) ? started.data : {};
+  const runErrorCode = readRunErrorCode(terminal);
+
+  return {
+    durationMs: Math.max(1, endedAt - started.timestamp),
+    ...(runErrorCode ? { errorCode: runErrorCode } : {}),
+    model: typeof runData.modelId === "string" ? runData.modelId : "未知模型",
+    records,
+    startedAt: started.timestamp,
+    status: readRunStatus(terminal),
+    tokenUsage,
+    traceId: started.runId,
+  };
+}
+
+export function sessionEventsToAgentTraces(
+  events: readonly HarnessEvent[],
+  now = Date.now(),
+): AgentTraceSession[] {
+  const byRunId = new Map<string, HarnessEvent[]>();
+  for (const event of events) {
+    if (!event.runId) continue;
+    const runEvents = byRunId.get(event.runId) ?? [];
+    runEvents.push(event);
+    byRunId.set(event.runId, runEvents);
+  }
+
+  const runTraces = Array.from(byRunId.values())
+    .flatMap((runEvents) => {
+      const trace = createTrace(runEvents, now);
+      return trace ? [trace] : [];
+    })
+    .sort((left, right) => left.startedAt - right.startedAt);
+  const firstTrace = runTraces[0];
+  const latestTrace = runTraces.at(-1);
+  if (!firstTrace || !latestTrace) return [];
+
+  const startedAt = firstTrace.startedAt;
+  const records: AgentTraceRecord[] = [];
+  let timelineOffset = 0;
+
+  for (const trace of runTraces) {
+    const runEvents = byRunId.get(trace.traceId) ?? [];
+    const runStarted = runEvents.find((event) => event.type === HarnessEventType.RUN_STARTED);
+    const runOffset = timelineOffset;
+    if (runStarted) {
+      const data = isPlainObject(runStarted.data) ? runStarted.data : {};
+      records.push({
+        durationMs: 0,
+        id: runStarted.id,
+        kind: AgentTraceRecordKind.SYSTEM,
+        label: "开始运行",
+        lane: AgentTraceLane.INPUT,
+        preview: typeof data.modelId === "string" ? data.modelId : "未知模型",
+        raw: {
+          eventId: runStarted.id,
+          modelId: data.modelId,
+          providerId: data.providerId,
+          runId: trace.traceId,
+          seq: runStarted.seq,
+        },
+        source: HarnessEventType.RUN_STARTED,
+        startMs: runOffset,
+        status: AgentTraceStatus.COMPLETED,
+        summary: "Session 开始了一次新的 Run。",
+        turn: 0,
+      });
+    }
+
+    const runTerminal = runEvents.findLast(
+      (event) =>
+        event.type === HarnessEventType.RUN_COMPLETED ||
+        event.type === HarnessEventType.RUN_FAILED ||
+        event.type === HarnessEventType.RUN_ABORTED,
+    );
+    if (runTerminal) {
+      const data = isPlainObject(runTerminal.data) ? runTerminal.data : {};
+      const label =
+        runTerminal.type === HarnessEventType.RUN_FAILED
+          ? "运行失败"
+          : runTerminal.type === HarnessEventType.RUN_ABORTED
+            ? "运行中止"
+            : "运行完成";
+      const errorCode = readRunErrorCode(runTerminal);
+      records.push({
+        durationMs: 0,
+        ...(errorCode ? { errorCode } : {}),
+        id: runTerminal.id,
+        kind: AgentTraceRecordKind.SYSTEM,
+        label,
+        lane: AgentTraceLane.MODEL,
+        preview: typeof data.message === "string" ? clip(data.message) : label,
+        raw: {
+          code: data.code,
+          eventId: runTerminal.id,
+          message: data.message,
+          runId: trace.traceId,
+          seq: runTerminal.seq,
+        },
+        source: runTerminal.type,
+        startMs: runOffset + trace.durationMs,
+        status: trace.status,
+        summary: `本次 Run ${label.slice(2)}。`,
+        turn: 0,
+      });
+    }
+
+    records.push(
+      ...trace.records.map((record) => ({
+        ...record,
+        raw: { ...record.raw, runId: trace.traceId },
+        startMs: record.startMs + runOffset,
+      })),
+    );
+    timelineOffset += trace.durationMs;
+  }
+
+  for (const event of events) {
+    if (
+      event.type !== HarnessEventType.MESSAGE_BRANCH_STARTED ||
+      !isMessageBranchStartedData(event.data)
+    ) {
+      continue;
+    }
+    const sourceEventId = event.data.sourceEventId;
+    const source = events.find((item) => item.id === sourceEventId);
+    records.push({
+      durationMs: 0,
+      id: event.id,
+      kind: AgentTraceRecordKind.USER,
+      label: "编辑消息",
+      lane: AgentTraceLane.INPUT,
+      preview: isHarnessUserMessage(source?.data)
+        ? clip(source.data.displayText)
+        : "从已发送消息创建新分支",
+      raw: {
+        eventId: event.id,
+        seq: event.seq,
+        sourceEventId,
+      },
+      source: HarnessEventType.MESSAGE_BRANCH_STARTED,
+      startMs: runTraces.reduce(
+        (offset, trace) => offset + (trace.startedAt < event.timestamp ? trace.durationMs : 0),
+        0,
+      ),
+      status: AgentTraceStatus.COMPLETED,
+      summary: "用户编辑了已发送的消息，并从这里继续会话。",
+      turn: 0,
+    });
+  }
+
+  records.sort(compareRecords);
+  let currentTurn = 0;
+  for (const record of records) {
+    const isUserMessage =
+      record.kind === AgentTraceRecordKind.USER &&
+      record.source === "message.started → message.completed";
+    if (isUserMessage) currentTurn += 1;
+    record.turn =
+      record.source === HarnessEventType.RUN_STARTED ||
+      record.source === HarnessEventType.MESSAGE_BRANCH_STARTED
+        ? 0
+        : currentTurn;
+  }
+  const tokenUsage = runTraces.reduce(
+    (total, trace) => addUsage(total, trace.tokenUsage),
+    EMPTY_USAGE,
+  );
+  const models = Array.from(new Set(runTraces.map((trace) => trace.model)));
+  const durationMs = Math.max(1, timelineOffset);
+
+  return [
+    {
+      durationMs,
+      ...(latestTrace.errorCode ? { errorCode: latestTrace.errorCode } : {}),
+      model: models.join(" → "),
+      records,
+      startedAt,
+      status: latestTrace.status,
+      tokenUsage,
+      traceId: events[0]?.sessionId ?? firstTrace.traceId,
+    },
+  ];
+}

@@ -434,7 +434,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   <ChatConversation.ScrollAnchor />
                 </ChatConversation>
               ) : (
-                <AgentTraceView />
+                <AgentTraceView events={events} />
               )}
             </motion.div>
           </AnimatePresence>

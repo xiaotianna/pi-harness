@@ -24,8 +24,9 @@
 | 10 | AGENTS.md 与 Skill Registry | 已完成 |
 | 11 | 消息附件与 `@` Workspace 上下文 | 已完成 |
 | 12 | Context 预算、裁剪与压缩 | 已完成 |
+| 13 | 基础 Trace 与真实 Run 数据 | 已完成 |
 
-当前已完成真实 Web 对话、workspace 工具、审批、文件变化、AGENTS.md、两级 Skill Registry、消息附件与 `@` Workspace 上下文，以及 Context 预算、裁剪、压缩、checkpoint 回滚与历史事实取回闭环。下一阶段按真实任务接入基础 Trace，将现有 Trace 界面从 mock 数据切换到真实 Run 数据。
+当前已完成真实 Web 对话、workspace 工具、审批、文件变化、AGENTS.md、两级 Skill Registry、消息附件与 `@` Workspace 上下文、Context 管理，以及基础 Trace 闭环。Trace 界面已从 mock 数据切换到真实 Session/Run 事件。
 
 ## 2026-08-24：无工具 Runtime 后端闭环
 
@@ -210,8 +211,22 @@
 
 验证：`@pi-harness/tools`、`@pi-harness/agent-runtime`、`@pi-harness/daemon` 和 `@pi-harness/web` typecheck 通过，本次相关文件通过 Biome。未执行 dev 或 build；当前验证环境为 Node.js 22，存在项目要求 Node.js 24 LTS 的 engine warning。
 
+## 2026-09-02：基础 Trace
+
+状态：`已完成`
+
+- Web 将同一 Session 的全部 `HarnessEvent` 投影为一条连续 Trace，不按 `runId` 拆分选择器；Run 边界、消息编辑、排队追加和调整方向直接进入记录列表。
+- 时间线只累计各 Run 的活动时长，压缩 Run 之间的 Session 空闲间隔；零时长生命周期事件保留在记录列表，不绘制为时间条。顶部 Session 状态和记录总数使用稳定的中性展示，不随所选记录变色。
+- Turn 由真实用户消息切分，从当前用户消息持续到下一条用户消息之前；中间模型请求数和 Run 边界不改变 Turn。
+- 模型、Tool、审批和 Context 压缩事件分别配对为耗时记录；未结束记录会随当前时间更新，Run 结束后缺少闭合事件则显示稳定错误状态。
+- Runtime 在用户消息中保留排队追加或调整方向的提交语义，供 JSONL 恢复后的 Trace 准确展示；两者继续在同一活动 Run 内顺序执行。
+- Trace 汇总模型与压缩请求的 Token，用稳定错误码标记 Run、模型、Tool 和审批失败，并限制原始数据预览长度。
+- 现有时间线、记录列表、搜索、范围筛选和详情面板全部改为消费真实 Trace 数据，移除 mock 数据文件。
+
+验证：`@pi-harness/agent-runtime`、`@pi-harness/web` typecheck 和相关文件 Biome 检查通过；事件投影通过单次可运行断言校验。未执行 dev、build 或 git。
+
 ## 下一步
 
 状态：`待开始`
 
-完成基础 Trace 最小闭环：以 `runId` 作为默认 `traceId`，记录模型、Tool、审批、Context 压缩的时延、Token 和稳定错误码，并将现有 Trace 界面接入真实 Session/Run 数据。实现先留在当前 Runtime 和 daemon 边界内，不提前拆分 `observability` package。
+使用已配置的真实 Provider 做发布前 burn-in，覆盖长会话、Tool 审批、Context 压缩、停止与失败恢复；发现可复现问题后再补针对性修复。
