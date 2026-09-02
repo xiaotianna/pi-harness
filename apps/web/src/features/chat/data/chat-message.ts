@@ -65,6 +65,7 @@ export type ChatMessageTool = {
     target: string;
   };
   argsText?: string;
+  details?: unknown;
   errorText?: string;
   input?: unknown;
   output?: unknown;

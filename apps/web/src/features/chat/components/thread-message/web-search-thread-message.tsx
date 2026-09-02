@@ -6,7 +6,11 @@ export function WebSearchThreadMessage({ message }: { message: ChatWebSearchMess
   return (
     <ChatMessagePrimitive.Assistant className="!py-0">
       <ChatMessagePrimitive.Body>
-        <WebSearch results={message.sources} searching={message.isSearching ?? false} />
+        <WebSearch
+          query={message.query}
+          results={message.sources}
+          searching={message.isSearching ?? false}
+        />
       </ChatMessagePrimitive.Body>
     </ChatMessagePrimitive.Assistant>
   );

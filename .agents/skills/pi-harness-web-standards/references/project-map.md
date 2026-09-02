@@ -61,7 +61,7 @@
 | 设置面板标题 | 复用 `SettingsPanelHeader` | `features/settings/components/settings-panel-header.tsx` |
 | 设置项行 | 复用 `SettingsRow` | `features/settings/components/settings-row.tsx` |
 | Provider 品牌 | 复用 `ModelProviderIcon`，按 Provider ID 映射直接 SVG | `features/models/components/model-provider-icon.tsx` |
-| AI 过程展示 | 思考、图片和任务使用 assistant-ui Elements；Web Search 使用 HeroUI Pro `ChatSource` 的 Stacked Favicons + `ChatSources` Grouped | `components/ai/` |
+| AI 过程展示 | 思考、图片和任务使用 assistant-ui Elements；Web Search 开始时显示带真实查询的 Shimmer 状态，取得结果后按 assistant-ui Sources Runtime 形态在消息内容区全宽展示 HeroUI Pro `ChatSource`，来源自然换行且每项保留 Hover Preview；Web Fetch 复用 Tool Call，并区分连接、读取和正文提取阶段；多工具组外层占满消息宽度，摘要展示实际工具名称，组内普通 Tool Call 仍保持紧凑宽度 | `components/ai/`、`features/chat/components/thread-message/` |
 | Trace 类型 | 复用 `TraceKindChip` | `features/trace/components/trace-kind-chip.tsx` |
 | 长 Trace/事件列表 | `@tanstack/react-virtual` | `features/trace/components/trace-event-list.tsx` |
 | 业务状态动画 | Motion 加减少动效处理 | `features/chat/views/chat-page.tsx`、`workspace-inspector.tsx`、`features/trace/components/trace-detail-panel.tsx` |

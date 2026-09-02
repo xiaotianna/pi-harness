@@ -5,6 +5,7 @@ import { Value } from "typebox/value";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 4310;
+const DEFAULT_WEB_SEARCH_URL = "http://127.0.0.1:8888";
 const DEFAULT_WEB_URL = "http://127.0.0.1:5173";
 
 const EnvironmentSchema = Type.Object({
@@ -15,6 +16,7 @@ const EnvironmentSchema = Type.Object({
   PI_HARNESS_HOST: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_LOG_LEVEL: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_PORT: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_WEB_SEARCH_URL: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_WEB_URL: Type.Optional(Type.String({ minLength: 1 })),
 });
 
@@ -34,6 +36,7 @@ export interface HarnessConfig {
   host: string;
   logLevel: string;
   port: number;
+  webSearchUrl: string;
   sessionsPath: string;
   webUrl: string;
 }
@@ -108,6 +111,10 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
     host: env.PI_HARNESS_HOST ?? DEFAULT_HOST,
     logLevel: env.PI_HARNESS_LOG_LEVEL ?? "info",
     port,
+    webSearchUrl: parseLoopbackUrl(
+      "PI_HARNESS_WEB_SEARCH_URL",
+      env.PI_HARNESS_WEB_SEARCH_URL ?? DEFAULT_WEB_SEARCH_URL,
+    ),
     sessionsPath: join(globalRoot, "sessions"),
     webUrl: parseLoopbackUrl("PI_HARNESS_WEB_URL", env.PI_HARNESS_WEB_URL ?? DEFAULT_WEB_URL),
   };

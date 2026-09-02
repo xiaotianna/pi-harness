@@ -57,6 +57,7 @@ export class AgentManager {
     private readonly requestToolApproval: ToolApprovalRequester,
     private readonly protectedPaths: readonly string[] = [],
     private readonly globalRoot: string,
+    private readonly webSearchUrl: string,
     private readonly isSkillEnabled: (directory: string) => boolean = () => true,
   ) {}
 
@@ -138,6 +139,7 @@ export class AgentManager {
         return runtime.resetWorkingState(reason);
       },
       protectedPaths: this.protectedPaths,
+      webSearchUrl: this.webSearchUrl,
       supportsImageInput: () => toolCapabilities.supportsImageInput,
       workspaceRoot: input.workspaceRoot,
     });

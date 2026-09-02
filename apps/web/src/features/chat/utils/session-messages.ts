@@ -201,6 +201,10 @@ function readToolResult(value: unknown): unknown {
   return text || value;
 }
 
+function readToolDetails(value: unknown): unknown {
+  return isPlainObject(value) ? value.details : undefined;
+}
+
 function readToolError(value: unknown): string {
   const result = readToolResult(value);
   return typeof result === "string" && result ? result : "工具执行失败";
@@ -215,6 +219,16 @@ function readToolActiveLabel(value: unknown): string | null {
       return "正在执行命令";
     case "collecting_changes":
       return "正在统计文件变化";
+    case "searching":
+      return "正在搜索网页";
+    case "processing":
+      return "正在整理搜索结果";
+    case "connecting":
+      return "正在连接网页";
+    case "downloading":
+      return "正在读取网页";
+    case "parsing":
+      return "正在提取网页正文";
     default:
       return null;
   }
@@ -391,6 +405,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     ) {
       const tool = toolsByCallId.get(event.data.toolCallId);
       if (tool) {
+        tool.details = readToolDetails(event.data.partialResult);
         tool.output = readToolResult(event.data.partialResult);
         const activeLabel = readToolActiveLabel(event.data.partialResult);
         if (activeLabel) tool.activeLabel = activeLabel;
@@ -461,6 +476,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
           tool.errorText = readToolError(event.data.result);
           tool.state = ChatToolState.OUTPUT_ERROR;
         } else {
+          tool.details = readToolDetails(event.data.result);
           tool.output = readToolResult(event.data.result);
           tool.state = ChatToolState.OUTPUT_AVAILABLE;
         }

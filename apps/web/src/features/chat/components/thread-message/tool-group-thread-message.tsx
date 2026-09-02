@@ -3,7 +3,7 @@ import { Check, ChevronDown } from "@gravity-ui/icons";
 import { Disclosure } from "@heroui/react";
 import { useState } from "react";
 import { type ChatToolGroupMessage, ChatToolState } from "../../data/chat";
-import { ToolCall } from "./tool-call";
+import { ToolCall, toolDisplayName } from "./tool-call";
 import { ToolIcon } from "./tool-icon";
 
 export function ToolGroupThreadMessage({ message }: { message: ChatToolGroupMessage }) {
@@ -17,12 +17,15 @@ export function ToolGroupThreadMessage({ message }: { message: ChatToolGroupMess
       tool.state === ChatToolState.INPUT_AVAILABLE || tool.state === ChatToolState.REQUIRES_ACTION,
   );
   const isActive = message.active ?? activeTool !== undefined;
+  const toolNames = [...new Set(message.tools.map((tool) => toolDisplayName(tool.toolName)))].join(
+    "、",
+  );
 
   return (
     <ChatMessagePrimitive.Assistant className="!py-0">
       <ChatMessagePrimitive.Body>
         <Disclosure
-          className="w-full max-w-sm"
+          className="w-full"
           data-slot="tool-call-group"
           isExpanded={isOpen}
           onExpandedChange={setIsOpen}
@@ -36,10 +39,10 @@ export function ToolGroupThreadMessage({ message }: { message: ChatToolGroupMess
               <span className="text-start">
                 {isActive ? (
                   <TextShimmer className="leading-none">
-                    {`正在调用工具 ${Math.min(completedCount + 1, message.tools.length)}/${message.tools.length}${activeTool ? ` ${activeTool.toolName}` : ""}`}
+                    {`正在调用 ${activeTool ? toolDisplayName(activeTool.toolName) : "工具"} ${Math.min(completedCount + 1, message.tools.length)}/${message.tools.length}`}
                   </TextShimmer>
                 ) : (
-                  message.label
+                  `已调用 ${toolNames} · ${message.tools.length} 次`
                 )}
               </span>
               {isActive ? null : <Check aria-hidden className="size-3.5 text-success" />}

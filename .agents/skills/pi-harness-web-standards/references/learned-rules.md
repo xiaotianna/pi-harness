@@ -197,9 +197,9 @@
 
 - 状态：`active`
 - 范围：AI 状态与过程展示
-- 规则：AI 等待、思考、推理、工具调用、图片生成和任务列表使用直接放在 `components/ai` 下的 assistant-ui Elements；初始等待与生成状态只显示 Shimmer 状态文案，不显示九宫格 dot。Web Search 只使用 HeroUI Pro `ChatSource` 的 Stacked Favicons 与 `ChatSources` Grouped 展示，不叠加旧查询胶囊。每个组件独立成文件。`ReasoningPanel` 和 `ToolCall` 分别以 assistant-ui 官方 Element 的 API 与结构为准，基础折叠原语适配为 HeroUI `Disclosure`。Think 使用 100% 消息宽度；标题使用 `Thinking...` 加行内代码样式的当前状态，活动态只让 `Thinking...` 使用 Shimmer，状态文本保持静态；正文直接使用 Markdown 渲染，不增加圆点或“分析”等步骤标签，达到最大高度后在组件内部滚动，正文使用 muted 前景色且与标题左右边缘对齐。Think 流式输出期间保持展开，当前 Think 输出结束后立即自动收起，之后仅由用户手动重新展开。`ToolCall` 状态图标紧跟工具名，详情默认收起，整体限制为 `max-w-sm`。同一 LLM 消息返回两个及以上 Tool Call 时，外层只显示调用进度并折叠各工具详情；单个 Tool Call 直接展示。
-- 依据：用户明确要求前端 AI 组件独立放在 `components/ai` 下，并分别指定 assistant-ui 的 Reasoning panel、Tool call，以及 HeroUI Pro Chat Source 的 Stacked Favicons + Grouped 用于 Web Search；随后连续确认 ToolCall 的宽度、折叠和状态图标位置，并要求 Think 使用 Markdown、多工具调用使用外层进度折叠，进一步指定 Think 的 Shimmer 标题、状态样式、正文结构与内部滚动方式；之后又明确要求 Think 标题与正文对齐、正文弱化颜色，并在流式输出结束时自动收起；本次要求移除初始思考状态上方的 dot 动画。
-- 原因：保持 AI 展示组件职责清晰，让 Web Search 的触发与来源内容完全由指定的分组组件表达；按 LLM 单次返回的工具数量决定展示层级，可以保留执行进度并减少重复视觉噪声。Think 使用次级文字颜色和一致边缘可以降低过程内容的视觉权重，按流式状态自动折叠则避免已完成过程持续挤占会话空间。
+- 规则：AI 等待、思考、推理、工具调用、图片生成和任务列表使用直接放在 `components/ai` 下的 assistant-ui Elements；初始等待与生成状态只显示 Shimmer 状态文案，不显示九宫格 dot。Web Search 开始时显示带真实查询的 Shimmer 状态，取得结果后按 assistant-ui Sources Runtime 形态在消息内容区使用 100% 宽度内联展示 HeroUI Pro `ChatSource`，来源按可用宽度自然换行，不使用单行横向滚动，也不得使用 Static 的汇总折叠结构；每个 URL 来源必须保留 favicon、标题和带域名、标题、摘要的 Hover Preview，搜索失败和空结果保留独立紧凑状态。Web Fetch 继续使用 Tool Call，并明确区分连接、读取和正文提取阶段。每个组件独立成文件。`ReasoningPanel` 和 `ToolCall` 分别以 assistant-ui 官方 Element 的 API 与结构为准，基础折叠原语适配为 HeroUI `Disclosure`。Think 使用 100% 消息宽度；标题使用 `Thinking...` 加行内代码样式的当前状态，活动态只让 `Thinking...` 使用 Shimmer，状态文本保持静态；正文直接使用 Markdown 渲染，不增加圆点或“分析”等步骤标签，达到最大高度后在组件内部滚动，正文使用 muted 前景色且与标题左右边缘对齐。Think 流式输出期间保持展开，当前 Think 输出结束后立即自动收起，之后仅由用户手动重新展开。`ToolCall` 状态图标紧跟工具名，详情默认收起，单项整体限制为 `max-w-sm`。同一 LLM 消息返回两个及以上 Tool Call 时，外层容器必须占满消息宽度，摘要展示实际工具名称和调用次数，并折叠各工具详情；单个 Tool Call 直接展示。
+- 依据：用户明确要求前端 AI 组件独立放在 `components/ai` 下，并分别指定 assistant-ui 的 Reasoning panel、Tool call，以及来源组件用于 Web Search；随后连续确认 ToolCall 的宽度、折叠和状态图标位置，并要求 Think 使用 Markdown、多工具调用使用外层进度折叠，进一步指定 Think 的 Shimmer 标题、状态样式、正文结构与内部滚动方式；之后又明确要求 Think 标题与正文对齐、正文弱化颜色，并在流式输出结束时自动收起；之后进一步明确 Web Search 必须使用 assistant-ui Sources 的 Runtime 形态而不是 Static，并保留 Hover Preview，同时指出多工具摘要必须显示实际工具名称；最新截图纠正来源区域应占满消息宽度且不需要单行展示，并进一步指出真正限制宽度的是多工具调用父容器。
+- 原因：保持 AI 展示组件职责清晰，让 Web Search 的执行状态与来源内容由专用组件表达，并让 Web Fetch 的网络阶段在通用工具链中可见；按 LLM 单次返回的工具数量决定展示层级，可以保留执行进度并减少重复视觉噪声。Think 使用次级文字颜色和一致边缘可以降低过程内容的视觉权重，按流式状态自动折叠则避免已完成过程持续挤占会话空间。
 
 ### WEB-023
 
@@ -711,6 +711,14 @@
 - 规则：新会话创建成功后必须立即进入会话页，不得等待首个 Run 或标题模型请求返回。daemon 使用当前模型自动概括简短标题，只使用低推理强度和较小输出上限；生成失败时退回首条输入的紧凑截断。Run 受理响应返回后，Web 在后台直接更新 Query 缓存中的 Session 标题，不显示标题加载态，不轮询，也不要求用户手动刷新。
 - 依据：用户明确要求新会话标题由内容总结生成，并说明只需大概概括，不需要高推理；随后指出同步标题请求会让新会话跳转卡顿一秒以上，要求恢复直接进入页面的体验。
 - 原因：会话导航是首轮发送的主路径，不应被装饰性元数据阻塞；创建后先导航，再让已发起的 Run 请求在后台回填标题，可在不增加协议和轮询的前提下同时保留即时响应与侧栏可扫描性。
+
+### WEB-085
+
+- 状态：`active`
+- 范围：Web 工具图标
+- 规则：`web_search` 使用 Gravity UI `Magnifier`，`web_fetch` 使用 `Globe`，让搜索动作与网页读取对象保持直接且不同的语义。
+- 依据：用户在比较可用图标后明确确认“搜索用放大镜、网页读取用地球”的配对。
+- 原因：固定配对可避免两个 Web 工具图标混淆，也避免把网页读取误表达为本地文档阅读。
 
 ## 维护规则
 

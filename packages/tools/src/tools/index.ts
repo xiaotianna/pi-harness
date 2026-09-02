@@ -33,4 +33,10 @@ export {
 } from "./todos.js";
 export { createViewImageTool } from "./view-image.js";
 export { createViewPdfPageTool } from "./view-pdf-page.js";
+export { createWebFetchTool, type WebFetchDetails } from "./web-fetch.js";
+export {
+  createWebSearchTool,
+  type WebSearchDetails,
+  type WebSearchResult,
+} from "./web-search.js";
 export { createWriteFileTool } from "./write-file.js";

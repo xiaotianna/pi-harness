@@ -199,8 +199,9 @@ export const sessionQueryKeys = {
 
 ## 工具与安全规范
 
-- 初始工具范围限定为 `read_file`、`list_files`、`search_text`、`edit_file`、`write_file` 和 `run_command`。
-- 只读工具可以并行；写入工具和 Shell 工具必须串行执行。
+- 内置工具范围包含 `read_file`、`view_image`、`read_document`、`view_pdf_page`、`list_files`、`search_text`、`web_search`、`web_fetch`、`edit_file`、`write_file` 和 `run_command`。
+- 文件读取、搜索和网络读取工具可以并行；写入工具和 Shell 工具必须串行执行。
+- `web_search` 只访问 daemon 配置的本机 SearXNG；`web_fetch` 只读取公开 HTTP(S) 地址，并在每次跳转前阻止本机、私有、链路本地、保留和组播地址。两者都必须限制超时、响应大小和输出长度并支持中止。
 - 每个 session 必须绑定不可变的 `workspaceRoot`。工具不得接受调用方任意覆盖工作目录。
 - 所有文件路径在审批前和实际执行前都要进行规范化与 workspace 边界检查。
 - 使用真实路径检查符号链接，拒绝访问 workspace 外部路径以及 daemon 凭据目录。

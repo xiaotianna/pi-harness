@@ -13,7 +13,7 @@
 | `FlowDiagram` | HeroUI `Surface` | 渲染 `flow` fenced block 的线性步骤 |
 | `MermaidBlock` | Mermaid + HeroUI `Surface` | 渲染 `mermaid`、`flowchart` fenced block |
 | `ToolCall` | [Tool call](https://www.assistant-ui.com/elements/tool-call) | 可展开的工具请求、结果与执行状态 |
-| `WebSearch` | [Chat Source：Stacked Favicons + Grouped](https://heroui.pro/docs/react/components/chat-source) | 叠放站点图标与分组来源 |
+| `WebSearch` | [assistant-ui Sources：Runtime](https://www.assistant-ui.com/elements/sources) + HeroUI Pro `ChatSource` | 全宽换行展示可悬停预览的网页来源 |
 | `ImageGeneration` | [Image generation](https://www.assistant-ui.com/elements/image-generation) | 图片生成占位与完成结果 |
 | `AgentPlan` | [Agent plan](https://www.assistant-ui.com/elements/agent-plan) | 输入器上方当前 Run 的 Plans 左栏 |
 | `TodoList` | [Todo list](https://www.assistant-ui.com/elements/todo-list) | 输入器上方当前 Run 的 Todos 右栏 |

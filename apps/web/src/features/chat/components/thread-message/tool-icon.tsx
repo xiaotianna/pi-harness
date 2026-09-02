@@ -26,7 +26,8 @@ const TOOL_ICON_BY_NAME: Readonly<Record<string, ToolIconComponent>> = {
   skill_creator: MagicWand,
   view_image: Picture,
   view_pdf_page: BookOpen,
-  web_search: Globe,
+  web_fetch: Globe,
+  web_search: Magnifier,
   write_file: Pencil,
 };
 

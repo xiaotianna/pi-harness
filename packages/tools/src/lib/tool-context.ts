@@ -17,6 +17,7 @@ export interface WorkspaceToolContext {
   onTodosUpdated?: TodoUpdateHandler;
   onWorkingStateReset?: WorkingStateResetHandler;
   protectedPaths?: readonly string[];
+  webSearchUrl: string;
   supportsImageInput?: () => boolean;
   workspaceRoot: string;
 }

@@ -21,6 +21,8 @@ import { createSearchTextTool } from "./tools/search-text.js";
 import { createUpdateTodosTool } from "./tools/todos.js";
 import { createViewImageTool } from "./tools/view-image.js";
 import { createViewPdfPageTool } from "./tools/view-pdf-page.js";
+import { createWebFetchTool } from "./tools/web-fetch.js";
+import { createWebSearchTool } from "./tools/web-search.js";
 import { createWriteFileTool } from "./tools/write-file.js";
 
 const BUILT_IN_SOURCE = "built_in";
@@ -67,6 +69,18 @@ export function createWorkspaceToolRegistry(context: WorkspaceToolContext): Tool
       source: BUILT_IN_SOURCE,
       timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
       tool: createSearchTextTool(context),
+    },
+    {
+      policy: readOnlyPolicy,
+      source: BUILT_IN_SOURCE,
+      timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
+      tool: createWebSearchTool(context),
+    },
+    {
+      policy: readOnlyPolicy,
+      source: BUILT_IN_SOURCE,
+      timeoutMs: DOCUMENT_TOOL_TIMEOUT_MS,
+      tool: createWebFetchTool(),
     },
     {
       policy: {
