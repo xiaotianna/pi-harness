@@ -23,9 +23,9 @@
 | 9 | Tool Registry、Policy、HITL、Sandbox | 已完成 |
 | 10 | AGENTS.md 与 Skill Registry | 已完成 |
 | 11 | 消息附件与 `@` Workspace 上下文 | 已完成 |
-| 12 | Context 预算、裁剪与压缩 | 待开始 |
+| 12 | Context 预算、裁剪与压缩 | 已完成 |
 
-当前已完成真实 Web 对话、workspace 工具、审批、文件变化、AGENTS.md、两级 Skill Registry、消息附件与 `@` Workspace 上下文闭环。下一阶段处理 Context 预算、裁剪与压缩。
+当前已完成真实 Web 对话、workspace 工具、审批、文件变化、AGENTS.md、两级 Skill Registry、消息附件与 `@` Workspace 上下文，以及 Context 预算、裁剪、压缩、checkpoint 回滚与历史事实取回闭环。下一阶段按真实任务接入基础 Trace，将现有 Trace 界面从 mock 数据切换到真实 Run 数据。
 
 ## 2026-08-24：无工具 Runtime 后端闭环
 
@@ -214,4 +214,4 @@
 
 状态：`待开始`
 
-实现 Context 预算、裁剪与压缩；在真实会话接近模型上下文上限前完成最小可恢复闭环。
+完成基础 Trace 最小闭环：以 `runId` 作为默认 `traceId`，记录模型、Tool、审批、Context 压缩的时延、Token 和稳定错误码，并将现有 Trace 界面接入真实 Session/Run 数据。实现先留在当前 Runtime 和 daemon 边界内，不提前拆分 `observability` package。
