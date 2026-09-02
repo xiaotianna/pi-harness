@@ -26,25 +26,28 @@ export function NewChatPage() {
   const workspaces = workspacesQuery.data ?? [];
   const createMutation = useMutation({
     mutationFn: async (input: ChatComposerSubmitInput) => {
-      const { modelId, prompt, providerId, thinkingLevel, workspaceId } = input;
+      const { modelId, providerId, thinkingLevel, workspaceId } = input;
       if (!workspaceId) throw new Error("请选择工作区");
       const session = await createSession({
         modelId,
         providerId,
         thinkingLevel,
-        title: prompt.slice(0, 60) || input.attachments[0]?.name || "New session",
         workspaceId,
       });
       queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (current) => [
         session,
         ...(current ?? []).filter((item) => item.id !== session.id),
       ]);
-      await startSessionRun(session.id, input);
-      return session.id;
-    },
-    onSuccess: (sessionId) => {
+      const run = startSessionRun(session.id, input);
+      router.history.push(`/${session.id}`);
+      const accepted = await run;
+      queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (current) =>
+        current?.map((item) =>
+          item.id === session.id ? { ...item, title: accepted.title } : item,
+        ),
+      );
       clearDraft();
-      router.history.push(`/${sessionId}`);
+      return session.id;
     },
   });
 

@@ -309,6 +309,22 @@ export interface CreateHarnessUserMessageInput {
   workspaceRoot: string;
 }
 
+export function createHarnessUserMessageRecord(input: RunUserInput): HarnessUserMessage {
+  const attachments = input.attachments.map((attachment) => ({
+    mimeType: attachment.mimeType,
+    name: attachment.name,
+    size: attachment.size,
+  }));
+  return {
+    ...(attachments.length === 0 ? {} : { attachments }),
+    content: [{ text: input.prompt, type: "text" }],
+    ...(input.references.length === 0 ? {} : { contextReferences: input.references }),
+    displayText: input.prompt,
+    role: "user",
+    timestamp: Date.now(),
+  };
+}
+
 export async function createHarnessUserMessage(
   source: CreateHarnessUserMessageInput,
 ): Promise<HarnessUserMessage> {
@@ -402,11 +418,8 @@ export async function createHarnessUserMessage(
     type: "text",
   };
   return {
+    ...createHarnessUserMessageRecord(source.input),
     ...(attachments.length === 0 ? {} : { attachments }),
     content: [text, ...images],
-    ...(source.input.references.length === 0 ? {} : { contextReferences: source.input.references }),
-    displayText: source.input.prompt,
-    role: "user",
-    timestamp: Date.now(),
   };
 }

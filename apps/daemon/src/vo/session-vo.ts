@@ -52,6 +52,7 @@ export type SessionSnapshotVo = Static<typeof SessionSnapshotVoSchema>;
 
 export const RunAcceptedVoSchema = Type.Object({
   runId: Type.String({ format: "uuid" }),
+  title: Type.String({ maxLength: 200, minLength: 1 }),
 });
 
 export type RunAcceptedVo = Static<typeof RunAcceptedVoSchema>;

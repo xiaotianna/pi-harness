@@ -59,6 +59,7 @@ import { type RunUserInput, UserInputContextError } from "./user-input.js";
 import { estimateContextUsage } from "./utils/context-usage.js";
 import {
   createHarnessUserMessage,
+  createHarnessUserMessageRecord,
   limitUserInputContext,
 } from "./utils/user-input.js";
 
@@ -790,6 +791,15 @@ export class RunCoordinator {
           },
           input.runId,
         );
+        const userMessage = createHarnessUserMessageRecord(input.userInput);
+        await this.emit(
+          {
+            data: userMessage,
+            type: HarnessEventType.MESSAGE_COMPLETED,
+          },
+          input.runId,
+        );
+        this.agent.state.messages = [...this.agent.state.messages, userMessage];
         const isAborted = preparationAbortController.signal.aborted;
         await this.emit(
           {

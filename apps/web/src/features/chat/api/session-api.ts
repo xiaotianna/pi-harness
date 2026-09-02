@@ -51,7 +51,10 @@ const SessionSearchResultSchema = Type.Object({
   session: SessionSchema,
 });
 const SessionSearchResultListSchema = Type.Array(SessionSearchResultSchema);
-const RunAcceptedSchema = Type.Object({ runId: Type.String({ minLength: 1 }) });
+const RunAcceptedSchema = Type.Object({
+  runId: Type.String({ minLength: 1 }),
+  title: Type.String({ maxLength: 200, minLength: 1 }),
+});
 
 export type Session = Static<typeof SessionSchema>;
 export interface SessionSnapshot {

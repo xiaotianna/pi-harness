@@ -46,7 +46,7 @@ import {
 import type { ApprovalPolicy } from "@pi-harness/policy/approval-policy";
 import { useQuery } from "@tanstack/react-query";
 import { maxBy } from "es-toolkit";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ClipboardEvent } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ListLayout, Virtualizer } from "react-aria-components";
 import {
@@ -655,6 +655,14 @@ export function ChatComposer({
     event.currentTarget.value = "";
   };
 
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const files = Array.from(event.clipboardData.files);
+    if (files.length === 0) return;
+
+    event.preventDefault();
+    handleFilesSelected(files);
+  };
+
   const handleRemoveAttachment = (attachment: ChatAttachmentListItem) => {
     if (!attachment.id) return;
 
@@ -858,7 +866,7 @@ export function ChatComposer({
           attachments.length ? "-mt-6" : ""
         }`}
       >
-        <PromptInput.Content className="px-1 pt-1">
+        <PromptInput.Content className="px-1 pt-1" onPaste={handlePaste}>
           <input
             ref={fileInputRef}
             aria-hidden

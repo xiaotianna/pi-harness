@@ -12,14 +12,21 @@ import {
   type RunId,
   type RunUserInput,
   type SessionId,
+  type StreamFn,
   UserInputContextError,
 } from "@pi-harness/agent-runtime";
 import {
   DEFAULT_THINKING_LEVEL,
   type ThinkingLevel,
+  ThinkingLevel as ThinkingLevels,
 } from "@pi-harness/agent-runtime/thinking-level";
 import { resolveWorkspacePath } from "@pi-harness/policy";
+import { type Api, getSupportedThinkingLevels, type Model } from "@pi-harness/providers";
 import { isPlainObject } from "es-toolkit";
+import {
+  buildSessionTitlePrompt,
+  SESSION_TITLE_SYSTEM_PROMPT,
+} from "../prompts/session-title-prompt.js";
 import type {
   AppSettingRepository,
   SessionRecord,
@@ -28,6 +35,11 @@ import type {
 } from "../storage/database.js";
 import type { SessionEventSnapshot, SessionEventStore } from "../storage/session-event-store.js";
 import { normalizeSessionSearchQuery, readSessionSearchContent } from "../utils/session-search.js";
+import {
+  buildSessionTitleSource,
+  createFallbackSessionTitle,
+  normalizeGeneratedSessionTitle,
+} from "../utils/session-title.js";
 import type { HumanInteractionService, PendingToolApproval } from "./human-interaction-service.js";
 import type { ProviderService } from "./provider-service.js";
 import type { SessionEventService } from "./session-event-service.js";
@@ -47,6 +59,8 @@ const SessionErrorCode = {
 
 const DEFAULT_SESSION_TITLE = "New session";
 const MAX_REVERT_FILE_BYTES = 1024 * 1024;
+const SESSION_TITLE_MAX_TOKENS = 64;
+const SESSION_TITLE_TIMEOUT_MS = 10_000;
 
 export type SessionErrorCode = (typeof SessionErrorCode)[keyof typeof SessionErrorCode];
 
@@ -70,6 +84,7 @@ export interface CreateSessionInput {
 
 export interface RunAccepted {
   runId: RunId;
+  title: string;
 }
 
 export interface UpdateSessionInput {
@@ -393,7 +408,18 @@ export class SessionService {
         workspaceRoot: session.workspaceRoot,
       });
       this.trackBackgroundTask(task, { providerId: session.providerId, runId, sessionId });
-      return { runId };
+      let title = session.title;
+      if (snapshot.messages.length === 0 && title === DEFAULT_SESSION_TITLE) {
+        const source = buildSessionTitleSource(
+          userInput.prompt,
+          userInput.attachments.map((attachment) => attachment.name),
+          userInput.references.map((reference) => reference.path),
+        );
+        const generatedTitle = await this.generateSessionTitle(model, streamFn, source);
+        if (this.sessions.updateTitle(sessionId, generatedTitle, Date.now()))
+          title = generatedTitle;
+      }
+      return { runId, title };
     } catch (error: unknown) {
       this.activeSessionIds.delete(sessionId);
       this.activeProviderBySession.delete(sessionId);
@@ -604,6 +630,45 @@ export class SessionService {
   private reconcileIndex(session: SessionRecord, snapshot: SessionEventSnapshot): void {
     if (snapshot.lastPersistedSeq > session.lastSeq) {
       this.sessions.updateIndex(session.id, snapshot.lastPersistedSeq, Date.now());
+    }
+  }
+
+  private async generateSessionTitle(
+    model: Model<Api>,
+    streamFn: StreamFn,
+    source: string,
+  ): Promise<string> {
+    const fallback = createFallbackSessionTitle(source);
+    const supportsLowReasoning = getSupportedThinkingLevels(model).includes(ThinkingLevels.LOW);
+    try {
+      const stream = await streamFn(
+        model,
+        {
+          messages: [
+            {
+              content: buildSessionTitlePrompt(source),
+              role: "user",
+              timestamp: Date.now(),
+            },
+          ],
+          systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
+        },
+        {
+          maxRetries: 0,
+          maxTokens: SESSION_TITLE_MAX_TOKENS,
+          ...(supportsLowReasoning ? { reasoning: ThinkingLevels.LOW } : {}),
+          signal: AbortSignal.timeout(SESSION_TITLE_TIMEOUT_MS),
+          timeoutMs: SESSION_TITLE_TIMEOUT_MS,
+        },
+      );
+      const response = await stream.result();
+      if (response.stopReason === "aborted" || response.stopReason === "error") return fallback;
+      const text = response.content
+        .flatMap((part) => (part.type === "text" ? [part.text] : []))
+        .join(" ");
+      return normalizeGeneratedSessionTitle(text, fallback);
+    } catch {
+      return fallback;
     }
   }
 
