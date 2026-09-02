@@ -1421,7 +1421,10 @@ export function ChatComposer({
                 {busyActionLabel}
               </Button>
             ) : (
-              <PromptInput.Send aria-label={sendLabel} isDisabled={!isGenerating && !canSend} />
+              <PromptInput.Send
+                aria-label={sendLabel}
+                {...(isGenerating ? {} : { isDisabled: !canSend })}
+              />
             )}
           </PromptInput.ToolbarEnd>
         </PromptInput.Toolbar>
