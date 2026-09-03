@@ -32,6 +32,7 @@ import {
   queuedSessionRunInputsQueryOptions,
   sessionQueryKeys,
   sessionSnapshotQueryOptions,
+  sessionTraceSnapshotQueryOptions,
 } from "../api/session-queries";
 import { ChatComposer } from "../components/chat-composer";
 import { ConversationTurnToc } from "../components/conversation-turn-toc";
@@ -132,11 +133,15 @@ export function ChatPageSkeleton() {
 
 export function ChatPage({ sessionId }: ChatPageProps) {
   const queryClient = useQueryClient();
+  const activeView = useChatPageViewStore((state) => state.activeView);
   const snapshotQuery = useQuery(sessionSnapshotQueryOptions(sessionId));
+  const traceSnapshotQuery = useQuery({
+    ...sessionTraceSnapshotQueryOptions(sessionId),
+    enabled: activeView === ChatPageView.TRACE,
+  });
   const snapshot = snapshotQuery.data;
   const isSnapshotReady = snapshot !== undefined;
   useSessionEvents(sessionId, snapshot?.session.lastSeq ?? 0, true);
-  const activeView = useChatPageViewStore((state) => state.activeView);
   const clearSearchTarget = useChatSearchTargetStore((state) => state.clearTarget);
   const searchTarget = useChatSearchTargetStore((state) =>
     state.target?.sessionId === sessionId ? state.target : null,
@@ -146,6 +151,9 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const events = snapshot?.events ?? EMPTY_SESSION_EVENTS;
   const activeEvents = useMemo(() => selectActiveSessionEvents(events), [events]);
   const messages = useMemo(() => sessionEventsToMessages(events), [events]);
+  const lastConversationTurnId = messages.findLast(
+    (message) => message.type === ChatMessageType.USER,
+  )?.id;
   const usage = useMemo(() => summarizeSessionUsage(activeEvents), [activeEvents]);
   const workingState = useMemo(() => readSessionWorkingState(activeEvents), [activeEvents]);
   const eventActiveRunId = useMemo(() => findActiveRunId(activeEvents), [activeEvents]);
@@ -168,6 +176,15 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const conversationContentRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<ThreadMessageListHandle>(null);
   const shouldFollowConversationRef = useRef(true);
+  const conversationScrollPositionRef = useRef<{
+    isAtBottom: boolean;
+    scrollTop: number;
+    sessionId: string;
+  } | null>(null);
+  const [activeConversationTurn, setActiveConversationTurn] = useState<{
+    sessionId: string;
+    turnId: string;
+  } | null>(null);
   const [positionedSessionId, setPositionedSessionId] = useState<string | null>(null);
   const [acceptedRunId, setAcceptedRunId] = useState<string | null>(null);
   const isPageReady =
@@ -188,9 +205,21 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     const content = conversationContentRef.current;
     if (!conversation || !content) return;
 
-    shouldFollowConversationRef.current = true;
     let frameId = 0;
     let observer: ResizeObserver | undefined;
+    const savedPosition = conversationScrollPositionRef.current;
+    if (savedPosition?.sessionId === sessionId && !savedPosition.isAtBottom) {
+      shouldFollowConversationRef.current = false;
+      const restorePosition = () => {
+        conversation.scrollTop = savedPosition.scrollTop;
+        setPositionedSessionId(sessionId);
+      };
+      restorePosition();
+      frameId = window.requestAnimationFrame(restorePosition);
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
+    shouldFollowConversationRef.current = true;
     const positionAtEnd = () => {
       if (!shouldFollowConversationRef.current) return;
       messageListRef.current?.scrollToEnd();
@@ -304,6 +333,9 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (current) =>
       current ? { ...current, session } : current,
     );
+    queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.trace(sessionId), (current) =>
+      current ? { ...current, session } : current,
+    );
     queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
       sessions?.map((item) =>
         item.id === session.id
@@ -377,6 +409,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     return <ChatPageSkeleton />;
   }
 
+  if (snapshotQuery.isError && !snapshot) throw snapshotQuery.error;
   if (!snapshot) return null;
 
   return (
@@ -403,11 +436,29 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   }}
                   onScroll={(event) => {
                     const conversation = event.currentTarget;
-                    const isNearBottom =
+                    const distanceFromBottom =
                       conversation.scrollHeight -
-                        conversation.scrollTop -
-                        conversation.clientHeight <=
-                      CHAT_AUTO_SCROLL_THRESHOLD_PX;
+                      conversation.scrollTop -
+                      conversation.clientHeight;
+                    conversationScrollPositionRef.current = {
+                      isAtBottom: distanceFromBottom <= 1,
+                      scrollTop: conversation.scrollTop,
+                      sessionId,
+                    };
+                    const turnId =
+                      distanceFromBottom <= 1
+                        ? lastConversationTurnId
+                        : messageListRef.current?.getTurnIdAtOffset(
+                            conversation.scrollTop + conversation.clientHeight * 0.25,
+                          );
+                    if (turnId) {
+                      setActiveConversationTurn((current) =>
+                        current?.sessionId === sessionId && current.turnId === turnId
+                          ? current
+                          : { sessionId, turnId },
+                      );
+                    }
+                    const isNearBottom = distanceFromBottom <= CHAT_AUTO_SCROLL_THRESHOLD_PX;
                     if (isNearBottom) shouldFollowConversationRef.current = true;
                   }}
                   onTouchMove={stopFollowingConversation}
@@ -440,15 +491,19 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   <ChatConversation.ScrollAnchor />
                 </ChatConversation>
               ) : (
-                <AgentTraceView events={events} />
+                <AgentTraceView events={traceSnapshotQuery.data?.events ?? events} />
               )}
             </motion.div>
           </AnimatePresence>
           {activeView === ChatPageView.CONVERSATION ? (
             <ConversationTurnToc
+              activeTurnId={
+                activeConversationTurn?.sessionId === sessionId
+                  ? activeConversationTurn.turnId
+                  : null
+              }
               messageListRef={messageListRef}
               messages={messages}
-              scrollContainerRef={conversationRef}
             />
           ) : null}
         </div>

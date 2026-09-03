@@ -101,6 +101,17 @@ export async function registerSessionRoutes(
   );
 
   server.get<{ Params: SessionParamsDto }>(
+    "/api/sessions/:sessionId/conversation",
+    {
+      schema: {
+        params: SessionParamsDtoSchema,
+        response: { 200: SessionSnapshotVoSchema, ...errors },
+      },
+    },
+    controller.getConversation,
+  );
+
+  server.get<{ Params: SessionParamsDto }>(
     "/api/sessions/:sessionId",
     {
       schema: {

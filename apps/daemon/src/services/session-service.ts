@@ -45,6 +45,7 @@ import {
   createSessionSearchExcerpt,
   normalizeSessionSearchQuery,
 } from "../utils/session-search.js";
+import { projectSessionConversationEvents } from "../utils/session-conversation.js";
 import {
   buildSessionTitleSource,
   createFallbackSessionTitle,
@@ -396,6 +397,11 @@ export class SessionService {
     const snapshot = await this.eventStore.load(sessionId);
     this.reconcileIndex(session, snapshot);
     return { events: snapshot.events, session: this.getRequiredSession(sessionId) };
+  }
+
+  public async getConversationSnapshot(sessionId: SessionId): Promise<SessionSnapshot> {
+    const snapshot = await this.getSnapshot(sessionId);
+    return { ...snapshot, events: projectSessionConversationEvents(snapshot.events) };
   }
 
   public async restoreContextCheckpoint(sessionId: SessionId, eventSeq: number): Promise<void> {

@@ -1,6 +1,6 @@
 import { FloatingToc } from "@agile-avocation/ui-pro";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { type CSSProperties, type RefObject, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type RefObject, useMemo, useState } from "react";
 import { CHAT_RESPONSE_PENDING_LABEL } from "../constants/chat-response";
 import type { ChatMessage } from "../data/chat";
 import { getConversationTurns } from "../utils/conversation-turns";
@@ -11,53 +11,30 @@ const TURN_TOC_BAR_STEP_PX = 14;
 const TURN_PREVIEW_TRANSITION = { duration: 0.15, ease: [0.22, 1, 0.36, 1] } as const;
 
 export interface ConversationTurnTocProps {
+  activeTurnId: string | null;
   messageListRef: RefObject<ThreadMessageListHandle | null>;
   messages: readonly ChatMessage[];
-  scrollContainerRef: RefObject<HTMLDivElement | null>;
 }
 
 export function ConversationTurnToc({
+  activeTurnId,
   messageListRef,
   messages,
-  scrollContainerRef,
 }: ConversationTurnTocProps) {
   const turns = useMemo(() => getConversationTurns(messages), [messages]);
   const turnIndexById = useMemo(
     () => new Map(turns.map((turn, index) => [turn.id, index])),
     [turns],
   );
-  const [activeIndex, setActiveIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container || turns.length <= TURN_TOC_THRESHOLD) return;
-
-    const updateActiveTurn = () => {
-      const turnId = messageListRef.current?.getTurnIdAtOffset(
-        container.scrollTop + container.clientHeight * 0.25,
-      );
-      const nextIndex = turnId ? (turnIndexById.get(turnId) ?? 0) : 0;
-
-      setActiveIndex((current) => (current === nextIndex ? current : nextIndex));
-    };
-
-    updateActiveTurn();
-    container.addEventListener("scroll", updateActiveTurn, { passive: true });
-    const resizeObserver = new ResizeObserver(updateActiveTurn);
-    resizeObserver.observe(container);
-
-    return () => {
-      container.removeEventListener("scroll", updateActiveTurn);
-      resizeObserver.disconnect();
-    };
-  }, [messageListRef, scrollContainerRef, turnIndexById, turns.length]);
-
   if (turns.length <= TURN_TOC_THRESHOLD) return null;
 
-  const currentIndex = Math.min(activeIndex, turns.length - 1);
+  const currentIndex = activeTurnId
+    ? (turnIndexById.get(activeTurnId) ?? turns.length - 1)
+    : turns.length - 1;
   const peakIndex = hoveredIndex ?? currentIndex;
   const previewTurn = turns[peakIndex] ?? turns[0];
   if (!previewTurn) return null;

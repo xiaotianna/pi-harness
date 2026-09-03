@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import {
   getSessionSnapshot,
+  getSessionTraceSnapshot,
   listQueuedSessionRunInputs,
   listSessions,
   searchSessions,
@@ -14,6 +15,7 @@ export const sessionQueryKeys = {
   queuedInputs: (sessionId: string, runId: string) =>
     [...sessionQueryKeys.all, "queued-inputs", sessionId, runId] as const,
   search: (query: string) => [...sessionQueryKeys.all, "search", query] as const,
+  trace: (sessionId: string) => [...sessionQueryKeys.all, "trace", sessionId] as const,
 };
 
 export const sessionListQueryOptions = () =>
@@ -32,6 +34,13 @@ export const sessionSnapshotQueryOptions = (sessionId: string) =>
   queryOptions({
     queryFn: ({ signal }) => getSessionSnapshot(sessionId, signal),
     queryKey: sessionQueryKeys.detail(sessionId),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+export const sessionTraceSnapshotQueryOptions = (sessionId: string) =>
+  queryOptions({
+    queryFn: ({ signal }) => getSessionTraceSnapshot(sessionId, signal),
+    queryKey: sessionQueryKeys.trace(sessionId),
     staleTime: Number.POSITIVE_INFINITY,
   });
 

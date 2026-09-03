@@ -898,7 +898,7 @@ export function ChatComposer({
         </div>
       ) : null}
       <PromptInput.Shell
-        className={`relative z-10 overflow-visible! rounded-[32px] bg-field opacity-100! shadow-field ${
+        className={`relative z-10 overflow-visible! rounded-[24px]! bg-field opacity-100! shadow-field ${
           attachments.length || queuedInputs.length ? "-mt-6" : ""
         }`}
       >

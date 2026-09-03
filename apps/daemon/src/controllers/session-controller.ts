@@ -78,6 +78,18 @@ export class SessionController {
     }
   };
 
+  public getConversation = async (
+    request: FastifyRequest<{ Params: SessionParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | SessionSnapshotVo> => {
+    try {
+      const snapshot = await this.sessions.getConversationSnapshot(request.params.sessionId);
+      return { events: [...snapshot.events], session: snapshot.session };
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
   public restoreContextCheckpoint = async (
     request: FastifyRequest<{ Params: SessionCheckpointParamsDto }>,
     reply: FastifyReply,

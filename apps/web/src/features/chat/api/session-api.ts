@@ -153,12 +153,28 @@ export async function getSessionSnapshot(
   sessionId: string,
   signal?: AbortSignal,
 ): Promise<SessionSnapshot> {
-  const body = (await (
+  return readSessionSnapshot(
+    await apiRequest(
+      `/api/sessions/${encodeURIComponent(sessionId)}/conversation`,
+      signal ? { signal } : undefined,
+    ),
+  );
+}
+
+export async function getSessionTraceSnapshot(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<SessionSnapshot> {
+  return readSessionSnapshot(
     await apiRequest(
       `/api/sessions/${encodeURIComponent(sessionId)}`,
       signal ? { signal } : undefined,
-    )
-  ).json()) as unknown;
+    ),
+  );
+}
+
+async function readSessionSnapshot(response: Response): Promise<SessionSnapshot> {
+  const body = (await response.json()) as unknown;
   if (!Value.Check(SessionSnapshotSchema, body)) {
     throw new Error("daemon 返回了无效的 Session 快照");
   }

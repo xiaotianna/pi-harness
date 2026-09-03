@@ -120,7 +120,10 @@ export function ContextCheckpointDialog({
     mutationFn: (eventSeq: number) => restoreSessionContextCheckpoint(sessionId, eventSeq),
     onError: (error) => toast.danger(error.message),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: sessionQueryKeys.detail(sessionId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sessionQueryKeys.detail(sessionId) }),
+        queryClient.invalidateQueries({ queryKey: sessionQueryKeys.trace(sessionId) }),
+      ]);
       toast.success("已设为当前 Checkpoint");
       onClose();
     },

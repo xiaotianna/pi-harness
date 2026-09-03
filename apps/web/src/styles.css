@@ -243,6 +243,10 @@
   background-color: var(--color-default-hover);
 }
 
+.sidebar__menu-item[data-pressed="true"] .sidebar__menu-item-content {
+  background-color: var(--default);
+}
+
 .sidebar__menu[data-focus-visible],
 .sidebar__menu-action:focus-visible,
 .sidebar__menu-action[data-focus-visible="true"],
@@ -277,7 +281,7 @@
     --field-border: transparent;
     --field-border-hover: transparent;
     --field-border-focus: transparent;
-    --field-shadow: 0 12px 32px rgba(24, 24, 27, 0.1), 0 3px 10px rgba(24, 24, 27, 0.06);
+    --field-shadow: 0 4px 16px rgba(24, 24, 27, 0.04), 0 1px 4px rgba(24, 24, 27, 0.02);
   }
 
   .dark,

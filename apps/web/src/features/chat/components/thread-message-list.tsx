@@ -241,6 +241,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       paddingEnd: 40,
       paddingStart: 40,
       scrollPaddingStart: 40,
+      useAnimationFrameWithResizeObserver: true,
       useFlushSync: false,
     });
     const targetMessageId = useMemo(() => {

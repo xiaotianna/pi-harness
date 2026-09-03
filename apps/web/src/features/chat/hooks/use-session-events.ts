@@ -75,6 +75,10 @@ export function useSessionEvents(sessionId: string, initialSeq: number, isRead: 
         if (!snapshot) return snapshot;
         return updateSnapshotWithEvents(snapshot, events);
       });
+      queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.trace(sessionId), (snapshot) => {
+        if (!snapshot) return snapshot;
+        return updateSnapshotWithEvents(snapshot, events);
+      });
       queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
         sessions?.map((session) =>
           session.id === sessionId
@@ -114,6 +118,7 @@ export function useSessionEvents(sessionId: string, initialSeq: number, isRead: 
         commit([event]);
       } catch {
         void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.detail(sessionId) });
+        void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.trace(sessionId) });
       }
     };
 

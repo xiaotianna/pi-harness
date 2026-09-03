@@ -1,11 +1,11 @@
 import { EmptyState } from "@agile-avocation/ui-pro";
 import { CircleExclamation } from "@gravity-ui/icons";
 import { Button } from "@heroui/react";
-import { CancelledError } from "@tanstack/react-query";
 import {
   createRootRoute,
   createRoute,
   createRouter,
+  Navigate,
   Outlet,
   redirect,
 } from "@tanstack/react-router";
@@ -17,7 +17,6 @@ import {
   sessionSnapshotQueryOptions,
 } from "../features/chat/api/session-queries";
 import { ChatShell } from "../features/chat/components/chat-shell";
-import { ChatPageSkeleton } from "../features/chat/views/chat-page";
 import { BoardPage } from "../pages/board-page";
 import { ChatThreadPage } from "../pages/chat-thread-page";
 import { LoginPage } from "../pages/login-page";
@@ -157,38 +156,22 @@ const unknownRoute = createRoute({
 const chatThreadRoute = createRoute({
   getParentRoute: () => chatLayoutRoute,
   path: "/$chatId",
-  pendingComponent: ChatPageSkeleton,
-  pendingMinMs: 0,
-  pendingMs: 0,
-  loader: async ({ abortController, params }) => {
-    const queryOptions = sessionSnapshotQueryOptions(params.chatId);
-    try {
-      return await queryClient.ensureQueryData(queryOptions);
-    } catch (error: unknown) {
-      let finalError = error;
-      if (error instanceof CancelledError) {
-        abortController.signal.throwIfAborted();
-        try {
-          return await queryClient.fetchQuery(queryOptions);
-        } catch (retryError: unknown) {
-          finalError = retryError;
-        }
-      }
-      if (
-        finalError instanceof ApiRequestError &&
-        (finalError.status === 400 || finalError.status === 404)
-      )
-        throw redirect({ replace: true, to: "/new" });
-      throw finalError;
-    }
+  loader: ({ params }) => {
+    void queryClient.prefetchQuery(sessionSnapshotQueryOptions(params.chatId));
   },
+  errorComponent: ({ error }) =>
+    error instanceof ApiRequestError && (error.status === 400 || error.status === 404) ? (
+      <Navigate replace to="/new" />
+    ) : (
+      <AppErrorRoute />
+    ),
   component: ChatThreadRoute,
 });
 
 function ChatThreadRoute() {
-  const snapshot = chatThreadRoute.useLoaderData();
+  const { chatId } = chatThreadRoute.useParams();
 
-  return <ChatThreadPage sessionId={snapshot.session.id} />;
+  return <ChatThreadPage sessionId={chatId} />;
 }
 
 function LoginRoute() {
