@@ -1,5 +1,5 @@
 import { ChevronRight } from "@gravity-ui/icons";
-import { Disclosure, Separator, toast, useMediaQuery } from "@heroui/react";
+import { Disclosure, Separator, toast } from "@heroui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useReducedMotion } from "motion/react";
 import {
@@ -197,13 +197,12 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
     const [hoveredTurnId, setHoveredTurnId] = useState<string | null>(null);
     const [isEditingMessage, setIsEditingMessage] = useState(false);
     const listRef = useRef<HTMLDivElement>(null);
-    const isMobile = useMediaQuery("(max-width: 767px)");
     const shouldReduceMotion = useReducedMotion();
     const items = useMemo(() => groupIntermediateMessages(messages), [messages]);
     const lastUserMessageId = messages.findLast(
       (message) => message.type === ChatMessageType.USER,
     )?.id;
-    const isVirtualized = scrollContainerRef !== undefined && !isMobile;
+    const isVirtualized = scrollContainerRef !== undefined;
     const handleEditingChange = useCallback(
       (isEditing: boolean) => {
         if (isEditing) onBeforeMessageEdit?.();
@@ -230,15 +229,19 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
     const virtualizer = useVirtualizer({
       anchorTo: isEditingMessage ? "start" : "end",
       count: isVirtualized ? items.length : 0,
+      directDomUpdates: true,
       enabled: isVirtualized,
       estimateSize: () => 180,
+      followOnAppend: true,
       getItemKey: (index) => items[index]?.id ?? index,
       getScrollElement: () => scrollContainerRef?.current ?? null,
+      initialOffset: () => items.length * 180 + 80,
       initialRect: { height: 1, width: 1 },
       overscan: 5,
       paddingEnd: 40,
       paddingStart: 40,
       scrollPaddingStart: 40,
+      useFlushSync: false,
     });
     const targetMessageId = useMemo(() => {
       if (!searchTarget?.messageEventId) return null;
@@ -396,7 +399,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
           {isVirtualized ? (
             <div
               className="relative mx-auto w-full max-w-[714px] px-4"
-              style={{ height: virtualizer.getTotalSize() }}
+              ref={virtualizer.containerRef}
             >
               {virtualizer.getVirtualItems().map((virtualItem) => {
                 const item = items[virtualItem.index];
@@ -408,7 +411,6 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
                     data-index={virtualItem.index}
                     key={virtualItem.key}
                     ref={virtualizer.measureElement}
-                    style={{ transform: `translateY(${virtualItem.start}px)` }}
                   >
                     {renderItem(item, virtualItem.index, true)}
                   </div>

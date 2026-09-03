@@ -40,7 +40,11 @@ import type {
   WorkspaceRepository,
 } from "../storage/database.js";
 import type { SessionEventSnapshot, SessionEventStore } from "../storage/session-event-store.js";
-import { normalizeSessionSearchQuery, readSessionSearchContent } from "../utils/session-search.js";
+import {
+  createSessionSearchDocument,
+  createSessionSearchExcerpt,
+  normalizeSessionSearchQuery,
+} from "../utils/session-search.js";
 import {
   buildSessionTitleSource,
   createFallbackSessionTitle,
@@ -241,6 +245,11 @@ export class SessionService {
   private readonly activeSessionIds = new Set<SessionId>();
   private readonly activeProviderBySession = new Map<SessionId, string>();
   private readonly backgroundTasks = new Set<Promise<void>>();
+  private readonly indexedSearchRevisions = new Map<SessionId, number>();
+  private readonly searchIndexUpdates = new Map<
+    SessionId,
+    { promise: Promise<void>; revision: number }
+  >();
 
   public constructor(
     private readonly sessions: SessionRepository,
@@ -280,33 +289,102 @@ export class SessionService {
     }));
   }
 
+  public async initializeSearchIndex(): Promise<void> {
+    const sessions = this.sessions.list(false);
+    const storedDocuments = new Map(
+      this.sessions.listSearchDocuments().map((document) => [document.sessionId, document]),
+    );
+    await Promise.all(
+      sessions.map((session) =>
+        this.ensureSessionSearchIndex(session.id, storedDocuments.get(session.id)),
+      ),
+    );
+  }
+
   public async search(query: string): Promise<readonly SessionSearchResult[]> {
     const normalizedQuery = normalizeSessionSearchQuery(query);
     const sessions = this.sessions.list(false);
-
-    // ponytail: 先按 SQLite Session 索引线性读取 JSONL；会话量导致可测延迟后再加可重建 FTS 索引。
-    const results = await Promise.all(
-      sessions.map(async (session): Promise<SessionSearchResult | null> => {
-        const snapshot = await this.eventStore.load(session.id);
-        const content = readSessionSearchContent(snapshot.messages, normalizedQuery);
-        const hasTitleMatch = session.title.toLocaleLowerCase().includes(normalizedQuery);
-        if (normalizedQuery && !hasTitleMatch && !content.hasMessageMatch) return null;
-        const messageEventIds = selectActiveSessionEvents(snapshot.events).flatMap((event) =>
-          event.type === HarnessEventType.MESSAGE_COMPLETED ? [event.id] : [],
-        );
-        return {
-          description: content.description,
-          excerpt: content.excerpt,
-          messageEventId:
-            content.matchingMessageIndex === null
-              ? null
-              : (messageEventIds[content.matchingMessageIndex] ?? null),
-          session,
-        };
-      }),
+    const storedDocuments = new Map(
+      this.sessions.listSearchDocuments().map((document) => [document.sessionId, document]),
+    );
+    await Promise.all(
+      sessions.map((session) =>
+        this.ensureSessionSearchIndex(session.id, storedDocuments.get(session.id)),
+      ),
+    );
+    const descriptions = new Map(
+      this.sessions
+        .listSearchDocuments()
+        .map((document) => [document.sessionId, document.description]),
+    );
+    const matches = new Map(
+      normalizedQuery
+        ? this.sessions.searchMessages(normalizedQuery).map((match) => [match.sessionId, match])
+        : [],
     );
 
-    return results.flatMap((result) => (result === null ? [] : [result]));
+    return sessions.flatMap((session): SessionSearchResult[] => {
+      const description = descriptions.get(session.id) ?? "";
+      const match = matches.get(session.id);
+      const hasTitleMatch = session.title.toLocaleLowerCase().includes(normalizedQuery);
+      if (normalizedQuery && !hasTitleMatch && !match) return [];
+      return [
+        {
+          description,
+          excerpt: match ? createSessionSearchExcerpt(match.text, normalizedQuery) : description,
+          messageEventId: match?.eventId ?? null,
+          session,
+        },
+      ];
+    });
+  }
+
+  private async ensureSessionSearchIndex(
+    sessionId: SessionId,
+    storedDocument: { sourceSize: number } | undefined,
+  ): Promise<void> {
+    const revision = this.eventStore.getRevision(sessionId);
+    if (this.indexedSearchRevisions.get(sessionId) === revision) return;
+    const pending = this.searchIndexUpdates.get(sessionId);
+    if (pending?.revision === revision) return pending.promise;
+    const entry = {
+      promise: this.updateSessionSearchIndex(sessionId, storedDocument, revision),
+      revision,
+    };
+    this.searchIndexUpdates.set(sessionId, entry);
+    try {
+      await entry.promise;
+    } finally {
+      if (this.searchIndexUpdates.get(sessionId) === entry) {
+        this.searchIndexUpdates.delete(sessionId);
+      }
+    }
+  }
+
+  private async updateSessionSearchIndex(
+    sessionId: SessionId,
+    storedDocument: { sourceSize: number } | undefined,
+    revision: number,
+  ): Promise<void> {
+    const sourceSize = await this.eventStore.getSize(sessionId);
+    if (storedDocument?.sourceSize !== sourceSize) {
+      const snapshot = await this.eventStore.load(sessionId);
+      const document = createSessionSearchDocument(snapshot.messages);
+      const indexedSourceSize = await this.eventStore.getSize(sessionId);
+      const messageEventIds = selectActiveSessionEvents(snapshot.events).flatMap((event) =>
+        event.type === HarnessEventType.MESSAGE_COMPLETED ? [event.id] : [],
+      );
+      this.sessions.replaceSearchDocument(
+        sessionId,
+        indexedSourceSize,
+        document.description,
+        document.messages.flatMap((message) => {
+          const eventId = messageEventIds[message.messageIndex];
+          return eventId ? [{ eventId, ...message }] : [];
+        }),
+      );
+    }
+    this.indexedSearchRevisions.set(sessionId, revision);
   }
 
   public isProviderActive(providerId: string): boolean {

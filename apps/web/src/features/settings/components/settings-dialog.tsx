@@ -1,6 +1,5 @@
 "use client";
 
-import { useSidebar } from "@agile-avocation/ui-pro";
 import {
   Archive,
   Shapes4 as Blocks,
@@ -25,7 +24,6 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   toast,
-  useMediaQuery,
 } from "@heroui/react";
 import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { Brain } from "lucide-react";
@@ -50,6 +48,7 @@ export interface SettingsDialogProps {
   archivedConversations: ArchivedConversationsState;
   currentWorkspaceId: string | null;
   isOpen: boolean;
+  onArchivedOpen: () => void;
   onRestoreArchivedConversation: (conversationId: string) => Promise<void>;
   onOpenChange: (isOpen: boolean) => void;
   onStartSkillChat: (draft: SkillChatDraft) => void;
@@ -399,14 +398,20 @@ export function SettingsDialog({
   archivedConversations,
   currentWorkspaceId,
   isOpen,
+  onArchivedOpen,
   onRestoreArchivedConversation,
   onOpenChange,
   onStartSkillChat,
   workspaces,
 }: SettingsDialogProps) {
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
-  const isMobile = useMediaQuery("(max-width: 639px)");
-  const { setMobileOpen } = useSidebar();
+
+  const selectSection = (key: string | number) => {
+    const nextSection = SETTINGS_SECTIONS.find((section) => section.id === key);
+    if (!nextSection) return;
+    setActiveSectionId(nextSection.id);
+    if (nextSection.id === "archived") onArchivedOpen();
+  };
 
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
@@ -414,21 +419,17 @@ export function SettingsDialog({
         <Modal.Dialog className="h-full min-h-0 max-w-5xl overflow-hidden p-0 sm:h-[640px]">
           <Modal.CloseTrigger aria-label="关闭设置" className="z-20" />
           <Modal.Body className="m-0 overflow-hidden p-0">
-            <div className="flex h-full min-h-0 flex-col sm:grid sm:grid-cols-[15rem_minmax(0,1fr)]">
-              <aside className="shrink-0 p-4 pb-2 sm:min-h-0 sm:overflow-y-auto sm:pb-4">
+            <div className="flex h-full min-h-0 flex-col lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+              <aside className="shrink-0 p-4 pb-2 lg:min-h-0 lg:overflow-y-auto lg:pb-4">
                 <Modal.Heading className="px-2 py-2">设置</Modal.Heading>
-                {isMobile ? (
+                <div className="mt-3 lg:hidden">
                   <Select
                     aria-label="设置分类"
-                    className="mt-3 w-full"
+                    className="w-full"
                     value={activeSectionId}
                     variant="secondary"
                     onChange={(key) => {
-                      if (typeof key !== "string") return;
-                      const nextSection = SETTINGS_SECTIONS.find((section) => section.id === key);
-                      if (nextSection) {
-                        setActiveSectionId(nextSection.id);
-                      }
+                      if (typeof key === "string") selectSection(key);
                     }}
                   >
                     <Select.Trigger>
@@ -455,7 +456,8 @@ export function SettingsDialog({
                       </ListBox>
                     </Select.Popover>
                   </Select>
-                ) : (
+                </div>
+                <div className="hidden lg:block">
                   <ListBox
                     aria-label="设置分类"
                     className="mt-4 p-0"
@@ -465,10 +467,7 @@ export function SettingsDialog({
                       if (keys === "all") return;
 
                       const [key] = keys;
-                      const nextSection = SETTINGS_SECTIONS.find((section) => section.id === key);
-                      if (nextSection) {
-                        setActiveSectionId(nextSection.id);
-                      }
+                      if (key !== undefined) selectSection(key);
                     }}
                   >
                     {SETTINGS_SECTIONS.map((section) => {
@@ -487,10 +486,10 @@ export function SettingsDialog({
                       );
                     })}
                   </ListBox>
-                )}
+                </div>
               </aside>
 
-              <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-2 pb-6 sm:py-8 sm:pr-16 sm:pl-8">
+              <main className="@container/settings min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-2 pb-6 lg:py-8 lg:pr-16 lg:pl-8">
                 {activeSectionId === "general" ? (
                   <GeneralSettingsPanel />
                 ) : activeSectionId === "models" ? (
@@ -503,10 +502,7 @@ export function SettingsDialog({
                   <SkillSettingsPanel
                     currentWorkspaceId={currentWorkspaceId}
                     workspaces={workspaces}
-                    onStartChat={(draft) => {
-                      setMobileOpen(false);
-                      onStartSkillChat(draft);
-                    }}
+                    onStartChat={onStartSkillChat}
                   />
                 ) : activeSectionId === "archived" ? (
                   <ArchivedSettingsPanel

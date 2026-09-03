@@ -122,7 +122,10 @@ const chatLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "chat",
   beforeLoad: async () => {
-    const session = await fetchCurrentAuthSession();
+    const session = await queryClient.ensureQueryData({
+      ...authSessionQueryOptions(),
+      staleTime: Number.POSITIVE_INFINITY,
+    });
 
     if (!session.authenticated) {
       throw redirect({ replace: true, to: "/login" });

@@ -13,10 +13,12 @@ import {
   TrashBin as Trash2,
 } from "@gravity-ui/icons";
 import { Dropdown, Kbd, Separator, Skeleton, Spinner, Tooltip } from "@heroui/react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { DragEvent, KeyboardEvent } from "react";
 import { memo, useState } from "react";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { UserMenu } from "../../auth";
+import { sessionSnapshotQueryOptions } from "../api/session-queries";
 import type { ChatNavItem, ChatNavItemId, ChatThread, ChatWorkspace } from "../data/chat";
 import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
 import { useChatSidebarStore } from "../state/chat-sidebar-store";
@@ -606,6 +608,7 @@ function ChatSidebarThreadItem({
   pathname,
   thread,
 }: ChatSidebarThreadItemProps) {
+  const queryClient = useQueryClient();
   const hasUnreadCompletion = useChatSidebarStore((state) =>
     state.unreadCompletedSessionIds.includes(thread.id),
   );
@@ -618,6 +621,8 @@ function ChatSidebarThreadItem({
       id={`${idPrefix}${thread.id}`}
       isCurrent={isCurrent}
       textValue={thread.title}
+      onHoverStart={() => void queryClient.prefetchQuery(sessionSnapshotQueryOptions(thread.id))}
+      onPressStart={() => void queryClient.prefetchQuery(sessionSnapshotQueryOptions(thread.id))}
       {...(!disableNavigation ? { href: fullHref } : {})}
     >
       {thread.isRunning || hasUnreadCompletion ? (

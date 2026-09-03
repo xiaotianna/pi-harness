@@ -74,6 +74,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     },
     protectedPaths,
   );
+  await sessions.initializeSearchIndex();
   const allowedHosts = new Set([
     new URL(config.webUrl).host,
     `${config.host}:${config.port}`,

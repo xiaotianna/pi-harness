@@ -50,9 +50,6 @@ export interface ChatShellProps {
   disableNavigation?: boolean;
 }
 
-const INSPECTOR_DEFAULT_WIDTH = 460;
-const INSPECTOR_MIN_WIDTH = 360;
-
 function SessionEventBridge({ session }: { session: Session }) {
   useSessionEvents(session.id, session.lastSeq, false);
   return null;
@@ -66,13 +63,10 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<ChatRenameTarget | null>(null);
-  const [isDesktopLayout, setIsDesktopLayout] = useState(
-    () => window.matchMedia("(min-width: 1025px)").matches,
-  );
   const sessionsQuery = useQuery(sessionListQueryOptions());
   const archivedSessionsQuery = useQuery({
     ...archivedSessionListQueryOptions(),
-    enabled: isSettingsOpen,
+    enabled: false,
   });
   const workspacesQuery = useQuery(workspaceListQueryOptions());
   const addWorkspaceMutation = useAddWorkspace();
@@ -200,6 +194,10 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const handleSettingsOpen = useCallback(() => {
     setIsSettingsOpen(true);
   }, []);
+
+  const handleArchivedSettingsOpen = useCallback(() => {
+    void archivedSessionsQuery.refetch();
+  }, [archivedSessionsQuery.refetch]);
 
   const handleNewThread = useCallback(
     (workspace: ChatWorkspace) => {
@@ -335,17 +333,10 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     async (conversationId: string) => {
       await updateSession(conversationId, { archived: false });
       await queryClient.invalidateQueries({ queryKey: sessionQueryKeys.all });
+      await archivedSessionsQuery.refetch();
     },
-    [queryClient],
+    [archivedSessionsQuery.refetch, queryClient],
   );
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(min-width: 1025px)");
-    const handleChange = () => setIsDesktopLayout(mediaQuery.matches);
-
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, []);
 
   useEffect(() => {
     closeInspector();
@@ -369,6 +360,8 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [disableNavigation]);
 
+  // ponytail: AppLayout drops its aside Panel at responsive breakpoints and leaves a stale
+  // handle behind; restore resizing when the upstream panel registration stays stable.
   return (
     <AppLayout
       aside={
@@ -384,17 +377,11 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
           <div aria-hidden className="h-full w-full" />
         )
       }
-      asideDefaultSize={`${INSPECTOR_DEFAULT_WIDTH}px`}
-      asideMaxSize="50%"
-      asideMinSize={`${INSPECTOR_MIN_WIDTH}px`}
       asideMobile="sheet"
       asideOpen={isInspectorVisible}
-      asideResizable={isDesktopLayout}
-      asideResizeBehavior="preserve-pixel-size"
       defaultAsideOpen={false}
       navigate={navigate}
       reduceMotion={shouldReduceMotion ?? false}
-      resizableAutoSaveId="chat-workspace-inspector-v2"
       scrollMode="content"
       sidebarCollapsible="offcanvas"
       onAsideOpenChange={handleInspectorOpenChange}
@@ -451,6 +438,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         isOpen={isSettingsOpen}
         workspaces={workspaces}
         onRestoreArchivedConversation={handleRestoreArchivedConversation}
+        onArchivedOpen={handleArchivedSettingsOpen}
         onOpenChange={setIsSettingsOpen}
         onStartSkillChat={handleStartSkillChat}
       />

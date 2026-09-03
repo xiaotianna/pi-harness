@@ -182,4 +182,24 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         CHECK (thinking_level IN ('low', 'medium', 'high'));
     `,
   },
+  {
+    version: "012-session-search-index.sql",
+    sql: `
+      CREATE TABLE session_search_documents (
+        session_id TEXT PRIMARY KEY,
+        source_size INTEGER NOT NULL CHECK (source_size >= 0),
+        description TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE VIRTUAL TABLE session_search_messages USING fts5(
+        session_id UNINDEXED,
+        event_id UNINDEXED,
+        message_index UNINDEXED,
+        search_text,
+        display_text UNINDEXED,
+        tokenize='trigram'
+      );
+    `,
+  },
 ];

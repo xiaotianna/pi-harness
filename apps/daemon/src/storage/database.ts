@@ -131,10 +131,37 @@ export interface CreateSessionRecord {
   workspaceId: string;
 }
 
+export interface SessionSearchDocumentRecord {
+  description: string;
+  sessionId: string;
+  sourceSize: number;
+}
+
+export interface SessionSearchMessageInput {
+  eventId: string;
+  messageIndex: number;
+  normalizedText: string;
+  text: string;
+}
+
+export interface SessionSearchMessageMatch {
+  eventId: string;
+  sessionId: string;
+  text: string;
+}
+
 export interface SessionRepository {
   create(session: CreateSessionRecord): SessionRecord;
   find(sessionId: string): SessionRecord | null;
   list(archived?: boolean): readonly SessionRecord[];
+  listSearchDocuments(): readonly SessionSearchDocumentRecord[];
+  replaceSearchDocument(
+    sessionId: string,
+    sourceSize: number,
+    description: string,
+    messages: readonly SessionSearchMessageInput[],
+  ): void;
+  searchMessages(normalizedQuery: string): readonly SessionSearchMessageMatch[];
   setArchived(sessionId: string, archivedAt: number | null, updatedAt: number): boolean;
   updateIndex(sessionId: string, lastSeq: number, updatedAt: number): boolean;
   updateModel(
@@ -704,6 +731,87 @@ class SqliteSessionRepository implements SessionRepository {
       )
       .all() as DatabaseRow[];
     return rows.map(mapSession);
+  }
+
+  public listSearchDocuments(): readonly SessionSearchDocumentRecord[] {
+    const rows = this.database
+      .prepare("SELECT session_id, source_size, description FROM session_search_documents")
+      .all() as DatabaseRow[];
+    return rows.map((row) => ({
+      description: String(row.description ?? ""),
+      sessionId: readRequiredString(row, "session_id"),
+      sourceSize: readRequiredNumber(row, "source_size"),
+    }));
+  }
+
+  public replaceSearchDocument(
+    sessionId: string,
+    sourceSize: number,
+    description: string,
+    messages: readonly SessionSearchMessageInput[],
+  ): void {
+    const deleteMessages = this.database.prepare(
+      "DELETE FROM session_search_messages WHERE session_id = ?",
+    );
+    const insertMessage = this.database.prepare(
+      `INSERT INTO session_search_messages (
+         session_id, event_id, message_index, search_text, display_text
+       ) VALUES (?, ?, ?, ?, ?)`,
+    );
+    const upsertDocument = this.database.prepare(
+      `INSERT INTO session_search_documents (session_id, source_size, description)
+       VALUES (?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET
+         source_size = excluded.source_size,
+         description = excluded.description`,
+    );
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      deleteMessages.run(sessionId);
+      for (const message of messages) {
+        insertMessage.run(
+          sessionId,
+          message.eventId,
+          message.messageIndex,
+          message.normalizedText,
+          message.text,
+        );
+      }
+      upsertDocument.run(sessionId, sourceSize, description);
+      this.database.exec("COMMIT");
+    } catch (error: unknown) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public searchMessages(normalizedQuery: string): readonly SessionSearchMessageMatch[] {
+    const escapedQuery = normalizedQuery
+      .replaceAll("\\", "\\\\")
+      .replaceAll("%", "\\%")
+      .replaceAll("_", "\\_");
+    const rows = this.database
+      .prepare(
+        `WITH matches AS (
+           SELECT session_id, event_id, display_text,
+                  row_number() OVER (
+                    PARTITION BY session_id
+                    ORDER BY CAST(message_index AS INTEGER) DESC
+                  ) AS rank
+           FROM session_search_messages
+           WHERE search_text LIKE ? ESCAPE '\\'
+         )
+         SELECT session_id, event_id, display_text
+         FROM matches
+         WHERE rank = 1`,
+      )
+      .all(`%${escapedQuery}%`) as DatabaseRow[];
+    return rows.map((row) => ({
+      eventId: readRequiredString(row, "event_id"),
+      sessionId: readRequiredString(row, "session_id"),
+      text: readRequiredString(row, "display_text"),
+    }));
   }
 
   public setArchived(sessionId: string, archivedAt: number | null, updatedAt: number): boolean {

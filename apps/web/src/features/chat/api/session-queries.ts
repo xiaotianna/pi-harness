@@ -32,6 +32,7 @@ export const sessionSnapshotQueryOptions = (sessionId: string) =>
   queryOptions({
     queryFn: ({ signal }) => getSessionSnapshot(sessionId, signal),
     queryKey: sessionQueryKeys.detail(sessionId),
+    staleTime: Number.POSITIVE_INFINITY,
   });
 
 export const queuedSessionRunInputsQueryOptions = (sessionId: string, runId: string) =>

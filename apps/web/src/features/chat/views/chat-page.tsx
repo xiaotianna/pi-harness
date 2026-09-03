@@ -164,6 +164,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   }, [messages]);
   const pendingApproval = pendingApprovalTool?.approval;
   const conversationRef = useRef<HTMLDivElement>(null);
+  const [conversationElement, setConversationElement] = useState<HTMLDivElement | null>(null);
   const conversationContentRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<ThreadMessageListHandle>(null);
   const shouldFollowConversationRef = useRef(true);
@@ -176,15 +177,20 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const stopFollowingConversation = useCallback(() => {
     shouldFollowConversationRef.current = false;
   }, []);
+  const handleConversationRef = useCallback((element: HTMLDivElement | null) => {
+    conversationRef.current = element;
+    setConversationElement(element);
+  }, []);
 
   useLayoutEffect(() => {
     if (!isSnapshotReady || activeView !== ChatPageView.CONVERSATION) return;
-    const conversation = conversationRef.current;
+    const conversation = conversationElement;
     const content = conversationContentRef.current;
     if (!conversation || !content) return;
 
     shouldFollowConversationRef.current = true;
     let frameId = 0;
+    let observer: ResizeObserver | undefined;
     const positionAtEnd = () => {
       if (!shouldFollowConversationRef.current) return;
       messageListRef.current?.scrollToEnd();
@@ -193,23 +199,23 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       frameId = window.requestAnimationFrame(() => {
         messageListRef.current?.scrollToEnd();
         conversation.scrollTop = conversation.scrollHeight;
-        frameId = window.requestAnimationFrame(() => {
-          conversation.scrollTop = conversation.scrollHeight;
-          const isAtBottom =
-            conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight <= 1;
-          if (isAtBottom) setPositionedSessionId(sessionId);
-        });
+        const isAtBottom =
+          conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight <= 1;
+        if (isAtBottom) {
+          setPositionedSessionId(sessionId);
+          observer?.disconnect();
+        }
       });
     };
 
     positionAtEnd();
-    const observer = new ResizeObserver(positionAtEnd);
+    observer = new ResizeObserver(positionAtEnd);
     observer.observe(content);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       window.cancelAnimationFrame(frameId);
     };
-  }, [activeView, isSnapshotReady, sessionId]);
+  }, [activeView, conversationElement, isSnapshotReady, sessionId]);
 
   const startMutation = useMutation({
     mutationFn: (input: RunUserInput) => startSessionRun(sessionId, input),
@@ -388,7 +394,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
             >
               {activeView === ChatPageView.CONVERSATION ? (
                 <ChatConversation
-                  ref={conversationRef}
+                  ref={handleConversationRef}
                   className="session-scrollbar h-full min-h-0"
                   initial="instant"
                   resize="instant"

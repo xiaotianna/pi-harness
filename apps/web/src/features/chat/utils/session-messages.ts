@@ -32,6 +32,7 @@ const TERMINAL_RUN_EVENTS = new Set<HarnessEvent["type"]>([
 ]);
 
 const WORKING_STATE_TOOL_NAMES = new Set<string>([UpdatePlanToolName, UpdateTodosToolName]);
+const messagesByEvents = new WeakMap<readonly HarnessEvent[], readonly ChatMessage[]>();
 
 function readContentText(value: unknown): string {
   if (typeof value === "string") return value;
@@ -289,6 +290,9 @@ export function findActiveRunId(events: readonly HarnessEvent[]): string | null 
  * 通过遍历，将工具调用的中间状态数据合并为最终状态
  */
 export function sessionEventsToMessages(events: readonly HarnessEvent[]): readonly ChatMessage[] {
+  const sourceEvents = events;
+  const cached = messagesByEvents.get(sourceEvents);
+  if (cached) return cached;
   events = selectActiveSessionEvents(events);
   const messages: ChatMessage[] = [];
   const messagesByRunId = new Map<string, ChatMessage[]>();
@@ -638,6 +642,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     }
   }
 
+  messagesByEvents.set(sourceEvents, messages);
   return messages;
 }
 

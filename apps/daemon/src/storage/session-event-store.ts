@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, truncate } from "node:fs/promises";
+import { mkdir, open, readFile, stat, truncate } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type AgentMessage,
@@ -134,6 +134,7 @@ export function shouldPersistSessionEvent(event: HarnessEvent): boolean {
 /** Session JSONL 是对话事实来源；每个 session 的写入在此处串行化。 */
 export class SessionEventStore {
   private readonly lastSeqBySession = new Map<SessionId, number>();
+  private readonly revisions = new Map<SessionId, number>();
   private readonly writeTails = new Map<SessionId, Promise<void>>();
 
   public constructor(private readonly directory: string) {}
@@ -147,6 +148,21 @@ export class SessionEventStore {
     if (pendingWrite !== undefined) await pendingWrite;
 
     return this.readSnapshot(sessionId);
+  }
+
+  public getRevision(sessionId: SessionId): number {
+    return this.revisions.get(sessionId) ?? 0;
+  }
+
+  public async getSize(sessionId: SessionId): Promise<number> {
+    const pendingWrite = this.writeTails.get(sessionId);
+    if (pendingWrite !== undefined) await pendingWrite;
+    try {
+      return (await stat(join(this.directory, sessionFileName(sessionId)))).size;
+    } catch (error: unknown) {
+      if (isError(error) && "code" in error && error.code === "ENOENT") return 0;
+      throw error;
+    }
   }
 
   private async readSnapshot(sessionId: SessionId): Promise<SessionEventSnapshot> {
@@ -269,6 +285,7 @@ export class SessionEventStore {
       throw new Error(`Transient event ${event.type} must not be written to Session JSONL`);
     }
 
+    this.revisions.set(event.sessionId, this.getRevision(event.sessionId) + 1);
     const previous = this.writeTails.get(event.sessionId) ?? Promise.resolve();
     const operation = previous.then(() => this.appendNow(event));
     const tail = operation.then(

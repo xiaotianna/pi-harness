@@ -37,30 +37,30 @@ function createExcerpt(value: string, normalizedQuery: string): string {
   return `${start > 0 ? "…" : ""}${value.slice(start, end)}${end < value.length ? "…" : ""}`;
 }
 
-export interface SessionSearchContent {
+export interface SessionSearchDocument {
   description: string;
-  excerpt: string;
-  hasMessageMatch: boolean;
-  matchingMessageIndex: number | null;
+  messages: readonly {
+    messageIndex: number;
+    normalizedText: string;
+    text: string;
+  }[];
 }
 
-export function readSessionSearchContent(
+export function createSessionSearchDocument(
   messages: readonly AgentMessage[],
-  normalizedQuery: string,
-): SessionSearchContent {
-  const texts = messages.map(readVisibleMessageText);
-  const description = clip(texts.findLast(Boolean) ?? "", DESCRIPTION_LENGTH);
-  const matchingMessageIndex = normalizedQuery
-    ? texts.findLastIndex((text) => text.toLocaleLowerCase().includes(normalizedQuery))
-    : -1;
-  const matchingText = matchingMessageIndex < 0 ? undefined : texts[matchingMessageIndex];
-
+): SessionSearchDocument {
+  const searchableMessages = messages.flatMap((message, messageIndex) => {
+    const text = readVisibleMessageText(message);
+    return text ? [{ messageIndex, normalizedText: text.toLocaleLowerCase(), text }] : [];
+  });
   return {
-    description,
-    excerpt: matchingText ? createExcerpt(matchingText, normalizedQuery) : description,
-    hasMessageMatch: matchingText !== undefined,
-    matchingMessageIndex: matchingMessageIndex < 0 ? null : matchingMessageIndex,
+    description: clip(searchableMessages.at(-1)?.text ?? "", DESCRIPTION_LENGTH),
+    messages: searchableMessages,
   };
+}
+
+export function createSessionSearchExcerpt(text: string, normalizedQuery: string): string {
+  return createExcerpt(text, normalizedQuery);
 }
 
 export function normalizeSessionSearchQuery(value: string): string {
