@@ -26,10 +26,16 @@ interface TraceTurnStart {
   turn: number;
 }
 
+interface TraceTimelineConnection {
+  id: string;
+  timeMs: number;
+}
+
 interface TraceTimelineRecordProps {
-  durationMs: number;
   isSelected: boolean;
   record: AgentTraceRecord;
+  timelineDurationMs: number;
+  visualDurationMs: number;
   onSelect: (record: AgentTraceRecord) => void;
 }
 
@@ -72,10 +78,60 @@ function getTraceTurnStarts(records: readonly AgentTraceRecord[]): TraceTurnStar
   );
 }
 
+function getApprovalToolConnections(
+  records: readonly AgentTraceRecord[],
+): TraceTimelineConnection[] {
+  const toolsByCallId = new Map<string, AgentTraceRecord>();
+
+  for (const record of records) {
+    if (record.kind !== AgentTraceRecordKind.TOOL) continue;
+    const toolCallId = record.raw.toolCallId;
+    if (typeof toolCallId === "string") toolsByCallId.set(toolCallId, record);
+  }
+
+  return records.flatMap((record) => {
+    if (record.kind !== AgentTraceRecordKind.APPROVAL) return [];
+    const toolCallId = record.raw.toolCallId;
+    if (typeof toolCallId !== "string") return [];
+    const tool = toolsByCallId.get(toolCallId);
+    const timeMs = record.startMs + record.durationMs;
+    return tool?.startMs === timeMs ? [{ id: `${record.id}:${tool.id}`, timeMs }] : [];
+  });
+}
+
+function getTraceRecordVisualDurations(
+  records: readonly AgentTraceRecord[],
+): ReadonlyMap<string, number> {
+  const durations = new Map<string, number>();
+  let currentStartMs: number | undefined;
+  let nextStartMs: number | undefined;
+
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    if (!record) continue;
+
+    if (record.startMs !== currentStartMs) {
+      nextStartMs = currentStartMs;
+      currentStartMs = record.startMs;
+    }
+
+    const gapDurationMs = nextStartMs === undefined ? 0 : nextStartMs - record.startMs;
+    const isUnexecutedTool =
+      record.kind === AgentTraceRecordKind.TOOL && typeof record.raw.startedAt !== "number";
+    durations.set(
+      record.id,
+      isUnexecutedTool ? record.durationMs : Math.max(record.durationMs, gapDurationMs),
+    );
+  }
+
+  return durations;
+}
+
 function TraceTimelineRecord({
-  durationMs,
   isSelected,
   record,
+  timelineDurationMs,
+  visualDurationMs,
   onSelect,
 }: TraceTimelineRecordProps) {
   const endMs = record.startMs + record.durationMs;
@@ -94,8 +150,8 @@ function TraceTimelineRecord({
         className={`group absolute inset-y-0 cursor-[var(--cursor-interactive)] ${isSelected ? "z-40" : "hover:z-40"}`}
         data-trace-timeline-record
         style={{
-          left: `${(record.startMs / durationMs) * 100}%`,
-          width: `${Math.max((record.durationMs / durationMs) * 100, 0.7)}%`,
+          left: `${(record.startMs / timelineDurationMs) * 100}%`,
+          width: `${Math.max((visualDurationMs / timelineDurationMs) * 100, 0.7)}%`,
         }}
         onClick={() => onSelect(record)}
         onKeyDown={handleKeyDown}
@@ -246,6 +302,8 @@ export const TraceTimeline = memo(function TraceTimeline({
   const selectionStart = range ? Math.min(range.startMs, range.endMs) : null;
   const selectionEnd = range ? Math.max(range.startMs, range.endMs) : null;
   const turnStarts = getTraceTurnStarts(records);
+  const approvalToolConnections = getApprovalToolConnections(records);
+  const visualDurations = getTraceRecordVisualDurations(records);
   const timelineLabel =
     selectionStart !== null && selectionEnd !== null
       ? `Agent 时间轴，已选择 ${formatTraceDuration(selectionStart)} 到 ${formatTraceDuration(selectionEnd)}`
@@ -273,6 +331,14 @@ export const TraceTimeline = memo(function TraceTimeline({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
+        {approvalToolConnections.map((connection) => (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1 bottom-1 z-10 w-px bg-warning/60"
+            key={connection.id}
+            style={{ left: `${(connection.timeMs / durationMs) * 100}%` }}
+          />
+        ))}
         {TIMELINE_LANES.map((lane) => (
           <div className="relative h-2" key={lane}>
             {records
@@ -282,10 +348,11 @@ export const TraceTimeline = memo(function TraceTimeline({
 
                 return (
                   <TraceTimelineRecord
-                    durationMs={durationMs}
                     isSelected={isSelected}
                     key={record.id}
                     record={record}
+                    timelineDurationMs={durationMs}
+                    visualDurationMs={visualDurations.get(record.id) ?? record.durationMs}
                     onSelect={handleRecordSelect}
                   />
                 );

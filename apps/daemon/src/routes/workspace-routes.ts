@@ -23,6 +23,7 @@ import {
 import type { WorkspaceService } from "../services/workspace-service.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
+  OpenWorkspacePathVoSchema,
   WorkspaceContextItemListVoSchema,
   WorkspaceListVoSchema,
   WorkspaceSkillContentVoSchema,
@@ -185,7 +186,7 @@ export async function registerWorkspaceRoutes(
       schema: {
         body: OpenWorkspacePathDtoSchema,
         params: WorkspaceParamsDtoSchema,
-        response: { 204: Type.Null(), ...errors },
+        response: { 200: OpenWorkspacePathVoSchema, ...errors },
       },
     },
     controller.openPath,

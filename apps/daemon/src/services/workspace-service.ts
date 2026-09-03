@@ -16,11 +16,17 @@ import {
   type WritableSkillScope,
 } from "@pi-harness/tools";
 import type { InstallWorkspaceSkillDto } from "../dto/workspace-dto.js";
+import { FileOpenResultStatus } from "../schemas/file-open.js";
 import type {
   AppSettingRepository,
   WorkspaceRecord,
   WorkspaceRepository,
 } from "../storage/database.js";
+import {
+  FileOpenErrorCode,
+  type FileOpenService,
+  FileOpenServiceError,
+} from "./file-open-service.js";
 
 const PICKER_TIMEOUT_MS = 5 * 60 * 1_000;
 const REVEAL_TIMEOUT_MS = 10_000;
@@ -138,36 +144,6 @@ function readRevealCommand(rootPath: string): { args: readonly string[]; command
 
 function runReveal(rootPath: string, signal: AbortSignal): Promise<void> {
   const { args, command } = readRevealCommand(rootPath);
-  return new Promise((resolve, reject) => {
-    execFile(
-      command,
-      [...args],
-      { maxBuffer: 4_096, signal, timeout: REVEAL_TIMEOUT_MS },
-      (error) => {
-        if (error) reject(error);
-        else resolve();
-      },
-    );
-  });
-}
-
-function readOpenCommand(path: string): { args: readonly string[]; command: string } {
-  if (process.platform === "darwin") return { args: [path], command: "/usr/bin/open" };
-  if (process.platform === "win32") {
-    return {
-      args: ["-NoProfile", "-NonInteractive", "-Command", "Start-Process -FilePath $args[0]", path],
-      command: "powershell.exe",
-    };
-  }
-  if (process.platform === "linux") return { args: [path], command: "xdg-open" };
-  throw new WorkspaceServiceError(
-    WorkspaceErrorCode.OPEN_UNAVAILABLE,
-    "当前操作系统不支持打开本地文件",
-  );
-}
-
-function runOpen(path: string, signal: AbortSignal): Promise<void> {
-  const { args, command } = readOpenCommand(path);
   return new Promise((resolve, reject) => {
     execFile(
       command,
@@ -388,6 +364,7 @@ export class WorkspaceService {
     private readonly workspaces: WorkspaceRepository,
     private readonly globalRoot: string,
     private readonly settings: AppSettingRepository,
+    private readonly fileOpen: FileOpenService,
   ) {}
 
   public async list() {
@@ -592,7 +569,12 @@ export class WorkspaceService {
     return this.list();
   }
 
-  public async openPath(workspaceId: string, path: string, signal: AbortSignal): Promise<void> {
+  public async openPath(
+    workspaceId: string,
+    path: string,
+    rememberApplication: boolean | undefined,
+    signal: AbortSignal,
+  ) {
     const workspace = this.getRequired(workspaceId);
     let target: string;
     try {
@@ -601,7 +583,22 @@ export class WorkspaceService {
       throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "本地路径不存在或无法访问");
     }
 
-    await this.openTarget(target, signal);
+    try {
+      return await this.fileOpen.open(target, rememberApplication, signal);
+    } catch (error: unknown) {
+      if (signal.aborted) return FileOpenResultStatus.CANCELLED;
+      if (error instanceof FileOpenServiceError) {
+        const code =
+          error.code === FileOpenErrorCode.PICKER_BUSY
+            ? WorkspaceErrorCode.PICKER_BUSY
+            : error.code === FileOpenErrorCode.OPEN_UNAVAILABLE ||
+                error.code === FileOpenErrorCode.PICKER_UNAVAILABLE
+              ? WorkspaceErrorCode.OPEN_UNAVAILABLE
+              : WorkspaceErrorCode.OPEN_FAILED;
+        throw new WorkspaceServiceError(code, error.message);
+      }
+      throw new WorkspaceServiceError(WorkspaceErrorCode.OPEN_FAILED, "无法打开本地路径");
+    }
   }
 
   public async reveal(workspaceId: string, signal: AbortSignal): Promise<void> {
@@ -690,14 +687,15 @@ export class WorkspaceService {
 
   private async openTarget(target: string, signal: AbortSignal): Promise<void> {
     try {
-      await runOpen(target, signal);
+      await this.fileOpen.openSystem(target, signal);
     } catch (error: unknown) {
       if (signal.aborted) return;
-      if (error instanceof WorkspaceServiceError) throw error;
-      if (isCommandUnavailable(error)) {
+      if (error instanceof FileOpenServiceError) {
         throw new WorkspaceServiceError(
-          WorkspaceErrorCode.OPEN_UNAVAILABLE,
-          "当前系统缺少可用的本地路径打开程序",
+          error.code === FileOpenErrorCode.OPEN_UNAVAILABLE
+            ? WorkspaceErrorCode.OPEN_UNAVAILABLE
+            : WorkspaceErrorCode.OPEN_FAILED,
+          error.message,
         );
       }
       throw new WorkspaceServiceError(WorkspaceErrorCode.OPEN_FAILED, "无法打开本地路径");

@@ -5,6 +5,7 @@ import {
   Archive,
   Shapes4 as Blocks,
   FaceRobot as Bot,
+  File,
   Folder,
   Display as Monitor,
   Moon,
@@ -29,6 +30,7 @@ import {
 import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { Brain } from "lucide-react";
 import { type ComponentType, type SVGProps, useState } from "react";
+import { FileOpenMode } from "../../../shared/constants/file-open";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { useAppSettings } from "../hooks/use-app-settings";
 import { useAppTheme } from "../theme-provider";
@@ -114,9 +116,23 @@ type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
 
 function GeneralSettingsPanel() {
   const { setTheme, theme } = useAppTheme();
-  const { isSaving, settings, updateSettings } = useAppSettings();
+  const {
+    isSaving,
+    isSelectingFileOpenApplication,
+    selectFileOpenApplication,
+    settings,
+    updateSettings,
+  } = useAppSettings();
   const approvalPolicy = settings?.approvalPolicy;
   const busySubmitBehavior = settings?.busySubmitBehavior;
+  const fileOpenApplication = settings?.fileOpenApplication;
+  const fileOpenMode = settings?.fileOpenMode;
+
+  const chooseFileOpenApplication = () => {
+    void selectFileOpenApplication().catch((error: unknown) => {
+      toast.danger(error instanceof Error ? error.message : "选择默认应用失败");
+    });
+  };
 
   return (
     <section
@@ -139,6 +155,115 @@ function GeneralSettingsPanel() {
           />
         )}
       </SettingsRow>
+
+      <Separator />
+
+      <SettingsRow description="选择点击本地文件时使用的应用。" title="打开文件方式">
+        {fileOpenMode === undefined ? (
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
+        ) : (
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            {fileOpenMode === FileOpenMode.ALWAYS ? (
+              <Button
+                aria-label={`更换默认应用，当前为 ${fileOpenApplication?.name ?? "尚未选择应用"}`}
+                className="min-w-0 max-w-full justify-start sm:max-w-48"
+                isDisabled={isSaving}
+                isPending={isSelectingFileOpenApplication}
+                variant="ghost"
+                onPress={chooseFileOpenApplication}
+              >
+                {fileOpenApplication?.iconDataUrl ? (
+                  <img
+                    alt=""
+                    aria-hidden
+                    className="size-6 shrink-0 rounded-md"
+                    src={fileOpenApplication.iconDataUrl}
+                  />
+                ) : (
+                  <File className="!size-6 shrink-0 text-muted" />
+                )}
+                <span className="min-w-0 truncate font-normal">
+                  {fileOpenApplication?.name ?? "尚未选择应用"}
+                </span>
+              </Button>
+            ) : null}
+
+            <Select
+              aria-label="打开文件方式"
+              className="w-full sm:w-40 sm:shrink-0"
+              isDisabled={isSaving || isSelectingFileOpenApplication}
+              selectedKey={fileOpenMode}
+              variant="secondary"
+              onSelectionChange={(key) => {
+                if (key === FileOpenMode.ASK) {
+                  void updateSettings({ fileOpenMode: key }).catch((error: unknown) => {
+                    toast.danger(error instanceof Error ? error.message : "保存文件打开方式失败");
+                  });
+                } else if (key === FileOpenMode.ALWAYS) {
+                  if (fileOpenApplication) {
+                    void updateSettings({ fileOpenMode: key }).catch((error: unknown) => {
+                      toast.danger(error instanceof Error ? error.message : "保存文件打开方式失败");
+                    });
+                  } else {
+                    chooseFileOpenApplication();
+                  }
+                }
+              }}
+            >
+              <Select.Trigger>
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  <ListBox.Item id={FileOpenMode.ASK} textValue="每次询问">
+                    <Label>每次询问</Label>
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                  <ListBox.Item id={FileOpenMode.ALWAYS} textValue="始终使用指定应用">
+                    <Label>始终使用指定应用</Label>
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                </ListBox>
+              </Select.Popover>
+            </Select>
+          </div>
+        )}
+      </SettingsRow>
+
+      <Separator />
+
+      <div className="py-6">
+        <h3 className="font-medium text-foreground">外观</h3>
+        <ToggleButtonGroup
+          className="mt-4"
+          disallowEmptySelection
+          fullWidth
+          isDetached
+          selectedKeys={[theme]}
+          selectionMode="single"
+          onSelectionChange={(keys) => {
+            const [selectedTheme] = keys;
+
+            if (typeof selectedTheme === "string") {
+              setTheme(selectedTheme);
+            }
+          }}
+        >
+          <ToggleButton className="h-20" id="light" variant="ghost">
+            <Sun />
+            浅色
+          </ToggleButton>
+          <ToggleButton className="h-20" id="dark" variant="ghost">
+            <Moon />
+            深色
+          </ToggleButton>
+          <ToggleButton className="h-20" id="system" variant="ghost">
+            <Monitor />
+            跟随系统
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </div>
 
       <Separator />
 
@@ -181,40 +306,6 @@ function GeneralSettingsPanel() {
           </Select>
         )}
       </SettingsRow>
-
-      <Separator />
-
-      <div className="py-6">
-        <h3 className="font-medium text-foreground">外观</h3>
-        <ToggleButtonGroup
-          className="mt-4"
-          disallowEmptySelection
-          fullWidth
-          isDetached
-          selectedKeys={[theme]}
-          selectionMode="single"
-          onSelectionChange={(keys) => {
-            const [selectedTheme] = keys;
-
-            if (typeof selectedTheme === "string") {
-              setTheme(selectedTheme);
-            }
-          }}
-        >
-          <ToggleButton className="h-20" id="light" variant="ghost">
-            <Sun />
-            浅色
-          </ToggleButton>
-          <ToggleButton className="h-20" id="dark" variant="ghost">
-            <Moon />
-            深色
-          </ToggleButton>
-          <ToggleButton className="h-20" id="system" variant="ghost">
-            <Monitor />
-            跟随系统
-          </ToggleButton>
-        </ToggleButtonGroup>
-      </div>
     </section>
   );
 }

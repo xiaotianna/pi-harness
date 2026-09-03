@@ -1,8 +1,9 @@
+import { FolderOpen } from "@gravity-ui/icons";
 import { Link, Tooltip } from "@heroui/react";
 import { type ComponentPropsWithoutRef, createContext, type ReactNode, useContext } from "react";
 import type { ExtraProps } from "react-markdown";
 import { cn } from "../../shared/utils/cn";
-import { FileIconRender } from "../ui/file-icon-render";
+import { FileIconRender, resolveFileIcon } from "../ui/file-icon-render";
 
 const WorkspaceRootContext = createContext<string | undefined>(undefined);
 const URI_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:/i;
@@ -67,6 +68,12 @@ function resolveDisplayPath(workspaceRoot: string | undefined, path: string): st
   return parts.join(separator) || separator;
 }
 
+function isLikelyDirectoryPath(path: string, title?: string): boolean {
+  if (title === "local-directory" || /[\\/]$/.test(path)) return true;
+  const fileName = path.split(/[\\/]/).filter(Boolean).at(-1) ?? "";
+  return resolveFileIcon(path) === undefined && !fileName.slice(1).includes(".");
+}
+
 export function AssistantMarkdownLink({
   children,
   className,
@@ -106,6 +113,7 @@ export function AssistantMarkdownLink({
   const path = decodedHref.replace(PATH_LOCATION_PATTERN, "");
   const location = decodedHref.slice(path.length);
   const fullPath = `${resolveDisplayPath(workspaceRoot, path)}${location}`;
+  const isDirectory = isLikelyDirectoryPath(path, title);
 
   return (
     <Tooltip delay={300}>
@@ -115,7 +123,16 @@ export function AssistantMarkdownLink({
         href={href}
         {...props}
       >
-        <FileIconRender className="size-[1.1em] shrink-0" filePath={path} />
+        {isDirectory ? (
+          <span
+            aria-hidden
+            className="inline-flex size-[1.1em] shrink-0 items-center justify-center"
+          >
+            <FolderOpen className="size-[0.9em]" />
+          </span>
+        ) : (
+          <FileIconRender className="size-[1.1em] shrink-0" filePath={path} />
+        )}
         <span className="min-w-0 [overflow-wrap:anywhere]">{children}</span>
       </a>
       <Tooltip.Content className="max-w-md break-all" placement="top">

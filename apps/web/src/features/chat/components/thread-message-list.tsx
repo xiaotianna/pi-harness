@@ -17,8 +17,8 @@ import {
 } from "react";
 import { AssistantMarkdownLinkProvider } from "../../../components/ai/assistant-markdown-link";
 import { SearchHighlightProvider } from "../../../components/ui/search-highlighted-text";
-import { openWorkspacePath } from "../api/workspace-api";
 import { type ChatMessage, ChatMessageType } from "../data/chat";
+import { useOpenWorkspacePath } from "../hooks/use-open-workspace-path";
 import type { ChatSearchTarget } from "../state/chat-search-target-store";
 import { getConversationTurnAnchorId } from "../utils/conversation-turns";
 import { ThreadMessage } from "./thread-message/index";
@@ -322,6 +322,8 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       [onBeforeTurnNavigate, turnIdByItemIndex, turnItemIndexById, virtualizer],
     );
 
+    const openWorkspacePath = useOpenWorkspacePath();
+
     const handleClickCapture = (event: MouseEvent<HTMLDivElement>) => {
       if (!(event.target instanceof Element)) return;
       const path = event.target.closest<HTMLAnchorElement>("a[data-local-path]")?.dataset.localPath;
@@ -331,9 +333,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
         toast.danger("无法确定文件所属的 Workspace");
         return;
       }
-      void openWorkspacePath(workspaceId, path).catch((error: unknown) => {
-        toast.danger(error instanceof Error ? error.message : "无法打开本地文件");
-      });
+      openWorkspacePath(workspaceId, path);
     };
 
     const renderItem = (item: ThreadMessageListItem, index: number, isVirtualItem: boolean) => {

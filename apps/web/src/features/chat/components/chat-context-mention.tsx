@@ -1,4 +1,4 @@
-import { File, Folder, Picture as ImageIcon } from "@gravity-ui/icons";
+import { File, FolderOpen, Picture as ImageIcon } from "@gravity-ui/icons";
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 import { FileIconRender } from "../../../components/ui/file-icon-render";
 import { ChatComposerTokenKind } from "./chat-composer-editor";
@@ -23,7 +23,7 @@ function ContextMention({ kind, label }: { kind: string; label: string }) {
       className={`inline-flex h-[1lh] items-baseline gap-1 align-baseline font-medium leading-[inherit] ${colorClassName}`}
     >
       {kind === ChatComposerTokenKind.FOLDER ? (
-        <Folder aria-hidden className="size-[1em] shrink-0 self-center" />
+        <FolderOpen aria-hidden className="size-[1em] shrink-0 self-center" />
       ) : kind === ChatComposerTokenKind.IMAGE ? (
         <ImageIcon aria-hidden className="size-[1em] shrink-0 self-center" />
       ) : (

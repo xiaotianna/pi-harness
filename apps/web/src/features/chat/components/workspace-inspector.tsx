@@ -6,19 +6,19 @@ import {
   ArrowUpRightFromSquare as OpenInSystem,
   Xmark as X,
 } from "@gravity-ui/icons";
-import { Button, ScrollShadow, Tooltip, toast } from "@heroui/react";
+import { Button, ScrollShadow, Tooltip } from "@heroui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { createPatch } from "diff";
 import { motion, useReducedMotion } from "motion/react";
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { CodeDiff, parseUnifiedDiff } from "../../../components/ai/code-diff";
 import { FileIconRender } from "../../../components/ui/file-icon-render";
-import { openWorkspacePath } from "../api/workspace-api";
 import {
   type ChatFileChange,
   type ChatFileChangeStatus,
   ChatFileChangeStatus as FileChangeStatus,
 } from "../data/chat";
+import { useOpenWorkspacePath } from "../hooks/use-open-workspace-path";
 
 const INSPECTOR_MOTION_TRANSITION = {
   duration: 0.22,
@@ -45,18 +45,13 @@ function WorkspaceDiffFile({
   onToggle,
 }: WorkspaceDiffFileProps) {
   const contentId = useId();
+  const openWorkspacePath = useOpenWorkspacePath();
   const shouldReduceMotion = useReducedMotion();
   const transition = shouldReduceMotion ? { duration: 0 } : INSPECTOR_MOTION_TRANSITION;
   const parsedDiff = useMemo(
     () => parseUnifiedDiff(createPatch(path, before ?? "", after, "变更前", "变更后")),
     [after, before, path],
   );
-
-  const handleOpen = () => {
-    void openWorkspacePath(workspaceId, path).catch((error: unknown) => {
-      toast.danger(error instanceof Error ? error.message : "无法打开文件");
-    });
-  };
 
   return (
     <article className="w-full overflow-hidden border-b border-separator" aria-label={path}>
@@ -98,7 +93,7 @@ function WorkspaceDiffFile({
             isDisabled={status === FileChangeStatus.DELETED}
             size="sm"
             variant="ghost"
-            onPress={handleOpen}
+            onPress={() => openWorkspacePath(workspaceId, path)}
           >
             <OpenInSystem className="size-4 text-muted" />
           </Button>

@@ -39,7 +39,6 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
   const deferredSearch = useDeferredValue(search);
   const trace = useMemo(() => sessionEventsToAgentTraces(events, now)[0] ?? null, [events, now]);
   const isTraceRunning = trace?.status === AgentTraceStatus.RUNNING;
-  const firstRecordId = trace?.records[0]?.id ?? null;
 
   useEffect(() => {
     if (!isTraceRunning) return;
@@ -50,10 +49,10 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
   useEffect(() => {
     setRange(null);
     setSearch("");
-    setSelectedRecordId(firstRecordId);
+    setSelectedRecordId(null);
     setSelectedRequestRecordId(null);
     setIsMobileDetailOpen(false);
-  }, [firstRecordId, trace?.traceId]);
+  }, [trace?.traceId]);
 
   useEffect(() => {
     if (!isMobile) setIsMobileDetailOpen(false);

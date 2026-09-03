@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type AppSettings,
+  selectDefaultFileOpenApplication,
   type UpdateAppSettings,
   updateAppSettings,
 } from "../api/app-settings-api";
@@ -27,10 +28,18 @@ export function useAppSettings() {
     },
     onSuccess: (settings) => queryClient.setQueryData(appSettingsQueryKeys.all, settings),
   });
+  const applicationMutation = useMutation({
+    mutationFn: selectDefaultFileOpenApplication,
+    onSuccess: (settings) => {
+      if (settings) queryClient.setQueryData(appSettingsQueryKeys.all, settings);
+    },
+  });
 
   return {
     isLoading: settingsQuery.isPending,
     isSaving: mutation.isPending,
+    isSelectingFileOpenApplication: applicationMutation.isPending,
+    selectFileOpenApplication: applicationMutation.mutateAsync,
     settings: settingsQuery.data,
     updateSettings: mutation.mutateAsync,
   };

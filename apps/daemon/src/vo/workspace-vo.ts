@@ -1,6 +1,7 @@
 import { UserContextReferenceKind } from "@pi-harness/agent-runtime/user-input";
 import { SkillScope } from "@pi-harness/tools";
 import { type Static, Type } from "typebox";
+import { FileOpenResultStatus } from "../schemas/file-open.js";
 
 export const WorkspaceVoSchema = Type.Object({
   createdAt: Type.Integer({ minimum: 0 }),
@@ -26,6 +27,16 @@ export const WorkspaceContextItemVoSchema = Type.Object({
 
 export const WorkspaceContextItemListVoSchema = Type.Array(WorkspaceContextItemVoSchema);
 export type WorkspaceContextItemVo = Static<typeof WorkspaceContextItemVoSchema>;
+
+export const OpenWorkspacePathVoSchema = Type.Object({
+  status: Type.Union([
+    Type.Literal(FileOpenResultStatus.APPLICATION_REQUIRED),
+    Type.Literal(FileOpenResultStatus.CANCELLED),
+    Type.Literal(FileOpenResultStatus.OPENED),
+  ]),
+});
+
+export type OpenWorkspacePathVo = Static<typeof OpenWorkspacePathVoSchema>;
 
 export const WorkspaceSkillVoSchema = Type.Object({
   description: Type.String({ minLength: 1 }),

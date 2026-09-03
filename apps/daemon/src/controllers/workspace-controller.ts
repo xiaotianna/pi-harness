@@ -13,6 +13,7 @@ import type {
 import { type WorkspaceService, WorkspaceServiceError } from "../services/workspace-service.js";
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
 import type {
+  OpenWorkspacePathVo,
   WorkspaceContextItemVo,
   WorkspaceSkillContentVo,
   WorkspaceSkillInstallVo,
@@ -98,19 +99,20 @@ export class WorkspaceController {
   public openPath = async (
     request: FastifyRequest<{ Body: OpenWorkspacePathDto; Params: WorkspaceParamsDto }>,
     reply: FastifyReply,
-  ): Promise<FastifyReply> => {
+  ): Promise<FastifyReply | OpenWorkspacePathVo> => {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     const abortController = new AbortController();
     const handleAborted = () => abortController.abort();
     request.raw.once("aborted", handleAborted);
 
     try {
-      await this.workspaces.openPath(
+      const status = await this.workspaces.openPath(
         request.params.workspaceId,
         request.body.path,
+        request.body.rememberApplication,
         abortController.signal,
       );
-      return reply.status(204).send();
+      return { status };
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     } finally {

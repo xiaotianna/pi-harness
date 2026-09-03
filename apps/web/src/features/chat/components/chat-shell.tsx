@@ -41,6 +41,7 @@ import { ChatNavbar } from "./chat-navbar";
 import { ChatSearchDialog } from "./chat-search-dialog";
 import { ChatRenameDialog, type ChatRenameTarget } from "./chat-shell-dialogs";
 import { ChatSidebar } from "./chat-sidebar";
+import { FileOpenDialog } from "./file-open-dialog";
 import { WorkspaceInspector } from "./workspace-inspector";
 
 export interface ChatShellProps {
@@ -431,6 +432,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
         ) : null,
       )}
       {children}
+      <FileOpenDialog />
       <ChatSearchDialog
         isOpen={isSearchOpen}
         onOpenChange={setIsSearchOpen}

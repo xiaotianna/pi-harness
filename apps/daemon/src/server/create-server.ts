@@ -9,6 +9,7 @@ import { registerProviderRoutes } from "../routes/provider-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerWorkspaceRoutes } from "../routes/workspace-routes.js";
 import { AppSettingsService } from "../services/app-settings-service.js";
+import { FileOpenService } from "../services/file-open-service.js";
 import { HumanInteractionService } from "../services/human-interaction-service.js";
 import { ProviderService } from "../services/provider-service.js";
 import { SessionEventService } from "../services/session-event-service.js";
@@ -29,6 +30,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   });
   const database = openHarnessDatabase(config.databasePath);
   const appSettings = new AppSettingsService(database.appSettings);
+  const fileOpen = new FileOpenService(database.appSettings);
   const credentials = await FileCredentialStore.open(config.credentialsPath);
   const eventStore = new SessionEventStore(config.sessionsPath);
   await eventStore.initialize();
@@ -49,6 +51,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     database.workspaces,
     config.globalRoot,
     database.appSettings,
+    fileOpen,
   );
   let sessions: SessionService | undefined;
   const providers = await ProviderService.create(
@@ -102,6 +105,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   });
 
   server.addHook("onClose", async () => {
+    fileOpen.close();
     workspaces.close();
     await sessions.close();
     await providers.close();
@@ -110,7 +114,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   });
 
   await registerAuthRoutes(server, config, database.authSessions);
-  await registerAppSettingsRoutes(server, config, appSettings);
+  await registerAppSettingsRoutes(server, config, appSettings, fileOpen);
   await registerHealthRoutes(server);
   await registerProviderRoutes(server, config, providers);
   await registerSessionRoutes(server, config, sessions, broker);

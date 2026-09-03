@@ -1,22 +1,34 @@
 import type { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import type { ApprovalPolicyValue } from "@pi-harness/policy";
 import type { UpdateAppSettingsDto } from "../dto/app-settings-dto.js";
-import type { AppSettingRepository, DefaultModelSetting } from "../storage/database.js";
+import type { FileOpenMode } from "../schemas/file-open.js";
+import type {
+  AppSettingRepository,
+  DefaultModelSetting,
+  FileOpenApplicationSetting,
+} from "../storage/database.js";
 
 export interface AppSettings {
   approvalPolicy: ApprovalPolicyValue;
   busySubmitBehavior: BusySubmitBehavior;
   defaultModel: DefaultModelSetting | null;
+  fileOpenApplication: Omit<FileOpenApplicationSetting, "path"> | null;
+  fileOpenMode: FileOpenMode;
 }
 
 export class AppSettingsService {
   public constructor(private readonly settings: AppSettingRepository) {}
 
   public get(): AppSettings {
+    const fileOpenApplication = this.settings.getFileOpenApplication();
     return {
       approvalPolicy: this.settings.getApprovalPolicy(),
       busySubmitBehavior: this.settings.getBusySubmitBehavior(),
       defaultModel: this.settings.getDefaultModel(),
+      fileOpenApplication: fileOpenApplication
+        ? { iconDataUrl: fileOpenApplication.iconDataUrl, name: fileOpenApplication.name }
+        : null,
+      fileOpenMode: this.settings.getFileOpenMode(),
     };
   }
 
@@ -30,6 +42,9 @@ export class AppSettingsService {
     }
     if (input.defaultModel !== undefined) {
       this.settings.setDefaultModel(input.defaultModel, updatedAt);
+    }
+    if (input.fileOpenMode !== undefined) {
+      this.settings.setFileOpenMode(input.fileOpenMode, updatedAt);
     }
     return this.get();
   }

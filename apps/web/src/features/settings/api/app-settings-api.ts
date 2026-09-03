@@ -4,6 +4,7 @@ import { ApprovalPolicy } from "@pi-harness/policy/approval-policy";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
+import { FileOpenMode } from "../../../shared/constants/file-open";
 
 const ApprovalPolicySchema = Type.Union([
   Type.Literal(ApprovalPolicy.REQUEST_APPROVAL),
@@ -28,6 +29,17 @@ const AppSettingsSchema = Type.Object({
     Type.Literal(BusySubmitBehavior.STEER),
   ]),
   defaultModel: Type.Union([DefaultModelSettingSchema, Type.Null()]),
+  fileOpenApplication: Type.Union([
+    Type.Object({
+      iconDataUrl: Type.Union([
+        Type.String({ maxLength: 400_000, pattern: "^data:image/png;base64," }),
+        Type.Null(),
+      ]),
+      name: Type.String({ maxLength: 200, minLength: 1 }),
+    }),
+    Type.Null(),
+  ]),
+  fileOpenMode: Type.Union([Type.Literal(FileOpenMode.ALWAYS), Type.Literal(FileOpenMode.ASK)]),
 });
 
 const UpdateAppSettingsSchema = Type.Object({
@@ -36,6 +48,9 @@ const UpdateAppSettingsSchema = Type.Object({
     Type.Union([Type.Literal(BusySubmitBehavior.QUEUE), Type.Literal(BusySubmitBehavior.STEER)]),
   ),
   defaultModel: Type.Optional(DefaultModelSettingSchema),
+  fileOpenMode: Type.Optional(
+    Type.Union([Type.Literal(FileOpenMode.ALWAYS), Type.Literal(FileOpenMode.ASK)]),
+  ),
 });
 
 export type AppSettings = Static<typeof AppSettingsSchema>;
@@ -60,4 +75,9 @@ export async function updateAppSettings(settings: UpdateAppSettings): Promise<Ap
       method: "PATCH",
     }),
   );
+}
+
+export async function selectDefaultFileOpenApplication(): Promise<AppSettings | null> {
+  const response = await apiRequest("/api/settings/file-open-application", { method: "POST" });
+  return response.status === 204 ? null : readAppSettings(response);
 }

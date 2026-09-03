@@ -202,6 +202,8 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
   const toolStarts = new Map<string, PendingEvent>();
   const toolUpdates = new Map<string, HarnessEvent>();
   const approvalStarts = new Map<string, PendingEvent>();
+  const approvalRequestsByToolCallId = new Map<string, HarnessEvent>();
+  const approvalResolutionsByToolCallId = new Map<string, HarnessEvent>();
   let currentTurn = 0;
   let userMessageCount = 0;
 
@@ -362,8 +364,24 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       const isFailed = event.type === HarnessEventType.TOOL_FAILED;
       const parentAssistantRecordId = findAssistantRecordId(records, identity.toolCallId);
       const toolDefinition = toolDefinitions.find(({ name }) => name === identity.toolName);
+      const approvalResolution = approvalResolutionsByToolCallId.get(identity.toolCallId);
+      const approvalDecision =
+        approvalResolution && isPlainObject(approvalResolution.data)
+          ? approvalResolution.data.decision
+          : undefined;
+      const isApprovalBlocked =
+        approvalDecision === ApprovalDecision.REJECTED ||
+        approvalDecision === ApprovalDecision.EXPIRED;
+      const executionStartedAt = isApprovalBlocked
+        ? null
+        : approvalDecision === ApprovalDecision.APPROVED
+          ? (approvalResolution?.timestamp ?? pending.event.timestamp)
+          : pending.event.timestamp;
+      const timelineStartedAt =
+        executionStartedAt ?? approvalResolution?.timestamp ?? pending.event.timestamp;
       records.push({
-        durationMs: eventDuration(pending.event, event),
+        durationMs:
+          executionStartedAt === null ? 0 : Math.max(0, event.timestamp - executionStartedAt),
         ...(isFailed ? { errorCode: "TOOL_FAILED" } : {}),
         id: pending.event.id,
         kind: AgentTraceRecordKind.TOOL,
@@ -375,22 +393,33 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
             ? stringifyUnknown(pending.event.data.arguments)
             : "",
           eventId: event.id,
+          lifecycleStartedAt: pending.event.timestamp,
           result,
           seq: event.seq,
-          startedAt: pending.event.timestamp,
+          ...(executionStartedAt === null ? {} : { startedAt: executionStartedAt }),
+          ...(approvalResolution
+            ? { approvalDecision, approvalResolvedAt: approvalResolution.timestamp }
+            : {}),
           toolCallId: identity.toolCallId,
           toolName: identity.toolName,
           ...(parentAssistantRecordId ? { parentAssistantRecordId } : {}),
           ...(toolDefinition ? { toolDefinition } : {}),
         },
-        source: `tool.started → ${event.type}`,
-        startMs: eventOffset(pending.event, started.timestamp),
+        source: approvalResolution
+          ? `approval.resolved → ${event.type}`
+          : `tool.started → ${event.type}`,
+        startMs: Math.max(0, timelineStartedAt - started.timestamp),
         status: isFailed ? AgentTraceStatus.FAILED : AgentTraceStatus.COMPLETED,
-        summary: isFailed ? "工具执行失败。" : "工具执行成功。",
+        summary: isApprovalBlocked
+          ? "工具调用未获批准，未执行。"
+          : isFailed
+            ? "工具执行失败。"
+            : "工具执行成功。",
         turn: pending.turn,
       });
       toolStarts.delete(identity.toolCallId);
       toolUpdates.delete(identity.toolCallId);
+      approvalResolutionsByToolCallId.delete(identity.toolCallId);
       continue;
     }
 
@@ -398,6 +427,7 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       const identity = readApprovalIdentity(event.data);
       if (identity) {
         approvalStarts.set(identity.approvalId, { event, turn: Math.max(1, currentTurn) });
+        approvalRequestsByToolCallId.set(identity.toolCallId, event);
       }
       continue;
     }
@@ -411,6 +441,8 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
         turn: Math.max(1, currentTurn),
       };
       const decision = isPlainObject(event.data) ? event.data.decision : undefined;
+      approvalRequestsByToolCallId.delete(identity.toolCallId);
+      approvalResolutionsByToolCallId.set(identity.toolCallId, event);
       const isExpired = decision === ApprovalDecision.EXPIRED;
       const preview =
         decision === ApprovalDecision.APPROVED
@@ -538,14 +570,16 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
     const identity = readToolIdentity(pending.event.data);
     if (!identity) continue;
     const update = toolUpdates.get(toolCallId);
-    const preview =
-      update && isPlainObject(update.data)
+    const approvalRequest = approvalRequestsByToolCallId.get(toolCallId);
+    const preview = approvalRequest
+      ? "等待用户审批"
+      : update && isPlainObject(update.data)
         ? readUnknown(update.data.partialResult)
         : "工具正在执行";
     const parentAssistantRecordId = findAssistantRecordId(records, toolCallId);
     const toolDefinition = toolDefinitions.find(({ name }) => name === identity.toolName);
     records.push({
-      durationMs: Math.max(0, endedAt - pending.event.timestamp),
+      durationMs: approvalRequest ? 0 : Math.max(0, endedAt - pending.event.timestamp),
       ...(pendingErrorCode ? { errorCode: pendingErrorCode } : {}),
       id: pending.event.id,
       kind: AgentTraceRecordKind.TOOL,
@@ -556,7 +590,8 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
         arguments: isPlainObject(pending.event.data)
           ? stringifyUnknown(pending.event.data.arguments)
           : "",
-        startedAt: pending.event.timestamp,
+        lifecycleStartedAt: pending.event.timestamp,
+        ...(approvalRequest ? {} : { startedAt: pending.event.timestamp }),
         toolCallId,
         toolName: identity.toolName,
         ...(parentAssistantRecordId ? { parentAssistantRecordId } : {}),
@@ -565,7 +600,11 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       source: "tool.started",
       startMs: eventOffset(pending.event, started.timestamp),
       status: terminal ? pendingStatus : AgentTraceStatus.RUNNING,
-      summary: terminal ? "工具调用缺少完成事件。" : "工具正在执行。",
+      summary: approvalRequest
+        ? "工具正在等待审批。"
+        : terminal
+          ? "工具调用缺少完成事件。"
+          : "工具正在执行。",
       turn: pending.turn,
     });
   }

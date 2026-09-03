@@ -44,6 +44,7 @@ export type InstallWorkspaceSkillDto = Static<typeof InstallWorkspaceSkillDtoSch
 
 export const OpenWorkspacePathDtoSchema = Type.Object({
   path: Type.String({ maxLength: 4_096, minLength: 1 }),
+  rememberApplication: Type.Optional(Type.Boolean()),
 });
 
 export type OpenWorkspacePathDto = Static<typeof OpenWorkspacePathDtoSchema>;

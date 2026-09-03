@@ -5,6 +5,7 @@ import {
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
+import { FileOpenResultStatus } from "../../../shared/constants/file-open";
 import type { ChatWorkspace } from "../data/chat";
 
 const WorkspaceSchema = Type.Object({
@@ -103,11 +104,33 @@ export async function revealWorkspace(workspaceId: string): Promise<void> {
   await apiRequest(`/api/workspaces/${encodeURIComponent(workspaceId)}/reveal`, { method: "POST" });
 }
 
-export async function openWorkspacePath(workspaceId: string, path: string): Promise<void> {
-  await apiRequest(`/api/workspaces/${encodeURIComponent(workspaceId)}/open`, {
-    body: JSON.stringify({ path }),
+const OpenWorkspacePathResultSchema = Type.Object({
+  status: Type.Union([
+    Type.Literal(FileOpenResultStatus.APPLICATION_REQUIRED),
+    Type.Literal(FileOpenResultStatus.CANCELLED),
+    Type.Literal(FileOpenResultStatus.OPENED),
+  ]),
+});
+
+export type OpenWorkspacePathResult = Static<typeof OpenWorkspacePathResultSchema>;
+
+export async function openWorkspacePath(
+  workspaceId: string,
+  path: string,
+  rememberApplication?: boolean,
+): Promise<OpenWorkspacePathResult> {
+  const response = await apiRequest(`/api/workspaces/${encodeURIComponent(workspaceId)}/open`, {
+    body: JSON.stringify({
+      path,
+      ...(rememberApplication === undefined ? {} : { rememberApplication }),
+    }),
     method: "POST",
   });
+  const body = (await response.json()) as unknown;
+  if (!Value.Check(OpenWorkspacePathResultSchema, body)) {
+    throw new Error("daemon 返回了无效的文件打开结果");
+  }
+  return body;
 }
 
 export async function updateWorkspace(workspaceId: string, name: string): Promise<ChatWorkspace> {

@@ -21,6 +21,7 @@
 | daemon/服务端数据 | TanStack Query | Provider 列表、连接状态 |
 | 全局审批策略 | TanStack Query 读写 daemon `app_settings` | 设置页与消息输入器共享权限模式 |
 | 繁忙发送偏好 | TanStack Query 读写 daemon `app_settings` | 运行中 Enter 使用排队或插话，Cmd/Ctrl+Enter 临时反转 |
+| 文件打开偏好 | TanStack Query 读写 daemon `app_settings`；应用选择弹窗开关使用 Zustand | daemon 私有保存应用路径，Web 只读取打开模式、应用名称与可选图标 |
 | 跨组件纯 UI 状态 | Zustand | 当前页面视图、会话模型切换的短暂 UI 状态 |
 | 全局默认模型 | TanStack Query 读写 daemon `app_settings` | 设置页与新会话输入器共享模型和推理强度 |
 | 局部交互状态 | React 组件状态 | 弹窗开关、输入草稿、展开状态 |
@@ -36,7 +37,8 @@
 | 应用外壳与响应式导航 | `AppLayout`、`Navbar`、`Sidebar` | `features/chat/components/chat-shell.tsx`、`chat-navbar.tsx`、`chat-sidebar.tsx` |
 | 会话视口 | `ChatConversation` 复合组件 | `features/chat/views/chat-page.tsx` |
 | 用户与助手消息 | `ChatMessage`、`ChatAttachment`、`AssistantMarkdown`、`CodeBlock`、`ChatSource`；Markdown 表格与任务项映射为 HeroUI `Table`、`Checkbox`，图表、公式、HeroUI Flow 和 Mermaid fenced block 映射为独立 AI 展示组件 | `components/ai/assistant-markdown.tsx`、`components/ai/chart-block.tsx`、`components/ai/formula-block.tsx`、`components/ai/flow-diagram.tsx`、`components/ai/mermaid-block.tsx`、`features/chat/components/thread-message/` |
-| Markdown 链接 | HTTP(S) 使用 HeroUI `Link`；本地绝对或相对文件、目录路径使用带 Tooltip 的 `AssistantMarkdownLink`，href 必须是真实且可独立解析的路径，点击由会话 feature 请求 daemon 交给操作系统打开 | `components/ai/assistant-markdown-link.tsx`、`features/chat/components/thread-message-list.tsx` |
+| Markdown 链接 | HTTP(S) 使用 HeroUI `Link`；本地绝对或相对文件、目录路径使用带 Tooltip 的 `AssistantMarkdownLink`，href 必须是真实且可独立解析。目录链接使用 `local-directory` title 明确类型，旧消息缺少标记时按已知文件名/后缀保守识别，文件使用 `FileIconRender`，目录使用 Gravity UI `FolderOpen`；两者共用相同图标占位，目录图标按实际轮廓做光学缩放。点击由会话 feature 请求 daemon 交给操作系统打开 | `components/ai/assistant-markdown-link.tsx`、`features/chat/components/thread-message-list.tsx` |
+| 本地文件打开 | 设置页右侧先展示按内容收缩的 ghost 应用选择器，再使用与相邻设置控件等宽的 HeroUI `Select` 选择“每次询问”或默认应用；应用选择器始终展示 24px 图标和应用名称，使用 HeroUI 按钮自身的 hover 与键盘聚焦反馈，不替换文案，窄屏按相同顺序换行，也不添加下拉指示、独立操作或额外表面。询问流程使用不超过 420px 的紧凑 HeroUI `Modal`，标题下以 secondary `Surface` 展示文件摘要，再单独展示 `Checkbox`；不使用重复装饰图标和系统选择器说明，由 daemon 调用系统应用选择器 | `features/settings/components/settings-dialog.tsx`、`features/chat/components/file-open-dialog.tsx` |
 | 文件图标 | 统一使用 `FileIconRender`，由可排序的文件名/扩展名策略选择本地 Iconify VSCode 图标，未匹配时由调用方传入原有 Gravity 文件图标兜底 | `components/ui/file-icon-render.tsx` |
 | Tool 调用与分组 | assistant-ui Element `ToolCall`；分组使用紧凑列表 | `components/ai/tool-call.tsx`、`features/chat/components/thread-message/` |
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
@@ -44,7 +46,7 @@
 | 排队消息 | 输入器上方使用约三项后滚动、无独立卡片底色的紧凑单行 `ScrollShadow` 列表；正文可原位编辑、按 ID 删除或“调整方向”立即中止当前步骤并转入 steer 队列 | `features/chat/components/queued-run-inputs.tsx`、`features/chat/views/chat-page.tsx` |
 | 上下文与用量 | 发送按钮左侧使用 HeroUI `ProgressCircle` 触发 264px 宽的紧凑 `Popover`，详情取最近一次模型请求实际携带的完整 Session Context，在 HeroUI `ProgressBar` 轨道内按上下文窗口占比无间隙地连续组合 System Prompt、Tool 定义和按顺序累积的消息（含 tool call/result）；默认只展示当前窗口占用，最近 Run、Session 累计和说明通过 HeroUI `Disclosure` 展开，弹层正文使用限高 HeroUI `ScrollShadow` 适配可用视口；已有 checkpoint 时提供管理入口，使用 HeroUI `Modal` 和两个 `Select` 选择任意版本并排查看，空闲时恢复所选版本 | `features/chat/components/context-usage-popover.tsx`、`context-checkpoint-dialog.tsx`、`features/chat/utils/session-usage.ts` |
 | 文件附件 | 隐藏原生 `input[type=file]`，由 HeroUI `Button` 触发；输入框粘贴文件时复用同一套附件校验和提交链路；不使用扩展名 `accept` 白名单，所有普通文件都可作为结构化 Run 附件提交；图片、文本和可解析文档展开到 Context，其他二进制保留元数据并明确降级；附件准备失败时先持久化原始文本和附件元数据，再展示 Run 错误 | `features/chat/components/chat-composer.tsx`、`features/chat/utils/run-input.ts`、`packages/agent-runtime/src/utils/user-input.ts`、`packages/agent-runtime/src/run-coordinator.ts` |
-| `@` Workspace 上下文 | `ChatComposerEditor` 输入 `@` 时展示当前 Workspace 的真实图片、文件和文件夹候选；候选搜索预建索引，长列表使用 HeroUI 导出的 `Virtualizer`，并通过 Collection `items` 驱动动态分组，确保各候选类型完整参与虚拟布局；选中后保留内联标签并作为结构化引用提交，不改成 Tool Call | `features/chat/components/chat-composer-editor.tsx`、`chat-context-mention.tsx`、`features/chat/api/workspace-queries.ts` |
+| `@` Workspace 上下文 | `ChatComposerEditor` 输入 `@` 时展示当前 Workspace 的真实图片、文件和文件夹候选；文件夹候选、编辑器内标签和消息 Markdown 恢复出的目录标签统一使用 Gravity UI `FolderOpen`，不经过普通文件图标兜底。候选搜索预建索引，长列表使用 HeroUI 导出的 `Virtualizer`，并通过 Collection `items` 驱动动态分组，确保各候选类型完整参与虚拟布局；选中后保留内联标签并作为结构化引用提交，不改成 Tool Call | `features/chat/components/chat-composer-editor.tsx`、`chat-context-mention.tsx`、`features/chat/api/workspace-queries.ts` |
 | 命令与搜索弹窗 | `Command` 复合组件 | `features/chat/components/chat-search-dialog.tsx` |
 | 项目任务看板 | HeroUI Pro `Kanban` 与 `useKanban` | `features/chat/views/board-page.tsx` |
 | 基础操作 | HeroUI `Button` | `features/chat/components/chat-navbar.tsx` |
@@ -65,7 +67,7 @@
 | Provider 品牌 | 复用 `ModelProviderIcon`，按 Provider ID 映射直接 SVG | `features/models/components/model-provider-icon.tsx` |
 | AI 过程展示 | 思考、图片和任务使用 assistant-ui Elements；Web Search 开始时显示带真实查询的 Shimmer 状态，取得结果后按 assistant-ui Sources Runtime 形态在消息内容区全宽展示 HeroUI Pro `ChatSource`，来源自然换行且每项保留 Hover Preview；Web Fetch 复用 Tool Call，并区分连接、读取和正文提取阶段；多工具组外层占满消息宽度，摘要展示实际工具名称，组内普通 Tool Call 仍保持紧凑宽度 | `components/ai/`、`features/chat/components/thread-message/` |
 | Trace 类型 | 复用 `TraceKindChip` | `features/trace/components/trace-kind-chip.tsx` |
-| Trace 详情 | 按 Run、System、Context、User、Tool、Approval、Assistant 等记录类型分派独立详情组件和页签；Approval 区分审批 decision 与 Tool 执行结果，并展示请求、处理事件、关联 Tool Call 和等待时序；Run 终态不归入 System，Chip 与时间线按完成、失败、中止分别使用 success、danger、warning 语义色，失败时明确展示真实错误信息与错误码；System 标题为 `Initial System Prompt`，详情使用 `System Prompt` / `Tools` 展示 `run.started` 保存的完整系统提示词与工具定义 | `features/trace/components/trace-detail-panel.tsx`、`features/trace/components/trace-details/` |
+| Trace 详情 | 按 Run、System、Context、User、Tool、Approval、Assistant 等记录类型分派独立详情组件和页签；Approval 区分审批 decision 与 Tool 执行结果，并展示请求、处理事件、关联 Tool Call 和等待时序；同一 Tool 的审批等待与执行区间前后相接，并在泳道边界显示交接连接，不表现为并行；Run 终态不归入 System，Chip 与时间线按完成、失败、中止分别使用 success、danger、warning 语义色，失败时明确展示真实错误信息与错误码；System 标题为 `Initial System Prompt`，详情使用 `System Prompt` / `Tools` 展示 `run.started` 保存的完整系统提示词与工具定义 | `features/trace/components/trace-detail-panel.tsx`、`features/trace/components/trace-details/` |
 | 长 Trace/事件列表 | `@tanstack/react-virtual` | `features/trace/components/trace-event-list.tsx` |
 | 业务状态动画 | Motion 加减少动效处理 | `features/chat/views/chat-page.tsx`、`workspace-inspector.tsx`、`features/trace/components/trace-detail-panel.tsx` |
 

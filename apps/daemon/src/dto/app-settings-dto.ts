@@ -2,6 +2,7 @@ import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { ApprovalPolicy } from "@pi-harness/policy";
 import { type Static, Type } from "typebox";
+import { FileOpenMode } from "../schemas/file-open.js";
 
 export const ApprovalPolicyDtoSchema = Type.Union([
   Type.Literal(ApprovalPolicy.REQUEST_APPROVAL),
@@ -24,11 +25,17 @@ export const BusySubmitBehaviorDtoSchema = Type.Union([
   Type.Literal(BusySubmitBehavior.STEER),
 ]);
 
+export const FileOpenModeDtoSchema = Type.Union([
+  Type.Literal(FileOpenMode.ALWAYS),
+  Type.Literal(FileOpenMode.ASK),
+]);
+
 export const UpdateAppSettingsDtoSchema = Type.Object(
   {
     approvalPolicy: Type.Optional(ApprovalPolicyDtoSchema),
     busySubmitBehavior: Type.Optional(BusySubmitBehaviorDtoSchema),
     defaultModel: Type.Optional(DefaultModelSettingDtoSchema),
+    fileOpenMode: Type.Optional(FileOpenModeDtoSchema),
   },
   { minProperties: 1 },
 );

@@ -2,7 +2,7 @@
 
 import {
   File,
-  Folder,
+  FolderOpen,
   Picture as ImageIcon,
   Terminal as SquareTerminal,
   MagicWand as WandSparkles,
@@ -111,7 +111,7 @@ const TOKEN_VISUAL_STRATEGIES = {
   },
   [ChatComposerTokenKind.FOLDER]: {
     colorClassName: "text-[var(--chat-token-folder)]",
-    icon: Folder,
+    icon: FolderOpen,
     selectedClassName: "bg-[var(--chat-token-folder-soft)]",
   },
   [ChatComposerTokenKind.IMAGE]: {

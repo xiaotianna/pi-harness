@@ -10,6 +10,7 @@ import {
 } from "@pi-harness/agent-runtime/user-input";
 import { ApprovalPolicy, type ApprovalPolicyValue, isApprovalPolicy } from "@pi-harness/policy";
 import { isPlainObject } from "es-toolkit";
+import { FileOpenMode, type FileOpenMode as FileOpenModeValue } from "../schemas/file-open.js";
 import { DATABASE_MIGRATIONS } from "./migrations.js";
 
 export interface AuthUser {
@@ -76,16 +77,26 @@ export interface AppSettingRepository {
   getBusySubmitBehavior(): BusySubmitBehaviorValue;
   getDefaultModel(): DefaultModelSetting | null;
   getDisabledSkillDirectories(): readonly string[];
+  getFileOpenApplication(): FileOpenApplicationSetting | null;
+  getFileOpenMode(): FileOpenModeValue;
   setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void;
   setBusySubmitBehavior(behavior: BusySubmitBehaviorValue, updatedAt: number): void;
   setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void;
   setDisabledSkillDirectories(directories: readonly string[], updatedAt: number): void;
+  setFileOpenApplication(application: FileOpenApplicationSetting, updatedAt: number): void;
+  setFileOpenMode(mode: FileOpenModeValue, updatedAt: number): void;
 }
 
 export interface DefaultModelSetting {
   modelId: string;
   providerId: string;
   thinkingLevel: ThinkingLevel;
+}
+
+export interface FileOpenApplicationSetting {
+  iconDataUrl: string | null;
+  name: string;
+  path: string;
 }
 
 export interface SessionRecord {
@@ -482,6 +493,8 @@ const APPROVAL_POLICY_KEY = "approval_policy";
 const BUSY_SUBMIT_BEHAVIOR_KEY = "busy_submit_behavior";
 const DEFAULT_MODEL_KEY = "default_model";
 const DISABLED_SKILL_DIRECTORIES_KEY = "disabled_skill_directories";
+const FILE_OPEN_APPLICATION_KEY = "file_open_application";
+const FILE_OPEN_MODE_KEY = "file_open_mode";
 
 class SqliteAppSettingRepository implements AppSettingRepository {
   public constructor(private readonly database: DatabaseSync) {}
@@ -549,6 +562,43 @@ class SqliteAppSettingRepository implements AppSettingRepository {
     return value;
   }
 
+  public getFileOpenApplication(): FileOpenApplicationSetting | null {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(FILE_OPEN_APPLICATION_KEY) as DatabaseRow | undefined;
+    if (!row) return null;
+
+    const value = JSON.parse(readRequiredString(row, "value")) as unknown;
+    if (
+      !isPlainObject(value) ||
+      typeof value.name !== "string" ||
+      value.name.length === 0 ||
+      typeof value.path !== "string" ||
+      value.path.length === 0 ||
+      (value.iconDataUrl !== null && typeof value.iconDataUrl !== "string")
+    ) {
+      throw new Error("Invalid database value for file open application");
+    }
+    return {
+      iconDataUrl: value.iconDataUrl,
+      name: value.name,
+      path: value.path,
+    };
+  }
+
+  public getFileOpenMode(): FileOpenModeValue {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(FILE_OPEN_MODE_KEY) as DatabaseRow | undefined;
+    if (!row) return FileOpenMode.ASK;
+
+    const value = readRequiredString(row, "value");
+    if (value !== FileOpenMode.ALWAYS && value !== FileOpenMode.ASK) {
+      throw new Error("Invalid database value for file open mode");
+    }
+    return value;
+  }
+
   public setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void {
     this.database
       .prepare(
@@ -583,6 +633,24 @@ class SqliteAppSettingRepository implements AppSettingRepository {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       )
       .run(DISABLED_SKILL_DIRECTORIES_KEY, JSON.stringify(directories), updatedAt);
+  }
+
+  public setFileOpenApplication(application: FileOpenApplicationSetting, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(FILE_OPEN_APPLICATION_KEY, JSON.stringify(application), updatedAt);
+  }
+
+  public setFileOpenMode(mode: FileOpenModeValue, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(FILE_OPEN_MODE_KEY, mode, updatedAt);
   }
 }
 
