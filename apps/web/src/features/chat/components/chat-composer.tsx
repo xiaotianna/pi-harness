@@ -597,6 +597,7 @@ export function ChatComposer({
   };
 
   const isGenerating = status === "submitted" || status === "streaming";
+  const isStreaming = status === "streaming";
   const hasDraftContent = hasEditorContent || attachments.length > 0;
   const preferredModelKey = initialConversationModelKey ?? conversationModelKey ?? defaultModelKey;
   const selectedModelKey =
@@ -1400,7 +1401,7 @@ export function ChatComposer({
                 summary={usage}
               />
             ) : null}
-            {isGenerating && hasDraftContent ? (
+            {isStreaming && hasDraftContent ? (
               <Button
                 className="h-8 min-w-0 px-2"
                 size="sm"
@@ -1410,7 +1411,7 @@ export function ChatComposer({
                 停止
               </Button>
             ) : null}
-            {isGenerating && hasDraftContent ? (
+            {isStreaming && hasDraftContent ? (
               <Button
                 className="h-8 min-w-0 px-3"
                 isDisabled={!canSend}

@@ -34,6 +34,7 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
   const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [selectedRequestRecordId, setSelectedRequestRecordId] = useState<string | null>(null);
   const isMobile = useMediaQuery("(max-width: 767px)");
   const deferredSearch = useDeferredValue(search);
   const trace = useMemo(() => sessionEventsToAgentTraces(events, now)[0] ?? null, [events, now]);
@@ -50,6 +51,7 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
     setRange(null);
     setSearch("");
     setSelectedRecordId(firstRecordId);
+    setSelectedRequestRecordId(null);
     setIsMobileDetailOpen(false);
   }, [firstRecordId, trace?.traceId]);
 
@@ -62,11 +64,12 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
     const query = deferredSearch.trim().toLowerCase();
     if (!query) return trace.records;
 
-    return trace.records.filter((record) =>
-      `${record.label} ${record.preview} ${record.source} ${record.errorCode ?? ""}`
+    return trace.records.filter((record) => {
+      const systemPrompt = record.systemPrompt;
+      return `${record.label} ${record.preview} ${record.source} ${record.errorCode ?? ""} ${systemPrompt?.content ?? ""} ${systemPrompt?.tools.map(({ description, name }) => `${name} ${description}`).join(" ") ?? ""}`
         .toLowerCase()
-        .includes(query),
-    );
+        .includes(query);
+    });
   }, [deferredSearch, trace]);
 
   const selectedRecord = trace?.records.find((record) => record.id === selectedRecordId) ?? null;
@@ -91,6 +94,7 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
   const handleRecordSelect = useCallback(
     (record: AgentTraceRecord) => {
       setSelectedRecordId(record.id);
+      setSelectedRequestRecordId(null);
       if (isMobile) setIsMobileDetailOpen(true);
     },
     [isMobile],
@@ -98,7 +102,45 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
 
   const handleDetailClose = useCallback(() => {
     setSelectedRecordId(null);
+    setSelectedRequestRecordId(null);
   }, []);
+
+  const handleRequestOpen = useCallback(
+    (recordId: string) => {
+      const requestRecord = trace?.records.find(
+        (record) => record.id === recordId && record.kind === AgentTraceRecordKind.ASSISTANT,
+      );
+      if (!requestRecord) return;
+      setSearch("");
+      setSelectedRecordId(recordId);
+      setSelectedRequestRecordId(recordId);
+      if (isMobile) setIsMobileDetailOpen(true);
+    },
+    [isMobile, trace],
+  );
+
+  const handleToolCallOpen = useCallback(
+    (toolCallId: string) => {
+      const toolRecord = trace?.records.find(
+        (record) =>
+          record.kind === AgentTraceRecordKind.TOOL && record.raw.toolCallId === toolCallId,
+      );
+      if (!toolRecord) return;
+      setSearch("");
+      handleRecordSelect(toolRecord);
+    },
+    [handleRecordSelect, trace],
+  );
+
+  const handleAssistantOpen = useCallback(
+    (recordId: string) => {
+      const assistantRecord = trace?.records.find(
+        (record) => record.id === recordId && record.kind === AgentTraceRecordKind.ASSISTANT,
+      );
+      if (assistantRecord) handleRecordSelect(assistantRecord);
+    },
+    [handleRecordSelect, trace],
+  );
 
   if (!trace) {
     return (
@@ -188,6 +230,8 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
             range={range}
             records={records}
             selectedRecordId={selectedRecordId}
+            selectedRequestRecordId={selectedRequestRecordId}
+            onOpenRequest={handleRequestOpen}
             onSelect={handleRecordSelect}
           />
         </div>
@@ -195,10 +239,14 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
         {selectedRecord ? (
           <div className="hidden min-h-0 min-w-0 w-[clamp(320px,38%,440px)] max-w-[calc(100%-280px)] flex-col border-l border-separator md:flex">
             <TraceDetailPanel
+              isRequestSelected={selectedRequestRecordId === selectedRecord.id}
               key={selectedRecord.id}
               record={selectedRecord}
               step={selectedStep}
               onClose={handleDetailClose}
+              onOpenAssistant={handleAssistantOpen}
+              onOpenRequest={handleRequestOpen}
+              onOpenToolCall={handleToolCallOpen}
             />
           </div>
         ) : null}
@@ -214,10 +262,14 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
               <Drawer.Handle className="pt-2" />
               <Drawer.Body className="m-0! min-h-0 p-0!">
                 <TraceDetailPanel
+                  isRequestSelected={selectedRequestRecordId === selectedRecord.id}
                   key={selectedRecord.id}
                   record={selectedRecord}
                   step={selectedStep}
                   onClose={() => setIsMobileDetailOpen(false)}
+                  onOpenAssistant={handleAssistantOpen}
+                  onOpenRequest={handleRequestOpen}
+                  onOpenToolCall={handleToolCallOpen}
                 />
               </Drawer.Body>
             </Drawer.Dialog>

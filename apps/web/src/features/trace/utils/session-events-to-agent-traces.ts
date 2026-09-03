@@ -14,6 +14,7 @@ import {
   type AgentTraceSession,
   AgentTraceStatus,
   type AgentTraceTokenUsage,
+  type AgentTraceToolDefinition,
 } from "../types/agent-trace";
 
 const MAX_PREVIEW_LENGTH = 800;
@@ -22,6 +23,7 @@ const EMPTY_USAGE: AgentTraceTokenUsage = {
   cacheWrite: 0,
   input: 0,
   output: 0,
+  reasoning: 0,
   total: 0,
 };
 
@@ -37,28 +39,40 @@ function clip(value: string): string {
     : `${trimmed.slice(0, MAX_PREVIEW_LENGTH)}…`;
 }
 
-function readText(value: unknown): string {
-  if (typeof value === "string") return clip(value);
+function readFullText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
   if (!Array.isArray(value)) return "";
-  return clip(
-    value
-      .flatMap((part) => {
-        if (!isPlainObject(part)) return [];
-        if (typeof part.text === "string") return [part.text];
-        if (typeof part.thinking === "string") return [part.thinking];
-        return [];
-      })
-      .join("\n"),
-  );
+  return value
+    .flatMap((part) => {
+      if (!isPlainObject(part)) return [];
+      if (typeof part.text === "string") return [part.text];
+      if (typeof part.thinking === "string") return [part.thinking];
+      return [];
+    })
+    .join("\n")
+    .trim();
 }
 
 function readUnknown(value: unknown): string {
-  if (typeof value === "string") return clip(value);
+  return clip(stringifyUnknown(value));
+}
+
+function stringifyUnknown(value: unknown): string {
+  if (typeof value === "string") return value;
   try {
-    return clip(JSON.stringify(value));
+    return JSON.stringify(value) ?? "undefined";
   } catch {
     return "无法预览该值";
   }
+}
+
+function readToolDefinitions(value: unknown): AgentTraceToolDefinition[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((tool) =>
+    isPlainObject(tool) && typeof tool.name === "string" && typeof tool.description === "string"
+      ? [{ description: tool.description, name: tool.name, parameters: tool.parameters }]
+      : [],
+  );
 }
 
 function readNumber(value: unknown): number {
@@ -77,11 +91,13 @@ function readUsage(value: unknown): AgentTraceTokenUsage | undefined {
   const cacheWrite = readNumber(value.cacheWrite);
   const input = readNumber(value.input);
   const output = readNumber(value.output);
+  const reasoning = Math.min(output, readNumber(value.reasoning));
   const usage = {
     cacheRead,
     cacheWrite,
     input,
     output,
+    reasoning,
     total: readNumber(value.totalTokens) || input + output + cacheRead + cacheWrite,
   };
   return Object.values(usage).some((item) => item > 0) ? usage : undefined;
@@ -97,6 +113,7 @@ function addUsage(
     cacheWrite: left.cacheWrite + right.cacheWrite,
     input: left.input + right.input,
     output: left.output + right.output,
+    reasoning: left.reasoning + right.reasoning,
     total: left.total + right.total,
   };
 }
@@ -117,11 +134,32 @@ function readToolIdentity(value: unknown): { toolCallId: string; toolName: strin
     : null;
 }
 
-function readApprovalIdentity(value: unknown): { approvalId: string; toolName: string } | null {
+function findAssistantRecordId(
+  records: readonly AgentTraceRecord[],
+  toolCallId: string,
+): string | undefined {
+  return records.findLast((record) => {
+    if (record.kind !== AgentTraceRecordKind.ASSISTANT || !isPlainObject(record.raw.response)) {
+      return false;
+    }
+    const content = record.raw.response.content;
+    return (
+      Array.isArray(content) &&
+      content.some(
+        (block) => isPlainObject(block) && block.type === "toolCall" && block.id === toolCallId,
+      )
+    );
+  })?.id;
+}
+
+function readApprovalIdentity(
+  value: unknown,
+): { approvalId: string; toolCallId: string; toolName: string } | null {
   return isPlainObject(value) &&
     typeof value.approvalId === "string" &&
+    typeof value.toolCallId === "string" &&
     typeof value.toolName === "string"
-    ? { approvalId: value.approvalId, toolName: value.toolName }
+    ? { approvalId: value.approvalId, toolCallId: value.toolCallId, toolName: value.toolName }
     : null;
 }
 
@@ -153,10 +191,13 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       event.type === HarnessEventType.RUN_FAILED ||
       event.type === HarnessEventType.RUN_ABORTED,
   );
+  const runData = isPlainObject(started.data) ? started.data : {};
+  const toolDefinitions = readToolDefinitions(runData.tools);
   const endedAt = terminal?.timestamp ?? now;
   const records: AgentTraceRecord[] = [];
   const userStarts: PendingEvent[] = [];
   const modelStarts: PendingEvent[] = [];
+  const modelMessageStarts: HarnessEvent[] = [];
   const compactionStarts: PendingEvent[] = [];
   const toolStarts = new Map<string, PendingEvent>();
   const toolUpdates = new Map<string, HarnessEvent>();
@@ -175,8 +216,12 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       continue;
     }
 
-    if (event.type === HarnessEventType.MESSAGE_STARTED && isHarnessUserMessage(event.data)) {
-      userStarts.push({ event, turn: Math.max(1, currentTurn + 1) });
+    if (event.type === HarnessEventType.MESSAGE_STARTED) {
+      if (isHarnessUserMessage(event.data)) {
+        userStarts.push({ event, turn: Math.max(1, currentTurn + 1) });
+      } else if (isPlainObject(event.data) && event.data.role === "assistant") {
+        modelMessageStarts.push(event);
+      }
       continue;
     }
 
@@ -187,7 +232,8 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
           event,
           turn: Math.max(1, currentTurn + 1),
         };
-        const preview = clip(event.data.displayText);
+        const message = event.data.displayText.trim();
+        const preview = clip(message);
         const label =
           event.data.busySubmitBehavior === BusySubmitBehavior.QUEUE
             ? "追加消息"
@@ -213,10 +259,12 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
               size,
             })),
             busySubmitBehavior: event.data.busySubmitBehavior,
+            content: event.data.content,
             contextReferences: event.data.contextReferences ?? [],
             eventId: event.id,
-            message: preview,
+            message,
             seq: event.seq,
+            source: { kind: "user" },
           },
           source: "message.started → message.completed",
           startMs: eventOffset(pending.event, started.timestamp),
@@ -229,7 +277,9 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
 
       if (event.data.role === "assistant") {
         const pending = modelStarts.shift() ?? { event, turn: Math.max(1, currentTurn) };
-        const preview = readText(event.data.content);
+        const messageStarted = modelMessageStarts.shift();
+        const content = readFullText(event.data.content);
+        const preview = clip(content);
         const stopReason =
           typeof event.data.stopReason === "string" ? event.data.stopReason : "stop";
         const status =
@@ -239,6 +289,10 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
               ? AgentTraceStatus.FAILED
               : AgentTraceStatus.COMPLETED;
         const tokenUsage = readUsage(event.data.usage);
+        const toolCallCount = Array.isArray(event.data.content)
+          ? event.data.content.filter((block) => isPlainObject(block) && block.type === "toolCall")
+              .length
+          : 0;
         records.push({
           durationMs: eventDuration(pending.event, event),
           ...(status === AgentTraceStatus.FAILED
@@ -254,12 +308,17 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
           raw: {
             context: pending.event.data,
             eventId: event.id,
-            response: {
-              content: preview,
-              stopReason,
-              ...(tokenUsage ? { usage: tokenUsage } : {}),
+            options: {
+              maxTokens: runData.maxTokens,
+              model: event.data.model ?? runData.modelId,
+              provider: event.data.provider ?? runData.providerId,
+              thinkingLevel: runData.thinkingLevel,
             },
+            requestStartedAt: pending.event.timestamp,
+            responseStartedAt: messageStarted?.timestamp,
+            response: event.data,
             seq: event.seq,
+            toolCallCount,
           },
           source: "context.usage_snapshot → message.completed",
           startMs: eventOffset(pending.event, started.timestamp),
@@ -299,8 +358,10 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
         event,
         turn: Math.max(1, currentTurn),
       };
-      const result = isPlainObject(event.data) ? readUnknown(event.data.result) : "";
+      const result = isPlainObject(event.data) ? stringifyUnknown(event.data.result) : "";
       const isFailed = event.type === HarnessEventType.TOOL_FAILED;
+      const parentAssistantRecordId = findAssistantRecordId(records, identity.toolCallId);
+      const toolDefinition = toolDefinitions.find(({ name }) => name === identity.toolName);
       records.push({
         durationMs: eventDuration(pending.event, event),
         ...(isFailed ? { errorCode: "TOOL_FAILED" } : {}),
@@ -308,16 +369,19 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
         kind: AgentTraceRecordKind.TOOL,
         label: identity.toolName,
         lane: AgentTraceLane.TOOLS,
-        preview: result || `${identity.toolName} 未返回结果`,
+        preview: clip(result) || `${identity.toolName} 未返回结果`,
         raw: {
           arguments: isPlainObject(pending.event.data)
-            ? readUnknown(pending.event.data.arguments)
+            ? stringifyUnknown(pending.event.data.arguments)
             : "",
           eventId: event.id,
           result,
           seq: event.seq,
+          startedAt: pending.event.timestamp,
           toolCallId: identity.toolCallId,
           toolName: identity.toolName,
+          ...(parentAssistantRecordId ? { parentAssistantRecordId } : {}),
+          ...(toolDefinition ? { toolDefinition } : {}),
         },
         source: `tool.started → ${event.type}`,
         startMs: eventOffset(pending.event, started.timestamp),
@@ -341,7 +405,8 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
     if (event.type === HarnessEventType.APPROVAL_RESOLVED) {
       const identity = readApprovalIdentity(event.data);
       if (!identity) continue;
-      const pending = approvalStarts.get(identity.approvalId) ?? {
+      const request = approvalStarts.get(identity.approvalId);
+      const pending = request ?? {
         event,
         turn: Math.max(1, currentTurn),
       };
@@ -364,12 +429,23 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
         raw: {
           approvalId: identity.approvalId,
           decision,
-          eventId: event.id,
-          request: pending.event.data,
-          seq: event.seq,
+          resolution: event.data,
+          resolutionEventId: event.id,
+          resolutionSeq: event.seq,
+          resolvedAt: event.timestamp,
+          ...(request
+            ? {
+                request: request.event.data,
+                requestedAt: request.event.timestamp,
+                requestEventId: request.event.id,
+                requestSeq: request.event.seq,
+              }
+            : {}),
+          seq: request?.event.seq ?? event.seq,
+          toolCallId: identity.toolCallId,
           toolName: identity.toolName,
         },
-        source: "approval.requested → approval.resolved",
+        source: request ? "approval.requested → approval.resolved" : "approval.resolved",
         startMs: eventOffset(pending.event, started.timestamp),
         status: isExpired ? AgentTraceStatus.FAILED : AgentTraceStatus.COMPLETED,
         summary: `${identity.toolName} 的审批${preview}。`,
@@ -405,10 +481,7 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
           ? {
               afterTokens: data.afterTokens,
               beforeTokens: data.beforeTokens,
-              checkpoint: {
-                nextAction: clip(data.checkpoint.nextAction),
-                objective: clip(data.checkpoint.objective),
-              },
+              checkpoint: data.checkpoint,
               compactedMessageCount: data.compactedMessageCount,
               compactionReason: data.compactionReason,
               compactionStrategy: data.compactionStrategy,
@@ -431,6 +504,7 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
     ? (readRunErrorCode(terminal) ?? "TRACE_INCOMPLETE")
     : undefined;
   for (const pending of modelStarts) {
+    const messageStarted = modelMessageStarts.shift();
     records.push({
       durationMs: Math.max(0, endedAt - pending.event.timestamp),
       ...(pendingErrorCode ? { errorCode: pendingErrorCode } : {}),
@@ -439,7 +513,20 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       label: `模型请求 ${pending.turn}`,
       lane: AgentTraceLane.MODEL,
       preview: "模型正在响应",
-      raw: { context: pending.event.data, eventId: pending.event.id, seq: pending.event.seq },
+      raw: {
+        context: pending.event.data,
+        eventId: pending.event.id,
+        options: {
+          maxTokens: runData.maxTokens,
+          model: runData.modelId,
+          provider: runData.providerId,
+          thinkingLevel: runData.thinkingLevel,
+        },
+        requestStartedAt: pending.event.timestamp,
+        responseStartedAt: messageStarted?.timestamp,
+        seq: pending.event.seq,
+        toolCallCount: 0,
+      },
       source: "context.usage_snapshot",
       startMs: eventOffset(pending.event, started.timestamp),
       status: terminal ? pendingStatus : AgentTraceStatus.RUNNING,
@@ -455,6 +542,8 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       update && isPlainObject(update.data)
         ? readUnknown(update.data.partialResult)
         : "工具正在执行";
+    const parentAssistantRecordId = findAssistantRecordId(records, toolCallId);
+    const toolDefinition = toolDefinitions.find(({ name }) => name === identity.toolName);
     records.push({
       durationMs: Math.max(0, endedAt - pending.event.timestamp),
       ...(pendingErrorCode ? { errorCode: pendingErrorCode } : {}),
@@ -465,10 +554,13 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       preview,
       raw: {
         arguments: isPlainObject(pending.event.data)
-          ? readUnknown(pending.event.data.arguments)
+          ? stringifyUnknown(pending.event.data.arguments)
           : "",
+        startedAt: pending.event.timestamp,
         toolCallId,
         toolName: identity.toolName,
+        ...(parentAssistantRecordId ? { parentAssistantRecordId } : {}),
+        ...(toolDefinition ? { toolDefinition } : {}),
       },
       source: "tool.started",
       startMs: eventOffset(pending.event, started.timestamp),
@@ -488,7 +580,16 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       label: `审批 · ${identity.toolName}`,
       lane: AgentTraceLane.INPUT,
       preview: "等待用户审批",
-      raw: { approvalId, request: pending.event.data, toolName: identity.toolName },
+      raw: {
+        approvalId,
+        request: pending.event.data,
+        requestedAt: pending.event.timestamp,
+        requestEventId: pending.event.id,
+        requestSeq: pending.event.seq,
+        seq: pending.event.seq,
+        toolCallId: identity.toolCallId,
+        toolName: identity.toolName,
+      },
       source: "approval.requested",
       startMs: eventOffset(pending.event, started.timestamp),
       status: terminal ? pendingStatus : AgentTraceStatus.RUNNING,
@@ -519,7 +620,6 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
     (total, record) => addUsage(total, record.tokenUsage),
     EMPTY_USAGE,
   );
-  const runData = isPlainObject(started.data) ? started.data : {};
   const runErrorCode = readRunErrorCode(terminal);
 
   return {
@@ -566,24 +666,34 @@ export function sessionEventsToAgentTraces(
     const runOffset = timelineOffset;
     if (runStarted) {
       const data = isPlainObject(runStarted.data) ? runStarted.data : {};
+      const systemPrompt = typeof data.systemPrompt === "string" ? data.systemPrompt : "";
+      const tools = readToolDefinitions(data.tools);
       records.push({
         durationMs: 0,
         id: runStarted.id,
         kind: AgentTraceRecordKind.SYSTEM,
-        label: "开始运行",
+        label: "Initial System Prompt",
         lane: AgentTraceLane.INPUT,
-        preview: typeof data.modelId === "string" ? data.modelId : "未知模型",
+        preview: systemPrompt
+          ? `${tools.length} 个工具 · ${typeof data.modelId === "string" ? data.modelId : "未知模型"}`
+          : typeof data.modelId === "string"
+            ? data.modelId
+            : "未知模型",
         raw: {
           eventId: runStarted.id,
           modelId: data.modelId,
           providerId: data.providerId,
           runId: trace.traceId,
           seq: runStarted.seq,
+          ...(systemPrompt ? { systemPrompt, tools } : {}),
         },
         source: HarnessEventType.RUN_STARTED,
         startMs: runOffset,
         status: AgentTraceStatus.COMPLETED,
-        summary: "Session 开始了一次新的 Run。",
+        summary: systemPrompt
+          ? `本次 Run 使用该系统提示词和 ${tools.length} 个工具定义。`
+          : "Session 开始了一次新的 Run。",
+        ...(systemPrompt ? { systemPrompt: { content: systemPrompt, tools } } : {}),
         turn: 0,
       });
     }
@@ -598,16 +708,16 @@ export function sessionEventsToAgentTraces(
       const data = isPlainObject(runTerminal.data) ? runTerminal.data : {};
       const label =
         runTerminal.type === HarnessEventType.RUN_FAILED
-          ? "运行失败"
+          ? "回复生成失败"
           : runTerminal.type === HarnessEventType.RUN_ABORTED
-            ? "运行中止"
+            ? "回复已中止"
             : "运行完成";
       const errorCode = readRunErrorCode(runTerminal);
       records.push({
         durationMs: 0,
         ...(errorCode ? { errorCode } : {}),
         id: runTerminal.id,
-        kind: AgentTraceRecordKind.SYSTEM,
+        kind: AgentTraceRecordKind.RUN,
         label,
         lane: AgentTraceLane.MODEL,
         preview: typeof data.message === "string" ? clip(data.message) : label,
@@ -621,7 +731,7 @@ export function sessionEventsToAgentTraces(
         source: runTerminal.type,
         startMs: runOffset + trace.durationMs,
         status: trace.status,
-        summary: `本次 Run ${label.slice(2)}。`,
+        summary: label,
         turn: 0,
       });
     }
@@ -672,16 +782,38 @@ export function sessionEventsToAgentTraces(
 
   records.sort(compareRecords);
   let currentTurn = 0;
+  let currentRequest = 0;
+  let cumulativeRequestUsage = EMPTY_USAGE;
+  let activeRunId: string | null = null;
+  let hasActiveRunTurn = false;
   for (const record of records) {
+    const runId = typeof record.raw.runId === "string" ? record.raw.runId : null;
+    if (record.source === HarnessEventType.RUN_STARTED) {
+      activeRunId = runId;
+      hasActiveRunTurn = false;
+      record.turn = 0;
+      continue;
+    }
+    if (runId !== null && runId !== activeRunId) {
+      activeRunId = runId;
+      hasActiveRunTurn = false;
+    }
     const isUserMessage =
       record.kind === AgentTraceRecordKind.USER &&
       record.source === "message.started → message.completed";
-    if (isUserMessage) currentTurn += 1;
+    if (isUserMessage) {
+      currentTurn += 1;
+      hasActiveRunTurn = true;
+    }
     record.turn =
-      record.source === HarnessEventType.RUN_STARTED ||
-      record.source === HarnessEventType.MESSAGE_BRANCH_STARTED
+      record.source === HarnessEventType.MESSAGE_BRANCH_STARTED || !hasActiveRunTurn
         ? 0
         : currentTurn;
+    if (record.kind === AgentTraceRecordKind.ASSISTANT) {
+      record.request = ++currentRequest;
+      cumulativeRequestUsage = addUsage(cumulativeRequestUsage, record.tokenUsage);
+      record.cumulativeTokenUsage = { ...cumulativeRequestUsage };
+    }
   }
   const tokenUsage = runTraces.reduce(
     (total, trace) => addUsage(total, trace.tokenUsage),

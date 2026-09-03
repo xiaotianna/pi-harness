@@ -7,8 +7,14 @@ import {
   AGENT_TRACE_KIND_LABELS,
   AGENT_TRACE_KIND_STYLES,
   AGENT_TRACE_LANE_LABELS,
+  AGENT_TRACE_RUN_STATUS_TIMELINE_CLASS_NAMES,
 } from "../constants/agent-trace";
-import { AgentTraceLane, type AgentTraceRange, type AgentTraceRecord } from "../types/agent-trace";
+import {
+  AgentTraceLane,
+  type AgentTraceRange,
+  type AgentTraceRecord,
+  AgentTraceRecordKind,
+} from "../types/agent-trace";
 import { formatTraceDuration } from "../utils/format-trace-duration";
 
 const TIMELINE_LANES = [AgentTraceLane.INPUT, AgentTraceLane.MODEL, AgentTraceLane.TOOLS] as const;
@@ -96,7 +102,11 @@ function TraceTimelineRecord({
       >
         <span
           aria-hidden
-          className={`block size-full rounded-[1px] ${AGENT_TRACE_KIND_STYLES[record.kind].timelineClassName}`}
+          className={`block size-full rounded-[1px] ${
+            record.kind === AgentTraceRecordKind.RUN
+              ? AGENT_TRACE_RUN_STATUS_TIMELINE_CLASS_NAMES[record.status]
+              : AGENT_TRACE_KIND_STYLES[record.kind].timelineClassName
+          }`}
         />
         <span
           aria-hidden
@@ -266,7 +276,7 @@ export const TraceTimeline = memo(function TraceTimeline({
         {TIMELINE_LANES.map((lane) => (
           <div className="relative h-2" key={lane}>
             {records
-              .filter((record) => record.lane === lane && record.durationMs > 0)
+              .filter((record) => record.lane === lane)
               .map((record) => {
                 const isSelected = record.id === selectedRecordId;
 

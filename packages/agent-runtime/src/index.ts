@@ -51,6 +51,7 @@ export {
   type RunId,
   type RunInteractionData,
   type RunStartedData,
+  type RunToolDefinition,
   type SessionId,
   selectActiveSessionEvents,
   type ToolCompletedData,

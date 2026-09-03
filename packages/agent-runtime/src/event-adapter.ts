@@ -7,6 +7,7 @@ import {
   MessageDeltaKind,
   type RunFailureData,
   type RunStartedData,
+  type RunToolDefinition,
   type ToolCompletedData,
   type ToolStartedData,
   type ToolUpdatedData,
@@ -39,8 +40,12 @@ function sanitizeAgentMessage(message: AgentMessage): AgentMessage {
 }
 
 export interface AgentEventAdapterContext {
+  maxTokens: number;
   modelId: string;
   providerId: string;
+  systemPrompt: string;
+  thinkingLevel: RunStartedData["thinkingLevel"];
+  tools: readonly RunToolDefinition[];
 }
 
 // 检查agent运行的最后一条消息，判断run最终是成功、失败还是被中止，并返回HarnessEventDraft
@@ -136,8 +141,12 @@ export function adaptAgentEvent(
     case "agent_start":
       return {
         data: {
+          maxTokens: context.maxTokens,
           modelId: context.modelId,
           providerId: context.providerId,
+          systemPrompt: context.systemPrompt,
+          thinkingLevel: context.thinkingLevel,
+          tools: [...context.tools],
         } satisfies RunStartedData,
         type: HarnessEventType.RUN_STARTED,
       };

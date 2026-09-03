@@ -10,6 +10,7 @@ export const AgentTraceRecordKind = {
   APPROVAL: "approval",
   ASSISTANT: "assistant",
   CONTEXT: "context",
+  RUN: "run",
   SYSTEM: "system",
   TOOL: "tool",
   USER: "user",
@@ -31,10 +32,23 @@ export interface AgentTraceTokenUsage {
   cacheWrite: number;
   input: number;
   output: number;
+  reasoning: number;
   total: number;
 }
 
+export interface AgentTraceToolDefinition {
+  description: string;
+  name: string;
+  parameters: unknown;
+}
+
+export interface AgentTraceSystemPrompt {
+  content: string;
+  tools: readonly AgentTraceToolDefinition[];
+}
+
 export interface AgentTraceRecord {
+  cumulativeTokenUsage?: AgentTraceTokenUsage;
   durationMs: number;
   errorCode?: string;
   id: string;
@@ -43,10 +57,12 @@ export interface AgentTraceRecord {
   lane: AgentTraceLane;
   preview: string;
   raw: Readonly<Record<string, unknown>>;
+  request?: number;
   source: string;
   startMs: number;
   status: AgentTraceStatus;
   summary: string;
+  systemPrompt?: AgentTraceSystemPrompt;
   tokenUsage?: AgentTraceTokenUsage;
   turn: number;
 }

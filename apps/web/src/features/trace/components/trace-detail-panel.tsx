@@ -1,17 +1,18 @@
 "use client";
 
-import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
 import { Xmark as X } from "@gravity-ui/icons";
-import { Button, Chip, Tabs, Tooltip } from "@heroui/react";
+import { Button, Tooltip } from "@heroui/react";
 import { motion, useReducedMotion } from "motion/react";
 import { memo } from "react";
-import {
-  AGENT_TRACE_LANE_LABELS,
-  AGENT_TRACE_STATUS_COLORS,
-  AGENT_TRACE_STATUS_LABELS,
-} from "../constants/agent-trace";
-import type { AgentTraceRecord } from "../types/agent-trace";
-import { formatTraceDuration } from "../utils/format-trace-duration";
+import { type AgentTraceRecord, AgentTraceRecordKind } from "../types/agent-trace";
+import { ApprovalTraceDetails } from "./trace-details/approval-trace-details";
+import { AssistantTraceDetails } from "./trace-details/assistant-trace-details";
+import { ContextTraceDetails } from "./trace-details/context-trace-details";
+import { RequestTraceDetails } from "./trace-details/request-trace-details";
+import { RunTraceDetails } from "./trace-details/run-trace-details";
+import { SystemTraceDetails } from "./trace-details/system-trace-details";
+import { ToolTraceDetails } from "./trace-details/tool-trace-details";
+import { UserTraceDetails } from "./trace-details/user-trace-details";
 import { TraceKindChip } from "./trace-kind-chip";
 
 const DETAIL_TRANSITION = {
@@ -20,31 +21,89 @@ const DETAIL_TRANSITION = {
 } as const;
 
 export interface TraceDetailPanelProps {
+  isRequestSelected: boolean;
   record: AgentTraceRecord;
   step: number;
   onClose: () => void;
+  onOpenAssistant: (recordId: string) => void;
+  onOpenRequest: (recordId: string) => void;
+  onOpenToolCall: (toolCallId: string) => void;
+}
+
+function TraceDetails({
+  isRequestSelected,
+  record,
+  onOpenAssistant,
+  onOpenRequest,
+  onOpenToolCall,
+}: {
+  isRequestSelected: boolean;
+  record: AgentTraceRecord;
+  onOpenAssistant: (recordId: string) => void;
+  onOpenRequest: (recordId: string) => void;
+  onOpenToolCall: (toolCallId: string) => void;
+}) {
+  if (isRequestSelected) {
+    return <RequestTraceDetails record={record} onOpenAssistant={onOpenAssistant} />;
+  }
+
+  switch (record.kind) {
+    case AgentTraceRecordKind.SYSTEM:
+      return <SystemTraceDetails record={record} />;
+    case AgentTraceRecordKind.CONTEXT:
+      return <ContextTraceDetails record={record} />;
+    case AgentTraceRecordKind.RUN:
+      return <RunTraceDetails record={record} />;
+    case AgentTraceRecordKind.USER:
+      return <UserTraceDetails record={record} />;
+    case AgentTraceRecordKind.TOOL:
+      return <ToolTraceDetails record={record} onOpenAssistant={onOpenAssistant} />;
+    case AgentTraceRecordKind.ASSISTANT:
+      return (
+        <AssistantTraceDetails
+          record={record}
+          onOpenRequest={onOpenRequest}
+          onOpenToolCall={onOpenToolCall}
+        />
+      );
+    case AgentTraceRecordKind.APPROVAL:
+      return <ApprovalTraceDetails record={record} onOpenToolCall={onOpenToolCall} />;
+  }
 }
 
 export const TraceDetailPanel = memo(function TraceDetailPanel({
+  isRequestSelected,
   record,
   step,
   onClose,
+  onOpenAssistant,
+  onOpenRequest,
+  onOpenToolCall,
 }: TraceDetailPanelProps) {
   const shouldReduceMotion = useReducedMotion();
-  const rawJson = JSON.stringify(record.raw, null, 2);
 
   return (
     <motion.aside
       animate={{ opacity: 1, x: 0 }}
-      className="flex h-full min-h-0 flex-col bg-background"
+      className="flex h-full min-h-0 flex-col bg-background [&_[role=tabpanel]]:pb-12!"
       initial={shouldReduceMotion ? false : { opacity: 0, x: 16 }}
       transition={shouldReduceMotion ? { duration: 0 } : DETAIL_TRANSITION}
     >
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-separator px-3">
-        <TraceKindChip kind={record.kind} />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">{record.label}</span>
+        {isRequestSelected ? (
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-accent" />
+        ) : (
+          <TraceKindChip kind={record.kind} status={record.status} />
+        )}
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">
+          {isRequestSelected ? `Request #${record.request ?? "—"}` : record.label}
+        </span>
         <span className="shrink-0 text-[11px] text-muted">
-          {record.turn > 0 ? `Turn ${record.turn} · Step ${step}` : "Session 事件"}
+          {record.turn > 0
+            ? isRequestSelected
+              ? `Turn ${record.turn}`
+              : `Turn ${record.turn} · Step ${step}`
+            : "Session 事件"}
         </span>
         <Tooltip delay={0}>
           <Button
@@ -61,102 +120,13 @@ export const TraceDetailPanel = memo(function TraceDetailPanel({
         </Tooltip>
       </div>
 
-      <Tabs
-        className="flex min-h-0 flex-1 flex-col gap-0!"
-        defaultSelectedKey="summary"
-        variant="secondary"
-      >
-        <Tabs.ListContainer className="shrink-0 px-2">
-          <Tabs.List aria-label="轨迹详情分类">
-            <Tabs.Tab className="text-xs" id="summary">
-              摘要
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab className="text-xs" id="preview">
-              预览
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab className="text-xs" id="raw">
-              原始数据
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab className="text-xs" id="source">
-              来源
-              <Tabs.Indicator />
-            </Tabs.Tab>
-          </Tabs.List>
-        </Tabs.ListContainer>
-
-        <Tabs.Panel className="mt-0! min-h-0 flex-1 overflow-auto px-3 py-2" id="summary">
-          <dl className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 text-xs">
-            <dt className="text-muted">来源</dt>
-            <dd>{record.source}</dd>
-            <dt className="text-muted">状态</dt>
-            <dd>
-              <Chip color={AGENT_TRACE_STATUS_COLORS[record.status]} size="sm" variant="soft">
-                {AGENT_TRACE_STATUS_LABELS[record.status]}
-              </Chip>
-            </dd>
-            <dt className="text-muted">耗时</dt>
-            <dd className="tabular-nums">{formatTraceDuration(record.durationMs)}</dd>
-            <dt className="text-muted">开始时间</dt>
-            <dd className="tabular-nums">{formatTraceDuration(record.startMs)}</dd>
-            {record.errorCode ? (
-              <>
-                <dt className="text-muted">错误码</dt>
-                <dd className="break-all font-mono text-[11px] text-danger">{record.errorCode}</dd>
-              </>
-            ) : null}
-            {record.tokenUsage ? (
-              <>
-                <dt className="text-muted">Token</dt>
-                <dd className="tabular-nums">{record.tokenUsage.total.toLocaleString()} 总计</dd>
-                <dt className="text-muted">输入 / 输出</dt>
-                <dd className="tabular-nums">
-                  {record.tokenUsage.input.toLocaleString()} /{" "}
-                  {record.tokenUsage.output.toLocaleString()}
-                </dd>
-                <dt className="text-muted">缓存读 / 写</dt>
-                <dd className="tabular-nums">
-                  {record.tokenUsage.cacheRead.toLocaleString()} /{" "}
-                  {record.tokenUsage.cacheWrite.toLocaleString()}
-                </dd>
-              </>
-            ) : null}
-          </dl>
-          <div className="mt-3">
-            <h3 className="text-xs font-medium">概要</h3>
-            <p className="mt-1 text-xs leading-5 text-muted">{record.summary}</p>
-          </div>
-        </Tabs.Panel>
-
-        <Tabs.Panel className="mt-0! min-h-0 flex-1 overflow-auto px-3 py-2" id="preview">
-          <p className="whitespace-pre-wrap text-xs leading-5 text-foreground">{record.preview}</p>
-        </Tabs.Panel>
-
-        <Tabs.Panel className="mt-0! min-h-0 flex-1 overflow-auto p-2" id="raw">
-          <CodeBlock className="rounded-md! border-0!">
-            <CodeBlock.Header>
-              <span>{record.id}.json</span>
-              <CodeBlock.CopyButton aria-label="复制原始轨迹数据" code={rawJson} />
-            </CodeBlock.Header>
-            <CodeBlock.Code code={rawJson} language="json" />
-          </CodeBlock>
-        </Tabs.Panel>
-
-        <Tabs.Panel className="mt-0! min-h-0 flex-1 overflow-auto px-3 py-2" id="source">
-          <dl className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 text-xs">
-            <dt className="text-muted">记录 ID</dt>
-            <dd className="break-all font-mono text-[11px]">{record.id}</dd>
-            <dt className="text-muted">通道</dt>
-            <dd>{AGENT_TRACE_LANE_LABELS[record.lane]}</dd>
-            <dt className="text-muted">轮次</dt>
-            <dd className="tabular-nums">{record.turn > 0 ? record.turn : "Session"}</dd>
-            <dt className="text-muted">采集来源</dt>
-            <dd>{record.source}</dd>
-          </dl>
-        </Tabs.Panel>
-      </Tabs>
+      <TraceDetails
+        isRequestSelected={isRequestSelected}
+        record={record}
+        onOpenAssistant={onOpenAssistant}
+        onOpenRequest={onOpenRequest}
+        onOpenToolCall={onOpenToolCall}
+      />
     </motion.aside>
   );
 });

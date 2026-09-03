@@ -27,7 +27,7 @@ import {
 } from "@pi-harness/tools";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
 import { CONTEXT_WINDOW_EXCEEDED_ERROR_CODE, projectContext } from "./context/context-pipeline.js";
-import { adaptAgentEvent } from "./event-adapter.js";
+import { type AgentEventAdapterContext, adaptAgentEvent } from "./event-adapter.js";
 import {
   ApprovalDecision,
   type ApprovalRequestedData,
@@ -44,6 +44,7 @@ import {
   HarnessEventType,
   type RunId,
   type RunInteractionData,
+  type RunStartedData,
   type SessionId,
 } from "./harness-event.js";
 import type { ThinkingLevel } from "./thinking-level.js";
@@ -89,12 +90,10 @@ export interface RestoreRunHistoryInput {
 
 export type HarnessEventListener = (event: HarnessEvent) => Promise<void> | void;
 
-interface ActiveRun {
+interface ActiveRun extends AgentEventAdapterContext {
   approvalPolicy: ApprovalPolicyValue;
   handleAutoFollowUp: ReturnType<typeof createAutoFollowUpHandler>;
-  modelId: string;
   preparationAbortController: AbortController;
-  providerId: string;
   runId: RunId;
   startMessageIndex: number;
   streamFn: StreamFn;
@@ -700,8 +699,21 @@ export class RunCoordinator {
 
     this.agent.state.model = input.model;
     this.setSupportsImageInput(input.model.input.includes("image"));
-    this.agent.state.thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
+    const thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
+    this.agent.state.thinkingLevel = thinkingLevel;
     this.agent.state.systemPrompt = input.systemPrompt;
+    const runStartedData = {
+      maxTokens: input.model.maxTokens,
+      modelId: input.modelId,
+      providerId: input.providerId,
+      systemPrompt: input.systemPrompt,
+      thinkingLevel,
+      tools: this.agent.state.tools.map(({ description, name, parameters }) => ({
+        description,
+        name,
+        parameters,
+      })),
+    } satisfies RunStartedData;
     let requestIndex = 0;
     this.agent.streamFunction = async (model, context, options) => {
       requestIndex += 1;
@@ -729,9 +741,8 @@ export class RunCoordinator {
     this.activeRun = {
       approvalPolicy: input.approvalPolicy,
       handleAutoFollowUp: createAutoFollowUpHandler((message) => this.agent.followUp(message)),
-      modelId: input.modelId,
       preparationAbortController,
-      providerId: input.providerId,
+      ...runStartedData,
       runId: input.runId,
       startMessageIndex: this.agent.state.messages.length,
       streamFn: input.streamFn,
@@ -756,7 +767,7 @@ export class RunCoordinator {
       } catch (error: unknown) {
         await this.emit(
           {
-            data: { modelId: input.modelId, providerId: input.providerId },
+            data: runStartedData,
             type: HarnessEventType.RUN_STARTED,
           },
           input.runId,

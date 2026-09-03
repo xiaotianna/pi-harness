@@ -15,6 +15,7 @@ export const AGENT_TRACE_KIND_LABELS = {
   [AgentTraceRecordKind.APPROVAL]: "APPROVAL",
   [AgentTraceRecordKind.ASSISTANT]: "ASSISTANT",
   [AgentTraceRecordKind.CONTEXT]: "CONTEXT",
+  [AgentTraceRecordKind.RUN]: "RUN",
   [AgentTraceRecordKind.SYSTEM]: "SYSTEM",
   [AgentTraceRecordKind.TOOL]: "TOOL",
   [AgentTraceRecordKind.USER]: "USER",
@@ -33,6 +34,10 @@ export const AGENT_TRACE_KIND_STYLES = {
     chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--success-soft)] [--chip-fg:var(--success-soft-foreground)]`,
     timelineClassName: "bg-success/65",
   },
+  [AgentTraceRecordKind.RUN]: {
+    chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--default)] [--chip-fg:var(--default-foreground)]`,
+    timelineClassName: "bg-muted/70",
+  },
   [AgentTraceRecordKind.SYSTEM]: {
     chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--default)] [--chip-fg:var(--default-foreground)]`,
     timelineClassName: "bg-muted/70",
@@ -50,6 +55,20 @@ export const AGENT_TRACE_KIND_STYLES = {
   { chipClassName: string; timelineClassName: string }
 >;
 
+export const AGENT_TRACE_RUN_STATUS_CHIP_CLASS_NAMES = {
+  [AgentTraceStatus.ABORTED]: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--warning-soft)] [--chip-fg:var(--warning-soft-foreground)]`,
+  [AgentTraceStatus.COMPLETED]: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--success-soft)] [--chip-fg:var(--success-soft-foreground)]`,
+  [AgentTraceStatus.FAILED]: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--danger-soft)] [--chip-fg:var(--danger-soft-foreground)]`,
+  [AgentTraceStatus.RUNNING]: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--accent-soft)] [--chip-fg:var(--accent-soft-foreground)]`,
+} as const satisfies Record<AgentTraceStatus, string>;
+
+export const AGENT_TRACE_RUN_STATUS_TIMELINE_CLASS_NAMES = {
+  [AgentTraceStatus.ABORTED]: "bg-warning/75",
+  [AgentTraceStatus.COMPLETED]: "bg-success/65",
+  [AgentTraceStatus.FAILED]: "bg-danger/75",
+  [AgentTraceStatus.RUNNING]: "bg-accent/75",
+} as const satisfies Record<AgentTraceStatus, string>;
+
 export const AGENT_TRACE_STATUS_LABELS = {
   [AgentTraceStatus.ABORTED]: "已中止",
   [AgentTraceStatus.COMPLETED]: "已完成",
@@ -57,9 +76,9 @@ export const AGENT_TRACE_STATUS_LABELS = {
   [AgentTraceStatus.RUNNING]: "运行中",
 } as const;
 
-export const AGENT_TRACE_STATUS_COLORS = {
-  [AgentTraceStatus.ABORTED]: "warning",
-  [AgentTraceStatus.COMPLETED]: "success",
-  [AgentTraceStatus.FAILED]: "danger",
-  [AgentTraceStatus.RUNNING]: "accent",
+export const AGENT_TRACE_DETAIL_STATUS_LABELS = {
+  [AgentTraceStatus.ABORTED]: "Aborted",
+  [AgentTraceStatus.COMPLETED]: "Completed",
+  [AgentTraceStatus.FAILED]: "Failed",
+  [AgentTraceStatus.RUNNING]: "Running",
 } as const;

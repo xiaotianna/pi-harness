@@ -1,10 +1,32 @@
 import { Chip } from "@heroui/react";
-import { AGENT_TRACE_KIND_LABELS, AGENT_TRACE_KIND_STYLES } from "../constants/agent-trace";
-import type { AgentTraceRecordKind } from "../types/agent-trace";
+import {
+  AGENT_TRACE_KIND_LABELS,
+  AGENT_TRACE_KIND_STYLES,
+  AGENT_TRACE_RUN_STATUS_CHIP_CLASS_NAMES,
+} from "../constants/agent-trace";
+import {
+  type AgentTraceRecordKind,
+  AgentTraceRecordKind as AgentTraceRecordKindValue,
+  type AgentTraceStatus,
+} from "../types/agent-trace";
 
-export function TraceKindChip({ kind }: { kind: AgentTraceRecordKind }) {
+export function TraceKindChip({
+  kind,
+  status,
+}: {
+  kind: AgentTraceRecordKind;
+  status: AgentTraceStatus;
+}) {
   return (
-    <Chip className={AGENT_TRACE_KIND_STYLES[kind].chipClassName} size="sm" variant="soft">
+    <Chip
+      className={
+        kind === AgentTraceRecordKindValue.RUN
+          ? AGENT_TRACE_RUN_STATUS_CHIP_CLASS_NAMES[status]
+          : AGENT_TRACE_KIND_STYLES[kind].chipClassName
+      }
+      size="sm"
+      variant="soft"
+    >
       {AGENT_TRACE_KIND_LABELS[kind]}
     </Chip>
   );

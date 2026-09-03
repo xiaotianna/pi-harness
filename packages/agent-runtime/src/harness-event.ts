@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { Usage } from "@earendil-works/pi-ai";
+import type { ModelThinkingLevel, Usage } from "@earendil-works/pi-ai";
 import { isPlainObject } from "es-toolkit";
 
 export type SessionId = string;
@@ -178,9 +178,19 @@ export interface HarnessEvent<TData = unknown> {
  * 下面的都是data字段的类型，提供 HarnessEvent<TData> 的TData
  */
 // 对应 run.started 事件
+export interface RunToolDefinition {
+  description: string;
+  name: string;
+  parameters: unknown;
+}
+
 export interface RunStartedData {
-  providerId: string;
+  maxTokens: number;
   modelId: string;
+  providerId: string;
+  systemPrompt: string;
+  thinkingLevel: ModelThinkingLevel;
+  tools: RunToolDefinition[];
 }
 
 // context.usage_snapshot：一次模型请求前的完整 Session Context 用量，不是单轮消息用量

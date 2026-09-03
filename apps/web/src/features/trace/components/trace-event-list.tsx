@@ -1,7 +1,7 @@
 "use client";
 
 import { EmptyState } from "@agile-avocation/ui-pro/empty-state";
-import { Button } from "@heroui/react";
+import { Button, Tooltip } from "@heroui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { SearchX } from "lucide-react";
 import { memo, useEffect, useMemo, useRef } from "react";
@@ -67,6 +67,8 @@ export interface TraceEventListProps {
   range: AgentTraceRange | null;
   records: readonly AgentTraceRecord[];
   selectedRecordId: string | null;
+  selectedRequestRecordId: string | null;
+  onOpenRequest: (recordId: string) => void;
   onSelect: (record: AgentTraceRecord) => void;
 }
 
@@ -74,13 +76,18 @@ export const TraceEventList = memo(function TraceEventList({
   range,
   records,
   selectedRecordId,
+  selectedRequestRecordId,
+  onOpenRequest,
   onSelect,
 }: TraceEventListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const items = useMemo(() => toTraceEventListItems(records), [records]);
   const selectedIndex = useMemo(
-    () => items.findIndex((item) => item.record.id === selectedRecordId),
-    [items, selectedRecordId],
+    () =>
+      selectedRequestRecordId === null
+        ? items.findIndex((item) => item.record.id === selectedRecordId)
+        : -1,
+    [items, selectedRecordId, selectedRequestRecordId],
   );
   const selectedTurn = selectedIndex >= 0 ? (items[selectedIndex]?.record.turn ?? null) : null;
   const virtualizer = useVirtualizer({
@@ -130,7 +137,7 @@ export const TraceEventList = memo(function TraceEventList({
 
           const { record, isTurnStart } = item;
           const isInRange = isTraceRecordInRange(record.startMs, record.durationMs, range);
-          const isSelected = record.id === selectedRecordId;
+          const isSelected = selectedRequestRecordId === null && record.id === selectedRecordId;
 
           return (
             <li
@@ -141,6 +148,28 @@ export const TraceEventList = memo(function TraceEventList({
                 transform: `translateY(${virtualItem.start}px)`,
               }}
             >
+              {record.request !== undefined ? (
+                <Tooltip delay={0}>
+                  <Button
+                    aria-label={`查看 Request #${record.request}`}
+                    aria-pressed={selectedRequestRecordId === record.id}
+                    className="group absolute top-0 left-2.5 z-40 h-5! min-h-5! w-5! min-w-5! -translate-x-1/2 -translate-y-1/2 rounded-full! p-0! [--button-bg:transparent] [--button-bg-hover:transparent] [--button-bg-pressed:transparent]"
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => onOpenRequest(record.id)}
+                  >
+                    <span
+                      aria-hidden
+                      className={`rounded-full border-2 ${
+                        selectedRequestRecordId === record.id
+                          ? "size-2 border-accent bg-accent/20"
+                          : "size-2 border-background bg-muted group-hover:bg-accent group-focus-visible:bg-accent"
+                      }`}
+                    />
+                  </Button>
+                  <Tooltip.Content placement="right">Request #{record.request}</Tooltip.Content>
+                </Tooltip>
+              ) : null}
               <Button
                 fullWidth
                 aria-label={`查看轨迹记录：${record.label}`}
@@ -160,7 +189,7 @@ export const TraceEventList = memo(function TraceEventList({
                   />
                   <span className="flex min-w-0 flex-1 items-center gap-2 pr-3">
                     <span className="flex w-20 shrink-0 justify-end">
-                      <TraceKindChip kind={record.kind} />
+                      <TraceKindChip kind={record.kind} status={record.status} />
                     </span>
                     <span
                       className={`min-w-0 truncate text-xs ${isSelected ? "text-foreground" : "text-muted"}`}
