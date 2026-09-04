@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { isThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import {
   type Api,
   type AuthPrompt,
@@ -374,7 +373,7 @@ export class ProviderService {
             maxTokens: model.maxTokens,
             name: model.name,
             reasoning: model.reasoning,
-            thinkingLevels: getSupportedThinkingLevels(model).filter(isThinkingLevel),
+            thinkingLevels: getSupportedThinkingLevels(model),
           })),
           name: provider.name,
           protocol: custom?.protocol ?? null,

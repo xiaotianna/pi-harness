@@ -21,9 +21,13 @@ const ProviderSchema = Type.Object({
       reasoning: Type.Boolean(),
       thinkingLevels: Type.Array(
         Type.Union([
+          Type.Literal(ThinkingLevel.OFF),
+          Type.Literal(ThinkingLevel.MINIMAL),
           Type.Literal(ThinkingLevel.LOW),
           Type.Literal(ThinkingLevel.MEDIUM),
           Type.Literal(ThinkingLevel.HIGH),
+          Type.Literal(ThinkingLevel.XHIGH),
+          Type.Literal(ThinkingLevel.MAX),
         ]),
       ),
     }),

@@ -68,6 +68,7 @@ export { shouldResetWorkingStateForNewRun } from "./run-coordinator.js";
 export {
   DEFAULT_THINKING_LEVEL,
   isThinkingLevel,
+  resolveThinkingLevel,
   THINKING_LEVELS,
   ThinkingLevel,
   type ThinkingLevel as ThinkingLevelValue,

@@ -14,7 +14,10 @@ import {
   Switch,
   toast,
 } from "@heroui/react";
-import { DEFAULT_THINKING_LEVEL } from "@pi-harness/agent-runtime/thinking-level";
+import {
+  DEFAULT_THINKING_LEVEL,
+  resolveThinkingLevel,
+} from "@pi-harness/agent-runtime/thinking-level";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
@@ -174,7 +177,10 @@ export function ModelSettingsPanel() {
                   defaultModel: {
                     modelId: model.id,
                     providerId: provider.id,
-                    thinkingLevel: settings?.defaultModel?.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+                    thinkingLevel: resolveThinkingLevel(
+                      model.thinkingLevels,
+                      settings?.defaultModel?.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+                    ),
                   },
                 }).catch((error: unknown) => {
                   toast.danger(error instanceof Error ? error.message : "保存默认模型失败");

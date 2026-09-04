@@ -10,6 +10,7 @@ export type {
   Provider,
 } from "@earendil-works/pi-ai";
 export {
+  clampThinkingLevel,
   createProvider,
   envApiKeyAuth,
   getSupportedThinkingLevels,

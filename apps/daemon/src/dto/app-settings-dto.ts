@@ -14,9 +14,13 @@ export const DefaultModelSettingDtoSchema = Type.Object({
   modelId: Type.String({ maxLength: 200, minLength: 1 }),
   providerId: Type.String({ maxLength: 200, minLength: 1 }),
   thinkingLevel: Type.Union([
+    Type.Literal(ThinkingLevel.OFF),
+    Type.Literal(ThinkingLevel.MINIMAL),
     Type.Literal(ThinkingLevel.LOW),
     Type.Literal(ThinkingLevel.MEDIUM),
     Type.Literal(ThinkingLevel.HIGH),
+    Type.Literal(ThinkingLevel.XHIGH),
+    Type.Literal(ThinkingLevel.MAX),
   ]),
 });
 

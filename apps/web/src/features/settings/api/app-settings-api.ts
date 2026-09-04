@@ -16,9 +16,13 @@ const DefaultModelSettingSchema = Type.Object({
   modelId: Type.String({ minLength: 1 }),
   providerId: Type.String({ minLength: 1 }),
   thinkingLevel: Type.Union([
+    Type.Literal(ThinkingLevel.OFF),
+    Type.Literal(ThinkingLevel.MINIMAL),
     Type.Literal(ThinkingLevel.LOW),
     Type.Literal(ThinkingLevel.MEDIUM),
     Type.Literal(ThinkingLevel.HIGH),
+    Type.Literal(ThinkingLevel.XHIGH),
+    Type.Literal(ThinkingLevel.MAX),
   ]),
 });
 

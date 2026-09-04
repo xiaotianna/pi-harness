@@ -34,6 +34,7 @@ import {
 import type { HarnessEvent } from "@pi-harness/agent-runtime/harness-event";
 import {
   DEFAULT_THINKING_LEVEL,
+  resolveThinkingLevel,
   ThinkingLevel,
   type ThinkingLevel as ThinkingLevelValue,
 } from "@pi-harness/agent-runtime/thinking-level";
@@ -174,9 +175,13 @@ const COMMAND_OPTIONS = [
 ] as const;
 
 const THINKING_LEVEL_OPTIONS = [
+  { description: "关闭扩展推理", label: "关闭", value: ThinkingLevel.OFF },
+  { description: "最少推理，响应最快", label: "最少", value: ThinkingLevel.MINIMAL },
   { description: "响应更快、成本更低", label: "低", value: ThinkingLevel.LOW },
   { description: "默认均衡", label: "中", value: ThinkingLevel.MEDIUM },
   { description: "质量更好，但更慢、更贵", label: "高", value: ThinkingLevel.HIGH },
+  { description: "更深入地分析复杂任务", label: "极高", value: ThinkingLevel.XHIGH },
+  { description: "使用模型支持的最高强度", label: "最高", value: ThinkingLevel.MAX },
 ] as const;
 
 const MODEL_MENU_LAYOUT_OPTIONS = { gap: 2, padding: 6, rowSize: 36 } as const;
@@ -273,10 +278,11 @@ function MobileModelPicker({
                       if (option) onThinkingLevelChange(option.value);
                     }}
                   >
-                    {THINKING_LEVEL_OPTIONS.map((option) => (
+                    {THINKING_LEVEL_OPTIONS.filter((option) =>
+                      selectedModel?.thinkingLevels.includes(option.value),
+                    ).map((option) => (
                       <ListBox.Item
                         id={option.value}
-                        isDisabled={!selectedModel?.thinkingLevels.includes(option.value)}
                         key={option.value}
                         textValue={`${option.label} ${option.description}`}
                       >
@@ -617,8 +623,12 @@ export function ChatComposer({
   const selectedModel = selectedModelProvider?.models.find(
     (model) => createModelSelectionKey(selectedModelProvider.id, model.id) === selectedModelKey,
   );
-  const selectedThinkingLevel =
+  const configuredThinkingLevel =
     thinkingLevel ?? settings?.defaultModel?.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
+  const selectedThinkingLevel = resolveThinkingLevel(
+    selectedModel?.thinkingLevels ?? [],
+    configuredThinkingLevel,
+  );
   const selectedThinkingLevelOption = THINKING_LEVEL_OPTIONS.find(
     (option) => option.value === selectedThinkingLevel,
   );
@@ -722,12 +732,13 @@ export function ChatComposer({
       (item) => createModelSelectionKey(provider.id, item.id) === modelKey,
     );
     if (!provider || !model) return;
+    const nextThinkingLevel = resolveThinkingLevel(model.thinkingLevels, selectedThinkingLevel);
     if (!conversationId) {
       void updateSettings({
         defaultModel: {
           modelId: model.id,
           providerId: provider.id,
-          thinkingLevel: selectedThinkingLevel,
+          thinkingLevel: nextThinkingLevel,
         },
       }).catch((error: unknown) => {
         toast.danger(error instanceof Error ? error.message : "保存默认模型失败");
@@ -742,7 +753,7 @@ export function ChatComposer({
     void onModelChange({
       modelId: model.id,
       providerId: provider.id,
-      thinkingLevel: selectedThinkingLevel,
+      thinkingLevel: nextThinkingLevel,
     })
       .then(() => setConversationModelKey(conversationId, modelKey))
       .catch((error: unknown) => {
@@ -1297,11 +1308,12 @@ export function ChatComposer({
                             if (option) handleThinkingLevelChange(option.value);
                           }}
                         >
-                          {THINKING_LEVEL_OPTIONS.map((option) => (
+                          {THINKING_LEVEL_OPTIONS.filter((option) =>
+                            selectedModel?.thinkingLevels.includes(option.value),
+                          ).map((option) => (
                             <Dropdown.Item
                               className="ps-2 pe-7"
                               id={option.value}
-                              isDisabled={!selectedModel?.thinkingLevels.includes(option.value)}
                               key={option.value}
                               textValue={`${option.label} ${option.description}`}
                             >

@@ -5,9 +5,13 @@ import { type Static, Type } from "typebox";
 
 const IdentifierSchema = Type.String({ maxLength: 256, minLength: 1 });
 const ThinkingLevelSchema = Type.Union([
+  Type.Literal(ThinkingLevel.OFF),
+  Type.Literal(ThinkingLevel.MINIMAL),
   Type.Literal(ThinkingLevel.LOW),
   Type.Literal(ThinkingLevel.MEDIUM),
   Type.Literal(ThinkingLevel.HIGH),
+  Type.Literal(ThinkingLevel.XHIGH),
+  Type.Literal(ThinkingLevel.MAX),
 ]);
 
 export const SessionParamsDtoSchema = Type.Object({

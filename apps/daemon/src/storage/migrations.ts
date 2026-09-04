@@ -202,4 +202,29 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       );
     `,
   },
+  {
+    version: "013-model-thinking-levels.sql",
+    sql: `
+      CREATE TEMP TABLE session_thinking_levels (
+        session_id TEXT PRIMARY KEY,
+        thinking_level TEXT NOT NULL
+      ) STRICT;
+
+      INSERT INTO session_thinking_levels (session_id, thinking_level)
+      SELECT id, thinking_level FROM sessions;
+
+      ALTER TABLE sessions DROP COLUMN thinking_level;
+      ALTER TABLE sessions ADD COLUMN thinking_level TEXT NOT NULL DEFAULT 'medium'
+        CHECK (thinking_level IN ('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'));
+
+      UPDATE sessions
+      SET thinking_level = (
+        SELECT thinking_level
+        FROM session_thinking_levels
+        WHERE session_id = sessions.id
+      );
+
+      DROP TABLE session_thinking_levels;
+    `,
+  },
 ];

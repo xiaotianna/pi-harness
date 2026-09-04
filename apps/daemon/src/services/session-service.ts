@@ -27,7 +27,12 @@ import {
   ThinkingLevel as ThinkingLevels,
 } from "@pi-harness/agent-runtime/thinking-level";
 import { resolveWorkspacePath } from "@pi-harness/policy";
-import { type Api, getSupportedThinkingLevels, type Model } from "@pi-harness/providers";
+import {
+  type Api,
+  clampThinkingLevel,
+  getSupportedThinkingLevels,
+  type Model,
+} from "@pi-harness/providers";
 import { isPlainObject } from "es-toolkit";
 import {
   buildSessionTitlePrompt,
@@ -40,12 +45,12 @@ import type {
   WorkspaceRepository,
 } from "../storage/database.js";
 import type { SessionEventSnapshot, SessionEventStore } from "../storage/session-event-store.js";
+import { projectSessionConversationEvents } from "../utils/session-conversation.js";
 import {
   createSessionSearchDocument,
   createSessionSearchExcerpt,
   normalizeSessionSearchQuery,
 } from "../utils/session-search.js";
-import { projectSessionConversationEvents } from "../utils/session-conversation.js";
 import {
   buildSessionTitleSource,
   createFallbackSessionTitle,
@@ -270,14 +275,14 @@ export class SessionService {
     if (!workspace || workspace.removedAt !== null) {
       throw new SessionServiceError(SessionErrorCode.WORKSPACE_INVALID, "Workspace 不存在");
     }
-    await this.providers.resolveRunModel(input.providerId, input.modelId);
+    const { model } = await this.providers.resolveRunModel(input.providerId, input.modelId);
     const createdAt = Date.now();
     return this.sessions.create({
       createdAt,
       id: randomUUID(),
       modelId: input.modelId,
       providerId: input.providerId,
-      thinkingLevel: input.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+      thinkingLevel: clampThinkingLevel(model, input.thinkingLevel ?? DEFAULT_THINKING_LEVEL),
       title: normalizeTitle(input.title),
       workspaceId: input.workspaceId,
     });
@@ -438,9 +443,12 @@ export class SessionService {
     modelId: string,
     thinkingLevel?: ThinkingLevel,
   ): Promise<SessionRecord> {
-    this.getRequiredSession(sessionId);
-    await this.providers.resolveRunModel(providerId, modelId);
-    if (!this.sessions.updateModel(sessionId, providerId, modelId, thinkingLevel, Date.now())) {
+    const session = this.getRequiredSession(sessionId);
+    const { model } = await this.providers.resolveRunModel(providerId, modelId);
+    const resolvedThinkingLevel = clampThinkingLevel(model, thinkingLevel ?? session.thinkingLevel);
+    if (
+      !this.sessions.updateModel(sessionId, providerId, modelId, resolvedThinkingLevel, Date.now())
+    ) {
       throw new SessionServiceError(SessionErrorCode.NOT_FOUND, "Session 不存在");
     }
     return this.getRequiredSession(sessionId);
