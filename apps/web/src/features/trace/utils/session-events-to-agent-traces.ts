@@ -4,6 +4,7 @@ import {
   HarnessEventType,
   isContextCompactedData,
   isMessageBranchStartedData,
+  type RunContextData,
 } from "@pi-harness/agent-runtime/harness-event";
 import { BusySubmitBehavior, isHarnessUserMessage } from "@pi-harness/agent-runtime/user-input";
 import { isPlainObject } from "es-toolkit";
@@ -71,6 +72,18 @@ function readToolDefinitions(value: unknown): AgentTraceToolDefinition[] {
   return value.flatMap((tool) =>
     isPlainObject(tool) && typeof tool.name === "string" && typeof tool.description === "string"
       ? [{ description: tool.description, name: tool.name, parameters: tool.parameters }]
+      : [],
+  );
+}
+
+function readRunContexts(value: unknown): RunContextData[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((context) =>
+    isPlainObject(context) &&
+    typeof context.content === "string" &&
+    typeof context.label === "string" &&
+    typeof context.type === "string"
+      ? [{ content: context.content, label: context.label, type: context.type }]
       : [],
   );
 }
@@ -706,6 +719,7 @@ export function sessionEventsToAgentTraces(
     if (runStarted) {
       const data = isPlainObject(runStarted.data) ? runStarted.data : {};
       const systemPrompt = typeof data.systemPrompt === "string" ? data.systemPrompt : "";
+      const contexts = readRunContexts(data.contexts);
       const tools = readToolDefinitions(data.tools);
       records.push({
         durationMs: 0,
@@ -735,6 +749,28 @@ export function sessionEventsToAgentTraces(
         ...(systemPrompt ? { systemPrompt: { content: systemPrompt, tools } } : {}),
         turn: 0,
       });
+      for (const [index, context] of contexts.entries()) {
+        records.push({
+          durationMs: 0,
+          id: `${runStarted.id}:context:${context.type}:${index}`,
+          kind: AgentTraceRecordKind.CONTEXT,
+          label: context.label,
+          lane: AgentTraceLane.INPUT,
+          preview: clip(context.content),
+          raw: {
+            context: context.content,
+            contextType: context.type,
+            eventId: runStarted.id,
+            runId: trace.traceId,
+            seq: runStarted.seq,
+          },
+          source: HarnessEventType.RUN_STARTED,
+          startMs: runOffset,
+          status: AgentTraceStatus.COMPLETED,
+          summary: `本次 Run 使用的 ${context.label} Context。`,
+          turn: 0,
+        });
+      }
     }
 
     const runTerminal = runEvents.findLast(

@@ -184,7 +184,18 @@ export interface RunToolDefinition {
   parameters: unknown;
 }
 
+export interface RunContextData {
+  content: string;
+  label: string;
+  type: string;
+}
+
+export interface RunContextUsageData extends Omit<RunContextData, "content"> {
+  tokens: number;
+}
+
 export interface RunStartedData {
+  contexts: RunContextData[];
   maxTokens: number;
   modelId: string;
   providerId: string;
@@ -196,6 +207,7 @@ export interface RunStartedData {
 // context.usage_snapshot：一次模型请求前的完整 Session Context 用量，不是单轮消息用量
 export interface ContextUsageSnapshotData {
   conversationTokens: number;
+  contexts: RunContextUsageData[];
   estimatedTotalTokens: number;
   requestIndex: number;
   systemPromptTokens: number;

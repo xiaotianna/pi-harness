@@ -9,6 +9,7 @@ import {
   Separator,
 } from "@heroui/react";
 import type { HarnessEvent } from "@pi-harness/agent-runtime/harness-event";
+import { sumBy } from "es-toolkit";
 import { useMemo, useState } from "react";
 import { readSessionContextCheckpoints } from "../utils/context-checkpoints";
 import type { ContextUsageSnapshot, SessionUsageSummary } from "../utils/session-usage";
@@ -21,9 +22,14 @@ const COMPACT_NUMBER_FORMATTER = new Intl.NumberFormat("en-US", {
 const INTEGER_FORMATTER = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 const CONTEXT_CATEGORY_STYLES = {
   CONVERSATION: "bg-accent",
+  CONTEXT: ["bg-success/75", "bg-success/55", "bg-success/35", "bg-success/20"],
   SYSTEM_PROMPT: "bg-muted/55",
   TOOL: "bg-warning/60",
 } as const;
+
+function readContextCategoryStyle(index: number): string {
+  return CONTEXT_CATEGORY_STYLES.CONTEXT[index % CONTEXT_CATEGORY_STYLES.CONTEXT.length] ?? "";
+}
 
 function formatTokens(value: number): string {
   return COMPACT_NUMBER_FORMATTER.format(value);
@@ -75,17 +81,28 @@ function reconcileContextBreakdown(
   contextTokens: number,
 ): ContextUsageSnapshot {
   const estimatedTotal =
-    snapshot.systemPromptTokens + snapshot.toolTokens + snapshot.conversationTokens;
+    snapshot.systemPromptTokens +
+    sumBy(snapshot.contexts, ({ tokens }) => tokens) +
+    snapshot.toolTokens +
+    snapshot.conversationTokens;
   if (estimatedTotal <= 0 || contextTokens <= 0 || estimatedTotal === contextTokens)
     return snapshot;
 
   const systemPromptTokens = Math.floor(
     (snapshot.systemPromptTokens / estimatedTotal) * contextTokens,
   );
+  const contexts = snapshot.contexts.map((context) => ({
+    ...context,
+    tokens: Math.floor((context.tokens / estimatedTotal) * contextTokens),
+  }));
   const toolTokens = Math.floor((snapshot.toolTokens / estimatedTotal) * contextTokens);
   return {
     ...snapshot,
-    conversationTokens: Math.max(0, contextTokens - systemPromptTokens - toolTokens),
+    conversationTokens: Math.max(
+      0,
+      contextTokens - systemPromptTokens - sumBy(contexts, ({ tokens }) => tokens) - toolTokens,
+    ),
+    contexts,
     systemPromptTokens,
     toolTokens,
   };
@@ -215,6 +232,11 @@ export function ContextUsagePopover({
                             key: "system-prompt",
                             tokens: contextBreakdown.systemPromptTokens,
                           },
+                          ...contextBreakdown.contexts.map((context, index) => ({
+                            className: readContextCategoryStyle(index),
+                            key: `context-${context.type}-${index}`,
+                            tokens: context.tokens,
+                          })),
                           {
                             className: CONTEXT_CATEGORY_STYLES.TOOL,
                             key: "tool",
@@ -251,6 +273,14 @@ export function ContextUsagePopover({
                         markerClassName={CONTEXT_CATEGORY_STYLES.SYSTEM_PROMPT}
                         value={formatTokens(contextBreakdown.systemPromptTokens)}
                       />
+                      {contextBreakdown.contexts.map((context, index) => (
+                        <ContextBreakdownMetric
+                          key={`${context.type}-${index}`}
+                          label={context.label}
+                          markerClassName={readContextCategoryStyle(index)}
+                          value={formatTokens(context.tokens)}
+                        />
+                      ))}
                       <ContextBreakdownMetric
                         label="工具定义"
                         markerClassName={CONTEXT_CATEGORY_STYLES.TOOL}
@@ -444,7 +474,7 @@ export function ContextUsagePopover({
                                 <p>
                                   <span className="font-medium text-foreground">当前上下文：</span>
                                   取最近一次模型请求实际携带的完整 Session
-                                  Context，包含系统提示词、工具定义，以及按顺序累积的会话消息、工具调用与结果。
+                                  Context，包含系统提示词、工作区上下文、工具定义，以及按顺序累积的会话消息、工具调用与结果。
                                 </p>
                                 <p>
                                   <span className="font-medium text-foreground">估算方式：</span>

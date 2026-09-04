@@ -5,6 +5,7 @@ import {
   HarnessEventType,
   type MessageDeltaData,
   MessageDeltaKind,
+  type RunContextData,
   type RunFailureData,
   type RunStartedData,
   type RunToolDefinition,
@@ -40,6 +41,7 @@ function sanitizeAgentMessage(message: AgentMessage): AgentMessage {
 }
 
 export interface AgentEventAdapterContext {
+  contexts: readonly RunContextData[];
   maxTokens: number;
   modelId: string;
   providerId: string;
@@ -141,6 +143,7 @@ export function adaptAgentEvent(
     case "agent_start":
       return {
         data: {
+          contexts: [...context.contexts],
           maxTokens: context.maxTokens,
           modelId: context.modelId,
           providerId: context.providerId,

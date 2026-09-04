@@ -58,7 +58,7 @@ export {
   type ToolStartedData,
   type ToolUpdatedData,
 } from "./harness-event.js";
-export { buildSystemPrompt } from "./prompts/system-prompt.js";
+export { buildSystemPrompts } from "./prompts/system-prompt.js";
 export type {
   HarnessEventListener,
   RestoreRunHistoryInput,

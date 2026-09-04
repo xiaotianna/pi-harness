@@ -1,5 +1,5 @@
-import { ListCheck, ListTimeline } from "@gravity-ui/icons";
-import { Chip, Disclosure, ScrollShadow, Surface } from "@heroui/react";
+import { ChevronUp, ListCheck, ListTimeline } from "@gravity-ui/icons";
+import { Disclosure, Separator, Surface } from "@heroui/react";
 import {
   PlanStepStatus,
   type PlanUpdatedData,
@@ -33,86 +33,94 @@ export function WorkingStatePanel({
     plan?.plan.filter((item) => item.status === PlanStepStatus.COMPLETED).length ?? 0;
   const completedTodos =
     todos?.todos.filter((item) => item.status === RuntimeTodoStatus.COMPLETED).length ?? 0;
+  const activePlanStep = activeIndex >= 0 ? plan?.plan[activeIndex]?.step : undefined;
+  const activeTodo =
+    todos?.todos.find((item) => item.status === RuntimeTodoStatus.IN_PROGRESS) ??
+    todos?.todos.find(
+      (item) =>
+        item.status !== RuntimeTodoStatus.COMPLETED && item.status !== RuntimeTodoStatus.CANCELLED,
+    );
 
   return (
-    <Surface
-      className={cn("relative -mb-6 rounded-t-[32px] bg-default pb-6", className)}
-      variant="secondary"
+    <Disclosure
+      className={cn(
+        "relative mx-auto w-[calc(100%-2rem)] pb-3 sm:w-full",
+        plan && todos ? "sm:max-w-[640px]" : "sm:max-w-80",
+        className,
+      )}
+      isExpanded={isExpanded}
+      onExpandedChange={setIsExpanded}
     >
-      <Disclosure isExpanded={isExpanded} onExpandedChange={setIsExpanded}>
-        <Disclosure.Heading className="relative flex h-8 items-center">
-          <Disclosure.Trigger
-            aria-label={isExpanded ? "收起 Plans 和 Todos" : "展开 Plans 和 Todos"}
-            className={cn(
-              "p-0",
-              isExpanded
-                ? "absolute left-1/2 flex size-8 -translate-x-1/2 items-center justify-center"
-                : "ml-4 flex h-8 w-fit items-center justify-start gap-2",
-            )}
-          >
-            {isExpanded ? (
-              <span className="block h-0.5 w-5 rounded-full bg-foreground/80" />
-            ) : (
-              <div className="flex items-center gap-2">
-                {plan ? (
-                  <Chip color="accent" size="sm" variant="soft">
-                    <span className="flex items-center gap-1.5">
-                      <ListTimeline aria-hidden className="size-3.5" />
-                      Plans
-                      <span className="font-mono tabular-nums">
-                        {completedPlanSteps}/{plan.plan.length}
-                      </span>
-                    </span>
-                  </Chip>
-                ) : null}
-                {todos ? (
-                  <Chip color="success" size="sm" variant="soft">
-                    <span className="flex items-center gap-1.5">
-                      <ListCheck aria-hidden className="size-3.5" />
-                      Todos
-                      <span className="font-mono tabular-nums">
-                        {completedTodos}/{todos.todos.length}
-                      </span>
-                    </span>
-                  </Chip>
-                ) : null}
-              </div>
-            )}
-          </Disclosure.Trigger>
-        </Disclosure.Heading>
-        <Disclosure.Content>
-          <Disclosure.Body style={{ padding: 0 }}>
-            <div className={cn("grid gap-8 px-6 pb-2", plan && todos && "sm:grid-cols-2")}>
+      <Disclosure.Content className="absolute inset-x-0 bottom-full z-20 mb-3 w-full">
+        <Disclosure.Body style={{ padding: 0 }}>
+          <Surface className="rounded-[32px] p-4">
+            <div className={cn("grid gap-6", plan && todos && "sm:grid-cols-2")}>
               {plan ? (
-                <ScrollShadow hideScrollBar className="max-h-56 min-w-0" size={24}>
-                  <AgentPlan
-                    activeIndex={activeIndex === -1 ? plan.plan.length : activeIndex}
-                    className="max-w-none"
-                    label="Plans"
-                    steps={plan.plan.map((item) => item.step)}
-                  />
-                </ScrollShadow>
+                <AgentPlan
+                  activeIndex={activeIndex === -1 ? plan.plan.length : activeIndex}
+                  className="max-h-56 max-w-none"
+                  label="Plans"
+                  steps={plan.plan.map((item) => item.step)}
+                />
               ) : null}
               {todos ? (
-                <ScrollShadow hideScrollBar className="max-h-56 min-w-0" size={24}>
-                  <TodoList
-                    className="max-w-none"
-                    items={todos.todos.map((todo) => ({
-                      id: todo.id,
-                      status:
-                        todo.status === RuntimeTodoStatus.IN_PROGRESS
-                          ? TodoStatus.IN_PROGRESS
-                          : todo.status,
-                      text: todo.content,
-                    }))}
-                    revision={todoRevision}
-                  />
-                </ScrollShadow>
+                <TodoList
+                  className="max-h-56 max-w-none"
+                  items={todos.todos.map((todo) => ({
+                    id: todo.id,
+                    status:
+                      todo.status === RuntimeTodoStatus.IN_PROGRESS
+                        ? TodoStatus.IN_PROGRESS
+                        : todo.status,
+                    text: todo.content,
+                  }))}
+                  revision={todoRevision}
+                />
               ) : null}
             </div>
-          </Disclosure.Body>
-        </Disclosure.Content>
-      </Disclosure>
-    </Surface>
+          </Surface>
+        </Disclosure.Body>
+      </Disclosure.Content>
+      <Disclosure.Heading className="flex w-full items-center justify-center">
+        <Disclosure.Trigger
+          aria-label={isExpanded ? "收起 Plans 和 Todos" : "展开 Plans 和 Todos"}
+          className="group relative flex h-10 w-full min-w-0 max-w-full items-center gap-3 rounded-full bg-surface px-4 text-sm text-foreground shadow-surface transition-colors hover:bg-surface-hover data-[focus-visible]:bg-surface-hover data-[pressed]:bg-surface-hover motion-reduce:transition-none"
+        >
+          {plan ? (
+            <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 sm:justify-start">
+              <ListTimeline aria-hidden className="size-4 shrink-0 text-accent" />
+              <span className="shrink-0 font-medium">Plans</span>
+              <span className="shrink-0 font-mono text-xs tabular-nums text-accent">
+                {completedPlanSteps}/{plan.plan.length}
+              </span>
+              {activePlanStep ? (
+                <span className="hidden min-w-0 max-w-40 truncate text-muted sm:inline">
+                  · {activePlanStep}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+          {plan && todos ? <Separator className="h-4 self-center" orientation="vertical" /> : null}
+          {todos ? (
+            <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 sm:justify-start">
+              <ListCheck aria-hidden className="size-4 shrink-0 text-success" />
+              <span className="shrink-0 font-medium">Todos</span>
+              <span className="shrink-0 font-mono text-xs tabular-nums text-success">
+                {completedTodos}/{todos.todos.length}
+              </span>
+              {activeTodo ? (
+                <span className="hidden min-w-0 max-w-40 truncate text-muted sm:inline">
+                  · {activeTodo.content}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+          <ChevronUp
+            aria-hidden
+            className="absolute end-4 size-4 shrink-0 text-muted transition-transform duration-200 group-aria-expanded:rotate-180 motion-reduce:transition-none"
+          />
+        </Disclosure.Trigger>
+      </Disclosure.Heading>
+    </Disclosure>
   );
 }

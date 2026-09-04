@@ -1,8 +1,9 @@
 import type { WorkspaceAgentContext } from "../context/workspace-agent-context.js";
+import type { RunContextData } from "../harness-event.js";
 import { AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION } from "./auto-follow-up-prompt.js";
 import { CONTEXT_CONTINUITY_SYSTEM_INSTRUCTION } from "./context-continuity-prompt.js";
 import { RICH_CONTENT_SYSTEM_INSTRUCTION } from "./rich-content-prompt.js";
-import { buildWorkspaceContextPrompt } from "./workspace-context-prompt.js";
+import { buildWorkspaceContextPrompts } from "./workspace-context-prompt.js";
 
 const BASE_SYSTEM_PROMPT = `You are PI Harness, a local-first coding agent operating in the user's current workspace.
 Understand the request and relevant code before acting. Make the smallest correct change that fully addresses the request, reuse existing project patterns, and verify the result when practical.
@@ -13,15 +14,18 @@ For tasks that use tools, emit a user-visible commentary update before the first
 After that, adapt the timing, content, and level of detail of progress updates to the current task, observed results, risk, and expected wait. Explain what helps the user understand or verify the work, and skip updates that add no useful information. Do not narrate every trivial tool call or expose private chain-of-thought.
 Use the commentary phase for progress updates and the final_answer phase only for the completed result. Lead with the outcome and match the level of detail to the situation and the user's request.`;
 
-/** 组合稳定 Prompt 与每次 Run 重新发现的 workspace 指令和 Skill。 */
-export function buildSystemPrompt(context: WorkspaceAgentContext): string {
-  return [
-    BASE_SYSTEM_PROMPT,
-    RICH_CONTENT_SYSTEM_INSTRUCTION,
-    AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION,
-    CONTEXT_CONTINUITY_SYSTEM_INSTRUCTION,
-    buildWorkspaceContextPrompt(context),
-  ]
-    .filter(Boolean)
-    .join("\n");
+/** 分开记录稳定 Prompt 与每次 Run 重新发现的 workspace 上下文。 */
+export function buildSystemPrompts(context: WorkspaceAgentContext): {
+  contexts: RunContextData[];
+  systemPrompt: string;
+} {
+  return {
+    contexts: buildWorkspaceContextPrompts(context),
+    systemPrompt: [
+      BASE_SYSTEM_PROMPT,
+      RICH_CONTENT_SYSTEM_INSTRUCTION,
+      AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION,
+      CONTEXT_CONTINUITY_SYSTEM_INSTRUCTION,
+    ].join("\n"),
+  };
 }

@@ -642,6 +642,12 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     }
   }
 
+  if (activeRunId) {
+    for (const message of messagesByRunId.get(activeRunId) ?? []) {
+      if (message.type === ChatMessageType.REASONING) message.isActive = true;
+    }
+  }
+
   messagesByEvents.set(sourceEvents, messages);
   return messages;
 }

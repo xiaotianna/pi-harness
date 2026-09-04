@@ -236,7 +236,7 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
         </div>
 
         {selectedRecord ? (
-          <div className="hidden min-h-0 min-w-0 w-[clamp(320px,38%,440px)] max-w-[calc(100%-280px)] flex-col border-l border-separator md:flex">
+          <div className="hidden min-h-0 min-w-0 w-[clamp(320px,32%,400px)] max-w-[calc(100%-280px)] flex-col border-l border-separator md:flex">
             <TraceDetailPanel
               isRequestSelected={selectedRequestRecordId === selectedRecord.id}
               key={selectedRecord.id}

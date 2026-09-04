@@ -1,10 +1,12 @@
 import type { Context, Message } from "@earendil-works/pi-ai";
+import type { RunContextData, RunContextUsageData } from "../harness-event.js";
 
 const APPROXIMATE_ASCII_CHARS_PER_TOKEN = 3;
 const APPROXIMATE_IMAGE_TOKENS = 1_200;
 
 export interface ContextUsageEstimate {
   conversationTokens: number;
+  contexts: RunContextUsageData[];
   estimatedTotalTokens: number;
   systemPromptTokens: number;
   toolTokens: number;
@@ -96,8 +98,17 @@ function estimateConversationTokens(messages: readonly Message[], prefixTokens: 
  * 统计本次请求携带的完整 Session Context；messages 已包含按顺序累积的工具调用与结果。
  * 这里只记录数量，不重复持久化 System Prompt、消息正文或工具参数 Schema。
  */
-export function estimateContextUsage(context: Context): ContextUsageEstimate {
-  const systemPromptTokens = estimateTextTokens(context.systemPrompt ?? "");
+export function estimateContextUsage(
+  context: Context,
+  runContexts: readonly RunContextData[] = [],
+): ContextUsageEstimate {
+  const totalSystemPromptTokens = estimateTextTokens(context.systemPrompt ?? "");
+  let systemPromptTokens = totalSystemPromptTokens;
+  const contexts = runContexts.map(({ content, label, type }) => {
+    const tokens = Math.min(systemPromptTokens, estimateTextTokens(content));
+    systemPromptTokens -= tokens;
+    return { label, tokens, type };
+  });
   const toolTokens = context.tools?.length
     ? estimateTextTokens(
         safeStringify(
@@ -112,12 +123,13 @@ export function estimateContextUsage(context: Context): ContextUsageEstimate {
     : 0;
   const conversationTokens = estimateConversationTokens(
     context.messages,
-    systemPromptTokens + toolTokens,
+    totalSystemPromptTokens + toolTokens,
   );
 
   return {
     conversationTokens,
-    estimatedTotalTokens: systemPromptTokens + toolTokens + conversationTokens,
+    contexts,
+    estimatedTotalTokens: totalSystemPromptTokens + toolTokens + conversationTokens,
     systemPromptTokens,
     toolTokens,
   };

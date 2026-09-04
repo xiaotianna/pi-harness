@@ -1,6 +1,7 @@
 import { TextShimmer } from "@agile-avocation/ui-pro";
 import { ChevronDown } from "@gravity-ui/icons";
 import { Disclosure, ScrollShadow } from "@heroui/react";
+import { useLayoutEffect, useRef } from "react";
 import { cn } from "../../shared/utils/cn";
 import { AssistantMarkdown } from "./assistant-markdown";
 
@@ -12,6 +13,7 @@ export interface ReasoningStep {
 export interface ReasoningPanelProps {
   className?: string;
   elapsed?: string;
+  isLockedOpen?: boolean;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   restingLabel: string;
@@ -23,6 +25,7 @@ export interface ReasoningPanelProps {
 export function ReasoningPanel({
   className,
   elapsed,
+  isLockedOpen = false,
   onOpenChange,
   open,
   restingLabel,
@@ -31,6 +34,13 @@ export function ReasoningPanel({
   visibleSteps,
 }: ReasoningPanelProps) {
   const shownSteps = steps.slice(0, Math.max(0, visibleSteps));
+  const latestStepBody = shownSteps.at(-1)?.body;
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!isLockedOpen || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [isLockedOpen, latestStepBody]);
 
   return (
     <Disclosure
@@ -40,7 +50,10 @@ export function ReasoningPanel({
       onExpandedChange={onOpenChange}
     >
       <Disclosure.Heading>
-        <Disclosure.Trigger className="group flex min-h-7 items-center gap-1.5 p-0 text-[13.5px] text-muted hover:text-foreground">
+        <Disclosure.Trigger
+          className="group flex min-h-7 items-center gap-1.5 p-0 text-[13.5px] text-muted hover:text-foreground disabled:cursor-default disabled:opacity-100"
+          isDisabled={isLockedOpen}
+        >
           <span className="flex min-w-0 items-center gap-1.5 text-start">
             {streaming ? (
               <TextShimmer className="shrink-0 leading-none">Thinking...</TextShimmer>
@@ -62,7 +75,7 @@ export function ReasoningPanel({
       </Disclosure.Heading>
       <Disclosure.Content>
         <Disclosure.Body style={{ padding: 0 }}>
-          <ScrollShadow className="max-h-52 pb-1 pt-3">
+          <ScrollShadow className="max-h-52 pb-1 pt-3" ref={scrollRef}>
             {shownSteps.map((step, index) => (
               <AssistantMarkdown
                 className={cn(

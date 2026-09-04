@@ -42,6 +42,7 @@ import {
   type HarnessEvent,
   type HarnessEventDraft,
   HarnessEventType,
+  type RunContextData,
   type RunId,
   type RunInteractionData,
   type RunStartedData,
@@ -66,6 +67,7 @@ import {
 
 export interface StartRunInput {
   approvalPolicy: ApprovalPolicyValue;
+  contexts: readonly RunContextData[];
   model: Model<Api>;
   modelId: string;
   userInput: RunUserInput;
@@ -701,8 +703,14 @@ export class RunCoordinator {
     this.setSupportsImageInput(input.model.input.includes("image"));
     const thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
     this.agent.state.thinkingLevel = thinkingLevel;
-    this.agent.state.systemPrompt = input.systemPrompt;
+    this.agent.state.systemPrompt = [
+      input.systemPrompt,
+      ...input.contexts.map(({ content }) => content),
+    ]
+      .filter(Boolean)
+      .join("\n");
     const runStartedData = {
+      contexts: [...input.contexts],
       maxTokens: input.model.maxTokens,
       modelId: input.modelId,
       providerId: input.providerId,
@@ -720,7 +728,7 @@ export class RunCoordinator {
       await this.emit(
         {
           data: {
-            ...estimateContextUsage(context),
+            ...estimateContextUsage(context, input.contexts),
             requestIndex,
           } satisfies ContextUsageSnapshotData,
           type: HarnessEventType.CONTEXT_USAGE_SNAPSHOT,

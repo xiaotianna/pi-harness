@@ -13,7 +13,7 @@ import type {
   RunId,
   SessionId,
 } from "./harness-event.js";
-import { buildSystemPrompt } from "./prompts/system-prompt.js";
+import { buildSystemPrompts } from "./prompts/system-prompt.js";
 import {
   type HarnessEventListener,
   type RestoreRunHistoryInput,
@@ -38,7 +38,8 @@ export interface RestoreAgentInput {
   workspaceRoot: string;
 }
 
-export type StartSessionRunInput = RestoreAgentInput & Omit<StartRunInput, "systemPrompt">;
+export type StartSessionRunInput = RestoreAgentInput &
+  Omit<StartRunInput, "contexts" | "systemPrompt">;
 
 // Session 注册表
 // 核心：Map<SessionId, RunCoordinator>
@@ -71,7 +72,7 @@ export class AgentManager {
     });
     const preparedInput = {
       ...input,
-      systemPrompt: buildSystemPrompt(workspaceContext),
+      ...buildSystemPrompts(workspaceContext),
     };
     const runtime = this.getOrCreate(preparedInput);
     await runtime.start(preparedInput);

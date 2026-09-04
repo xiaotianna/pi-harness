@@ -1,4 +1,8 @@
-import { type HarnessEvent, HarnessEventType } from "@pi-harness/agent-runtime/harness-event";
+import {
+  type HarnessEvent,
+  HarnessEventType,
+  type RunContextUsageData,
+} from "@pi-harness/agent-runtime/harness-event";
 import { isPlainObject } from "es-toolkit";
 
 export interface TokenCost {
@@ -41,6 +45,7 @@ export interface ContextRuntimeSummary {
 
 export interface ContextUsageSnapshot {
   conversationTokens: number;
+  contexts: RunContextUsageData[];
   requestIndex: number;
   systemPromptTokens: number;
   toolTokens: number;
@@ -84,6 +89,21 @@ function readNonNegativeNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
+function readContextUsage(value: unknown): RunContextUsageData[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((context) =>
+    isPlainObject(context) && typeof context.label === "string" && typeof context.type === "string"
+      ? [
+          {
+            label: context.label,
+            tokens: readNonNegativeNumber(context.tokens),
+            type: context.type,
+          },
+        ]
+      : [],
+  );
+}
+
 function readContextUsageSnapshot(event: HarnessEvent): ContextUsageSnapshotState | null {
   if (event.type !== HarnessEventType.CONTEXT_USAGE_SNAPSHOT || !isPlainObject(event.data)) {
     return null;
@@ -106,6 +126,7 @@ function readContextUsageSnapshot(event: HarnessEvent): ContextUsageSnapshotStat
 
   return {
     conversationTokens: event.data.conversationTokens as number,
+    contexts: readContextUsage(event.data.contexts),
     estimatedTotalTokens: event.data.estimatedTotalTokens as number,
     requestIndex: event.data.requestIndex,
     runId: event.runId ?? null,
@@ -340,6 +361,7 @@ export function summarizeSessionUsage(events: readonly HarnessEvent[]): SessionU
         ? null
         : {
             conversationTokens: contextSnapshotState.conversationTokens,
+            contexts: contextSnapshotState.contexts,
             requestIndex: contextSnapshotState.requestIndex,
             systemPromptTokens: contextSnapshotState.systemPromptTokens,
             toolTokens: contextSnapshotState.toolTokens,

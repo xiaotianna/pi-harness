@@ -133,6 +133,14 @@
   background-clip: content-box;
 }
 
+:is([data-slot="agent-plan"], [data-slot="todo-list"]) > .scroll-shadow {
+  scrollbar-width: none;
+}
+
+:is([data-slot="agent-plan"], [data-slot="todo-list"]) > .scroll-shadow::-webkit-scrollbar {
+  display: none;
+}
+
 .code-diff__viewport {
   scrollbar-width: none;
 }

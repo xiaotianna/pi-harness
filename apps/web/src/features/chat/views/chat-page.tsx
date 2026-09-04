@@ -474,6 +474,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                       onBeforeTurnNavigate={stopFollowingConversation}
                       onSearchTargetComplete={clearSearchTarget}
                       scrollContainerRef={conversationRef}
+                      scrollEndThreshold={CHAT_AUTO_SCROLL_THRESHOLD_PX}
                       workspaceId={snapshot.session.workspaceId}
                       workspaceRoot={snapshot.session.workspaceRoot}
                       {...(isSessionRunning

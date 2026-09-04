@@ -31,6 +31,7 @@ export interface ThreadMessageListProps {
   onSearchTargetComplete?: () => void;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   searchTarget?: ChatSearchTarget;
+  scrollEndThreshold: number;
   workspaceId?: string;
   workspaceRoot?: string;
 }
@@ -188,6 +189,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       onRetryUserMessage,
       onSearchTargetComplete,
       scrollContainerRef,
+      scrollEndThreshold,
       searchTarget,
       workspaceId,
       workspaceRoot,
@@ -241,6 +243,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       paddingEnd: 40,
       paddingStart: 40,
       scrollPaddingStart: 40,
+      scrollEndThreshold,
       useAnimationFrameWithResizeObserver: true,
       useFlushSync: false,
     });
