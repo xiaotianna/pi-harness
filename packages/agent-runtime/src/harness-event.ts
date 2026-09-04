@@ -388,11 +388,19 @@ export interface RunInteractionData {
 }
 
 // message.delta
-export interface MessageDeltaData {
-  contentIndex: number;
-  delta: string;
-  kind: MessageDeltaKind;
-}
+export type MessageDeltaData =
+  | {
+      contentIndex: number;
+      delta: string;
+      kind: typeof MessageDeltaKind.TEXT | typeof MessageDeltaKind.THINKING;
+    }
+  | {
+      contentIndex: number;
+      delta: string;
+      kind: typeof MessageDeltaKind.TOOL_CALL;
+      toolCallId: string;
+      toolName: string;
+    };
 
 export interface MessageBranchStartedData {
   sourceEventId: string;

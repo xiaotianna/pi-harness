@@ -170,18 +170,43 @@ function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatM
   return messages;
 }
 
-type StreamingContent = {
-  content: string;
-  kind: typeof MessageDeltaKind.TEXT | typeof MessageDeltaKind.THINKING;
-};
+type StreamingContent =
+  | {
+      content: string;
+      kind: typeof MessageDeltaKind.TEXT | typeof MessageDeltaKind.THINKING;
+    }
+  | {
+      argsText: string;
+      kind: typeof MessageDeltaKind.TOOL_CALL;
+      toolCallId: string;
+      toolName: string;
+    };
 
 function readDelta(event: HarnessEvent): (StreamingContent & { contentIndex: number }) | null {
   if (
     !isPlainObject(event.data) ||
-    (event.data.kind !== MessageDeltaKind.TEXT && event.data.kind !== MessageDeltaKind.THINKING) ||
     typeof event.data.contentIndex !== "number" ||
     typeof event.data.delta !== "string"
   ) {
+    return null;
+  }
+  if (event.data.kind === MessageDeltaKind.TOOL_CALL) {
+    if (
+      typeof event.data.toolCallId !== "string" ||
+      typeof event.data.toolName !== "string" ||
+      WORKING_STATE_TOOL_NAMES.has(event.data.toolName)
+    ) {
+      return null;
+    }
+    return {
+      argsText: event.data.delta,
+      contentIndex: event.data.contentIndex,
+      kind: event.data.kind,
+      toolCallId: event.data.toolCallId,
+      toolName: event.data.toolName,
+    };
+  }
+  if (event.data.kind !== MessageDeltaKind.TEXT && event.data.kind !== MessageDeltaKind.THINKING) {
     return null;
   }
   return {
@@ -497,10 +522,24 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       if (delta) {
         const contentByIndex = streamingContentByRunId.get(event.runId) ?? new Map();
         const current = contentByIndex.get(delta.contentIndex);
-        contentByIndex.set(delta.contentIndex, {
-          content: current?.kind === delta.kind ? current.content + delta.content : delta.content,
-          kind: delta.kind,
-        });
+        contentByIndex.set(
+          delta.contentIndex,
+          delta.kind === MessageDeltaKind.TOOL_CALL
+            ? {
+                argsText:
+                  current?.kind === MessageDeltaKind.TOOL_CALL
+                    ? current.argsText + delta.argsText
+                    : delta.argsText,
+                kind: delta.kind,
+                toolCallId: delta.toolCallId,
+                toolName: delta.toolName,
+              }
+            : {
+                content:
+                  current?.kind === delta.kind ? current.content + delta.content : delta.content,
+                kind: delta.kind,
+              },
+        );
         streamingContentByRunId.set(event.runId, contentByIndex);
       }
       continue;
@@ -618,7 +657,49 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       });
     } else {
       const lastContentIndex = content.at(-1)?.[0];
+      const streamingTools = content.flatMap<ChatMessageTool>(([, part]) => {
+        if (part.kind !== MessageDeltaKind.TOOL_CALL) return [];
+        let input: unknown;
+        try {
+          input = JSON.parse(part.argsText);
+        } catch {
+          input = undefined;
+        }
+        return [
+          {
+            argsText: part.argsText,
+            ...(input === undefined ? {} : { input }),
+            state: ChatToolState.INPUT_AVAILABLE,
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+          },
+        ];
+      });
+      let hasAddedTools = false;
       for (const [contentIndex, part] of content) {
+        if (part.kind === MessageDeltaKind.TOOL_CALL) {
+          if (hasAddedTools || streamingTools.length === 0) continue;
+          hasAddedTools = true;
+          const firstTool = streamingTools[0];
+          pushMessage(
+            streamingTools.length === 1 && firstTool
+              ? {
+                  id: `tool-${firstTool.toolCallId}`,
+                  tool: firstTool,
+                  turnId: activeRunId,
+                  type: ChatMessageType.TOOL,
+                }
+              : {
+                  active: true,
+                  id: `${messageId}-tools`,
+                  label: `正在调用 ${streamingTools.length} 个工具`,
+                  tools: streamingTools,
+                  turnId: activeRunId,
+                  type: ChatMessageType.TOOL_GROUP,
+                },
+          );
+          continue;
+        }
         pushMessage(
           part.kind === MessageDeltaKind.THINKING
             ? {

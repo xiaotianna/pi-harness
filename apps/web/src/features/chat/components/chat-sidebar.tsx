@@ -24,6 +24,8 @@ import { CHAT_NAV_ITEMS, resolveChatActivePage } from "../data/chat";
 import { useChatSidebarStore } from "../state/chat-sidebar-store";
 import { useNewChatStore } from "../state/new-chat-store";
 
+const SIDEBAR_THREAD_PAGE_SIZE = 5;
+
 export interface ChatSidebarProps {
   threads: readonly ChatThread[];
   workspaces: readonly ChatWorkspace[];
@@ -446,6 +448,8 @@ function ChatSidebarWorkspaceItem({
   threads,
   workspace,
 }: ChatSidebarWorkspaceItemProps) {
+  const [visibleThreadCount, setVisibleThreadCount] = useState(SIDEBAR_THREAD_PAGE_SIZE);
+  const hasMoreThreads = visibleThreadCount < threads.length;
   const revealLabel =
     typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
       ? "在 Finder 中显示"
@@ -571,18 +575,41 @@ function ChatSidebarWorkspaceItem({
             <Sidebar.MenuLabel>暂无对话</Sidebar.MenuLabel>
           </Sidebar.MenuItem>
         ) : (
-          threads.map((thread) => (
-            <ChatSidebarThreadItem
-              key={thread.id}
-              basePath={basePath}
-              disableNavigation={disableNavigation}
-              idPrefix={idPrefix}
-              onArchive={onArchive}
-              onRename={onRename}
-              pathname={pathname}
-              thread={thread}
-            />
-          ))
+          <>
+            {threads.map((thread, index) => (
+              <ChatSidebarThreadItem
+                key={thread.id}
+                basePath={basePath}
+                disableNavigation={disableNavigation}
+                idPrefix={idPrefix}
+                isVisible={index < visibleThreadCount}
+                onArchive={onArchive}
+                onRename={onRename}
+                pathname={pathname}
+                thread={thread}
+              />
+            ))}
+            {threads.length > SIDEBAR_THREAD_PAGE_SIZE ? (
+              <Sidebar.MenuItem
+                className="group [&_[data-slot=sidebar-menu-item-content]]:!bg-transparent"
+                closeMobileOnAction={false}
+                data-thread-item
+                id={`${idPrefix}workspace-${workspace.id}-thread-toggle`}
+                textValue={hasMoreThreads ? "展开显示" : "折叠显示"}
+                onAction={() =>
+                  setVisibleThreadCount((count) =>
+                    hasMoreThreads
+                      ? Math.min(count + SIDEBAR_THREAD_PAGE_SIZE, threads.length)
+                      : SIDEBAR_THREAD_PAGE_SIZE,
+                  )
+                }
+              >
+                <Sidebar.MenuLabel className="!text-muted group-hover:!text-foreground group-focus-visible:!text-foreground group-data-[focus-visible]:!text-foreground group-data-[hovered]:!text-foreground group-data-[pressed]:!text-foreground">
+                  {hasMoreThreads ? "展开显示" : "折叠显示"}
+                </Sidebar.MenuLabel>
+              </Sidebar.MenuItem>
+            ) : null}
+          </>
         )}
       </Sidebar.Submenu>
     </Sidebar.MenuItem>
@@ -593,6 +620,7 @@ interface ChatSidebarThreadItemProps {
   basePath: string;
   disableNavigation: boolean;
   idPrefix: string;
+  isVisible: boolean;
   onArchive?: ((thread: ChatThread) => void) | undefined;
   onRename?: ((thread: ChatThread) => void) | undefined;
   pathname: string;
@@ -603,6 +631,7 @@ function ChatSidebarThreadItem({
   basePath,
   disableNavigation,
   idPrefix,
+  isVisible,
   onArchive,
   onRename,
   pathname,
@@ -618,7 +647,9 @@ function ChatSidebarThreadItem({
   return (
     <Sidebar.MenuItem
       data-thread-item
+      data-thread-visibility={isVisible ? "visible" : "hidden"}
       id={`${idPrefix}${thread.id}`}
+      isDisabled={!isVisible}
       isCurrent={isCurrent}
       textValue={thread.title}
       onHoverStart={() => void queryClient.prefetchQuery(sessionSnapshotQueryOptions(thread.id))}

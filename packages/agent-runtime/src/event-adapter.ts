@@ -112,15 +112,21 @@ function adaptMessageDelta(event: Extract<AgentEvent, { type: "message_update" }
         } satisfies MessageDeltaData,
         type: HarnessEventType.MESSAGE_DELTA,
       } satisfies HarnessEventDraft<MessageDeltaData>;
-    case "toolcall_delta":
+    case "toolcall_start":
+    case "toolcall_delta": {
+      const toolCall = update.partial.content[update.contentIndex];
+      if (toolCall?.type !== "toolCall") return null;
       return {
         data: {
           contentIndex: update.contentIndex,
-          delta: update.delta,
+          delta: update.type === "toolcall_delta" ? update.delta : "",
           kind: MessageDeltaKind.TOOL_CALL,
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
         } satisfies MessageDeltaData,
         type: HarnessEventType.MESSAGE_DELTA,
       } satisfies HarnessEventDraft<MessageDeltaData>;
+    }
     default:
       return null;
   }
