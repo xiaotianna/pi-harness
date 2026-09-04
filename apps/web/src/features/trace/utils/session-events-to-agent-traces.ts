@@ -194,7 +194,11 @@ function readRunErrorCode(event: HarnessEvent | undefined): string | undefined {
     : undefined;
 }
 
-function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTraceSession | null {
+function createTrace(
+  runEvents: readonly HarnessEvent[],
+  now: number,
+  toolDefinitions: AgentTraceToolDefinition[],
+): AgentTraceSession | null {
   const started = runEvents.find((event) => event.type === HarnessEventType.RUN_STARTED);
   if (!started?.runId) return null;
 
@@ -205,7 +209,6 @@ function createTrace(runEvents: readonly HarnessEvent[], now: number): AgentTrac
       event.type === HarnessEventType.RUN_ABORTED,
   );
   const runData = isPlainObject(started.data) ? started.data : {};
-  const toolDefinitions = readToolDefinitions(runData.tools);
   const endedAt = terminal?.timestamp ?? now;
   const records: AgentTraceRecord[] = [];
   const userStarts: PendingEvent[] = [];
@@ -691,16 +694,29 @@ export function sessionEventsToAgentTraces(
   now = Date.now(),
 ): AgentTraceSession[] {
   const byRunId = new Map<string, HarnessEvent[]>();
+  const toolDefinitionsByRunId = new Map<string, AgentTraceToolDefinition[]>();
+  let currentToolDefinitions: AgentTraceToolDefinition[] = [];
   for (const event of events) {
     if (!event.runId) continue;
     const runEvents = byRunId.get(event.runId) ?? [];
     runEvents.push(event);
     byRunId.set(event.runId, runEvents);
+    if (event.type === HarnessEventType.RUN_STARTED && isPlainObject(event.data)) {
+      if (Array.isArray(event.data.tools)) {
+        currentToolDefinitions = readToolDefinitions(event.data.tools);
+      }
+      toolDefinitionsByRunId.set(event.runId, currentToolDefinitions);
+    }
   }
 
   const runTraces = Array.from(byRunId.values())
     .flatMap((runEvents) => {
-      const trace = createTrace(runEvents, now);
+      const runId = runEvents[0]?.runId;
+      const trace = createTrace(
+        runEvents,
+        now,
+        runId === undefined ? [] : (toolDefinitionsByRunId.get(runId) ?? []),
+      );
       return trace ? [trace] : [];
     })
     .sort((left, right) => left.startedAt - right.startedAt);
@@ -711,6 +727,10 @@ export function sessionEventsToAgentTraces(
   const startedAt = firstTrace.startedAt;
   const records: AgentTraceRecord[] = [];
   let timelineOffset = 0;
+  let hasRecordedContextSnapshot = false;
+  let recordedContexts = new Map<string, RunContextData>();
+  let recordedSystem: string | null = null;
+  let systemRecordCount = 0;
 
   for (const trace of runTraces) {
     const runEvents = byRunId.get(trace.traceId) ?? [];
@@ -721,55 +741,110 @@ export function sessionEventsToAgentTraces(
       const systemPrompt = typeof data.systemPrompt === "string" ? data.systemPrompt : "";
       const contexts = readRunContexts(data.contexts);
       const tools = readToolDefinitions(data.tools);
-      records.push({
-        durationMs: 0,
-        id: runStarted.id,
-        kind: AgentTraceRecordKind.SYSTEM,
-        label: "Initial System Prompt",
-        lane: AgentTraceLane.INPUT,
-        preview: systemPrompt
-          ? `${tools.length} 个工具 · ${typeof data.modelId === "string" ? data.modelId : "未知模型"}`
-          : typeof data.modelId === "string"
-            ? data.modelId
-            : "未知模型",
-        raw: {
-          eventId: runStarted.id,
-          modelId: data.modelId,
-          providerId: data.providerId,
-          runId: trace.traceId,
-          seq: runStarted.seq,
-          ...(systemPrompt ? { systemPrompt, tools } : {}),
-        },
-        source: HarnessEventType.RUN_STARTED,
-        startMs: runOffset,
-        status: AgentTraceStatus.COMPLETED,
-        summary: systemPrompt
-          ? `本次 Run 使用该系统提示词和 ${tools.length} 个工具定义。`
-          : "Session 开始了一次新的 Run。",
-        ...(systemPrompt ? { systemPrompt: { content: systemPrompt, tools } } : {}),
-        turn: 0,
-      });
-      for (const [index, context] of contexts.entries()) {
+      const systemSnapshot =
+        typeof data.systemPrompt === "string" && Array.isArray(data.tools)
+          ? JSON.stringify([systemPrompt, tools])
+          : null;
+      if (systemSnapshot !== null && systemSnapshot !== recordedSystem) {
+        const isInitial = systemRecordCount === 0;
         records.push({
           durationMs: 0,
-          id: `${runStarted.id}:context:${context.type}:${index}`,
-          kind: AgentTraceRecordKind.CONTEXT,
-          label: context.label,
+          id: runStarted.id,
+          kind: AgentTraceRecordKind.SYSTEM,
+          label: isInitial ? "Initial System Prompt" : "System Prompt Updated",
           lane: AgentTraceLane.INPUT,
-          preview: clip(context.content),
+          preview: `${tools.length} 个工具 · ${typeof data.modelId === "string" ? data.modelId : "未知模型"}`,
           raw: {
-            context: context.content,
-            contextType: context.type,
             eventId: runStarted.id,
+            modelId: data.modelId,
+            providerId: data.providerId,
             runId: trace.traceId,
             seq: runStarted.seq,
+            systemPrompt,
+            tools,
           },
           source: HarnessEventType.RUN_STARTED,
           startMs: runOffset,
           status: AgentTraceStatus.COMPLETED,
-          summary: `本次 Run 使用的 ${context.label} Context。`,
+          summary: isInitial
+            ? `Session 首次记录系统提示词和 ${tools.length} 个工具定义。`
+            : `系统提示词或工具定义已更新，当前包含 ${tools.length} 个工具。`,
+          systemPrompt: { content: systemPrompt, tools },
           turn: 0,
         });
+        recordedSystem = systemSnapshot;
+        systemRecordCount += 1;
+      }
+      if (Array.isArray(data.contexts)) {
+        const isDelta = Array.isArray(data.removedContextTypes);
+        const removedContextTypes = isDelta
+          ? data.removedContextTypes.filter(
+              (type: unknown): type is string => typeof type === "string",
+            )
+          : [...recordedContexts.keys()].filter(
+              (type) => !contexts.some((context) => context.type === type),
+            );
+        const changedContexts = contexts.filter(
+          (context) =>
+            JSON.stringify(recordedContexts.get(context.type)) !== JSON.stringify(context),
+        );
+        const nextContexts = isDelta
+          ? new Map(recordedContexts)
+          : new Map<string, RunContextData>();
+        for (const type of removedContextTypes) nextContexts.delete(type);
+        for (const context of contexts) nextContexts.set(context.type, context);
+
+        for (const [index, context] of changedContexts.entries()) {
+          records.push({
+            durationMs: 0,
+            id: `${runStarted.id}:context:${context.type}:${index}`,
+            kind: AgentTraceRecordKind.CONTEXT,
+            label: context.label,
+            lane: AgentTraceLane.INPUT,
+            preview: clip(context.content),
+            raw: {
+              context: context.content,
+              contextType: context.type,
+              eventId: runStarted.id,
+              runId: trace.traceId,
+              seq: runStarted.seq,
+            },
+            source: HarnessEventType.RUN_STARTED,
+            startMs: runOffset,
+            status: AgentTraceStatus.COMPLETED,
+            summary: !hasRecordedContextSnapshot
+              ? `Session 首次记录的 ${context.label} Context。`
+              : `${context.label} Context 已更新。`,
+            turn: 0,
+          });
+        }
+        for (const type of removedContextTypes) {
+          const previous = recordedContexts.get(type);
+          if (previous === undefined) continue;
+          records.push({
+            durationMs: 0,
+            id: `${runStarted.id}:context:${type}:removed`,
+            kind: AgentTraceRecordKind.CONTEXT,
+            label: previous.label,
+            lane: AgentTraceLane.INPUT,
+            preview: "该 Context 已移除",
+            raw: {
+              context: previous.content,
+              contextChange: "removed",
+              contextType: type,
+              eventId: runStarted.id,
+              runId: trace.traceId,
+              seq: runStarted.seq,
+            },
+            source: HarnessEventType.RUN_STARTED,
+            startMs: runOffset,
+            status: AgentTraceStatus.COMPLETED,
+            summary: `${previous.label} Context 已移除。`,
+            turn: 0,
+          });
+        }
+        recordedContexts = nextContexts;
+        hasRecordedContextSnapshot = true;
       }
     }
 

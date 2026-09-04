@@ -195,13 +195,17 @@ export interface RunContextUsageData extends Omit<RunContextData, "content"> {
 }
 
 export interface RunStartedData {
-  contexts: RunContextData[];
+  // 首次记录全部 Context；后续仅包含按 type 新增或变化的条目。
+  contexts?: RunContextData[];
   maxTokens: number;
   modelId: string;
   providerId: string;
-  systemPrompt: string;
+  // 与 contexts 同时出现；空数组表示本次只有新增或更新，没有移除。
+  removedContextTypes?: string[];
+  // System Prompt 与 Tools 作为同一快照，仅在首次记录或任一内容变化时同时出现。
+  systemPrompt?: string;
   thinkingLevel: ModelThinkingLevel;
-  tools: RunToolDefinition[];
+  tools?: RunToolDefinition[];
 }
 
 // context.usage_snapshot：一次模型请求前的完整 Session Context 用量，不是单轮消息用量

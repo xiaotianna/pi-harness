@@ -45,6 +45,7 @@ export {
   MessageDeltaKind,
   type MessageDeltaKind as MessageDeltaKindValue,
   type MessageHarnessEvent,
+  type RunContextData,
   type RunFailureData,
   RunFileChangeOperation,
   type RunFileChangeOperation as RunFileChangeOperationValue,
