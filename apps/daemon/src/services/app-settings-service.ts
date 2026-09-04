@@ -1,3 +1,7 @@
+import type {
+  OutputDetail,
+  ReasoningSummary,
+} from "@pi-harness/agent-runtime/model-response-preferences";
 import type { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import type { ApprovalPolicyValue } from "@pi-harness/policy";
 import type { UpdateAppSettingsDto } from "../dto/app-settings-dto.js";
@@ -14,6 +18,8 @@ export interface AppSettings {
   defaultModel: DefaultModelSetting | null;
   fileOpenApplication: Omit<FileOpenApplicationSetting, "path"> | null;
   fileOpenMode: FileOpenMode;
+  outputDetail: OutputDetail;
+  reasoningSummary: ReasoningSummary;
 }
 
 export class AppSettingsService {
@@ -29,6 +35,8 @@ export class AppSettingsService {
         ? { iconDataUrl: fileOpenApplication.iconDataUrl, name: fileOpenApplication.name }
         : null,
       fileOpenMode: this.settings.getFileOpenMode(),
+      outputDetail: this.settings.getOutputDetail(),
+      reasoningSummary: this.settings.getReasoningSummary(),
     };
   }
 
@@ -45,6 +53,12 @@ export class AppSettingsService {
     }
     if (input.fileOpenMode !== undefined) {
       this.settings.setFileOpenMode(input.fileOpenMode, updatedAt);
+    }
+    if (input.outputDetail !== undefined) {
+      this.settings.setOutputDetail(input.outputDetail, updatedAt);
+    }
+    if (input.reasoningSummary !== undefined) {
+      this.settings.setReasoningSummary(input.reasoningSummary, updatedAt);
     }
     return this.get();
   }

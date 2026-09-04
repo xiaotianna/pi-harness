@@ -48,7 +48,12 @@ import {
   type RunStartedData,
   type SessionId,
 } from "./harness-event.js";
-import type { ThinkingLevel } from "./thinking-level.js";
+import {
+  applyModelResponsePreferences,
+  type OutputDetail,
+  type ReasoningSummary,
+} from "./model-response-preferences.js";
+import { type ThinkingLevel, ThinkingLevel as ThinkingLevels } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
 import {
   BusySubmitBehavior,
@@ -72,6 +77,8 @@ export interface StartRunInput {
   modelId: string;
   userInput: RunUserInput;
   providerId: string;
+  outputDetail: OutputDetail;
+  reasoningSummary: ReasoningSummary;
   runId: RunId;
   streamFn: StreamFn;
   systemPrompt: string;
@@ -741,6 +748,16 @@ export class RunCoordinator {
       return input.streamFn(model, context, {
         ...options,
         cacheRetention: "long",
+        onPayload: async (payload, payloadModel) => {
+          const transformedPayload = (await options?.onPayload?.(payload, payloadModel)) ?? payload;
+          return applyModelResponsePreferences(
+            transformedPayload,
+            payloadModel,
+            input.outputDetail,
+            input.reasoningSummary,
+            thinkingLevel !== ThinkingLevels.OFF,
+          );
+        },
         sessionId: this.sessionId,
       });
     };

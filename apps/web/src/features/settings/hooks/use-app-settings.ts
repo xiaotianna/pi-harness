@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { pick } from "es-toolkit";
 import {
   type AppSettings,
   selectDefaultFileOpenApplication,
@@ -12,8 +13,12 @@ export function useAppSettings() {
   const settingsQuery = useQuery(appSettingsQueryOptions());
   const mutation = useMutation<AppSettings, Error, UpdateAppSettings, AppSettings | undefined>({
     mutationFn: updateAppSettings,
-    onError: (_error, _update, previous) => {
-      if (previous) queryClient.setQueryData(appSettingsQueryKeys.all, previous);
+    onError: (_error, update, previous) => {
+      if (!previous) return;
+      const keys = Object.keys(update) as Array<keyof UpdateAppSettings>;
+      queryClient.setQueryData<AppSettings>(appSettingsQueryKeys.all, (current) =>
+        current ? { ...current, ...pick(previous, keys) } : previous,
+      );
     },
     onMutate: async (update) => {
       await queryClient.cancelQueries({ queryKey: appSettingsQueryKeys.all });
@@ -26,7 +31,12 @@ export function useAppSettings() {
       }
       return previous;
     },
-    onSuccess: (settings) => queryClient.setQueryData(appSettingsQueryKeys.all, settings),
+    onSuccess: (settings, update) => {
+      const keys = Object.keys(update) as Array<keyof UpdateAppSettings>;
+      queryClient.setQueryData<AppSettings>(appSettingsQueryKeys.all, (current) =>
+        current ? { ...current, ...pick(settings, keys) } : settings,
+      );
+    },
   });
   const applicationMutation = useMutation({
     mutationFn: selectDefaultFileOpenApplication,
@@ -37,7 +47,10 @@ export function useAppSettings() {
 
   return {
     isLoading: settingsQuery.isPending,
-    isSaving: mutation.isPending,
+    isSaving: (key: keyof UpdateAppSettings) =>
+      mutation.isPending &&
+      mutation.variables !== undefined &&
+      Object.hasOwn(mutation.variables, key),
     isSelectingFileOpenApplication: applicationMutation.isPending,
     selectFileOpenApplication: applicationMutation.mutateAsync,
     settings: settingsQuery.data,

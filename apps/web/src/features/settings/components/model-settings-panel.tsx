@@ -159,7 +159,7 @@ export function ModelSettingsPanel() {
             <Select
               aria-label="默认模型"
               className="w-full sm:min-w-56 sm:max-w-64"
-              isDisabled={isSaving}
+              isDisabled={isSaving("defaultModel")}
               placeholder="暂无可用模型"
               value={defaultModelKey ?? ""}
               variant="secondary"

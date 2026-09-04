@@ -4,6 +4,8 @@ import {
   BusySubmitBehaviorDtoSchema,
   DefaultModelSettingDtoSchema,
   FileOpenModeDtoSchema,
+  OutputDetailDtoSchema,
+  ReasoningSummaryDtoSchema,
 } from "../dto/app-settings-dto.js";
 
 export const FileOpenApplicationVoSchema = Type.Object({
@@ -20,6 +22,8 @@ export const AppSettingsVoSchema = Type.Object({
   defaultModel: Type.Union([DefaultModelSettingDtoSchema, Type.Null()]),
   fileOpenApplication: Type.Union([FileOpenApplicationVoSchema, Type.Null()]),
   fileOpenMode: FileOpenModeDtoSchema,
+  outputDetail: OutputDetailDtoSchema,
+  reasoningSummary: ReasoningSummaryDtoSchema,
 });
 
 export type AppSettingsVo = Static<typeof AppSettingsVoSchema>;

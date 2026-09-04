@@ -1,3 +1,7 @@
+import {
+  OutputDetail,
+  ReasoningSummary,
+} from "@pi-harness/agent-runtime/model-response-preferences";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { ApprovalPolicy } from "@pi-harness/policy";
@@ -34,12 +38,27 @@ export const FileOpenModeDtoSchema = Type.Union([
   Type.Literal(FileOpenMode.ASK),
 ]);
 
+export const OutputDetailDtoSchema = Type.Union([
+  Type.Literal(OutputDetail.MODEL_DEFAULT),
+  Type.Literal(OutputDetail.LOW),
+  Type.Literal(OutputDetail.MEDIUM),
+  Type.Literal(OutputDetail.HIGH),
+]);
+
+export const ReasoningSummaryDtoSchema = Type.Union([
+  Type.Literal(ReasoningSummary.AUTO),
+  Type.Literal(ReasoningSummary.CONCISE),
+  Type.Literal(ReasoningSummary.DETAILED),
+]);
+
 export const UpdateAppSettingsDtoSchema = Type.Object(
   {
     approvalPolicy: Type.Optional(ApprovalPolicyDtoSchema),
     busySubmitBehavior: Type.Optional(BusySubmitBehaviorDtoSchema),
     defaultModel: Type.Optional(DefaultModelSettingDtoSchema),
     fileOpenMode: Type.Optional(FileOpenModeDtoSchema),
+    outputDetail: Type.Optional(OutputDetailDtoSchema),
+    reasoningSummary: Type.Optional(ReasoningSummaryDtoSchema),
   },
   { minProperties: 1 },
 );

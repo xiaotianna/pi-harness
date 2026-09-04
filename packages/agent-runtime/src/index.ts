@@ -59,6 +59,15 @@ export {
   type ToolStartedData,
   type ToolUpdatedData,
 } from "./harness-event.js";
+export {
+  applyModelResponsePreferences,
+  isOutputDetail,
+  isReasoningSummary,
+  OutputDetail,
+  type OutputDetail as OutputDetailValue,
+  ReasoningSummary,
+  type ReasoningSummary as ReasoningSummaryValue,
+} from "./model-response-preferences.js";
 export { buildSystemPrompts } from "./prompts/system-prompt.js";
 export type {
   HarnessEventListener,

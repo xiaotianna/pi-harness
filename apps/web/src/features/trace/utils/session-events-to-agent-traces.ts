@@ -936,17 +936,18 @@ export function sessionEventsToAgentTraces(
   let cumulativeRequestUsage = EMPTY_USAGE;
   let activeRunId: string | null = null;
   let hasActiveRunTurn = false;
+  let pendingRunContexts: AgentTraceRecord[] = [];
   for (const record of records) {
     const runId = typeof record.raw.runId === "string" ? record.raw.runId : null;
-    if (record.source === HarnessEventType.RUN_STARTED) {
-      activeRunId = runId;
-      hasActiveRunTurn = false;
-      record.turn = 0;
-      continue;
-    }
     if (runId !== null && runId !== activeRunId) {
       activeRunId = runId;
       hasActiveRunTurn = false;
+      pendingRunContexts = [];
+    }
+    if (record.source === HarnessEventType.RUN_STARTED) {
+      if (record.kind === AgentTraceRecordKind.CONTEXT) pendingRunContexts.push(record);
+      record.turn = 0;
+      continue;
     }
     const isUserMessage =
       record.kind === AgentTraceRecordKind.USER &&
@@ -954,6 +955,8 @@ export function sessionEventsToAgentTraces(
     if (isUserMessage) {
       currentTurn += 1;
       hasActiveRunTurn = true;
+      for (const context of pendingRunContexts) context.turn = currentTurn;
+      pendingRunContexts = [];
     }
     record.turn =
       record.source === HarnessEventType.MESSAGE_BRANCH_STARTED || !hasActiveRunTurn

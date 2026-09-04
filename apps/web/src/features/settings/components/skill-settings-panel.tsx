@@ -21,7 +21,13 @@ import {
   Tooltip,
   toast,
 } from "@heroui/react";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryKey,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import { AssistantMarkdown } from "../../../components/ai/assistant-markdown";
@@ -57,6 +63,7 @@ export interface SkillChatDraft {
 
 export type SkillSettingsWorkspace = {
   id: string;
+  isAvailable: boolean;
   name: string;
   path: string;
 };
@@ -65,6 +72,8 @@ type SkillEntry = {
   skill: Skill;
   workspaceId: string;
 };
+
+type SkillListSnapshots = readonly [QueryKey, readonly Skill[] | undefined][];
 
 function getSkillDisplayName(skill: Skill): string {
   if (skill.scope !== "system") return skill.name;
@@ -240,10 +249,11 @@ export function SkillSettingsPanel({
   const [detailEntry, setDetailEntry] = useState<SkillEntry | null>(null);
   const [isInstallOpen, setIsInstallOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<SkillEntry | null>(null);
+  const availableWorkspaces = workspaces.filter((workspace) => workspace.isAvailable);
   const skillQueries = useQueries({
-    queries: workspaces.map((workspace) => skillListQueryOptions(workspace.id)),
+    queries: availableWorkspaces.map((workspace) => skillListQueryOptions(workspace.id)),
   });
-  const workspaceGroups = workspaces.map((workspace, index) => ({
+  const workspaceGroups = availableWorkspaces.map((workspace, index) => ({
     query: skillQueries[index],
     skills: skillQueries[index]?.data,
     workspace,
@@ -260,11 +270,14 @@ export function SkillSettingsPanel({
     globalEntries.length > 0 ||
     workspaceGroups.some((group) => group.skills?.some((skill) => skill.scope === "project"));
   const globalDirectory = globalEntries.at(0)?.skill.directory?.replace(/[\\/][^\\/]+$/, "");
-  const activeWorkspaceIndex = workspaces.findIndex((workspace) => workspace.id === activeTabId);
+  const activeWorkspaceIndex = availableWorkspaces.findIndex(
+    (workspace) => workspace.id === activeTabId,
+  );
   const targetWorkspace =
     activeWorkspaceIndex >= 0
-      ? workspaces[activeWorkspaceIndex]
-      : (workspaces.find((workspace) => workspace.id === currentWorkspaceId) ?? workspaces[0]);
+      ? availableWorkspaces[activeWorkspaceIndex]
+      : (availableWorkspaces.find((workspace) => workspace.id === currentWorkspaceId) ??
+        availableWorkspaces[0]);
   const activeWorkspaceGroups =
     activeTabId === ALL_SKILLS_TAB_ID
       ? workspaceGroups
@@ -285,17 +298,41 @@ export function SkillSettingsPanel({
     });
   };
 
-  const updateMutation = useMutation({
+  const updateMutation = useMutation<
+    void,
+    Error,
+    { entry: SkillEntry; isEnabled: boolean },
+    SkillListSnapshots
+  >({
     mutationFn: ({ entry, isEnabled }: { entry: SkillEntry; isEnabled: boolean }) =>
       updateSkill(entry.workspaceId, entry.skill, isEnabled),
-    onError: (error: Error) => toast.danger(error.message),
-    onSuccess: async (_, { entry, isEnabled }) => {
+    onError: (error: Error, { entry }, previousLists) => {
+      for (const [queryKey, skills] of previousLists ?? []) {
+        queryClient.setQueryData(queryKey, skills);
+      }
+      setDetailEntry((current) =>
+        current?.workspaceId === entry.workspaceId && current.skill.id === entry.skill.id
+          ? { ...current, skill: entry.skill }
+          : current,
+      );
+      toast.danger(error.message);
+    },
+    onMutate: async ({ entry, isEnabled }) => {
+      const queryKey =
+        entry.skill.scope === "global"
+          ? skillQueryKeys.lists()
+          : skillQueryKeys.list(entry.workspaceId);
+      await queryClient.cancelQueries({ queryKey });
+      const previousLists = queryClient.getQueriesData<readonly Skill[]>({ queryKey });
+      queryClient.setQueriesData<readonly Skill[]>({ queryKey }, (skills) =>
+        skills?.map((skill) => (skill.id === entry.skill.id ? { ...skill, isEnabled } : skill)),
+      );
       setDetailEntry((current) =>
         current?.workspaceId === entry.workspaceId && current.skill.id === entry.skill.id
           ? { ...current, skill: { ...current.skill, isEnabled } }
           : current,
       );
-      await queryClient.invalidateQueries({ queryKey: skillQueryKeys.all });
+      return previousLists;
     },
   });
   const removeMutation = useMutation({
@@ -456,7 +493,7 @@ export function SkillSettingsPanel({
               >
                 全部
               </ToggleButton>
-              {workspaces.map((workspace) => (
+              {availableWorkspaces.map((workspace) => (
                 <ToggleButton
                   aria-label={workspace.name}
                   className="inline-flex h-8 max-w-48 shrink-0 cursor-[var(--cursor-interactive)] items-center overflow-hidden rounded-lg px-3 text-sm text-muted outline-none hover:bg-default data-[focus-visible]:bg-default data-[selected]:bg-accent-soft data-[selected]:font-medium data-[selected]:text-accent-soft-foreground"
@@ -470,7 +507,7 @@ export function SkillSettingsPanel({
           </ScrollShadow>
 
           <div className="mt-3">
-            {workspaces.length === 0 ? (
+            {availableWorkspaces.length === 0 ? (
               <p className="py-12 text-center text-sm text-muted">添加项目后即可管理技能</p>
             ) : isPending ? (
               <SkillListSkeleton />
@@ -562,7 +599,7 @@ export function SkillSettingsPanel({
                       .filter((skill) => skill.scope === "project")
                       .map((skill) => ({
                         skill,
-                        workspaceId: workspaces[activeWorkspaceIndex]?.id ?? "",
+                        workspaceId: availableWorkspaces[activeWorkspaceIndex]?.id ?? "",
                       })),
                   )
                 ) : null}

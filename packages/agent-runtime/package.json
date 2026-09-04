@@ -8,6 +8,7 @@
     "./agent-message": "./src/utils/agent-message.ts",
     "./context-pipeline": "./src/context/context-pipeline.ts",
     "./harness-event": "./src/harness-event.ts",
+    "./model-response-preferences": "./src/model-response-preferences.ts",
     "./thinking-level": "./src/thinking-level.ts",
     "./tool-approval": "./src/tool-approval.ts",
     "./user-input": "./src/user-input.ts",

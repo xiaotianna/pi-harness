@@ -25,6 +25,10 @@ import {
   ToggleButtonGroup,
   toast,
 } from "@heroui/react";
+import {
+  OutputDetail,
+  ReasoningSummary,
+} from "@pi-harness/agent-runtime/model-response-preferences";
 import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { Brain } from "lucide-react";
 import { type ComponentType, type SVGProps, useState } from "react";
@@ -126,6 +130,8 @@ function GeneralSettingsPanel() {
   const busySubmitBehavior = settings?.busySubmitBehavior;
   const fileOpenApplication = settings?.fileOpenApplication;
   const fileOpenMode = settings?.fileOpenMode;
+  const outputDetail = settings?.outputDetail;
+  const reasoningSummary = settings?.reasoningSummary;
 
   const chooseFileOpenApplication = () => {
     void selectFileOpenApplication().catch((error: unknown) => {
@@ -144,7 +150,7 @@ function GeneralSettingsPanel() {
         ) : (
           <ApprovalPolicySelect
             className="w-full sm:min-w-40 sm:max-w-56"
-            isDisabled={isSaving}
+            isDisabled={isSaving("approvalPolicy")}
             value={approvalPolicy}
             onChange={(approvalPolicy) => {
               void updateSettings({ approvalPolicy }).catch((error: unknown) => {
@@ -166,7 +172,7 @@ function GeneralSettingsPanel() {
               <Button
                 aria-label={`更换默认应用，当前为 ${fileOpenApplication?.name ?? "尚未选择应用"}`}
                 className="min-w-0 max-w-full justify-start sm:max-w-48"
-                isDisabled={isSaving}
+                isDisabled={isSaving("fileOpenMode")}
                 isPending={isSelectingFileOpenApplication}
                 variant="ghost"
                 onPress={chooseFileOpenApplication}
@@ -190,7 +196,7 @@ function GeneralSettingsPanel() {
             <Select
               aria-label="打开文件方式"
               className="w-full sm:w-40 sm:shrink-0"
-              isDisabled={isSaving || isSelectingFileOpenApplication}
+              isDisabled={isSaving("fileOpenMode") || isSelectingFileOpenApplication}
               selectedKey={fileOpenMode}
               variant="secondary"
               onSelectionChange={(key) => {
@@ -227,6 +233,109 @@ function GeneralSettingsPanel() {
               </Select.Popover>
             </Select>
           </div>
+        )}
+      </SettingsRow>
+
+      <Separator />
+
+      <SettingsRow description="选择模型回复包含细节的程度。" title="输出详细程度">
+        {outputDetail === undefined ? (
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
+        ) : (
+          <Select
+            aria-label="输出详细程度"
+            className="w-full sm:min-w-40 sm:max-w-56"
+            isDisabled={isSaving("outputDetail")}
+            selectedKey={outputDetail}
+            variant="secondary"
+            onSelectionChange={(key) => {
+              if (
+                key !== OutputDetail.MODEL_DEFAULT &&
+                key !== OutputDetail.LOW &&
+                key !== OutputDetail.MEDIUM &&
+                key !== OutputDetail.HIGH
+              ) {
+                return;
+              }
+              void updateSettings({ outputDetail: key }).catch((error: unknown) => {
+                toast.danger(error instanceof Error ? error.message : "保存输出详细程度失败");
+              });
+            }}
+          >
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                <ListBox.Item id={OutputDetail.MODEL_DEFAULT} textValue="模型默认">
+                  <Label>模型默认</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+                <ListBox.Item id={OutputDetail.LOW} textValue="低">
+                  <Label>低</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+                <ListBox.Item id={OutputDetail.MEDIUM} textValue="中">
+                  <Label>中</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+                <ListBox.Item id={OutputDetail.HIGH} textValue="高">
+                  <Label>高</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              </ListBox>
+            </Select.Popover>
+          </Select>
+        )}
+      </SettingsRow>
+
+      <Separator />
+
+      <SettingsRow description="选择模型总结推理过程的方式。" title="推理摘要">
+        {reasoningSummary === undefined ? (
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
+        ) : (
+          <Select
+            aria-label="推理摘要"
+            className="w-full sm:min-w-40 sm:max-w-56"
+            isDisabled={isSaving("reasoningSummary")}
+            selectedKey={reasoningSummary}
+            variant="secondary"
+            onSelectionChange={(key) => {
+              if (
+                key !== ReasoningSummary.AUTO &&
+                key !== ReasoningSummary.CONCISE &&
+                key !== ReasoningSummary.DETAILED
+              ) {
+                return;
+              }
+              void updateSettings({ reasoningSummary: key }).catch((error: unknown) => {
+                toast.danger(error instanceof Error ? error.message : "保存推理摘要设置失败");
+              });
+            }}
+          >
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                <ListBox.Item id={ReasoningSummary.AUTO} textValue="自动">
+                  <Label>自动</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+                <ListBox.Item id={ReasoningSummary.CONCISE} textValue="简洁">
+                  <Label>简洁</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+                <ListBox.Item id={ReasoningSummary.DETAILED} textValue="详细">
+                  <Label>详细</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              </ListBox>
+            </Select.Popover>
+          </Select>
         )}
       </SettingsRow>
 
@@ -276,7 +385,7 @@ function GeneralSettingsPanel() {
           <Select
             aria-label="繁忙时 Enter 键行为"
             className="w-full sm:min-w-40 sm:max-w-56"
-            isDisabled={isSaving}
+            isDisabled={isSaving("busySubmitBehavior")}
             selectedKey={busySubmitBehavior}
             variant="secondary"
             onSelectionChange={(key) => {

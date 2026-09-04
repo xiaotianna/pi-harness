@@ -2,6 +2,14 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import {
+  isOutputDetail,
+  isReasoningSummary,
+  OutputDetail,
+  type OutputDetail as OutputDetailValue,
+  ReasoningSummary,
+  type ReasoningSummary as ReasoningSummaryValue,
+} from "@pi-harness/agent-runtime/model-response-preferences";
 import { isThinkingLevel, type ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import {
   BusySubmitBehavior,
@@ -79,12 +87,16 @@ export interface AppSettingRepository {
   getDisabledSkillDirectories(): readonly string[];
   getFileOpenApplication(): FileOpenApplicationSetting | null;
   getFileOpenMode(): FileOpenModeValue;
+  getOutputDetail(): OutputDetailValue;
+  getReasoningSummary(): ReasoningSummaryValue;
   setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void;
   setBusySubmitBehavior(behavior: BusySubmitBehaviorValue, updatedAt: number): void;
   setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void;
   setDisabledSkillDirectories(directories: readonly string[], updatedAt: number): void;
   setFileOpenApplication(application: FileOpenApplicationSetting, updatedAt: number): void;
   setFileOpenMode(mode: FileOpenModeValue, updatedAt: number): void;
+  setOutputDetail(outputDetail: OutputDetailValue, updatedAt: number): void;
+  setReasoningSummary(reasoningSummary: ReasoningSummaryValue, updatedAt: number): void;
 }
 
 export interface DefaultModelSetting {
@@ -522,6 +534,8 @@ const DEFAULT_MODEL_KEY = "default_model";
 const DISABLED_SKILL_DIRECTORIES_KEY = "disabled_skill_directories";
 const FILE_OPEN_APPLICATION_KEY = "file_open_application";
 const FILE_OPEN_MODE_KEY = "file_open_mode";
+const OUTPUT_DETAIL_KEY = "output_detail";
+const REASONING_SUMMARY_KEY = "reasoning_summary";
 
 class SqliteAppSettingRepository implements AppSettingRepository {
   public constructor(private readonly database: DatabaseSync) {}
@@ -626,6 +640,30 @@ class SqliteAppSettingRepository implements AppSettingRepository {
     return value;
   }
 
+  public getOutputDetail(): OutputDetailValue {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(OUTPUT_DETAIL_KEY) as DatabaseRow | undefined;
+    if (!row) return OutputDetail.MODEL_DEFAULT;
+
+    const value = readRequiredString(row, "value");
+    if (!isOutputDetail(value)) throw new Error("Invalid database value for output detail");
+    return value;
+  }
+
+  public getReasoningSummary(): ReasoningSummaryValue {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(REASONING_SUMMARY_KEY) as DatabaseRow | undefined;
+    if (!row) return ReasoningSummary.AUTO;
+
+    const value = readRequiredString(row, "value");
+    if (!isReasoningSummary(value)) {
+      throw new Error("Invalid database value for reasoning summary");
+    }
+    return value;
+  }
+
   public setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void {
     this.database
       .prepare(
@@ -678,6 +716,24 @@ class SqliteAppSettingRepository implements AppSettingRepository {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       )
       .run(FILE_OPEN_MODE_KEY, mode, updatedAt);
+  }
+
+  public setOutputDetail(outputDetail: OutputDetailValue, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(OUTPUT_DETAIL_KEY, outputDetail, updatedAt);
+  }
+
+  public setReasoningSummary(reasoningSummary: ReasoningSummaryValue, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(REASONING_SUMMARY_KEY, reasoningSummary, updatedAt);
   }
 }
 

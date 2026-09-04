@@ -5,6 +5,7 @@ export const skillQueryKeys = {
   all: ["skills"] as const,
   detail: (workspaceId: string, scope: Skill["scope"], name: string) =>
     [...skillQueryKeys.all, "detail", workspaceId, scope, name] as const,
+  lists: () => [...skillQueryKeys.all, "list"] as const,
   list: (workspaceId: string | null) => [...skillQueryKeys.all, "list", workspaceId] as const,
 };
 

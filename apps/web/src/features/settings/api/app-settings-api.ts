@@ -1,3 +1,7 @@
+import {
+  OutputDetail,
+  ReasoningSummary,
+} from "@pi-harness/agent-runtime/model-response-preferences";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { ApprovalPolicy } from "@pi-harness/policy/approval-policy";
@@ -26,6 +30,19 @@ const DefaultModelSettingSchema = Type.Object({
   ]),
 });
 
+const OutputDetailSchema = Type.Union([
+  Type.Literal(OutputDetail.MODEL_DEFAULT),
+  Type.Literal(OutputDetail.LOW),
+  Type.Literal(OutputDetail.MEDIUM),
+  Type.Literal(OutputDetail.HIGH),
+]);
+
+const ReasoningSummarySchema = Type.Union([
+  Type.Literal(ReasoningSummary.AUTO),
+  Type.Literal(ReasoningSummary.CONCISE),
+  Type.Literal(ReasoningSummary.DETAILED),
+]);
+
 const AppSettingsSchema = Type.Object({
   approvalPolicy: ApprovalPolicySchema,
   busySubmitBehavior: Type.Union([
@@ -44,6 +61,8 @@ const AppSettingsSchema = Type.Object({
     Type.Null(),
   ]),
   fileOpenMode: Type.Union([Type.Literal(FileOpenMode.ALWAYS), Type.Literal(FileOpenMode.ASK)]),
+  outputDetail: OutputDetailSchema,
+  reasoningSummary: ReasoningSummarySchema,
 });
 
 const UpdateAppSettingsSchema = Type.Object({
@@ -55,6 +74,8 @@ const UpdateAppSettingsSchema = Type.Object({
   fileOpenMode: Type.Optional(
     Type.Union([Type.Literal(FileOpenMode.ALWAYS), Type.Literal(FileOpenMode.ASK)]),
   ),
+  outputDetail: Type.Optional(OutputDetailSchema),
+  reasoningSummary: Type.Optional(ReasoningSummarySchema),
 });
 
 export type AppSettings = Static<typeof AppSettingsSchema>;

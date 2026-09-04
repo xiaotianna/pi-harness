@@ -1236,7 +1236,7 @@ export function ChatComposer({
             ) : (
               <ApprovalPolicySelect
                 className="max-w-36 gap-2 px-2"
-                isDisabled={isSaving}
+                isDisabled={isSaving("approvalPolicy")}
                 showDescription
                 value={approvalPolicy}
                 onChange={handleApprovalPolicyChange}
@@ -1246,7 +1246,7 @@ export function ChatComposer({
               <Skeleton aria-hidden className="h-8 w-8 rounded-full sm:w-40" />
             ) : isMobile ? (
               <MobileModelPicker
-                isDisabled={isSaving}
+                isDisabled={isSaving("defaultModel")}
                 providers={availableModelProviders}
                 selectedModel={selectedModel}
                 selectedModelKey={selectedModelKey}
@@ -1265,7 +1265,7 @@ export function ChatComposer({
                       : ""
                   }`}
                   className="gap-2 px-2"
-                  isDisabled={isSaving}
+                  isDisabled={isSaving("defaultModel")}
                   size="sm"
                   variant="ghost"
                 >
