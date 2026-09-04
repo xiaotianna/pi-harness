@@ -29,7 +29,6 @@ const MIN_USER_CONTEXT_CHARACTERS = 8 * 1024;
 const USER_CONTEXT_ENVELOPE_ALLOWANCE = 4 * 1024;
 const USER_CONTEXT_WINDOW_SHARE = 0.25;
 const HISTORICAL_CONTEXT_TRUNCATION_MARKER = "\n\n[附件或引用内容已按本次模型请求的上下文预算截断]";
-const HISTORICAL_CONTEXT_OMISSION_MARKER = "[附件或引用内容未在本次模型请求中重复展开]";
 const BASE64_PATTERN = /^(?:[A-Za-z\d+/]{4})*(?:[A-Za-z\d+/]{2}==|[A-Za-z\d+/]{3}=)?$/;
 const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
 
@@ -108,56 +107,42 @@ function hasExpandedUserContext(message: AgentMessage): boolean {
 function limitHarnessUserMessageText(
   message: AgentMessage,
   maximumCharacters: number,
-): { consumedCharacters: number; message: AgentMessage } {
-  if (!isHarnessUserMessage(message)) return { consumedCharacters: 0, message };
+): AgentMessage {
+  if (!isHarnessUserMessage(message)) return message;
   const content = message.content;
   const sourceText =
     typeof content === "string" ? content : content.find((part) => part.type === "text")?.text;
-  if (sourceText === undefined) return { consumedCharacters: 0, message };
+  if (sourceText === undefined) return message;
 
-  const isOmitted = maximumCharacters <= 0;
   const isTruncated = sourceText.length > maximumCharacters;
-  if (!isOmitted && !isTruncated) {
-    return { consumedCharacters: sourceText.length, message };
-  }
+  if (!isTruncated) return message;
 
-  const nextText = isOmitted
-    ? [message.displayText.trim(), HISTORICAL_CONTEXT_OMISSION_MARKER].filter(Boolean).join("\n\n")
-    : `${sourceText.slice(
-        0,
-        Math.max(0, maximumCharacters - HISTORICAL_CONTEXT_TRUNCATION_MARKER.length),
-      )}${HISTORICAL_CONTEXT_TRUNCATION_MARKER}`;
+  const nextText = `${sourceText.slice(
+    0,
+    Math.max(0, maximumCharacters - HISTORICAL_CONTEXT_TRUNCATION_MARKER.length),
+  )}${HISTORICAL_CONTEXT_TRUNCATION_MARKER}`;
   const nextContent =
     typeof content === "string"
       ? nextText
       : content.map((part) => (part.type === "text" ? { ...part, text: nextText } : part));
-  return {
-    consumedCharacters: isOmitted ? 0 : nextText.length,
-    message: { ...message, content: nextContent },
-  };
+  return { ...message, content: nextContent };
 }
 
 /**
  * 仅限制附件和 @ 引用展开出的历史文本；不修改 Agent state 或 JSONL，也不裁剪普通对话。
- * 从最新消息向前分配预算，让当前任务引用优先于较早的附件内容。
+ * 每条消息使用固定预算，避免新增附件改写更早的请求前缀；完整窗口由 Context Pipeline 压缩。
  */
 export function limitUserInputContext(
   messages: readonly AgentMessage[],
   contextWindow: number,
 ): AgentMessage[] {
-  const projected = [...messages];
-  let remainingCharacters =
+  const maximumCharacters =
     resolveUserContextCharacterBudget(contextWindow) + USER_CONTEXT_ENVELOPE_ALLOWANCE;
-
-  for (let index = projected.length - 1; index >= 0; index -= 1) {
-    const message = projected[index];
-    if (message === undefined || !hasExpandedUserContext(message)) continue;
-    const limited = limitHarnessUserMessageText(message, remainingCharacters);
-    projected[index] = limited.message;
-    remainingCharacters = Math.max(0, remainingCharacters - limited.consumedCharacters);
-  }
-
-  return projected;
+  return messages.map((message) =>
+    hasExpandedUserContext(message)
+      ? limitHarnessUserMessageText(message, maximumCharacters)
+      : message,
+  );
 }
 
 async function readFilePrefix(

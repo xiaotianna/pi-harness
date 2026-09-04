@@ -6,6 +6,7 @@ import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import {
   type Api,
   type AssistantMessage,
+  type Context,
   createAssistantMessageEventStream,
   type Model,
   type SimpleStreamOptions,
@@ -66,9 +67,11 @@ function createAssistantResponse(
 function createStreamFn(
   responses: readonly unknown[],
   observedOptions: SimpleStreamOptions[] = [],
+  observedContexts: Context[] = [],
 ): StreamFn {
   let callIndex = 0;
-  return (_model, _context, options) => {
+  return (_model, context, options) => {
+    observedContexts.push(context);
     if (options !== undefined) observedOptions.push(options);
     const response = createAssistantResponse(
       JSON.stringify(responses[Math.min(callIndex, responses.length - 1)]),
@@ -259,7 +262,8 @@ async function evaluateCompactionScenarios(): Promise<void> {
     },
   ] as const;
   const observedOptions: SimpleStreamOptions[] = [];
-  const streamFn = createStreamFn(responses, observedOptions);
+  const observedContexts: Context[] = [];
+  const streamFn = createStreamFn(responses, observedOptions, observedContexts);
   const firstHistory = createHistory(14);
   const first = await projectContext({
     activeRunStartMessageIndex: 0,
@@ -278,6 +282,37 @@ async function evaluateCompactionScenarios(): Promise<void> {
   assert.equal(first.compacted.compactionReason, ContextCompactionReason.MILESTONE);
   assert.equal(first.compacted.compactionStrategy, ContextCompactionStrategy.MODEL);
   assert.ok(first.compacted.beforeTokens > first.compacted.afterTokens);
+  const firstCoveredEnd = first.compacted.coveredMessageRange?.end;
+  if (firstCoveredEnd === undefined) throw new Error("首次压缩缺少消息范围");
+  assert.equal(observedContexts[0]?.systemPrompt, "评估上下文运行时");
+  assert.deepEqual(observedContexts[0]?.tools, []);
+  assert.deepEqual(
+    observedContexts[0]?.messages.slice(0, -1),
+    firstHistory.slice(0, firstCoveredEnd),
+  );
+
+  const stableCheckpoint = createCheckpoint();
+  const stableMessages: AgentMessage[] = [
+    { content: [{ text: "已压缩的旧消息", type: "text" }], role: "user", timestamp: 1 },
+    { content: [{ text: "保持稳定的热尾部", type: "text" }], role: "user", timestamp: 2 },
+  ];
+  const projectStableCheckpoint = (updatedAt: number) =>
+    projectContext({
+      activeRunStartMessageIndex: 1,
+      checkpoint: stableCheckpoint,
+      messages: stableMessages,
+      model,
+      plan: { plan: [{ status: "in_progress", step: "继续" }], updatedAt },
+      sessionId: SESSION_ID,
+      streamFn,
+      systemPrompt: "评估上下文运行时",
+      todos: null,
+      tools: [],
+    });
+  assert.deepEqual(
+    (await projectStableCheckpoint(1)).messages,
+    (await projectStableCheckpoint(2)).messages,
+  );
 
   const restoredProjection = await projectContext({
     activeRunStartMessageIndex: 2,
@@ -422,6 +457,7 @@ process.stdout.write(
     failedTools: true,
     jsonlRestartRestore: true,
     promptCache: true,
+    stableCheckpointPrefix: true,
     repeatedCompaction: true,
     taskBoundaryReset: true,
     timeoutFallback: true,

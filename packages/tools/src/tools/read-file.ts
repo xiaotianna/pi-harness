@@ -31,7 +31,8 @@ export function createReadFileTool(
   return {
     name: "read_file",
     label: "Read file",
-    description: "读取 workspace 内的 UTF-8 文本文件，支持使用 offset 和 limit 分页读取大文件。",
+    description:
+      "读取 workspace 内 UTF-8 文本的最小必要范围，支持使用 offset 和 limit 分页读取大文件；多个候选文件应在同一响应中并行读取，不要重复读取未变化内容。",
     parameters: ReadFileParameters,
     executionMode: "parallel",
     async execute(_toolCallId, input, signal) {

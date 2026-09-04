@@ -18,7 +18,6 @@ import {
 import { type ApprovalPolicyValue, evaluateToolCall, ToolPolicyDecision } from "@pi-harness/policy";
 import {
   attachSuccessfulTodoEvidence,
-  PlanStepStatus,
   type PlanUpdatedData,
   readFileChangeDetails,
   type SessionHistorySearchResult,
@@ -35,7 +34,6 @@ import {
   type ContextCheckpointRecord,
   type ContextCheckpointRestoredData,
   type ContextCompactedData,
-  ContextCompactionReason,
   type ContextUsageSnapshotData,
   type ContextWorkingStateResetData,
   type FileChangedData,
@@ -159,7 +157,6 @@ export class RunCoordinator {
   private isContinuingSteer = false;
   private readonly pendingSteerInterrupts: HarnessUserMessage[] = [];
   private queueMutationTail: Promise<void> = Promise.resolve();
-  private pendingMilestoneCompaction = false;
   private pendingWorkingStateReset = false;
   private readonly successfulToolCallIds = new Set<string>();
   private readonly unsubscribe: () => void;
@@ -275,19 +272,6 @@ export class RunCoordinator {
           : {
               checkpointTailStartMessageIndex: this.contextCheckpointTailStartMessageIndex,
             }),
-        //
-        /**
-         * 里程碑压缩：当 Plan 中有步骤完成后，提前在上下文达到 60% 时压缩。
-         * 如果没有 Plan 或没有步骤完成，就不会触发里程碑压缩，只按普通的 80% 阈值压缩。
-         *
-         * 一个阶段完成后，趁信息还清晰，提前把该阶段总结成 checkpoint，好处是：
-         * 1、给后续阶段留出更多上下文空间
-         * 2、减少模型继续携带大量已完成过程
-         * 3、降低长任务后期才压缩导致的信息遗漏风险
-         */
-        ...(this.pendingMilestoneCompaction
-          ? { compactionReason: ContextCompactionReason.MILESTONE }
-          : {}),
         // 完整消息，Context Pipeline 根据 contextWindow 和 maxTokens 算出真正的输入预算
         messages,
         model: this.agent.state.model,
@@ -299,15 +283,8 @@ export class RunCoordinator {
             activeRun.runId,
           );
         },
-        /**
-         * plan和todos作用在两个地方：
-         * 1、生成 checkpoint 时提供给压缩模型，避免摘要遗漏未完成工作
-         * 2、生成本次主模型上下文时，与 checkpoint 一起注入：checkpoint + plan + todos
-         * 因此，即使详细历史被压缩，模型仍知道：
-            - 当前计划走到哪里
-            - 哪些 Todo 未完成
-            - 下一步是什么
-         */
+        // Plan/Todos 作为摘要输入；普通请求继续从原有 Tool Result 读取其最新状态。
+        // 这样 checkpoint 前缀在两次压缩之间保持稳定，不因更新时间变化而破坏缓存。
         plan: this.planState,
         todos: this.todoState,
         sessionId: this.sessionId,
@@ -335,7 +312,6 @@ export class RunCoordinator {
           data: projected.compacted,
           eventSeq: event.seq,
         });
-        this.pendingMilestoneCompaction = false;
       }
       this.pendingContextError = projected.error ?? null;
       return projected.messages;
@@ -348,14 +324,8 @@ export class RunCoordinator {
   public async updatePlan(data: PlanUpdatedData): Promise<void> {
     const activeRun = this.activeRun;
     if (activeRun === null) throw new Error("当前没有活动 Run");
-    const previousCompleted =
-      this.planState?.plan.filter((item) => item.status === PlanStepStatus.COMPLETED).length ?? 0;
-    const nextCompleted = data.plan.filter(
-      (item) => item.status === PlanStepStatus.COMPLETED,
-    ).length;
     await this.emit({ data, type: HarnessEventType.PLAN_UPDATED }, activeRun.runId);
     this.planState = data;
-    if (nextCompleted > previousCompleted) this.pendingMilestoneCompaction = true;
   }
 
   public async updateTodos(data: TodoUpdatedData): Promise<TodoUpdatedData> {
@@ -417,7 +387,6 @@ export class RunCoordinator {
     );
     this.planState = null;
     this.todoState = null;
-    this.pendingMilestoneCompaction = false;
     this.pendingWorkingStateReset = false;
   }
 
@@ -874,7 +843,6 @@ export class RunCoordinator {
     this.planState = input.plan;
     this.todoState = input.todos;
     this.nextSeq = input.initialSeq + 1;
-    this.pendingMilestoneCompaction = false;
     this.pendingWorkingStateReset = false;
     this.successfulToolCallIds.clear();
     for (const message of input.messages) {

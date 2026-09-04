@@ -186,7 +186,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     turnId: string;
   } | null>(null);
   const [positionedSessionId, setPositionedSessionId] = useState<string | null>(null);
-  const [acceptedRunId, setAcceptedRunId] = useState<string | null>(null);
+  const [acceptedRun, setAcceptedRun] = useState<{ runId: string; sessionId: string } | null>(null);
   const isPageReady =
     activeView !== ChatPageView.CONVERSATION ||
     searchTarget !== null ||
@@ -247,38 +247,46 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   }, [activeView, conversationElement, isSnapshotReady, sessionId]);
 
   const startMutation = useMutation({
-    mutationFn: (input: RunUserInput) => startSessionRun(sessionId, input),
+    mutationFn: ({ input, sessionId }: { input: RunUserInput; sessionId: string }) =>
+      startSessionRun(sessionId, input),
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.list() });
     },
-    onMutate: () => {
-      setAcceptedRunId(null);
+    onMutate: ({ sessionId }) => {
+      setAcceptedRun(null);
       queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
         sessions?.map((session) =>
           session.id === sessionId ? { ...session, isRunning: true } : session,
         ),
       );
     },
-    onSuccess: (accepted) => setAcceptedRunId(accepted.runId),
+    onSuccess: (accepted, { sessionId }) => setAcceptedRun({ runId: accepted.runId, sessionId }),
   });
   const abortMutation = useMutation({
     mutationFn: (runId: string) => abortSessionRun(sessionId, runId),
   });
   const retryMutation = useMutation({
-    mutationFn: ({ messageEventId, prompt }: { messageEventId: string; prompt: string }) =>
-      retrySessionUserMessage(sessionId, messageEventId, prompt),
+    mutationFn: ({
+      messageEventId,
+      prompt,
+      sessionId,
+    }: {
+      messageEventId: string;
+      prompt: string;
+      sessionId: string;
+    }) => retrySessionUserMessage(sessionId, messageEventId, prompt),
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.list() });
     },
-    onMutate: () => {
-      setAcceptedRunId(null);
+    onMutate: ({ sessionId }) => {
+      setAcceptedRun(null);
       queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
         sessions?.map((session) =>
           session.id === sessionId ? { ...session, isRunning: true } : session,
         ),
       );
     },
-    onSuccess: (accepted) => setAcceptedRunId(accepted.runId),
+    onSuccess: (accepted, { sessionId }) => setAcceptedRun({ runId: accepted.runId, sessionId }),
   });
   const followUpMutation = useMutation({
     mutationFn: ({ input, runId }: { input: RunUserInput; runId: string }) =>
@@ -368,9 +376,10 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     }) => resolveToolApproval(sessionId, runId, approvalId, decision),
   });
 
+  const acceptedRunId = acceptedRun?.sessionId === sessionId ? acceptedRun.runId : null;
   const isAcceptedRunFinished = useMemo(
     () =>
-      acceptedRunId !== undefined &&
+      acceptedRunId !== null &&
       events.some(
         (event) =>
           event.runId === acceptedRunId &&
@@ -387,7 +396,9 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     enabled: activeRunId !== null,
   });
   const status =
-    startMutation.isPending || retryMutation.isPending || (activeRunId && eventActiveRunId === null)
+    (startMutation.isPending && startMutation.variables.sessionId === sessionId) ||
+    (retryMutation.isPending && retryMutation.variables.sessionId === sessionId) ||
+    (activeRunId && eventActiveRunId === null)
       ? "submitted"
       : eventActiveRunId === null
         ? "ready"
@@ -482,7 +493,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                         : {
                             onRetryUserMessage: (messageEventId: string, prompt: string) =>
                               retryMutation
-                                .mutateAsync({ messageEventId, prompt })
+                                .mutateAsync({ messageEventId, prompt, sessionId })
                                 .then(() => undefined),
                           })}
                       {...(searchTarget ? { searchTarget } : {})}
@@ -553,7 +564,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   }
                   onSubmitMessage={({ busySubmitBehavior, ...input }) => {
                     if (!activeRunId) {
-                      return startMutation.mutateAsync(input).then(() => undefined);
+                      return startMutation.mutateAsync({ input, sessionId }).then(() => undefined);
                     }
                     return busySubmitBehavior === BusySubmitBehavior.STEER
                       ? steerMutation.mutateAsync({ input, runId: activeRunId })

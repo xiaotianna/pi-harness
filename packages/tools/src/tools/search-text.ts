@@ -9,6 +9,13 @@ const SearchTextParameters = Type.Object({
   query: Type.String({ description: "ripgrep 正则表达式", minLength: 1 }),
   path: Type.Optional(Type.String({ description: "搜索路径，默认为 workspace 根目录" })),
   glob: Type.Optional(Type.String({ description: "可选的文件 glob，例如 **/*.ts" })),
+  context: Type.Optional(
+    Type.Integer({
+      description: "每处匹配前后附带的上下文行数；定位实现时通常使用 2-3",
+      maximum: 5,
+      minimum: 0,
+    }),
+  ),
 });
 
 export interface SearchTextDetails {
@@ -29,7 +36,8 @@ export function createSearchTextTool(
   return {
     name: "search_text",
     label: "Search text",
-    description: "使用 ripgrep 搜索 workspace 文件内容，返回相对路径、行号和匹配文本。",
+    description:
+      "使用 ripgrep 定位 workspace 中的符号、引用或文本；优先用它缩小候选文件，可按需返回上下文行。",
     parameters: SearchTextParameters,
     executionMode: "parallel",
     async execute(_toolCallId, input, signal) {
@@ -38,6 +46,7 @@ export function createSearchTextTool(
       const workspaceRoot = await resolveToolPath(context, ".");
       const args = ["--line-number", "--no-heading", "--color", "never"];
       if (input.glob !== undefined) args.push("--glob", input.glob);
+      if (input.context !== undefined) args.push("--context", String(input.context));
 
       for (const protectedPath of context.protectedPaths ?? []) {
         const protectedFromWorkspace = relative(workspaceRoot, protectedPath);

@@ -231,8 +231,8 @@ export interface ContextCheckpoint {
 
 // 触发这次上下文压缩的原因
 export const ContextCompactionReason = {
-  MILESTONE: "milestone", // 普通压缩（80%）
-  THRESHOLD: "threshold", // 里程碑压缩（60%）
+  MILESTONE: "milestone", // 调用方显式标记的里程碑压缩
+  THRESHOLD: "threshold", // 达到统一压力阈值的自动压缩
 } as const;
 
 export type ContextCompactionReason =

@@ -11,7 +11,12 @@ const MAX_ENTRIES = 500;
 
 const ListFilesParameters = Type.Object({
   path: Type.Optional(Type.String({ description: "要列举的目录，默认为 workspace 根目录" })),
-  pattern: Type.Optional(Type.String({ description: "相对于目录的 glob，默认为 *", minLength: 1 })),
+  pattern: Type.Optional(
+    Type.String({
+      description: "相对于目录的 glob，默认为 *；不含路径分隔符时递归匹配所有层级",
+      minLength: 1,
+    }),
+  ),
 });
 
 export interface ListFilesDetails {
@@ -27,6 +32,10 @@ function validatePattern(pattern: string): void {
   }
 }
 
+function resolvePattern(pattern: string): string {
+  return pattern.includes("/") || pattern.includes("\\") ? pattern : `**/${pattern}`;
+}
+
 /**
  * list_files 工具
  * 调度：并行（executionMode：parallel）
@@ -38,13 +47,15 @@ export function createListFilesTool(
   return {
     name: "list_files",
     label: "List files",
-    description: "列举 workspace 目录内容；可使用 glob pattern 发现文件。",
+    description:
+      "使用 glob 一次发现 workspace 路径；不含路径分隔符的 pattern 会递归匹配所有层级，避免逐层列目录。",
     parameters: ListFilesParameters,
     executionMode: "parallel",
     async execute(_toolCallId, input, signal) {
       const requestedPath = input.path?.trim() || ".";
-      const pattern = input.pattern ?? "*";
-      validatePattern(pattern);
+      const requestedPattern = input.pattern ?? "*";
+      validatePattern(requestedPattern);
+      const pattern = resolvePattern(requestedPattern);
       const directory = await resolveToolPath(context, requestedPath);
       if (!(await stat(directory)).isDirectory()) throw new Error("list_files 的 path 必须是目录");
       const workspaceRoot = await resolveToolPath(context, ".");
@@ -88,7 +99,12 @@ export function createListFilesTool(
       const suffix = truncated ? `\n\n[结果已截断]` : "";
       return {
         content: [{ type: "text", text: entries.length ? output.content + suffix : "(empty)" }],
-        details: { count: output.outputLines, path: requestedPath, pattern, truncated },
+        details: {
+          count: output.outputLines,
+          path: requestedPath,
+          pattern: requestedPattern,
+          truncated,
+        },
       };
     },
   };

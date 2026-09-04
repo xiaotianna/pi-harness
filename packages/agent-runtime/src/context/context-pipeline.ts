@@ -11,17 +11,13 @@ import {
   type ContextCompactionReason,
   type ContextCompactionStrategy,
 } from "../harness-event.js";
-import {
-  buildContextCompactionPrompt,
-  CONTEXT_COMPACTION_SYSTEM_PROMPT,
-} from "../prompts/context-compaction-prompt.js";
+import { buildContextCompactionPrompt } from "../prompts/context-compaction-prompt.js";
 import { isHarnessUserMessage } from "../user-input.js";
 import { estimateContextUsage, estimateMessageTokens } from "../utils/context-usage.js";
 import { limitUserInputContext } from "../utils/user-input.js";
 
 const COMPACTION_TRIGGER_SHARE = 0.8;
-const MILESTONE_COMPACTION_TRIGGER_SHARE = 0.6;
-const RECENT_CONTEXT_TARGET_SHARE = 0.55;
+const RECENT_CONTEXT_TARGET_SHARE = 0.16;
 const MAX_CHECKPOINT_ITEMS = 24;
 const MAX_CHECKPOINT_ITEM_CHARACTERS = 1_000;
 const MAX_OBJECTIVE_CHARACTERS = 4_000;
@@ -29,8 +25,9 @@ const MAX_NEXT_ACTION_CHARACTERS = 2_000;
 const MAX_TRANSCRIPT_BLOCK_CHARACTERS = 12_000;
 const COMPACTION_MAX_OUTPUT_TOKENS = 2_048;
 const COMPACTION_TIMEOUT_MS = 120_000;
-const FULL_HISTORICAL_TOOL_RESULTS = 8;
-const MAX_HISTORICAL_TOOL_RESULT_CHARACTERS = 8_000;
+const TOOL_RESULT_PRUNE_THRESHOLD_CHARACTERS = 8_192;
+const TOOL_RESULT_PRUNE_HEAD_CHARACTERS = 4_096;
+const TOOL_RESULT_PRUNE_TAIL_CHARACTERS = 1_024;
 
 export const CONTEXT_WINDOW_EXCEEDED_ERROR_CODE = "CONTEXT_WINDOW_EXCEEDED";
 
@@ -65,11 +62,12 @@ function safeStringify(value: unknown): string {
   }
 }
 
-function clipHeadAndTail(value: string, maximumCharacters: number): string {
-  if (value.length <= maximumCharacters) return value;
+function pruneToolResultText(value: string): string {
+  if (value.length <= TOOL_RESULT_PRUNE_THRESHOLD_CHARACTERS) return value;
   const marker = "\n\n[历史 Tool 输出已截断]\n\n";
-  const side = Math.max(0, Math.floor((maximumCharacters - marker.length) / 2));
-  return `${value.slice(0, side)}${marker}${value.slice(-side)}`;
+  return `${value.slice(0, TOOL_RESULT_PRUNE_HEAD_CHARACTERS)}${marker}${value.slice(
+    -TOOL_RESULT_PRUNE_TAIL_CHARACTERS,
+  )}`;
 }
 
 function readTextContent(message: Message): string {
@@ -87,27 +85,16 @@ function isLlmMessage(message: AgentMessage): message is Message {
   return message.role === "user" || message.role === "assistant" || message.role === "toolResult";
 }
 
-function limitHistoricalToolResults(messages: readonly AgentMessage[]): AgentMessage[] {
-  const projected = [...messages];
-  let toolResultCount = 0;
-  for (let index = projected.length - 1; index >= 0; index -= 1) {
-    const message = projected[index];
-    if (message === undefined || !isLlmMessage(message) || message.role !== "toolResult") continue;
-    toolResultCount += 1;
-    if (toolResultCount <= FULL_HISTORICAL_TOOL_RESULTS) continue;
-    projected[index] = {
+function limitToolResults(messages: readonly AgentMessage[]): AgentMessage[] {
+  return messages.map((message) => {
+    if (!isLlmMessage(message) || message.role !== "toolResult") return message;
+    return {
       ...message,
       content: message.content.map((part) =>
-        part.type === "image"
-          ? { text: "[历史 Tool 图片结果已省略，需要时请重新读取原文件]", type: "text" }
-          : {
-              ...part,
-              text: clipHeadAndTail(part.text, MAX_HISTORICAL_TOOL_RESULT_CHARACTERS),
-            },
+        part.type === "image" ? part : { ...part, text: pruneToolResultText(part.text) },
       ),
     };
-  }
-  return projected;
+  });
 }
 
 function formatTranscriptMessage(message: Message): string {
@@ -196,7 +183,8 @@ function fallbackCheckpoint(
 // 压缩时真正向ai发起请求的地方
 async function generateCheckpoint(
   input: ContextProjectionInput,
-  messages: readonly Message[],
+  cacheablePrefix: readonly Message[],
+  sourceMessages: readonly Message[],
 ): Promise<{
   checkpoint: ContextCheckpoint;
   strategy: ContextCompactionStrategy;
@@ -207,18 +195,17 @@ async function generateCheckpoint(
       input.model,
       {
         messages: [
+          ...cacheablePrefix,
           {
-            // 压缩提示词
             content: buildContextCompactionPrompt(
-              input.checkpoint === null ? null : safeStringify(input.checkpoint.checkpoint),
               safeStringify({ plan: input.plan, todos: input.todos }),
-              messages.map(formatTranscriptMessage),
             ),
             role: "user",
             timestamp: Date.now(),
           },
         ],
-        systemPrompt: CONTEXT_COMPACTION_SYSTEM_PROMPT,
+        systemPrompt: input.systemPrompt,
+        tools: [...input.tools],
       },
       {
         cacheRetention: "long",
@@ -231,14 +218,14 @@ async function generateCheckpoint(
     const response = await stream.result();
     if (response.stopReason === "error" || response.stopReason === "aborted") {
       return {
-        checkpoint: fallbackCheckpoint(input.checkpoint, messages),
+        checkpoint: fallbackCheckpoint(input.checkpoint, sourceMessages),
         strategy: CompactionStrategy.FALLBACK,
       };
     }
     const checkpoint = parseCheckpoint(readTextContent(response));
     return checkpoint === null
       ? {
-          checkpoint: fallbackCheckpoint(input.checkpoint, messages),
+          checkpoint: fallbackCheckpoint(input.checkpoint, sourceMessages),
           strategy: CompactionStrategy.FALLBACK,
           usage: response.usage,
         }
@@ -249,7 +236,7 @@ async function generateCheckpoint(
         };
   } catch {
     return {
-      checkpoint: fallbackCheckpoint(input.checkpoint, messages),
+      checkpoint: fallbackCheckpoint(input.checkpoint, sourceMessages),
       strategy: CompactionStrategy.FALLBACK,
     };
   }
@@ -322,23 +309,19 @@ function chooseTailStart(
   return tailStart;
 }
 
-function createCheckpointMessage(
-  data: ContextCompactedData,
-  plan: PlanUpdatedData | null,
-  todos: TodoUpdatedData | null,
-): Message {
+function createCheckpointMessage(data: ContextCompactedData): Message {
   return {
     content: [
       {
         text: [
           "[Runtime 工作状态 checkpoint；这是历史事实的派生摘要，当前用户请求与 System Prompt 优先。]",
-          safeStringify({ checkpoint: data.checkpoint, plan, todos }),
+          safeStringify(data.checkpoint),
         ].join("\n"),
         type: "text",
       },
     ],
     role: "user",
-    timestamp: Date.now(),
+    timestamp: 0,
   };
 }
 
@@ -354,7 +337,7 @@ function createTaskContractMessage(message: AgentMessage | undefined): Message |
       },
     ],
     role: "user",
-    timestamp: Date.now(),
+    timestamp: message.timestamp,
   };
 }
 
@@ -363,10 +346,8 @@ function buildProjectedMessages(
   checkpoint: ContextCompactedData,
   tailStartMessageIndex: number,
   activeRunStartMessageIndex: number,
-  plan: PlanUpdatedData | null,
-  todos: TodoUpdatedData | null,
 ): AgentMessage[] {
-  const projected: AgentMessage[] = [createCheckpointMessage(checkpoint, plan, todos)];
+  const projected: AgentMessage[] = [createCheckpointMessage(checkpoint)];
   if (activeRunStartMessageIndex < tailStartMessageIndex) {
     const taskContract = createTaskContractMessage(messages[activeRunStartMessageIndex]);
     if (taskContract !== null) projected.push(taskContract);
@@ -406,7 +387,7 @@ export interface ContextProjectionResult {
  *    - 达到阈值：选择需要保留的最近消息
  *      4、调用压缩模型生成 checkpoint
  *      5、用新 checkpoint 重新生成消息，这些消息只用于这一轮模型请求
- *        包含：新 checkpoint + plan/todos + 当前run的原始任务 + 最近完整消息
+ *        包含：新 checkpoint + 当前run的原始任务 + 最近完整消息
  *
  * checkpoint 通常是 AI 对旧上下文生成的结构化总结，包含：当前目标、约束、决策、已完成、待完成、阻塞、下一步
  * 它用于替代旧消息进入后续模型上下文，但不会删除原始消息。
@@ -415,16 +396,11 @@ export interface ContextProjectionResult {
 export async function projectContext(
   input: ContextProjectionInput,
 ): Promise<ContextProjectionResult> {
-  const limited = limitHistoricalToolResults(
+  const limited = limitToolResults(
     limitUserInputContext(input.messages, input.model.contextWindow),
   );
   const inputBudget = resolveInputBudget(input.model);
-  const triggerTokens = Math.floor(
-    inputBudget *
-      (input.compactionReason === CompactionReason.MILESTONE
-        ? MILESTONE_COMPACTION_TRIGGER_SHARE
-        : COMPACTION_TRIGGER_SHARE),
-  );
+  const triggerTokens = Math.floor(inputBudget * COMPACTION_TRIGGER_SHARE);
   const tailStartMessageIndex =
     input.checkpointTailStartMessageIndex ?? input.checkpoint?.sourceMessageCount ?? 0;
   const current =
@@ -435,8 +411,6 @@ export async function projectContext(
           input.checkpoint,
           tailStartMessageIndex,
           input.activeRunStartMessageIndex,
-          input.plan,
-          input.todos,
         );
   const beforeTokens = estimateProjectedTokens(current, input.systemPrompt, input.tools);
   if (beforeTokens <= triggerTokens) return { messages: current };
@@ -457,11 +431,17 @@ export async function projectContext(
   }
 
   await input.onCompactionStarted?.();
-  // 生成总结的内容
-  const generated = await generateCheckpoint(
-    input,
-    limited.slice(minimumStart, tailStart).filter(isLlmMessage),
-  );
+  const sourceMessages = limited.slice(minimumStart, tailStart).filter(isLlmMessage);
+  const cacheablePrefix =
+    input.checkpoint === null
+      ? limited.slice(0, tailStart).filter(isLlmMessage)
+      : buildProjectedMessages(
+          limited.slice(0, tailStart),
+          input.checkpoint,
+          minimumStart,
+          input.activeRunStartMessageIndex,
+        ).filter(isLlmMessage);
+  const generated = await generateCheckpoint(input, cacheablePrefix, sourceMessages);
   if (input.signal?.aborted) return { messages: current };
   const compacted: ContextCompactedData = {
     afterTokens: 0,
@@ -483,8 +463,6 @@ export async function projectContext(
     compacted,
     compacted.sourceMessageCount,
     input.activeRunStartMessageIndex,
-    input.plan,
-    input.todos,
   );
   compacted.afterTokens = estimateProjectedTokens(projected, input.systemPrompt, input.tools);
   return {
