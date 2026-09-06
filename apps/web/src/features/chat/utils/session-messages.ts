@@ -4,12 +4,17 @@ import {
   type HarnessEvent,
   HarnessEventType,
   isApprovalGranted,
+  isInputRequestedData,
+  isInputResolvedData,
   MessageDeltaKind,
   selectActiveSessionEvents,
 } from "@pi-harness/agent-runtime/harness-event";
 import {
   isHarnessUserMessage,
   RequestUserInputToolName,
+  RunMode,
+  UserInputRequestKind,
+  UserInputResponseAction,
 } from "@pi-harness/agent-runtime/user-input";
 import { UpdatePlanToolName, UpdateTodosToolName } from "@pi-harness/agent-runtime/working-state";
 import { isCommandPrefixRule } from "@pi-harness/policy/command-policy";
@@ -18,9 +23,13 @@ import type { Session, SessionSnapshot } from "../api/session-api";
 import {
   type ChatAssistantMessage,
   type ChatContextCompactionMessage,
+  ChatInputStatus,
+  type ChatInputStatusMessage,
   type ChatMessage,
   type ChatMessageTool,
   ChatMessageType,
+  type ChatPlanReviewMessage,
+  ChatPlanReviewStatus,
   type ChatThread,
   type ChatToolGroupMessage,
   ChatToolState,
@@ -205,7 +214,8 @@ function readDelta(event: HarnessEvent): (StreamingContent & { contentIndex: num
     if (
       typeof event.data.toolCallId !== "string" ||
       typeof event.data.toolName !== "string" ||
-      INTERACTION_TOOL_NAMES.has(event.data.toolName)
+      (INTERACTION_TOOL_NAMES.has(event.data.toolName) &&
+        event.data.toolName !== RequestUserInputToolName)
     ) {
       return null;
     }
@@ -225,6 +235,57 @@ function readDelta(event: HarnessEvent): (StreamingContent & { contentIndex: num
     contentIndex: event.data.contentIndex,
     kind: event.data.kind,
   };
+}
+
+function readStreamingJsonString(argsText: string, key: string): string | null {
+  const keyIndex = argsText.indexOf(`"${key}"`);
+  if (keyIndex < 0) return null;
+  const colonIndex = argsText.indexOf(":", keyIndex + key.length + 2);
+  if (colonIndex < 0) return "";
+  let index = colonIndex + 1;
+  while (/\s/.test(argsText.charAt(index))) index += 1;
+  if (argsText.charAt(index) !== '"') return "";
+  index += 1;
+
+  let value = "";
+  while (index < argsText.length) {
+    const character = argsText.charAt(index);
+    index += 1;
+    if (character === '"') return value;
+    if (character !== "\\") {
+      value += character;
+      continue;
+    }
+    const escaped = argsText.charAt(index);
+    if (!escaped) return value;
+    index += 1;
+    if (escaped === "u") {
+      const codePoint = argsText.slice(index, index + 4);
+      if (!/^[0-9a-f]{4}$/i.test(codePoint)) return value;
+      value += String.fromCharCode(Number.parseInt(codePoint, 16));
+      index += 4;
+      continue;
+    }
+    value +=
+      escaped === "n"
+        ? "\n"
+        : escaped === "r"
+          ? "\r"
+          : escaped === "t"
+            ? "\t"
+            : escaped === "b"
+              ? "\b"
+              : escaped === "f"
+                ? "\f"
+                : escaped;
+  }
+  return value;
+}
+
+function readStreamingPlanMarkdown(argsText: string): string | null {
+  const markdown = readStreamingJsonString(argsText, "planMarkdown");
+  if (markdown !== null) return markdown;
+  return readStreamingJsonString(argsText, "kind") === UserInputRequestKind.PLAN_REVIEW ? "" : null;
 }
 
 function readFailureMessage(event: HarnessEvent): string {
@@ -304,7 +365,20 @@ function markRunIntermediateMessages(
   finalMessageId?: string,
 ): void {
   for (const message of messages) {
-    if (message.turnId !== runId || message.id === finalMessageId) continue;
+    if (
+      message.turnId === runId &&
+      message.type === ChatMessageType.PLAN_REVIEW &&
+      message.status === ChatPlanReviewStatus.PENDING
+    ) {
+      message.status = ChatPlanReviewStatus.CLOSED;
+    }
+    if (
+      message.turnId !== runId ||
+      message.id === finalMessageId ||
+      message.type === ChatMessageType.PLAN_REVIEW
+    ) {
+      continue;
+    }
     message.isIntermediate = true;
     if (durationMs !== undefined) message.turnDurationMs = durationMs;
     if (message.type === ChatMessageType.REASONING) message.defaultExpanded = false;
@@ -337,6 +411,9 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   const activeAssistantMessageIdByRunId = new Map<string, string>();
   const activeCompactionByRunId = new Map<string, ChatContextCompactionMessage>();
   const lastAssistantMessageByRunId = new Map<string, ChatAssistantMessage>();
+  const inputStatusesByInputId = new Map<string, ChatInputStatusMessage>();
+  const planRunIds = new Set<string>();
+  const planReviewsByInputId = new Map<string, ChatPlanReviewMessage>();
   const runStartedAtById = new Map<string, number>();
   const streamingContentByRunId = new Map<string, Map<number, StreamingContent>>();
   const toolsByCallId = new Map<string, ChatMessageTool>();
@@ -371,6 +448,74 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   for (const event of events) {
     if (event.type === HarnessEventType.RUN_STARTED && event.runId) {
       runStartedAtById.set(event.runId, event.timestamp);
+      if (isPlainObject(event.data) && event.data.mode === RunMode.PLAN) {
+        planRunIds.add(event.runId);
+      }
+      continue;
+    }
+
+    if (
+      event.type === HarnessEventType.INPUT_REQUESTED &&
+      event.runId &&
+      planRunIds.has(event.runId) &&
+      isInputRequestedData(event.data) &&
+      event.data.kind === UserInputRequestKind.QUESTION
+    ) {
+      const message: ChatInputStatusMessage = {
+        id: `input-status-${event.data.inputId}`,
+        status: ChatInputStatus.WAITING,
+        turnId: event.runId,
+        type: ChatMessageType.INPUT_STATUS,
+      };
+      inputStatusesByInputId.set(event.data.inputId, message);
+      pushMessage(message);
+      continue;
+    }
+
+    if (
+      event.type === HarnessEventType.INPUT_REQUESTED &&
+      event.runId &&
+      isInputRequestedData(event.data) &&
+      event.data.kind === UserInputRequestKind.PLAN_REVIEW
+    ) {
+      const planMarkdown = event.data.planMarkdown?.trim();
+      if (planMarkdown) {
+        const message: ChatPlanReviewMessage = {
+          id: `plan-review-${event.data.inputId}`,
+          planMarkdown,
+          status: ChatPlanReviewStatus.PENDING,
+          turnId: event.runId,
+          type: ChatMessageType.PLAN_REVIEW,
+        };
+        planReviewsByInputId.set(event.data.inputId, message);
+        pushMessage(message);
+      }
+      continue;
+    }
+
+    if (event.type === HarnessEventType.INPUT_RESOLVED && isInputResolvedData(event.data)) {
+      const inputStatus = inputStatusesByInputId.get(event.data.inputId);
+      if (inputStatus) inputStatus.status = ChatInputStatus.ANSWERED;
+      const message = planReviewsByInputId.get(event.data.inputId);
+      if (message) {
+        if (event.data.planMarkdown?.trim()) message.planMarkdown = event.data.planMarkdown;
+        message.status =
+          event.data.action === UserInputResponseAction.CONFIRM_PLAN
+            ? ChatPlanReviewStatus.CONFIRMED
+            : ChatPlanReviewStatus.REVISION_REQUESTED;
+      }
+      continue;
+    }
+
+    if (
+      event.type === HarnessEventType.INPUT_EXPIRED &&
+      isPlainObject(event.data) &&
+      typeof event.data.inputId === "string"
+    ) {
+      const inputStatus = inputStatusesByInputId.get(event.data.inputId);
+      if (inputStatus) inputStatus.status = ChatInputStatus.EXPIRED;
+      const message = planReviewsByInputId.get(event.data.inputId);
+      if (message) message.status = ChatPlanReviewStatus.CLOSED;
       continue;
     }
 
@@ -579,7 +724,19 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       }
       if (event.runId && isPlainObject(event.data) && event.data.role === "assistant") {
         activeAssistantMessageIdByRunId.delete(event.runId);
-        streamingContentByRunId.delete(event.runId);
+        const contentByIndex = streamingContentByRunId.get(event.runId);
+        const requestInputContent = new Map(
+          [...(contentByIndex?.entries() ?? [])].filter(
+            ([, part]) =>
+              part.kind === MessageDeltaKind.TOOL_CALL &&
+              part.toolName === RequestUserInputToolName,
+          ),
+        );
+        if (requestInputContent.size > 0) {
+          streamingContentByRunId.set(event.runId, requestInputContent);
+        } else {
+          streamingContentByRunId.delete(event.runId);
+        }
       }
       continue;
     }
@@ -663,17 +820,12 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     const content = [...(streamingContentByRunId.get(activeRunId)?.entries() ?? [])].sort(
       ([left], [right]) => left - right,
     );
-    if (content.length === 0) {
-      pushMessage({
-        id: `loading-${activeRunId}`,
-        label: "正在思考…",
-        turnId: activeRunId,
-        type: ChatMessageType.LOADING,
-      });
-    } else {
+    if (content.length > 0) {
       const lastContentIndex = content.at(-1)?.[0];
       const streamingTools = content.flatMap<ChatMessageTool>(([, part]) => {
-        if (part.kind !== MessageDeltaKind.TOOL_CALL) return [];
+        if (part.kind !== MessageDeltaKind.TOOL_CALL || INTERACTION_TOOL_NAMES.has(part.toolName)) {
+          return [];
+        }
         let input: unknown;
         try {
           input = JSON.parse(part.argsText);
@@ -693,6 +845,20 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       let hasAddedTools = false;
       for (const [contentIndex, part] of content) {
         if (part.kind === MessageDeltaKind.TOOL_CALL) {
+          if (part.toolName === RequestUserInputToolName) {
+            const planMarkdown = readStreamingPlanMarkdown(part.argsText);
+            if (planMarkdown !== null) {
+              pushMessage({
+                id: `plan-review-streaming-${part.toolCallId}`,
+                isStreaming: true,
+                planMarkdown,
+                status: ChatPlanReviewStatus.PENDING,
+                turnId: activeRunId,
+                type: ChatMessageType.PLAN_REVIEW,
+              });
+            }
+            continue;
+          }
           if (hasAddedTools || streamingTools.length === 0) continue;
           hasAddedTools = true;
           const firstTool = streamingTools[0];
@@ -739,6 +905,12 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   }
 
   if (activeRunId) {
+    pushMessage({
+      id: `loading-${activeRunId}`,
+      label: "正在处理…",
+      turnId: activeRunId,
+      type: ChatMessageType.LOADING,
+    });
     for (const message of messagesByRunId.get(activeRunId) ?? []) {
       if (message.type === ChatMessageType.REASONING) message.isActive = true;
     }
@@ -774,6 +946,7 @@ export function updateSnapshotWithEvents(
   }
   const events = [...eventsBySeq.values()].sort((left, right) => left.seq - right.seq);
   const completedThroughSeqByRunId = new Map<string, number>();
+  const latestPlanReviewRequestSeqByRunId = new Map<string, number>();
   const completedToolCallIds = new Set<string>();
   const latestToolUpdateSeqByCallId = new Map<string, number>();
   for (const event of events) {
@@ -791,6 +964,14 @@ export function updateSnapshotWithEvents(
       typeof event.data.toolCallId === "string"
     ) {
       latestToolUpdateSeqByCallId.set(event.data.toolCallId, event.seq);
+    }
+    if (
+      event.type === HarnessEventType.INPUT_REQUESTED &&
+      event.runId &&
+      isInputRequestedData(event.data) &&
+      event.data.kind === UserInputRequestKind.PLAN_REVIEW
+    ) {
+      latestPlanReviewRequestSeqByRunId.set(event.runId, event.seq);
     }
     if (!event.runId) continue;
     const isAssistantCompleted =
@@ -813,6 +994,13 @@ export function updateSnapshotWithEvents(
       );
     }
     if (event.type !== HarnessEventType.MESSAGE_DELTA || !event.runId) return true;
+    if (
+      isPlainObject(event.data) &&
+      event.data.kind === MessageDeltaKind.TOOL_CALL &&
+      event.data.toolName === RequestUserInputToolName
+    ) {
+      return event.seq > (latestPlanReviewRequestSeqByRunId.get(event.runId) ?? 0);
+    }
     return event.seq > (completedThroughSeqByRunId.get(event.runId) ?? 0);
   });
   const lastEvent = retainedEvents.at(-1);

@@ -1,6 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ModelThinkingLevel, Usage } from "@earendil-works/pi-ai";
-import { isPlanUpdatedData, type PlanUpdatedData } from "@pi-harness/tools/planner";
 import type {
   RequestUserInputData,
   UserInputAnswer,
@@ -411,14 +410,13 @@ export interface RunInteractionData {
 export interface InputRequestedData extends RequestUserInputData {
   expiresAt: number;
   inputId: string;
-  plan?: PlanUpdatedData;
 }
 
 export interface InputResolvedData {
   action: UserInputResponseAction;
   answers: readonly UserInputAnswer[];
   inputId: string;
-  plan?: PlanUpdatedData;
+  planMarkdown?: string;
 }
 
 export interface InputExpiredData {
@@ -474,7 +472,8 @@ export function isInputRequestedData(value: unknown): value is InputRequestedDat
     Array.isArray(value.questions) &&
     value.questions.length >= 1 &&
     value.questions.every(isUserInputQuestion) &&
-    (value.plan === undefined || isPlanUpdatedData(value.plan))
+    (value.planMarkdown === undefined ||
+      (typeof value.planMarkdown === "string" && value.planMarkdown.length > 0))
   );
 }
 
@@ -486,7 +485,8 @@ export function isInputResolvedData(value: unknown): value is InputResolvedData 
     (value.action === "submit" || value.action === "confirm_plan") &&
     Array.isArray(value.answers) &&
     value.answers.every(isUserInputAnswer) &&
-    (value.plan === undefined || isPlanUpdatedData(value.plan))
+    (value.planMarkdown === undefined ||
+      (typeof value.planMarkdown === "string" && value.planMarkdown.length > 0))
   );
 }
 

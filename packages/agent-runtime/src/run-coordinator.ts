@@ -65,6 +65,11 @@ import {
   type OutputDetail,
   type ReasoningSummary,
 } from "./model-response-preferences.js";
+import {
+  PLAN_MODE_EXECUTION_RETRY_PROMPT,
+  PLAN_MODE_RETRY_PROMPT,
+  PLAN_MODE_REVISION_RETRY_PROMPT,
+} from "./prompts/plan-mode-prompt.js";
 import { type ThinkingLevel, ThinkingLevel as ThinkingLevels } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
 import {
@@ -76,6 +81,7 @@ import {
   type RunUserInput,
   UserInputContextError,
 } from "./user-input.js";
+import { isPlanExecutionAcknowledgement } from "./utils/agent-message.js";
 import { estimateContextUsage } from "./utils/context-usage.js";
 import {
   createHarnessUserMessage,
@@ -114,9 +120,12 @@ export type HarnessEventListener = (event: HarnessEvent) => Promise<void> | void
 
 interface ActiveRun extends AgentEventAdapterContext {
   approvalPolicy: ApprovalPolicyValue;
+  approvedPlanMarkdown: string | null;
   handleAutoFollowUp: ReturnType<typeof createAutoFollowUpHandler>;
+  hasPresentedPlanReview: boolean;
   isPlanApproved: boolean;
   mode: RunMode;
+  planRetryPrompt: string | null;
   preparationAbortController: AbortController;
   runId: RunId;
   startMessageIndex: number;
@@ -127,6 +136,32 @@ interface PendingFollowUp {
   input: RunUserInput;
   message: HarnessUserMessage;
   queued: QueuedRunInput;
+}
+
+const MAX_PLAN_MODE_RETRY_COUNT = 8;
+
+interface PlanModeRetryMessage {
+  content: string;
+  isInternal: true;
+  role: "user";
+  timestamp: number;
+}
+
+function createPlanModeRetryMessage(content: string): PlanModeRetryMessage {
+  return {
+    content,
+    isInternal: true,
+    role: "user",
+    timestamp: Date.now(),
+  };
+}
+
+function canRetryPlanMode(event: Extract<AgentEvent, { type: "agent_end" }>): boolean {
+  const lastMessage = event.messages.at(-1);
+  return !(
+    lastMessage?.role === "assistant" &&
+    (lastMessage.stopReason === "aborted" || lastMessage.stopReason === "error")
+  );
 }
 
 export function shouldResetWorkingStateForNewRun(
@@ -305,6 +340,7 @@ export class RunCoordinator {
         // Plan/Todos 作为摘要输入；普通请求继续从原有 Tool Result 读取其最新状态。
         // 这样 checkpoint 前缀在两次压缩之间保持稳定，不因更新时间变化而破坏缓存。
         plan: this.planState,
+        planContract: activeRun.approvedPlanMarkdown,
         todos: this.todoState,
         sessionId: this.sessionId,
         // 取消信号，当用户中止 Run 时，不需要继续等待最长 120 秒的 checkpoint 生成请求。
@@ -354,9 +390,13 @@ export class RunCoordinator {
     const activeRun = this.activeRun;
     if (activeRun === null) throw new Error("当前没有活动 Run");
     const kind = data.kind ?? UserInputRequestKind.QUESTION;
-    const plan = kind === UserInputRequestKind.PLAN_REVIEW ? this.planState : null;
-    if (kind === UserInputRequestKind.PLAN_REVIEW && plan === null) {
-      throw new Error("计划确认前必须先调用 update_plan");
+    const planMarkdown = data.planMarkdown?.trim();
+    if (activeRun.mode === RunMode.PLAN && activeRun.isPlanApproved) {
+      throw new Error("计划书已确认，请直接执行，不要再次请求用户输入");
+    }
+    if (kind === UserInputRequestKind.PLAN_REVIEW) {
+      if (activeRun.mode !== RunMode.PLAN) throw new Error("只有计划模式可以提交计划书");
+      if (!planMarkdown) throw new Error("计划确认必须携带完整 Markdown 计划书");
     }
 
     const inputId = randomUUID();
@@ -364,13 +404,14 @@ export class RunCoordinator {
       {
         inputId,
         kind,
-        ...(plan === null ? {} : { plan }),
+        ...(planMarkdown === undefined ? {} : { planMarkdown }),
         questions: data.questions,
         runId: activeRun.runId,
         sessionId: this.sessionId,
       },
       signal,
     );
+    if (kind === UserInputRequestKind.PLAN_REVIEW) activeRun.hasPresentedPlanReview = true;
 
     try {
       await this.emit(
@@ -398,16 +439,14 @@ export class RunCoordinator {
           activeRun.runId,
         );
       } else {
-        let updatedPlan: PlanUpdatedData | undefined;
-        if (result.plan !== undefined) {
-          updatedPlan = { ...result.plan, updatedAt: Date.now() };
-          await this.updatePlan(updatedPlan);
-        }
+        const resolvedPlanMarkdown = planMarkdown;
         if (
           kind === UserInputRequestKind.PLAN_REVIEW &&
           result.action === UserInputResponseAction.CONFIRM_PLAN
         ) {
+          if (!resolvedPlanMarkdown) throw new Error("确认执行前缺少 Markdown 计划书");
           activeRun.isPlanApproved = true;
+          activeRun.approvedPlanMarkdown = resolvedPlanMarkdown;
         }
         await this.emit(
           {
@@ -415,12 +454,25 @@ export class RunCoordinator {
               action: result.action,
               answers: result.answers,
               inputId,
-              ...(updatedPlan === undefined ? {} : { plan: updatedPlan }),
+              ...(resolvedPlanMarkdown === undefined ? {} : { planMarkdown: resolvedPlanMarkdown }),
             } satisfies InputResolvedData,
             type: HarnessEventType.INPUT_RESOLVED,
           },
           activeRun.runId,
         );
+        if (kind === UserInputRequestKind.PLAN_REVIEW) {
+          const response = result.answers[0]?.value.trim();
+          if (response) {
+            // 计划确认与修改都是用户输入；排入当前 Agent Loop 的下一轮，不中止正在恢复的工具调用。
+            this.agent.steer(
+              createHarnessUserMessageRecord({
+                attachments: [],
+                prompt: response,
+                references: [],
+              }),
+            );
+          }
+        }
       }
       await this.emit(
         {
@@ -768,6 +820,18 @@ export class RunCoordinator {
     if (activeRun === null) return;
     if (event.type === "agent_start" && this.isContinuingSteer) return;
     if (event.type === "agent_end" && this.pendingSteerInterrupts.length > 0) return;
+    if (event.type === "agent_end" && activeRun.mode === RunMode.PLAN && canRetryPlanMode(event)) {
+      if (!activeRun.isPlanApproved) {
+        activeRun.planRetryPrompt = activeRun.hasPresentedPlanReview
+          ? PLAN_MODE_REVISION_RETRY_PROMPT
+          : PLAN_MODE_RETRY_PROMPT;
+        return;
+      }
+      if (isPlanExecutionAcknowledgement(event.messages.at(-1))) {
+        activeRun.planRetryPrompt = PLAN_MODE_EXECUTION_RETRY_PROMPT;
+        return;
+      }
+    }
     if (
       event.type === "message_start" &&
       isHarnessUserMessage(event.message) &&
@@ -865,16 +929,20 @@ export class RunCoordinator {
     };
     this.executionGuard.reset();
     const preparationAbortController = new AbortController();
-    this.activeRun = {
+    const activeRun: ActiveRun = {
       approvalPolicy: input.approvalPolicy,
+      approvedPlanMarkdown: null,
       handleAutoFollowUp: createAutoFollowUpHandler((message) => this.agent.followUp(message)),
+      hasPresentedPlanReview: false,
       isPlanApproved: false,
+      planRetryPrompt: null,
       preparationAbortController,
       ...runStartedData,
       runId: input.runId,
       startMessageIndex: this.agent.state.messages.length,
       streamFn: input.streamFn,
     };
+    this.activeRun = activeRun;
     this.pendingWorkingStateReset = shouldResetWorkingStateForNewRun(
       this.planState,
       this.todoState,
@@ -930,6 +998,34 @@ export class RunCoordinator {
       const initialPrompt = this.agent.prompt(message);
       if (this.pendingSteerInterrupts.length > 0) this.agent.abort();
       await initialPrompt;
+      let planRetryCount = 0;
+      while (
+        this.activeRun === activeRun &&
+        activeRun.planRetryPrompt !== null &&
+        planRetryCount < MAX_PLAN_MODE_RETRY_COUNT
+      ) {
+        const retryPrompt = activeRun.planRetryPrompt;
+        activeRun.planRetryPrompt = null;
+        planRetryCount += 1;
+        await this.agent.prompt(createPlanModeRetryMessage(retryPrompt));
+      }
+      if (this.activeRun === activeRun && activeRun.planRetryPrompt !== null) {
+        activeRun.planRetryPrompt = null;
+        const isExecutionStalled = activeRun.isPlanApproved;
+        await this.emit(
+          {
+            data: {
+              code: isExecutionStalled ? "PLAN_EXECUTION_STALLED" : "PLAN_REVIEW_REQUIRED",
+              message: isExecutionStalled
+                ? "模型确认计划后仍未开始执行，请重试本次 Plan 请求"
+                : "模型未能生成可确认的 Markdown 计划书，请重试本次 Plan 请求",
+            },
+            type: HarnessEventType.RUN_FAILED,
+          },
+          activeRun.runId,
+        );
+        return;
+      }
       while (this.pendingSteerInterrupts.length > 0) {
         for (const steerMessage of this.pendingSteerInterrupts.splice(0)) {
           this.agent.steer(steerMessage);

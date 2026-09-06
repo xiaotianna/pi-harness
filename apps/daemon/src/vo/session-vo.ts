@@ -1,4 +1,4 @@
-import { PlanStepStatus, UserInputRequestKind } from "@pi-harness/agent-runtime";
+import { UserInputRequestKind } from "@pi-harness/agent-runtime";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { type Static, Type } from "typebox";
 
@@ -113,22 +113,7 @@ export const PendingUserInputVoSchema = Type.Object({
       Type.Literal(UserInputRequestKind.PLAN_REVIEW),
     ]),
   ),
-  plan: Type.Optional(
-    Type.Object({
-      explanation: Type.Optional(Type.String()),
-      plan: Type.Array(
-        Type.Object({
-          status: Type.Union([
-            Type.Literal(PlanStepStatus.PENDING),
-            Type.Literal(PlanStepStatus.IN_PROGRESS),
-            Type.Literal(PlanStepStatus.COMPLETED),
-          ]),
-          step: Type.String({ minLength: 1 }),
-        }),
-      ),
-      updatedAt: Type.Integer({ minimum: 0 }),
-    }),
-  ),
+  planMarkdown: Type.Optional(Type.String({ maxLength: 100_000, minLength: 1 })),
   questions: Type.Array(
     Type.Object({
       allowCustomInput: Type.Optional(Type.Boolean()),

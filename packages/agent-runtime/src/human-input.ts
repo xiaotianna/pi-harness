@@ -1,5 +1,4 @@
 import type {
-  PlanUpdatedData,
   RequestUserInputData,
   UserInputSubmission,
   UserInputToolResult,
@@ -11,7 +10,6 @@ import type { InputRequestedData, RunId, SessionId } from "./harness-event.js";
 // 要向用户询问什么
 export interface HumanInputRequest extends RequestUserInputData {
   inputId: string; // 本次提问的唯一 ID
-  plan?: PlanUpdatedData; // 如果是计划审核，携带当前计划
   runId: RunId; // 哪一次执行发起的
   sessionId: SessionId; // 属于哪个会话
 }

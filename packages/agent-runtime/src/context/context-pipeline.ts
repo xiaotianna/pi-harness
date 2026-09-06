@@ -12,6 +12,7 @@ import {
   type ContextCompactionStrategy,
 } from "../harness-event.js";
 import { buildContextCompactionPrompt } from "../prompts/context-compaction-prompt.js";
+import { buildApprovedPlanContractPrompt } from "../prompts/plan-mode-prompt.js";
 import { isHarnessUserMessage } from "../user-input.js";
 import { estimateContextUsage, estimateMessageTokens } from "../utils/context-usage.js";
 import { limitUserInputContext } from "../utils/user-input.js";
@@ -40,6 +41,7 @@ export interface ContextProjectionInput {
   model: Model<Api>;
   onCompactionStarted?: () => Promise<void>;
   plan: PlanUpdatedData | null;
+  planContract?: string | null;
   sessionId: string;
   signal?: AbortSignal;
   streamFn: StreamFn;
@@ -341,6 +343,21 @@ function createTaskContractMessage(message: AgentMessage | undefined): Message |
   };
 }
 
+function appendPlanContract(
+  messages: AgentMessage[],
+  planContract?: string | null,
+): AgentMessage[] {
+  if (!planContract?.trim()) return messages;
+  return [
+    ...messages,
+    {
+      content: buildApprovedPlanContractPrompt(planContract),
+      role: "user",
+      timestamp: 0,
+    },
+  ];
+}
+
 function buildProjectedMessages(
   messages: readonly AgentMessage[],
   checkpoint: ContextCompactedData,
@@ -412,8 +429,9 @@ export async function projectContext(
           tailStartMessageIndex,
           input.activeRunStartMessageIndex,
         );
-  const beforeTokens = estimateProjectedTokens(current, input.systemPrompt, input.tools);
-  if (beforeTokens <= triggerTokens) return { messages: current };
+  const currentWithPlan = appendPlanContract(current, input.planContract);
+  const beforeTokens = estimateProjectedTokens(currentWithPlan, input.systemPrompt, input.tools);
+  if (beforeTokens <= triggerTokens) return { messages: currentWithPlan };
 
   const minimumStart = tailStartMessageIndex;
   const tailStart = chooseTailStart(
@@ -425,14 +443,14 @@ export async function projectContext(
     return beforeTokens > inputBudget
       ? {
           error: `当前任务和最近消息约占 ${beforeTokens} tokens，超过模型可用输入预算 ${inputBudget} tokens`,
-          messages: current,
+          messages: currentWithPlan,
         }
-      : { messages: current };
+      : { messages: currentWithPlan };
   }
 
   await input.onCompactionStarted?.();
   const sourceMessages = limited.slice(minimumStart, tailStart).filter(isLlmMessage);
-  const cacheablePrefix =
+  const cacheablePrefix = appendPlanContract(
     input.checkpoint === null
       ? limited.slice(0, tailStart).filter(isLlmMessage)
       : buildProjectedMessages(
@@ -440,9 +458,11 @@ export async function projectContext(
           input.checkpoint,
           minimumStart,
           input.activeRunStartMessageIndex,
-        ).filter(isLlmMessage);
+        ).filter(isLlmMessage),
+    input.planContract,
+  ).filter(isLlmMessage);
   const generated = await generateCheckpoint(input, cacheablePrefix, sourceMessages);
-  if (input.signal?.aborted) return { messages: current };
+  if (input.signal?.aborted) return { messages: currentWithPlan };
   const compacted: ContextCompactedData = {
     afterTokens: 0,
     beforeTokens,
@@ -458,11 +478,14 @@ export async function projectContext(
       : { previousCompactionId: input.checkpoint.compactionId }),
     sourceMessageCount: tailStart,
   };
-  const projected = buildProjectedMessages(
-    limited,
-    compacted,
-    compacted.sourceMessageCount,
-    input.activeRunStartMessageIndex,
+  const projected = appendPlanContract(
+    buildProjectedMessages(
+      limited,
+      compacted,
+      compacted.sourceMessageCount,
+      input.activeRunStartMessageIndex,
+    ),
+    input.planContract,
   );
   compacted.afterTokens = estimateProjectedTokens(projected, input.systemPrompt, input.tools);
   return {

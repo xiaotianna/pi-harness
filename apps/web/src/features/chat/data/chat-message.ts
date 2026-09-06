@@ -7,8 +7,10 @@ export const ChatMessageType = {
   CONTEXT_COMPACTION: "context-compaction",
   ERROR: "error",
   IMAGE_GENERATION: "image-generation",
+  INPUT_STATUS: "input-status",
   LOADING: "loading",
   ORBS: "orbs",
+  PLAN_REVIEW: "plan-review",
   REASONING: "reasoning",
   SOURCES: "sources",
   STREAMING: "streaming",
@@ -128,6 +130,35 @@ export type ChatAssistantMessage = ChatMessageBase & {
   type: typeof ChatMessageType.ASSISTANT;
 };
 
+export const ChatPlanReviewStatus = {
+  CLOSED: "closed",
+  CONFIRMED: "confirmed",
+  PENDING: "pending",
+  REVISION_REQUESTED: "revision_requested",
+} as const;
+
+export type ChatPlanReviewStatus = (typeof ChatPlanReviewStatus)[keyof typeof ChatPlanReviewStatus];
+
+export type ChatPlanReviewMessage = ChatMessageBase & {
+  isStreaming?: boolean;
+  planMarkdown: string;
+  status: ChatPlanReviewStatus;
+  type: typeof ChatMessageType.PLAN_REVIEW;
+};
+
+export const ChatInputStatus = {
+  ANSWERED: "answered",
+  EXPIRED: "expired",
+  WAITING: "waiting",
+} as const;
+
+export type ChatInputStatus = (typeof ChatInputStatus)[keyof typeof ChatInputStatus];
+
+export type ChatInputStatusMessage = ChatMessageBase & {
+  status: ChatInputStatus;
+  type: typeof ChatMessageType.INPUT_STATUS;
+};
+
 export type ChatErrorMessage = ChatMessageBase & {
   areFileChangesReverted?: boolean;
   content: string;
@@ -228,8 +259,10 @@ export type ChatMessage =
   | ChatContextCompactionMessage
   | ChatErrorMessage
   | ChatImageGenerationMessage
+  | ChatInputStatusMessage
   | ChatLoadingMessage
   | ChatOrbsMessage
+  | ChatPlanReviewMessage
   | ChatReasoningMessage
   | ChatSourcesMessage
   | ChatStreamingMessage

@@ -2,7 +2,6 @@ import type { UserMessage } from "@earendil-works/pi-ai";
 import { isPlainObject } from "es-toolkit";
 
 export {
-  type EditablePlan,
   RequestUserInputToolName,
   type UserInputAnswer,
   UserInputRequestKind,

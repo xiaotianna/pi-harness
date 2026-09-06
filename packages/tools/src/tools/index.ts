@@ -22,7 +22,6 @@ export { createReadDocumentTool } from "./read-document.js";
 export { createReadFileTool } from "./read-file.js";
 export {
   createRequestUserInputTool,
-  type EditablePlan,
   type RequestUserInputData,
   RequestUserInputToolName,
   type UserInputAnswer,

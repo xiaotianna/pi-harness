@@ -8,12 +8,14 @@ export type {
   ChatErrorMessage,
   ChatFileChange,
   ChatImageGenerationMessage,
+  ChatInputStatusMessage,
   ChatLoadingMessage,
   ChatMessage,
   ChatMessageAttachment,
   ChatMessageSource,
   ChatMessageTool,
   ChatOrbsMessage,
+  ChatPlanReviewMessage,
   ChatReasoningMessage,
   ChatSourcesMessage,
   ChatStreamingMessage,
@@ -24,7 +26,13 @@ export type {
   ChatWebSearchMessage,
   ResolveChatToolApproval,
 } from "./chat-message";
-export { ChatFileChangeStatus, ChatMessageType, ChatToolState } from "./chat-message";
+export {
+  ChatFileChangeStatus,
+  ChatInputStatus,
+  ChatMessageType,
+  ChatPlanReviewStatus,
+  ChatToolState,
+} from "./chat-message";
 
 import type { ChatMessage } from "./chat-message";
 

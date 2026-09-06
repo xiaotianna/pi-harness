@@ -140,7 +140,7 @@ export class HumanInteractionService {
       expiresAt,
       inputId: request.inputId,
       ...(request.kind === undefined ? {} : { kind: request.kind }),
-      ...(request.plan === undefined ? {} : { plan: request.plan }),
+      ...(request.planMarkdown === undefined ? {} : { planMarkdown: request.planMarkdown }),
       questions: request.questions,
     };
     this.pendingInputs.set(request.inputId, {
@@ -209,12 +209,6 @@ export class HumanInteractionService {
       throw new HumanInteractionServiceError(
         HumanInteractionErrorCode.INVALID,
         "当前交互不是计划确认",
-      );
-    }
-    if (submission.plan !== undefined && entry.request.kind !== UserInputRequestKind.PLAN_REVIEW) {
-      throw new HumanInteractionServiceError(
-        HumanInteractionErrorCode.INVALID,
-        "当前交互不能修改计划",
       );
     }
     const questionsById = new Map(

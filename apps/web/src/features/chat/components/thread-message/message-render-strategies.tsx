@@ -5,8 +5,10 @@ import { CodeThreadMessage } from "./code-thread-message";
 import { ContextCompactionThreadMessage } from "./context-compaction-thread-message";
 import { ErrorThreadMessage } from "./error-thread-message";
 import { ImageGenerationThreadMessage } from "./image-generation-thread-message";
+import { InputStatusThreadMessage } from "./input-status-thread-message";
 import { LoadingThreadMessage } from "./loading-thread-message";
 import { OrbsThreadMessage } from "./orbs-thread-message";
+import { PlanReviewThreadMessage } from "./plan-review-thread-message";
 import { ReasoningThreadMessage } from "./reasoning-thread-message";
 import { SourcesThreadMessage } from "./sources-thread-message";
 import { StreamingThreadMessage } from "./streaming-thread-message";
@@ -57,12 +59,20 @@ export const MESSAGE_RENDER_STRATEGIES = {
     ChatMessageType.IMAGE_GENERATION,
     (message) => <ImageGenerationThreadMessage message={message} />,
   ),
+  [ChatMessageType.INPUT_STATUS]: createMessageRenderStrategy(
+    ChatMessageType.INPUT_STATUS,
+    (message) => <InputStatusThreadMessage message={message} />,
+  ),
   [ChatMessageType.LOADING]: createMessageRenderStrategy(ChatMessageType.LOADING, (message) => (
     <LoadingThreadMessage message={message} />
   )),
   [ChatMessageType.ORBS]: createMessageRenderStrategy(ChatMessageType.ORBS, (message) => (
     <OrbsThreadMessage message={message} />
   )),
+  [ChatMessageType.PLAN_REVIEW]: createMessageRenderStrategy(
+    ChatMessageType.PLAN_REVIEW,
+    (message) => <PlanReviewThreadMessage message={message} />,
+  ),
   [ChatMessageType.REASONING]: createMessageRenderStrategy(ChatMessageType.REASONING, (message) => (
     <ReasoningThreadMessage message={message} />
   )),

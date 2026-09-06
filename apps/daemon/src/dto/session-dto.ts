@@ -1,4 +1,4 @@
-import { PlanStepStatus, UserInputResponseAction } from "@pi-harness/agent-runtime";
+import { UserInputResponseAction } from "@pi-harness/agent-runtime";
 import { ApprovalDecision } from "@pi-harness/agent-runtime/harness-event";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { RunMode, UserContextReferenceKind } from "@pi-harness/agent-runtime/user-input";
@@ -88,21 +88,6 @@ export const ResolveApprovalDtoSchema = Type.Object({
 
 export type ResolveApprovalDto = Static<typeof ResolveApprovalDtoSchema>;
 
-const EditablePlanSchema = Type.Object({
-  explanation: Type.Optional(Type.String({ maxLength: 2_000 })),
-  plan: Type.Array(
-    Type.Object({
-      status: Type.Union([
-        Type.Literal(PlanStepStatus.PENDING),
-        Type.Literal(PlanStepStatus.IN_PROGRESS),
-        Type.Literal(PlanStepStatus.COMPLETED),
-      ]),
-      step: Type.String({ maxLength: 1_000, minLength: 1 }),
-    }),
-    { maxItems: 32, minItems: 1 },
-  ),
-});
-
 export const ResolveInputDtoSchema = Type.Object({
   action: Type.Union([
     Type.Literal(UserInputResponseAction.SUBMIT),
@@ -122,7 +107,6 @@ export const ResolveInputDtoSchema = Type.Object({
     }),
     { minItems: 1 },
   ),
-  plan: Type.Optional(EditablePlanSchema),
 });
 
 export type ResolveInputDto = Static<typeof ResolveInputDtoSchema>;

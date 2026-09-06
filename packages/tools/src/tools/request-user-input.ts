@@ -1,6 +1,5 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
-import type { PlanStepStatus } from "./planner.js";
 
 export const UserInputRequestKind = {
   PLAN_REVIEW: "plan_review",
@@ -44,16 +43,12 @@ const RequestUserInputParameters = Type.Object({
       Type.Literal(UserInputRequestKind.PLAN_REVIEW),
     ]),
   ),
+  planMarkdown: Type.Optional(Type.String({ maxLength: 100_000, minLength: 1 })),
   questions: Type.Array(UserInputQuestionSchema, { minItems: 1 }),
 });
 
 export type RequestUserInputData = Static<typeof RequestUserInputParameters>;
 export type UserInputQuestion = RequestUserInputData["questions"][number];
-
-export interface EditablePlan {
-  explanation?: string;
-  plan: Array<{ status: PlanStepStatus; step: string }>;
-}
 
 export interface UserInputAnswer {
   questionId: string;
@@ -65,7 +60,6 @@ export interface UserInputAnswer {
 export interface UserInputSubmission {
   action: UserInputResponseAction;
   answers: readonly UserInputAnswer[];
-  plan?: EditablePlan;
 }
 
 export type UserInputToolResult =
@@ -84,12 +78,22 @@ export function createRequestUserInputTool(
 ): AgentTool<typeof RequestUserInputParameters, UserInputToolResult> {
   return {
     description:
-      "当任务缺少用户决策，或显式 Plan 模式需要用户确认计划时，提出问题并暂停等待回答。每题在问题对象上设置 multiSelect 决定单选或多选，设置 allowCustomInput 决定是否提供自己输入；建议明确传入这两个布尔值。选项数量不限，推荐项排在第一位。仅需自由输入时 options 可为空；关闭自由输入时必须提供选项。选项 description 可省略。",
+      "当任务缺少用户决策时提出问题；计划模式完成规划后，用 plan_review 携带完整 Markdown 计划书等待确认。每题在问题对象上设置 multiSelect 决定单选或多选，设置 allowCustomInput 决定是否提供自己输入；建议明确传入这两个布尔值。选项数量没有硬限制，但只提供完成决策所需的最少选项，通常 2-3 个，推荐项排在第一位。仅需自由输入时 options 可为空；关闭自由输入时必须提供选项。选项 description 可省略。",
     executionMode: "sequential",
     label: "Request user input",
     name: RequestUserInputToolName,
     parameters: RequestUserInputParameters,
     async execute(_toolCallId, input, signal) {
+      const kind = input.kind ?? UserInputRequestKind.QUESTION;
+      if (kind === UserInputRequestKind.PLAN_REVIEW && !input.planMarkdown?.trim()) {
+        throw new Error("计划确认必须携带完整 Markdown 计划书");
+      }
+      if (kind === UserInputRequestKind.PLAN_REVIEW && input.questions.length !== 1) {
+        throw new Error("计划确认只接受一个确认问题");
+      }
+      if (kind === UserInputRequestKind.QUESTION && input.planMarkdown !== undefined) {
+        throw new Error("普通问题不能携带计划书");
+      }
       if (new Set(input.questions.map(({ id }) => id)).size !== input.questions.length) {
         throw new Error("问题 ID 不能重复");
       }
@@ -97,7 +101,7 @@ export function createRequestUserInputTool(
         if (
           question.allowCustomInput === false &&
           question.options.length === 0 &&
-          input.kind !== UserInputRequestKind.PLAN_REVIEW
+          kind !== UserInputRequestKind.PLAN_REVIEW
         ) {
           throw new Error(`问题 ${question.id} 必须提供选项或允许自己输入`);
         }
@@ -108,6 +112,7 @@ export function createRequestUserInputTool(
       const result = await onRequest(
         {
           ...(input.kind === undefined ? {} : { kind: input.kind }),
+          ...(input.planMarkdown === undefined ? {} : { planMarkdown: input.planMarkdown.trim() }),
           questions: input.questions,
         },
         signal,

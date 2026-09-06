@@ -1,6 +1,13 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, CircleQuestion, ListCheck } from "@gravity-ui/icons";
+import {
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  CircleQuestion,
+  Pencil,
+  Xmark as X,
+} from "@gravity-ui/icons";
 import {
   Button,
   Card,
@@ -9,22 +16,19 @@ import {
   Label,
   ListBox,
   ScrollShadow,
-  TextArea,
   TextField,
+  Tooltip,
   toast,
 } from "@heroui/react";
 import type { InputRequestedData } from "@pi-harness/agent-runtime/harness-event";
-import type {
-  EditablePlan,
-  UserInputAnswer,
-  UserInputSubmission,
-} from "@pi-harness/agent-runtime/user-input";
+import type { UserInputAnswer, UserInputSubmission } from "@pi-harness/agent-runtime/user-input";
 import {
   UserInputRequestKind,
   UserInputResponseAction,
+  type UserInputResponseActionValue,
 } from "@pi-harness/agent-runtime/user-input";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { userInputOptionMarker } from "../utils/session-user-input";
 
 interface AnswerDraft {
@@ -32,15 +36,120 @@ interface AnswerDraft {
   value: string;
 }
 
-export function UserInputCard({
-  onCancel,
-  onResolve,
-  request,
-}: {
+type UserInputCardProps = {
   onCancel: () => Promise<void>;
   onResolve: (submission: UserInputSubmission) => Promise<void>;
   request: InputRequestedData;
-}) {
+};
+
+function PlanReviewInputCard({ onCancel, onResolve, request }: UserInputCardProps) {
+  const titleId = useId();
+  const [feedback, setFeedback] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [pendingAction, setPendingAction] = useState<UserInputResponseActionValue | null>(null);
+  const question = request.questions[0];
+
+  const submit = (action: UserInputResponseActionValue, value: string) => {
+    if (!question) return;
+    setPendingAction(action);
+    void onResolve({
+      action,
+      answers: [{ questionId: question.id, value }],
+    }).catch((error: unknown) => {
+      setPendingAction(null);
+      toast.danger(error instanceof Error ? error.message : "提交计划反馈失败");
+    });
+  };
+
+  return (
+    <Card aria-labelledby={titleId} aria-modal="true" className="w-full gap-2 p-3" role="dialog">
+      <Card.Header className="flex-row items-center justify-between gap-2">
+        <Card.Title id={titleId} className="text-sm font-medium">
+          实施此计划？
+        </Card.Title>
+        <Tooltip delay={0}>
+          <Button
+            isIconOnly
+            aria-label="停止任务"
+            className="size-7 min-w-7 p-0"
+            isDisabled={pendingAction !== null || isCancelling}
+            isPending={isCancelling}
+            size="sm"
+            variant="ghost"
+            onPress={() => {
+              setIsCancelling(true);
+              void onCancel().catch((error: unknown) => {
+                setIsCancelling(false);
+                toast.danger(error instanceof Error ? error.message : "停止任务失败");
+              });
+            }}
+          >
+            <X className="size-4" />
+          </Button>
+          <Tooltip.Content>停止任务</Tooltip.Content>
+        </Tooltip>
+      </Card.Header>
+      <Card.Content className="flex flex-col gap-1 p-0">
+        <Button
+          fullWidth
+          className="min-h-10 justify-start gap-2 px-2"
+          isDisabled={pendingAction !== null || isCancelling}
+          isPending={pendingAction === UserInputResponseAction.CONFIRM_PLAN}
+          variant="secondary"
+          onPress={() => submit(UserInputResponseAction.CONFIRM_PLAN, "是，实施此计划")}
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface text-xs text-muted">
+            1
+          </span>
+          <span className="text-sm">是，实施此计划</span>
+          <span className="ml-auto mr-1 flex size-7 shrink-0 items-center justify-center">
+            <ArrowRight className="size-4 text-muted" />
+          </span>
+        </Button>
+        <TextField isDisabled={pendingAction !== null || isCancelling}>
+          <Label className="sr-only">计划修改意见</Label>
+          <InputGroup fullWidth className="min-h-10 rounded-full" variant="secondary">
+            <InputGroup.Prefix className="border-0 px-2">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface text-muted">
+                <Pencil className="size-3.5" />
+              </span>
+            </InputGroup.Prefix>
+            <InputGroup.Input
+              maxLength={4_000}
+              placeholder="否，并告诉 AI 应该如何做得不同"
+              value={feedback}
+              onChange={(event) => setFeedback(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || !feedback.trim()) return;
+                event.preventDefault();
+                submit(UserInputResponseAction.SUBMIT, feedback.trim());
+              }}
+            />
+            <InputGroup.Suffix className="border-0 pr-3">
+              <Tooltip delay={0}>
+                <Button
+                  isIconOnly
+                  aria-label="提交计划修改意见"
+                  className="size-7 min-w-7 p-0"
+                  isDisabled={!feedback.trim() || pendingAction !== null || isCancelling}
+                  isPending={pendingAction === UserInputResponseAction.SUBMIT}
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => submit(UserInputResponseAction.SUBMIT, feedback.trim())}
+                >
+                  <ArrowRight className="size-4" />
+                </Button>
+                <Tooltip.Content>提交修改意见</Tooltip.Content>
+              </Tooltip>
+            </InputGroup.Suffix>
+          </InputGroup>
+        </TextField>
+      </Card.Content>
+    </Card>
+  );
+}
+
+function QuestionInputCard({ onCancel, onResolve, request }: UserInputCardProps) {
   const titleId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [answers, setAnswers] = useState<Record<string, AnswerDraft>>({});
@@ -49,20 +158,6 @@ export function UserInputCard({
   const shouldReduceMotion = useReducedMotion();
   const [isCancelling, setIsCancelling] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const initialPlan = useMemo<EditablePlan | null>(
-    () =>
-      request.plan
-        ? {
-            ...(request.plan.explanation === undefined
-              ? {}
-              : { explanation: request.plan.explanation }),
-            plan: request.plan.plan,
-          }
-        : null,
-    [request.plan],
-  );
-  const [plan, setPlan] = useState<EditablePlan | null>(initialPlan);
-  const isPlanReview = request.kind === UserInputRequestKind.PLAN_REVIEW && plan !== null;
   const currentQuestion = request.questions[currentQuestionIndex] ?? request.questions[0];
   const shouldShowNextPage =
     currentQuestion?.multiSelect === true && currentQuestionIndex < request.questions.length - 1;
@@ -72,10 +167,6 @@ export function UserInputCard({
     setPageDirection(nextIndex > currentQuestionIndex ? 1 : -1);
     setCurrentQuestionIndex(nextIndex);
   };
-  const hasPlanChanges = useMemo(
-    () => initialPlan !== null && JSON.stringify(plan) !== JSON.stringify(initialPlan),
-    [initialPlan, plan],
-  );
 
   const submit = (submission: UserInputSubmission) => {
     setIsSubmitting(true);
@@ -103,30 +194,6 @@ export function UserInputCard({
     return result.every((answer) => answer !== null) ? result : null;
   };
 
-  const resolvePlan = (action: UserInputSubmission["action"]) => {
-    if (plan === null) return;
-    if (plan.plan.some(({ step }) => !step.trim())) {
-      toast.warning("计划步骤不能为空");
-      return;
-    }
-    const note = answers[request.questions[0]?.id ?? ""]?.value.trim();
-    if (action === UserInputResponseAction.SUBMIT && !note && !hasPlanChanges) {
-      toast.warning("请修改计划或补充调整意见");
-      return;
-    }
-    submit({
-      action,
-      answers: request.questions.map((question) => ({
-        questionId: question.id,
-        value:
-          action === UserInputResponseAction.CONFIRM_PLAN
-            ? "确认并开始执行"
-            : (note ?? "请按我编辑后的计划继续调整"),
-      })),
-      plan,
-    });
-  };
-
   return (
     <Card
       aria-labelledby={titleId}
@@ -136,16 +203,12 @@ export function UserInputCard({
     >
       <Card.Header className="shrink-0 flex-row items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          {isPlanReview ? (
-            <ListCheck className="size-4 text-accent" />
-          ) : (
-            <CircleQuestion className="size-4 text-accent" />
-          )}
+          <CircleQuestion className="size-4 text-accent" />
           <Card.Title id={titleId} className="text-sm font-medium">
-            {isPlanReview ? "确认执行计划" : "需要你的补充"}
+            需要你的补充
           </Card.Title>
         </div>
-        {!isPlanReview && request.questions.length > 1 ? (
+        {request.questions.length > 1 ? (
           <div className="flex shrink-0 items-center gap-0.5">
             <Button
               isIconOnly
@@ -180,77 +243,14 @@ export function UserInputCard({
         ) : null}
       </Card.Header>
 
-      <Card.Content className="min-h-0 p-0">
+      <Card.Content className="min-h-0 overflow-hidden p-0">
         <ScrollShadow
           ref={scrollRef}
           hideScrollBar
-          className="relative max-h-[min(48svh,24rem)] px-0.5 py-1"
+          className="relative max-h-[min(48svh,24rem)] overflow-y-auto overscroll-y-contain px-0.5 py-1"
+          orientation="vertical"
         >
-          {isPlanReview ? (
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-muted">{request.questions[0]?.question}</p>
-              <TextField>
-                <Label>计划说明</Label>
-                <TextArea
-                  fullWidth
-                  maxLength={2_000}
-                  placeholder="说明计划的目标和取舍"
-                  value={plan.explanation ?? ""}
-                  variant="secondary"
-                  onChange={(event) =>
-                    setPlan((current) =>
-                      current ? { ...current, explanation: event.target.value } : current,
-                    )
-                  }
-                />
-              </TextField>
-              <div className="flex flex-col gap-3">
-                {plan.plan.map((step, index) => (
-                  <TextField key={`${index}-${step.status}`}>
-                    <Label>步骤 {index + 1}</Label>
-                    <TextArea
-                      fullWidth
-                      maxLength={1_000}
-                      value={step.step}
-                      variant="secondary"
-                      onChange={(event) =>
-                        setPlan((current) =>
-                          current
-                            ? {
-                                ...current,
-                                plan: current.plan.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, step: event.target.value }
-                                    : item,
-                                ),
-                              }
-                            : current,
-                        )
-                      }
-                    />
-                  </TextField>
-                ))}
-              </div>
-              <TextField>
-                <Label>调整意见</Label>
-                <TextArea
-                  fullWidth
-                  maxLength={4_000}
-                  placeholder="可选：告诉 Agent 还要怎样调整"
-                  value={answers[request.questions[0]?.id ?? ""]?.value ?? ""}
-                  variant="secondary"
-                  onChange={(event) => {
-                    const questionId = request.questions[0]?.id;
-                    if (!questionId) return;
-                    setAnswers((current) => ({
-                      ...current,
-                      [questionId]: { value: event.target.value },
-                    }));
-                  }}
-                />
-              </TextField>
-            </div>
-          ) : currentQuestion ? (
+          {currentQuestion ? (
             <AnimatePresence
               initial={false}
               custom={pageDirection}
@@ -400,57 +400,42 @@ export function UserInputCard({
           停止任务
         </Button>
         <div className="flex items-center gap-2">
-          {isPlanReview ? (
-            <>
-              <Button
-                isDisabled={isSubmitting || isCancelling}
-                size="sm"
-                variant="secondary"
-                onPress={() => resolvePlan(UserInputResponseAction.SUBMIT)}
-              >
-                继续修改
-              </Button>
-              <Button
-                isDisabled={
-                  isSubmitting || isCancelling || plan.plan.some(({ step }) => !step.trim())
-                }
-                isPending={isSubmitting}
-                size="sm"
-                onPress={() => resolvePlan(UserInputResponseAction.CONFIRM_PLAN)}
-              >
-                确认并开始
-              </Button>
-            </>
-          ) : (
-            <Button
-              isDisabled={
-                isSubmitting ||
-                isCancelling ||
-                (shouldShowNextPage
-                  ? !answers[currentQuestion.id]?.value.trim()
-                  : readAnswers() === null)
+          <Button
+            isDisabled={
+              isSubmitting ||
+              isCancelling ||
+              (shouldShowNextPage
+                ? !answers[currentQuestion.id]?.value.trim()
+                : readAnswers() === null)
+            }
+            isPending={isSubmitting}
+            size="sm"
+            onPress={() => {
+              if (shouldShowNextPage) {
+                changeQuestion(currentQuestionIndex + 1);
+                return;
               }
-              isPending={isSubmitting}
-              size="sm"
-              onPress={() => {
-                if (shouldShowNextPage) {
-                  changeQuestion(currentQuestionIndex + 1);
-                  return;
-                }
-                const resolvedAnswers = readAnswers();
-                if (resolvedAnswers) {
-                  submit({
-                    action: UserInputResponseAction.SUBMIT,
-                    answers: resolvedAnswers,
-                  });
-                }
-              }}
-            >
-              {shouldShowNextPage ? "下一页" : "提交回答"}
-            </Button>
-          )}
+              const resolvedAnswers = readAnswers();
+              if (resolvedAnswers) {
+                submit({
+                  action: UserInputResponseAction.SUBMIT,
+                  answers: resolvedAnswers,
+                });
+              }
+            }}
+          >
+            {shouldShowNextPage ? "下一页" : "提交回答"}
+          </Button>
         </div>
       </Card.Footer>
     </Card>
+  );
+}
+
+export function UserInputCard(props: UserInputCardProps) {
+  return props.request.kind === UserInputRequestKind.PLAN_REVIEW ? (
+    <PlanReviewInputCard {...props} />
+  ) : (
+    <QuestionInputCard {...props} />
   );
 }

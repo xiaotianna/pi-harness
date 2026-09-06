@@ -13,6 +13,7 @@ import {
   type ToolStartedData,
   type ToolUpdatedData,
 } from "./harness-event.js";
+import type { RunMode } from "./user-input.js";
 import { stripAutoFollowUpMarker } from "./utils/auto-follow-up.js";
 
 // 运行错误码（在data.code中）
@@ -44,6 +45,7 @@ export interface AgentEventAdapterContext {
   contexts: readonly RunContextData[];
   maxTokens: number;
   modelId: string;
+  mode: RunMode;
   providerId: string;
   systemPrompt: string;
   thinkingLevel: RunStartedData["thinkingLevel"];
@@ -152,6 +154,7 @@ export function adaptAgentEvent(
           contexts: [...context.contexts],
           maxTokens: context.maxTokens,
           modelId: context.modelId,
+          mode: context.mode,
           providerId: context.providerId,
           systemPrompt: context.systemPrompt,
           thinkingLevel: context.thinkingLevel,

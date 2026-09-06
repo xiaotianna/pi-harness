@@ -11,6 +11,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -240,7 +241,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       initialOffset: () => items.length * 180 + 80,
       initialRect: { height: 1, width: 1 },
       overscan: 5,
-      paddingEnd: 40,
+      paddingEnd: 80,
       paddingStart: 40,
       scrollPaddingStart: 40,
       scrollEndThreshold,
@@ -278,7 +279,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       [items, targetMessageId],
     );
 
-    useEffect(() => {
+    useLayoutEffect(() => {
       if (!searchTarget) return;
       if (targetMessageId === null || targetItemIndex < 0) {
         onSearchTargetComplete?.();
@@ -422,7 +423,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
               })}
             </div>
           ) : (
-            <div className="mx-auto flex w-full max-w-[714px] flex-col gap-2 px-4 pt-10 pb-12">
+            <div className="mx-auto flex w-full max-w-[714px] flex-col gap-2 px-4 pt-10 pb-20">
               {items.map((item, index) => (
                 <Fragment key={item.id}>{renderItem(item, index, false)}</Fragment>
               ))}

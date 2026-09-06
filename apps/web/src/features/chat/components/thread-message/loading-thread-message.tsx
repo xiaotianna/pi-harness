@@ -6,7 +6,7 @@ export function LoadingThreadMessage({ message }: { message: ChatLoadingMessage 
   return (
     <ChatMessagePrimitive.Assistant aria-busy="true" aria-live="polite" className="!py-0">
       <ChatMessagePrimitive.Body>
-        <GenerationLoader label={message.label} />
+        <GenerationLoader className="text-accent" label={message.label} />
       </ChatMessagePrimitive.Body>
     </ChatMessagePrimitive.Assistant>
   );

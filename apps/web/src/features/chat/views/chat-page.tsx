@@ -230,6 +230,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       conversation.scrollTop = conversation.scrollHeight;
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
+        if (!shouldFollowConversationRef.current) return;
         messageListRef.current?.scrollToEnd();
         conversation.scrollTop = conversation.scrollHeight;
         const isAtBottom =
@@ -249,6 +250,16 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       window.cancelAnimationFrame(frameId);
     };
   }, [activeView, conversationElement, isSnapshotReady, sessionId]);
+
+  useLayoutEffect(() => {
+    if (
+      activeView === ChatPageView.CONVERSATION &&
+      isSnapshotReady &&
+      shouldFollowConversationRef.current
+    ) {
+      messageListRef.current?.scrollToEnd();
+    }
+  }, [activeView, isSnapshotReady, messages]);
 
   const startMutation = useMutation({
     mutationFn: ({ input, sessionId }: { input: RunUserInput; sessionId: string }) =>
