@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./approval-policy": "./src/approval-policy.ts"
+    "./approval-policy": "./src/approval-policy.ts",
+    "./command-policy": "./src/command-policy.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

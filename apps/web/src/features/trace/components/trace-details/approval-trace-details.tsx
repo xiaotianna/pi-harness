@@ -28,6 +28,7 @@ function readTimestamp(value: unknown): number | null {
 
 function decisionLabel(decision: string | null): string {
   if (decision === ApprovalDecision.APPROVED) return "Approved";
+  if (decision === ApprovalDecision.APPROVED_SIMILAR) return "Approved similar";
   if (decision === ApprovalDecision.REJECTED) return "Rejected";
   if (decision === ApprovalDecision.EXPIRED) return "Expired";
   return decision ?? "Pending";
@@ -36,6 +37,9 @@ function decisionLabel(decision: string | null): string {
 function decisionDescription(decision: string | null): string {
   if (decision === ApprovalDecision.APPROVED) {
     return "审批已通过；工具仍需通过执行前校验，实际执行结果以对应 Tool 轨迹为准。";
+  }
+  if (decision === ApprovalDecision.APPROVED_SIMILAR) {
+    return "审批已通过并保存命令前缀规则；工具仍需通过执行前校验。";
   }
   if (decision === ApprovalDecision.REJECTED) return "用户已拒绝，本次工具调用不会继续执行。";
   if (decision === ApprovalDecision.EXPIRED) return "审批等待已超时，本次工具调用不会继续执行。";

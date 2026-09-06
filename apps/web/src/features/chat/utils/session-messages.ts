@@ -3,6 +3,7 @@ import {
   ApprovalDecision,
   type HarnessEvent,
   HarnessEventType,
+  isApprovalGranted,
   MessageDeltaKind,
   selectActiveSessionEvents,
 } from "@pi-harness/agent-runtime/harness-event";
@@ -11,6 +12,7 @@ import {
   RequestUserInputToolName,
 } from "@pi-harness/agent-runtime/user-input";
 import { UpdatePlanToolName, UpdateTodosToolName } from "@pi-harness/agent-runtime/working-state";
+import { isCommandPrefixRule } from "@pi-harness/policy/command-policy";
 import { isPlainObject } from "es-toolkit";
 import type { Session, SessionSnapshot } from "../api/session-api";
 import {
@@ -469,6 +471,9 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
         const preview = readApprovalPreview(tool);
         tool.approval = {
           approvalId: event.data.approvalId,
+          ...(isCommandPrefixRule(event.data.commandPrefix)
+            ? { commandPrefix: event.data.commandPrefix }
+            : {}),
           ...(preview === null ? {} : { preview }),
           risk: event.data.risk,
           runId: event.runId,
@@ -489,7 +494,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       if (tool) {
         delete tool.activeLabel;
         delete tool.approval;
-        if (event.data.decision === ApprovalDecision.APPROVED) {
+        if (isApprovalGranted(event.data.decision)) {
           tool.state = ChatToolState.INPUT_AVAILABLE;
         } else {
           tool.errorText =

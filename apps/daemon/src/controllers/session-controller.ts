@@ -331,7 +331,15 @@ export class SessionController {
     reply: FastifyReply,
   ): Promise<FastifyReply | PendingToolApprovalVo | null> => {
     try {
-      return this.sessions.getPendingApproval(request.params.sessionId, request.params.runId);
+      const approval = this.sessions.getPendingApproval(
+        request.params.sessionId,
+        request.params.runId,
+      );
+      if (approval === null) return null;
+      const { commandPrefix, ...response } = approval;
+      return commandPrefix === undefined
+        ? response
+        : { ...response, commandPrefix: [...commandPrefix] };
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     }

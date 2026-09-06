@@ -52,6 +52,7 @@ import {
   type InputExpiredData,
   type InputRequestedData,
   type InputResolvedData,
+  isApprovalGranted,
   type RunContextData,
   type RunId,
   type RunInteractionData,
@@ -194,6 +195,7 @@ export class RunCoordinator {
     private readonly contextCheckpointHistory: ContextCheckpointRecord[],
     private planState: PlanUpdatedData | null,
     private todoState: TodoUpdatedData | null,
+    private readonly getAllowedCommandPrefixes: () => readonly (readonly string[])[] = () => [],
   ) {
     this.executionGuard = toolRegistry.executionGuard;
     for (const message of agent.state.messages) {
@@ -557,6 +559,7 @@ export class RunCoordinator {
     // 在工具真正执行前，根据工具权限和参数，决定“直接允许、直接拒绝，还是请求用户审批”
     const policy = await evaluateToolCall({
       approvalPolicy: activeRun.approvalPolicy,
+      allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
       arguments: context.args, // 模型传给工具的参数
       policy: registration?.policy, // 工具权限
       protectedPaths: this.protectedPaths,
@@ -597,6 +600,7 @@ export class RunCoordinator {
     const approvalId = randomUUID();
     const request = {
       approvalId,
+      ...(policy.commandPrefix === undefined ? {} : { commandPrefix: policy.commandPrefix }),
       risk: policy.risk,
       runId: activeRun.runId,
       sessionId: this.sessionId,
@@ -623,6 +627,9 @@ export class RunCoordinator {
         {
           data: {
             approvalId,
+            ...(request.commandPrefix === undefined
+              ? {}
+              : { commandPrefix: request.commandPrefix }),
             expiresAt: approval.expiresAt,
             risk: request.risk,
             summary: request.summary,
@@ -661,6 +668,10 @@ export class RunCoordinator {
         {
           data: {
             approvalId,
+            ...(decision === ApprovalDecision.APPROVED_SIMILAR &&
+            request.commandPrefix !== undefined
+              ? { commandPrefix: request.commandPrefix }
+              : {}),
             decision,
             toolCallId: context.toolCall.id,
             toolName: context.toolCall.name,
@@ -682,20 +693,26 @@ export class RunCoordinator {
       );
 
       // 决定是否执行工具，返回 undefined，表示不阻止工具，继续执行。
-      if (decision === ApprovalDecision.APPROVED) {
+      if (isApprovalGranted(decision)) {
         const currentPolicy = await evaluateToolCall({
           approvalPolicy: activeRun.approvalPolicy,
+          allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
           arguments: context.args,
           policy: this.toolRegistry.get(context.toolCall.name)?.policy,
           protectedPaths: this.protectedPaths,
           workspaceRoot: this.workspaceRoot,
         });
-        if (
-          currentPolicy.decision !== ToolPolicyDecision.ASK ||
-          currentPolicy.fingerprint !== policy.fingerprint ||
-          currentPolicy.summary !== policy.summary ||
-          currentPolicy.target !== policy.target
-        ) {
+        const isUnchangedOneTimeApproval =
+          decision === ApprovalDecision.APPROVED &&
+          currentPolicy.decision === ToolPolicyDecision.ASK &&
+          currentPolicy.fingerprint === policy.fingerprint &&
+          currentPolicy.summary === policy.summary &&
+          currentPolicy.target === policy.target;
+        const isStoredSimilarApproval =
+          decision === ApprovalDecision.APPROVED_SIMILAR &&
+          currentPolicy.decision === ToolPolicyDecision.ALLOW &&
+          currentPolicy.fingerprint === policy.fingerprint;
+        if (!isUnchangedOneTimeApproval && !isStoredSimilarApproval) {
           return {
             block: true,
             reason: "审批期间工具目标已变化，请重新读取后再修改",

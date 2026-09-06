@@ -18,6 +18,14 @@ const UPDATE_THROTTLE_MS = 100;
 
 const RunCommandParameters = Type.Object({
   command: Type.String({ description: "在 workspace 根目录执行的 Shell 命令", minLength: 1 }),
+  prefixRule: Type.Optional(
+    Type.Array(Type.String({ maxLength: 256, minLength: 1 }), {
+      description:
+        "仅在命令安全、非破坏且可按类别复用时提供有序 argv 前缀，供用户选择允许类似命令；不要为 Shell、解释器或 rm 类命令建议规则",
+      maxItems: 16,
+      minItems: 1,
+    }),
+  ),
   timeoutMs: Type.Optional(
     Type.Integer({
       description: "超时时间，默认 120000ms",
@@ -73,7 +81,8 @@ export function createRunCommandTool(
   return {
     name: "run_command",
     label: "Run command",
-    description: "在固定的 workspace 根目录执行 Shell 命令，支持取消、超时和输出限制。",
+    description:
+      "在固定的 workspace 根目录执行 Shell 命令，支持取消、超时和输出限制；安全且适合复用审批的单条命令应同时提供 prefixRule。",
     parameters: RunCommandParameters,
     executionMode: "sequential",
     async execute(_toolCallId, input, signal, onUpdate) {

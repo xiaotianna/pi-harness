@@ -2,6 +2,7 @@ import {
   ApprovalDecision,
   type HarnessEvent,
   HarnessEventType,
+  isApprovalGranted,
   isContextCompactedData,
   isMessageBranchStartedData,
   type RunContextData,
@@ -390,7 +391,7 @@ function createTrace(
         approvalDecision === ApprovalDecision.EXPIRED;
       const executionStartedAt = isApprovalBlocked
         ? null
-        : approvalDecision === ApprovalDecision.APPROVED
+        : isApprovalGranted(approvalDecision)
           ? (approvalResolution?.timestamp ?? pending.event.timestamp)
           : pending.event.timestamp;
       const timelineStartedAt =
@@ -461,11 +462,13 @@ function createTrace(
       approvalResolutionsByToolCallId.set(identity.toolCallId, event);
       const isExpired = decision === ApprovalDecision.EXPIRED;
       const preview =
-        decision === ApprovalDecision.APPROVED
-          ? "用户已批准"
-          : decision === ApprovalDecision.REJECTED
-            ? "用户已拒绝"
-            : "审批已超时";
+        decision === ApprovalDecision.APPROVED_SIMILAR
+          ? "用户已允许类似命令"
+          : decision === ApprovalDecision.APPROVED
+            ? "用户已批准"
+            : decision === ApprovalDecision.REJECTED
+              ? "用户已拒绝"
+              : "审批已超时";
       records.push({
         durationMs: eventDuration(pending.event, event),
         ...(isExpired ? { errorCode: "APPROVAL_EXPIRED" } : {}),

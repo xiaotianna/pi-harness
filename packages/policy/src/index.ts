@@ -3,6 +3,13 @@ export {
   type ApprovalPolicy as ApprovalPolicyValue,
   isApprovalPolicy,
 } from "./approval-policy.js";
+export {
+  type CommandPrefixRule,
+  isCommandAllowedByPrefixes,
+  isCommandPrefixRule,
+  isPersistableCommandPrefixRule,
+  readApplicableCommandPrefix,
+} from "./command-policy.js";
 export { type ResolveWorkspacePathInput, resolveWorkspacePath } from "./path-policy.js";
 export {
   PathPolicyError,

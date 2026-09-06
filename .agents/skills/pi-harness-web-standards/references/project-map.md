@@ -41,6 +41,7 @@
 | 本地文件打开 | 设置页右侧先展示按内容收缩的 ghost 应用选择器，再使用与相邻设置控件等宽的 HeroUI `Select` 选择“每次询问”或默认应用；应用选择器始终展示 24px 图标和应用名称，使用 HeroUI 按钮自身的 hover 与键盘聚焦反馈，不替换文案，窄屏按相同顺序换行，也不添加下拉指示、独立操作或额外表面。询问流程使用不超过 420px 的紧凑 HeroUI `Modal`，标题下以 secondary `Surface` 展示文件摘要，再单独展示 `Checkbox`；不使用重复装饰图标和系统选择器说明，由 daemon 调用系统应用选择器 | `features/settings/components/settings-dialog.tsx`、`features/chat/components/file-open-dialog.tsx` |
 | 文件图标 | 统一使用 `FileIconRender`，由可排序的文件名/扩展名策略选择本地 Iconify VSCode 图标，未匹配时由调用方传入原有 Gravity 文件图标兜底 | `components/ui/file-icon-render.tsx` |
 | Tool 调用与分组 | assistant-ui Element `ToolCall`；分组使用紧凑列表 | `components/ai/tool-call.tsx`、`features/chat/components/thread-message/` |
+| Tool 审批 | 底部审批卡使用 HeroUI `ButtonGroup` 组合“允许一次”和 `Dropdown`；只有 daemon 提供已校验的 argv 前缀时显示“允许类似命令”，菜单只显示操作名称，Web 只提交决策 | `features/chat/components/tool-approval-card.tsx`、`packages/policy/src/command-policy.ts` |
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor` | `features/chat/components/chat-composer.tsx` |
 | 显式 Plan 与用户输入 | 添加菜单在编辑器光标处插入独立主题色的 Plan 内联标签，复用 Skill 标签；删除标签取消本次消息的 Plan 模式，发送时从标签派生模式且不把标签写入正文；普通问题卡片使用按内容自适应高度的紧凑布局，宽度与消息输入框、审批卡一致并完整覆盖输入区；每页只展示一题，标题栏右侧以无 Tooltip 的左右按钮和页码翻页，问题和选项的标题与说明优先同行展示，所有答案行使用统一的 4px 间距、行高和左右边缘，预设答案使用 A/B/C 并以 `accent-soft` 整行底色强化选中态，自由输入作为下一个带单层 HeroUI InputGroup 的答案选项，字母标记位于无分隔线的前缀中，不叠加 ListBox 选中表面与勾选标记；计划确认允许编辑步骤；确认前 Runtime 阻止副作用 | `features/chat/components/chat-composer.tsx`、`chat-composer-editor.tsx`、`user-input-card.tsx`、`packages/tools/src/tools/request-user-input.ts` |

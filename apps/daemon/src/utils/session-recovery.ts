@@ -6,6 +6,7 @@ import {
   isInputRequestedData,
   type RunId,
 } from "@pi-harness/agent-runtime";
+import { isCommandPrefixRule } from "@pi-harness/policy/command-policy";
 import { isPlainObject } from "es-toolkit";
 
 export interface InterruptedRun {
@@ -23,7 +24,8 @@ function readApprovalRequest(event: HarnessEvent): ApprovalRequestedData | null 
     typeof event.data.summary !== "string" ||
     typeof event.data.target !== "string" ||
     typeof event.data.toolCallId !== "string" ||
-    typeof event.data.toolName !== "string"
+    typeof event.data.toolName !== "string" ||
+    (event.data.commandPrefix !== undefined && !isCommandPrefixRule(event.data.commandPrefix))
   ) {
     return null;
   }

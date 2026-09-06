@@ -176,6 +176,7 @@ export class HumanInteractionService {
     runId: string,
     approvalId: string,
     decision: ApprovalResponseDecision,
+    beforeResolve?: (request: PendingToolApproval) => void,
   ): void {
     const entry = this.requireEntry(this.pendingApprovals, approvalId);
     if (entry.request.sessionId !== sessionId || entry.request.runId !== runId) {
@@ -184,6 +185,7 @@ export class HumanInteractionService {
         "待处理的工具审批不存在",
       );
     }
+    beforeResolve?.(entry.request);
     this.settleApproval(approvalId, decision);
   }
 

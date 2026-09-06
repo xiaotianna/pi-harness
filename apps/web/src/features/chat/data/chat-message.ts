@@ -59,6 +59,7 @@ export type ChatMessageTool = {
   activeLabel?: string;
   approval?: {
     approvalId: string;
+    commandPrefix?: readonly string[];
     preview?: string;
     risk: string;
     runId: string;

@@ -1,5 +1,6 @@
 import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import type { CommandPrefixRule } from "@pi-harness/policy";
 import {
   createWorkspaceToolRegistry,
   type PlanUpdatedData,
@@ -56,6 +57,7 @@ export class AgentManager {
     private readonly globalRoot: string,
     private readonly webSearchUrl: string,
     private readonly isSkillEnabled: (directory: string) => boolean = () => true,
+    private readonly getAllowedCommandPrefixes: () => readonly CommandPrefixRule[] = () => [],
   ) {}
 
   public isProviderActive(providerId: string): boolean {
@@ -209,6 +211,7 @@ export class AgentManager {
       [...input.contextCheckpointHistory],
       input.plan,
       input.todos,
+      this.getAllowedCommandPrefixes,
     );
     this.runtimes.set(input.sessionId, runtime);
     return runtime;

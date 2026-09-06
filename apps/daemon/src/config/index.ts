@@ -29,6 +29,7 @@ export interface GitHubOAuthConfig {
 }
 
 export interface HarnessConfig {
+  allowedCommandPrefixesPath: string;
   credentialsPath: string;
   databasePath: string;
   globalRoot: string;
@@ -104,6 +105,7 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
   const globalRoot = dirname(databasePath);
 
   return {
+    allowedCommandPrefixesPath: join(globalRoot, "allowed-command-prefixes.json"),
     credentialsPath: join(globalRoot, "credentials.json"),
     databasePath,
     globalRoot,

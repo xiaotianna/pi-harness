@@ -1,6 +1,11 @@
 import { stat } from "node:fs/promises";
 import { relative } from "node:path";
 import { ApprovalPolicy, type ApprovalPolicy as ApprovalPolicyValue } from "./approval-policy.js";
+import {
+  type CommandPrefixRule,
+  isCommandAllowedByPrefixes,
+  readApplicableCommandPrefix,
+} from "./command-policy.js";
 import { resolveWorkspacePath } from "./path-policy.js";
 
 // 工具审批决策
@@ -30,9 +35,7 @@ export type ToolPolicy =
       summary: string;
     };
 
-export type ToolWriteTarget =
-  | { path: string }
-  | { fingerprint: string; target: string };
+export type ToolWriteTarget = { path: string } | { fingerprint: string; target: string };
 
 export type ToolPolicyResult =
   | { decision: typeof ToolPolicyDecision.ALLOW; fingerprint?: string }
@@ -43,10 +46,12 @@ export type ToolPolicyResult =
       risk: string;
       summary: string;
       target: string;
+      commandPrefix?: CommandPrefixRule;
     };
 
 export interface EvaluateToolCallInput {
   approvalPolicy: ApprovalPolicyValue;
+  allowedCommandPrefixes?: readonly CommandPrefixRule[];
   arguments: unknown;
   policy: ToolPolicy | undefined;
   protectedPaths?: readonly string[];
@@ -59,6 +64,11 @@ function readStringArgument(argumentsValue: unknown, name: string): string | nul
   }
   const value = (argumentsValue as Record<string, unknown>)[name];
   return typeof value === "string" ? value : null;
+}
+
+function readArgument(argumentsValue: unknown, name: string): unknown {
+  if (typeof argumentsValue !== "object" || argumentsValue === null) return undefined;
+  return name in argumentsValue ? (argumentsValue as Record<string, unknown>)[name] : undefined;
 }
 
 async function resolveWorkspaceTarget(
@@ -112,7 +122,7 @@ async function resolveWorkspaceTarget(
     SHELL
       → 读取 arguments.command
       → 校验 workspace
-      → full_access 时 ALLOW，否则 ASK
+      → full_access 或命中已允许命令前缀时 ALLOW，否则 ASK
  * */
 export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<ToolPolicyResult> {
   if (input.policy === undefined) {
@@ -169,7 +179,15 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
       if (input.approvalPolicy === ApprovalPolicy.FULL_ACCESS) {
         return { decision: ToolPolicyDecision.ALLOW, fingerprint };
       }
+      if (isCommandAllowedByPrefixes(command, input.allowedCommandPrefixes ?? [])) {
+        return { decision: ToolPolicyDecision.ALLOW, fingerprint };
+      }
+      const commandPrefix = readApplicableCommandPrefix(
+        command,
+        readArgument(input.arguments, "prefixRule"),
+      );
       return {
+        ...(commandPrefix === null ? {} : { commandPrefix }),
         decision: ToolPolicyDecision.ASK,
         fingerprint,
         risk: "Shell 命令以当前用户权限运行，可能修改文件、启动子进程或访问 workspace 外部资源。",

@@ -89,6 +89,9 @@ export type QueuedRunInputVo = Static<typeof QueuedRunInputVoSchema>;
 
 export const PendingToolApprovalVoSchema = Type.Object({
   approvalId: Type.String({ format: "uuid" }),
+  commandPrefix: Type.Optional(
+    Type.Array(Type.String({ maxLength: 256, minLength: 1 }), { maxItems: 16, minItems: 1 }),
+  ),
   expiresAt: Type.Integer({ minimum: 0 }),
   risk: Type.String({ minLength: 1 }),
   runId: Type.String({ format: "uuid" }),

@@ -16,6 +16,7 @@ import { SessionEventService } from "../services/session-event-service.js";
 import { SessionService } from "../services/session-service.js";
 import { WorkspaceService } from "../services/workspace-service.js";
 import { SessionEventBroker } from "../sse/session-event-broker.js";
+import { AllowedCommandPrefixStore } from "../storage/allowed-command-prefix-store.js";
 import { openHarnessDatabase } from "../storage/database.js";
 import { FileCredentialStore } from "../storage/provider-credential-store.js";
 import { SessionEventStore } from "../storage/session-event-store.js";
@@ -29,6 +30,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     },
   });
   const database = openHarnessDatabase(config.databasePath);
+  const allowedCommandPrefixes = AllowedCommandPrefixStore.open(config.allowedCommandPrefixesPath);
   const appSettings = new AppSettingsService(database.appSettings);
   const fileOpen = new FileOpenService(database.appSettings);
   const credentials = await FileCredentialStore.open(config.credentialsPath);
@@ -47,6 +49,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     config.globalRoot,
     config.webSearchUrl,
     (directory) => !database.appSettings.getDisabledSkillDirectories().includes(directory),
+    () => allowedCommandPrefixes.getAll(),
   );
   const workspaces = new WorkspaceService(
     database.workspaces,
@@ -65,6 +68,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     database.sessions,
     database.workspaces,
     database.appSettings,
+    allowedCommandPrefixes,
     eventStore,
     sessionEvents,
     providers,

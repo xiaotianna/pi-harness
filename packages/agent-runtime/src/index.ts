@@ -50,6 +50,7 @@ export {
   type InputExpiredData,
   type InputRequestedData,
   type InputResolvedData,
+  isApprovalGranted,
   isContextCheckpointRestoredData,
   isContextCompactedData,
   isContextWorkingStateResetData,

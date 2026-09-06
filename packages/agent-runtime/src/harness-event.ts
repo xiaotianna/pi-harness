@@ -15,15 +15,23 @@ export type RunId = string;
 // 工具审批结果
 export const ApprovalDecision = {
   APPROVED: "approved", // 用户批准
+  APPROVED_SIMILAR: "approved_similar", // 用户批准并保存类似命令规则
   REJECTED: "rejected", // 用户拒绝
   EXPIRED: "expired", // 审批超时
 } as const;
 
 export type ApprovalDecision = (typeof ApprovalDecision)[keyof typeof ApprovalDecision];
-// 审批最终返回的只有批准和拒绝
+// 用户回复包含批准一次、批准类似命令和拒绝；超时只由 Runtime 产生。
 export type ApprovalResponseDecision =
   | typeof ApprovalDecision.APPROVED
+  | typeof ApprovalDecision.APPROVED_SIMILAR
   | typeof ApprovalDecision.REJECTED;
+
+export function isApprovalGranted(
+  decision: unknown,
+): decision is typeof ApprovalDecision.APPROVED | typeof ApprovalDecision.APPROVED_SIMILAR {
+  return decision === ApprovalDecision.APPROVED || decision === ApprovalDecision.APPROVED_SIMILAR;
+}
 
 export const RunFileChangeOperation = {
   REAPPLY: "reapply_run_changes",
@@ -584,13 +592,17 @@ export interface ApprovalRequestedData {
   toolCallId: string;
   // 调用工具名称
   toolName: string;
+  // 用户确认后可持久化的安全 argv 前缀；缺少时只允许批准一次
+  commandPrefix?: readonly string[];
 }
 
 // 审批得到结果后发送
 export interface ApprovalResolvedData {
   approvalId: string;
-  // 审批结果，即 "approved"、"rejected" 或 "expired"
+  // 审批结果，即批准一次、批准类似命令、拒绝或超时
   decision: ApprovalDecision;
+  // 选择允许类似命令时实际保存的 argv 前缀
+  commandPrefix?: readonly string[];
   toolCallId: string;
   toolName: string;
 }

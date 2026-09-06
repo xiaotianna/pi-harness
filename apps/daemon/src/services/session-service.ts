@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import type { UserInputSubmission } from "@pi-harness/agent-runtime";
 import {
   type AgentManager,
+  ApprovalDecision,
   type ApprovalResponseDecision,
   type ContextCheckpointRestoredData,
   type FileChangedData,
@@ -39,6 +40,7 @@ import {
   buildSessionTitlePrompt,
   SESSION_TITLE_SYSTEM_PROMPT,
 } from "../prompts/session-title-prompt.js";
+import type { AllowedCommandPrefixStore } from "../storage/allowed-command-prefix-store.js";
 import type {
   AppSettingRepository,
   SessionRecord,
@@ -66,6 +68,7 @@ import type { ProviderService } from "./provider-service.js";
 import type { SessionEventService } from "./session-event-service.js";
 
 const SessionErrorCode = {
+  APPROVAL_INVALID: "APPROVAL_INVALID",
   BUSY: "SESSION_BUSY",
   CHECKPOINT_NOT_FOUND: "CONTEXT_CHECKPOINT_NOT_FOUND",
   EMPTY_PROMPT: "EMPTY_RUN_PROMPT",
@@ -267,6 +270,7 @@ export class SessionService {
     private readonly sessions: SessionRepository,
     private readonly workspaces: WorkspaceRepository,
     private readonly settings: AppSettingRepository,
+    private readonly allowedCommandPrefixes: AllowedCommandPrefixStore,
     private readonly eventStore: SessionEventStore,
     private readonly sessionEvents: SessionEventService,
     private readonly providers: ProviderService,
@@ -835,7 +839,16 @@ export class SessionService {
     decision: ApprovalResponseDecision,
   ): void {
     this.getRequiredSession(sessionId);
-    this.interactions.resolveApproval(sessionId, runId, approvalId, decision);
+    this.interactions.resolveApproval(sessionId, runId, approvalId, decision, (request) => {
+      if (decision !== ApprovalDecision.APPROVED_SIMILAR) return;
+      if (request.commandPrefix === undefined) {
+        throw new SessionServiceError(
+          SessionErrorCode.APPROVAL_INVALID,
+          "当前命令不能保存为类似命令规则",
+        );
+      }
+      this.allowedCommandPrefixes.add(request.commandPrefix);
+    });
   }
 
   public getPendingInput(sessionId: SessionId, runId: RunId): PendingUserInput | null {

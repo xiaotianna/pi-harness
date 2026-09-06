@@ -1,7 +1,7 @@
 "use client";
 
-import { Terminal as SquareTerminal } from "@gravity-ui/icons";
-import { Button, Card, toast } from "@heroui/react";
+import { ChevronDown, Terminal as SquareTerminal } from "@gravity-ui/icons";
+import { Button, ButtonGroup, Card, Dropdown, Label, toast } from "@heroui/react";
 import {
   ApprovalDecision,
   type ApprovalResponseDecision,
@@ -20,6 +20,9 @@ export function ToolApprovalCard({
 }) {
   const titleId = useId();
   const [pendingDecision, setPendingDecision] = useState<ApprovalResponseDecision | null>(null);
+  const isApprovalPending =
+    pendingDecision === ApprovalDecision.APPROVED ||
+    pendingDecision === ApprovalDecision.APPROVED_SIMILAR;
 
   const resolveApproval = (decision: ApprovalResponseDecision) => {
     setPendingDecision(decision);
@@ -66,14 +69,57 @@ export function ToolApprovalCard({
         >
           拒绝
         </Button>
-        <Button
-          isDisabled={pendingDecision !== null}
-          isPending={pendingDecision === ApprovalDecision.APPROVED}
-          size="sm"
-          onPress={() => resolveApproval(ApprovalDecision.APPROVED)}
-        >
-          允许一次
-        </Button>
+        {approval.commandPrefix ? (
+          <ButtonGroup isDisabled={pendingDecision !== null} size="sm" variant="primary">
+            <Button
+              isPending={isApprovalPending}
+              onPress={() => resolveApproval(ApprovalDecision.APPROVED)}
+            >
+              允许一次
+            </Button>
+            <Dropdown>
+              <Button
+                aria-label="选择允许方式"
+                isDisabled={pendingDecision !== null}
+                isIconOnly
+                size="sm"
+                variant="primary"
+              >
+                <ButtonGroup.Separator />
+                <ChevronDown className="size-3.5" />
+              </Button>
+              <Dropdown.Popover placement="top end">
+                <Dropdown.Menu
+                  aria-label="允许方式"
+                  onAction={(key) => {
+                    if (key === ApprovalDecision.APPROVED) {
+                      resolveApproval(ApprovalDecision.APPROVED);
+                    }
+                    if (key === ApprovalDecision.APPROVED_SIMILAR) {
+                      resolveApproval(ApprovalDecision.APPROVED_SIMILAR);
+                    }
+                  }}
+                >
+                  <Dropdown.Item id={ApprovalDecision.APPROVED} textValue="允许一次">
+                    <Label>允许一次</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id={ApprovalDecision.APPROVED_SIMILAR} textValue="允许类似命令">
+                    <Label>允许类似命令</Label>
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
+          </ButtonGroup>
+        ) : (
+          <Button
+            isDisabled={pendingDecision !== null}
+            isPending={isApprovalPending}
+            size="sm"
+            onPress={() => resolveApproval(ApprovalDecision.APPROVED)}
+          >
+            允许一次
+          </Button>
+        )}
       </Card.Footer>
     </Card>
   );
