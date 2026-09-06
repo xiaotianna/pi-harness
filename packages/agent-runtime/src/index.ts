@@ -1,13 +1,24 @@
 export type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 export {
+  type EditablePlan,
   isPlanUpdatedData,
   isTodoUpdatedData,
   PlanStepStatus,
   type PlanStepStatusValue,
   type PlanUpdatedData,
+  type RequestUserInputData,
+  RequestUserInputToolName,
   TodoStatus,
   type TodoStatusValue,
   type TodoUpdatedData,
+  type UserInputAnswer,
+  type UserInputQuestion,
+  UserInputRequestKind,
+  type UserInputRequestKindValue,
+  UserInputResponseAction,
+  type UserInputResponseActionValue,
+  type UserInputSubmission,
+  type UserInputToolResult,
 } from "@pi-harness/tools";
 export {
   AgentManager,
@@ -36,9 +47,15 @@ export {
   type HarnessEventDraft,
   HarnessEventType,
   type HarnessEventType as HarnessEventTypeValue,
+  type InputExpiredData,
+  type InputRequestedData,
+  type InputResolvedData,
   isContextCheckpointRestoredData,
   isContextCompactedData,
   isContextWorkingStateResetData,
+  isInputExpiredData,
+  isInputRequestedData,
+  isInputResolvedData,
   isMessageBranchStartedData,
   type MessageBranchStartedData,
   type MessageDeltaData,
@@ -59,6 +76,12 @@ export {
   type ToolStartedData,
   type ToolUpdatedData,
 } from "./harness-event.js";
+export type {
+  HumanInputHandle,
+  HumanInputRequest,
+  HumanInputRequester,
+  HumanInputResolver,
+} from "./human-input.js";
 export {
   applyModelResponsePreferences,
   isOutputDetail,
@@ -98,6 +121,8 @@ export {
   type QueuedRunInput,
   type RunInputAttachment,
   type RunInputContextReference,
+  RunMode,
+  type RunMode as RunModeValue,
   type RunUserInput,
   rewriteHarnessUserMessage,
   UserContextReferenceKind,

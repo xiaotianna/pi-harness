@@ -154,11 +154,14 @@ export function ModelSettingsPanel() {
           title="默认模型"
         >
           {providersQuery.isPending || isLoading ? (
-            <Skeleton aria-label="正在加载默认模型" className="h-10 w-full rounded-xl sm:w-56" />
+            <Skeleton
+              aria-label="正在加载默认模型"
+              className="h-10 w-full rounded-xl @xl/settings:w-56"
+            />
           ) : (
             <Select
               aria-label="默认模型"
-              className="w-full sm:min-w-56 sm:max-w-64"
+              className="w-full @xl/settings:min-w-56 @xl/settings:max-w-64"
               isDisabled={isSaving("defaultModel")}
               placeholder="暂无可用模型"
               value={defaultModelKey ?? ""}

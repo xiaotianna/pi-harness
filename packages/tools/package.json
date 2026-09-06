@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./planner": "./src/tools/planner.ts",
+    "./request-user-input": "./src/tools/request-user-input.ts",
     "./todos": "./src/tools/todos.ts"
   },
   "scripts": {

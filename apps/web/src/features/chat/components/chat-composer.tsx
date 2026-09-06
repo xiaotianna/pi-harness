@@ -9,11 +9,11 @@ import {
   Folder,
   FolderOpen,
   Bulb as Lightbulb,
+  ListCheck,
   Paperclip,
   PencilToLine as PencilLine,
   Plus,
   Magnifier as Search,
-  Terminal as SquareTerminal,
   MagicWand as WandSparkles,
 } from "@gravity-ui/icons";
 import {
@@ -43,6 +43,8 @@ import {
   type BusySubmitBehavior as BusySubmitBehaviorValue,
   type QueuedRunInput,
   type RunInputContextReference,
+  RunMode,
+  type RunMode as RunModeValue,
   type RunUserInput,
   UserContextReferenceKind,
 } from "@pi-harness/agent-runtime/user-input";
@@ -83,6 +85,12 @@ import {
 import { ContextUsagePopover } from "./context-usage-popover";
 import { QueuedRunInputs } from "./queued-run-inputs";
 
+const PLAN_MODE_TOKEN = {
+  id: RunMode.PLAN,
+  kind: ChatComposerTokenKind.PLAN,
+  label: "Plan",
+} as const;
+
 type PendingAttachment = {
   file: File;
   id: string;
@@ -116,6 +124,7 @@ export interface ChatComposerProps {
   initialSkillName?: string;
   isAddingWorkspace?: boolean;
   modelId?: string;
+  mode?: RunModeValue;
   onAddWorkspace?: () => Promise<ChatWorkspace | null>;
   onModelChange?: (selection: ChatComposerModelSelection) => Promise<void>;
   onStopRun?: () => Promise<void>;
@@ -166,12 +175,6 @@ const COMPOSER_SHORTCUTS = [
     label: "创意",
     prompt: "围绕以下主题集思广益：",
   },
-] as const;
-
-const COMMAND_OPTIONS = [
-  { id: "review", label: "/review" },
-  { id: "explain", label: "/explain" },
-  { id: "fix", label: "/fix" },
 ] as const;
 
 const THINKING_LEVEL_OPTIONS = [
@@ -383,6 +386,7 @@ export function ChatComposer({
   initialSkillName,
   isAddingWorkspace = false,
   modelId,
+  mode: modeProp,
   onAddWorkspace,
   onModelChange,
   onRemoveQueuedInput,
@@ -437,6 +441,8 @@ export function ChatComposer({
     return provider ? createModelSelectionKey(provider.id, modelId) : null;
   }, [availableModelKeys, availableModelProviders, modelId, providerId]);
   const initialEditorValue = useMemo(() => {
+    const planToken =
+      modeProp === RunMode.PLAN ? createChatComposerTokenValue(PLAN_MODE_TOKEN) : "";
     const skillToken = initialSkillName
       ? createChatComposerTokenValue({
           id: initialSkillName,
@@ -444,12 +450,12 @@ export function ChatComposer({
           label: initialSkillLabel ?? initialSkillName,
         })
       : "";
-    return [skillToken, initialPrompt].filter(Boolean).join(" ");
-  }, [initialPrompt, initialSkillLabel, initialSkillName]);
+    return [planToken, skillToken, initialPrompt].filter(Boolean).join(" ");
+  }, [initialPrompt, initialSkillLabel, initialSkillName, modeProp]);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const [expandedMobileAddMenuSection, setExpandedMobileAddMenuSection] = useState<
-    "commands" | "skills" | null
-  >(null);
+  const [expandedMobileAddMenuSection, setExpandedMobileAddMenuSection] = useState<"skills" | null>(
+    null,
+  );
   const [isMobileAddMenuOpen, setIsMobileAddMenuOpen] = useState(false);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
   const [internalStatus, setInternalStatus] = useState<ChatStatus>("ready");
@@ -496,10 +502,7 @@ export function ChatComposer({
   );
   const slashMenuItems = useMemo(
     () => [
-      ...COMMAND_OPTIONS.map((option) => ({
-        ...option,
-        kind: ChatComposerTokenKind.COMMAND,
-      })),
+      { ...PLAN_MODE_TOKEN, label: "Plan 模式" },
       ...skillOptions.map((option) => ({ ...option, kind: ChatComposerTokenKind.SKILL })),
     ],
     [skillOptions],
@@ -535,7 +538,11 @@ export function ChatComposer({
     const value = editorRef.current?.getValue() ?? "";
     const trimmed = value.trim();
     const hasAttachments = attachments.length > 0;
-    const references = editorRef.current?.getTokens().flatMap<RunInputContextReference>((token) => {
+    const tokens = editorRef.current?.getTokens() ?? [];
+    const runMode = tokens.some((token) => token.kind === ChatComposerTokenKind.PLAN)
+      ? RunMode.PLAN
+      : RunMode.DEFAULT;
+    const references = tokens.flatMap<RunInputContextReference>((token) => {
       const kind =
         token.kind === ChatComposerTokenKind.IMAGE
           ? UserContextReferenceKind.IMAGE
@@ -586,6 +593,7 @@ export function ChatComposer({
               }
             : {}),
           modelId: selectedModel.id,
+          mode: runMode,
           prompt: trimmed,
           providerId: selectedModelProvider.id,
           references: uniqueReferences,
@@ -718,6 +726,10 @@ export function ChatComposer({
     if (!option) return;
 
     editorRef.current?.insertToken({ ...option, kind });
+  };
+
+  const handleInsertPlan = () => {
+    editorRef.current?.insertToken(PLAN_MODE_TOKEN);
   };
 
   const handleEditorEmptyChange = useCallback((isEmpty: boolean) => {
@@ -972,47 +984,18 @@ export function ChatComposer({
                         <Paperclip className="size-4 text-muted" />
                         <Label>添加附件</Label>
                       </Button>
-                      <Disclosure
-                        isExpanded={expandedMobileAddMenuSection === "commands"}
-                        onExpandedChange={(isExpanded) =>
-                          setExpandedMobileAddMenuSection(isExpanded ? "commands" : null)
-                        }
+                      <Button
+                        className="min-h-9 w-full justify-start gap-3 px-2.5 py-1.5"
+                        size="sm"
+                        variant="ghost"
+                        onPress={() => {
+                          handleInsertPlan();
+                          closeMobileAddMenu();
+                        }}
                       >
-                        <Disclosure.Heading>
-                          <Disclosure.Trigger className="flex min-h-9 w-full items-center gap-3 rounded-2xl px-2.5 py-1.5 text-sm hover:bg-default">
-                            <SquareTerminal className="size-4 text-muted" />
-                            <Label>命令</Label>
-                            <Disclosure.Indicator />
-                          </Disclosure.Trigger>
-                        </Disclosure.Heading>
-                        <Disclosure.Content>
-                          <Disclosure.Body style={{ padding: 0 }}>
-                            <ListBox
-                              aria-label="命令"
-                              className="px-1"
-                              selectionMode="none"
-                              onAction={(key) => {
-                                handleInsertToken(
-                                  ChatComposerTokenKind.COMMAND,
-                                  COMMAND_OPTIONS,
-                                  key,
-                                );
-                                closeMobileAddMenu();
-                              }}
-                            >
-                              {COMMAND_OPTIONS.map((option) => (
-                                <ListBox.Item
-                                  key={option.id}
-                                  id={option.id}
-                                  textValue={option.label}
-                                >
-                                  <Label>{option.label}</Label>
-                                </ListBox.Item>
-                              ))}
-                            </ListBox>
-                          </Disclosure.Body>
-                        </Disclosure.Content>
-                      </Disclosure>
+                        <ListCheck className="size-4 text-muted" />
+                        <Label>Plan 模式</Label>
+                      </Button>
                       <Disclosure
                         isExpanded={expandedMobileAddMenuSection === "skills"}
                         onExpandedChange={(isExpanded) =>
@@ -1094,33 +1077,19 @@ export function ChatComposer({
                     aria-label="添加文件等内容"
                     onAction={(key) => {
                       if (key === "attach") fileInputRef.current?.click();
+                      if (key === "plan-mode") {
+                        handleInsertPlan();
+                      }
                     }}
                   >
                     <Dropdown.Item id="attach" textValue="添加附件">
                       <Paperclip className="size-4 text-muted" />
                       <Label>添加附件</Label>
                     </Dropdown.Item>
-                    <Dropdown.SubmenuTrigger>
-                      <Dropdown.Item id="commands" textValue="命令">
-                        <SquareTerminal className="size-4 text-muted" />
-                        <Label>命令</Label>
-                        <Dropdown.SubmenuIndicator />
-                      </Dropdown.Item>
-                      <Dropdown.Popover className="min-w-40" placement="right bottom">
-                        <Dropdown.Menu
-                          aria-label="命令"
-                          onAction={(key) =>
-                            handleInsertToken(ChatComposerTokenKind.COMMAND, COMMAND_OPTIONS, key)
-                          }
-                        >
-                          {COMMAND_OPTIONS.map((option) => (
-                            <Dropdown.Item key={option.id} id={option.id} textValue={option.label}>
-                              <Label>{option.label}</Label>
-                            </Dropdown.Item>
-                          ))}
-                        </Dropdown.Menu>
-                      </Dropdown.Popover>
-                    </Dropdown.SubmenuTrigger>
+                    <Dropdown.Item id="plan-mode" textValue="Plan 模式">
+                      <ListCheck className="size-4 text-muted" />
+                      <Label>Plan 模式</Label>
+                    </Dropdown.Item>
                     <Dropdown.SubmenuTrigger>
                       <Dropdown.Item id="skills" textValue="Skills">
                         <WandSparkles className="size-4 text-muted" />

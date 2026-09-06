@@ -1,6 +1,13 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ModelThinkingLevel, Usage } from "@earendil-works/pi-ai";
+import { isPlanUpdatedData, type PlanUpdatedData } from "@pi-harness/tools/planner";
+import type {
+  RequestUserInputData,
+  UserInputAnswer,
+  UserInputResponseAction,
+} from "@pi-harness/tools/request-user-input";
 import { isPlainObject } from "es-toolkit";
+import type { RunMode } from "./user-input.js";
 
 export type SessionId = string;
 export type RunId = string;
@@ -199,6 +206,7 @@ export interface RunStartedData {
   contexts?: RunContextData[];
   maxTokens: number;
   modelId: string;
+  mode?: RunMode;
   providerId: string;
   // 与 contexts 同时出现；空数组表示本次只有新增或更新，没有移除。
   removedContextTypes?: string[];
@@ -383,8 +391,99 @@ export interface RunFailureData {
 export interface RunInteractionData {
   // 用于关联“等待审批”和“审批完成“事件
   interactionId: string;
-  // 交互类型，表示是工具审批
-  kind: "tool_approval";
+  /**
+   * 交互类型
+   * tool_approval：表示是工具审批
+   * plan_review：审核并确认执行计划
+   * question：补充信息或作出选择
+   */
+  kind: "plan_review" | "question" | "tool_approval";
+}
+
+export interface InputRequestedData extends RequestUserInputData {
+  expiresAt: number;
+  inputId: string;
+  plan?: PlanUpdatedData;
+}
+
+export interface InputResolvedData {
+  action: UserInputResponseAction;
+  answers: readonly UserInputAnswer[];
+  inputId: string;
+  plan?: PlanUpdatedData;
+}
+
+export interface InputExpiredData {
+  inputId: string;
+}
+
+function isUserInputAnswer(value: unknown): value is UserInputAnswer {
+  return (
+    isPlainObject(value) &&
+    typeof value.questionId === "string" &&
+    value.questionId.length > 0 &&
+    typeof value.value === "string" &&
+    value.value.length > 0 &&
+    (value.selectedOption === undefined || typeof value.selectedOption === "string") &&
+    (value.selectedOptions === undefined ||
+      (value.selectedOption === undefined &&
+        Array.isArray(value.selectedOptions) &&
+        value.selectedOptions.length >= 1 &&
+        new Set(value.selectedOptions).size === value.selectedOptions.length &&
+        value.selectedOptions.every((option) => typeof option === "string" && option.length > 0)))
+  );
+}
+
+function isUserInputQuestion(value: unknown): boolean {
+  return (
+    isPlainObject(value) &&
+    typeof value.header === "string" &&
+    value.header.length > 0 &&
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    typeof value.question === "string" &&
+    value.question.length > 0 &&
+    (value.multiSelect === undefined || typeof value.multiSelect === "boolean") &&
+    (value.allowCustomInput === undefined || typeof value.allowCustomInput === "boolean") &&
+    Array.isArray(value.options) &&
+    value.options.every(
+      (option) =>
+        isPlainObject(option) &&
+        typeof option.label === "string" &&
+        option.label.length > 0 &&
+        (option.description === undefined || typeof option.description === "string"),
+    )
+  );
+}
+
+export function isInputRequestedData(value: unknown): value is InputRequestedData {
+  return (
+    isPlainObject(value) &&
+    typeof value.inputId === "string" &&
+    value.inputId.length > 0 &&
+    Number.isInteger(value.expiresAt) &&
+    (value.kind === undefined || value.kind === "question" || value.kind === "plan_review") &&
+    Array.isArray(value.questions) &&
+    value.questions.length >= 1 &&
+    value.questions.every(isUserInputQuestion) &&
+    (value.plan === undefined || isPlanUpdatedData(value.plan))
+  );
+}
+
+export function isInputResolvedData(value: unknown): value is InputResolvedData {
+  return (
+    isPlainObject(value) &&
+    typeof value.inputId === "string" &&
+    value.inputId.length > 0 &&
+    (value.action === "submit" || value.action === "confirm_plan") &&
+    Array.isArray(value.answers) &&
+    value.answers.every(isUserInputAnswer) &&
+    (value.plan === undefined || isPlanUpdatedData(value.plan))
+  );
+}
+
+export function isInputExpiredData(value: unknown): value is InputExpiredData {
+  return isPlainObject(value) && typeof value.inputId === "string" && value.inputId.length > 0;
 }
 
 // message.delta

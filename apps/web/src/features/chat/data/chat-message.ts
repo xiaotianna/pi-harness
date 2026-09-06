@@ -1,4 +1,5 @@
 import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness-event";
+import type { RunMode } from "@pi-harness/agent-runtime/user-input";
 
 export const ChatMessageType = {
   ASSISTANT: "assistant",
@@ -109,6 +110,7 @@ type ChatMessageBase = {
 };
 
 export type ChatUserMessage = ChatMessageBase & {
+  mode?: RunMode;
   attachments?: readonly ChatMessageAttachment[];
   content: string;
   type: typeof ChatMessageType.USER;

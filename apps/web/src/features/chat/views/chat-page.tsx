@@ -8,7 +8,7 @@ import {
   selectActiveSessionEvents,
 } from "@pi-harness/agent-runtime/harness-event";
 import type { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
-import type { RunUserInput } from "@pi-harness/agent-runtime/user-input";
+import type { RunUserInput, UserInputSubmission } from "@pi-harness/agent-runtime/user-input";
 import { BusySubmitBehavior, type QueuedRunInput } from "@pi-harness/agent-runtime/user-input";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -19,6 +19,7 @@ import {
   followUpSessionRun,
   removeQueuedSessionRunInput,
   resolveToolApproval,
+  resolveUserInput,
   retrySessionUserMessage,
   type Session,
   type SessionSnapshot,
@@ -38,6 +39,7 @@ import { ChatComposer } from "../components/chat-composer";
 import { ConversationTurnToc } from "../components/conversation-turn-toc";
 import { ThreadMessageList, type ThreadMessageListHandle } from "../components/thread-message-list";
 import { ToolApprovalCard } from "../components/tool-approval-card";
+import { UserInputCard } from "../components/user-input-card";
 import { WorkingStatePanel } from "../components/working-state-panel";
 import { ChatPageView } from "../constants/chat-page-view";
 import { ChatMessageType } from "../data/chat";
@@ -46,6 +48,7 @@ import { useChatPageViewStore } from "../state/chat-page-view-store";
 import { useChatSearchTargetStore } from "../state/chat-search-target-store";
 import { findActiveRunId, sessionEventsToMessages } from "../utils/session-messages";
 import { summarizeSessionUsage } from "../utils/session-usage";
+import { findPendingUserInput } from "../utils/session-user-input";
 import { readSessionWorkingState } from "../utils/session-working-state";
 
 const CHAT_VIEW_TRANSITION = {
@@ -171,6 +174,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     return undefined;
   }, [messages]);
   const pendingApproval = pendingApprovalTool?.approval;
+  const pendingUserInput = useMemo(() => findPendingUserInput(activeEvents), [activeEvents]);
   const conversationRef = useRef<HTMLDivElement>(null);
   const [conversationElement, setConversationElement] = useState<HTMLDivElement | null>(null);
   const conversationContentRef = useRef<HTMLDivElement>(null);
@@ -375,6 +379,17 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       runId: string;
     }) => resolveToolApproval(sessionId, runId, approvalId, decision),
   });
+  const inputMutation = useMutation({
+    mutationFn: ({
+      inputId,
+      runId,
+      submission,
+    }: {
+      inputId: string;
+      runId: string;
+      submission: UserInputSubmission;
+    }) => resolveUserInput(sessionId, runId, inputId, submission),
+  });
 
   const acceptedRunId = acceptedRun?.sessionId === sessionId ? acceptedRun.runId : null;
   const isAcceptedRunFinished = useMemo(
@@ -532,7 +547,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
               todos={workingState.todos}
             />
             <div className="relative z-10">
-              <div inert={pendingApproval !== undefined}>
+              <div inert={pendingApproval !== undefined || pendingUserInput !== null}>
                 <ChatComposer
                   className="w-full"
                   conversationId={snapshot.session.id}
@@ -586,7 +601,28 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                 />
               </div>
               <AnimatePresence initial={false}>
-                {pendingApproval && pendingApprovalTool ? (
+                {pendingUserInput && activeRunId ? (
+                  <motion.div
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute inset-x-0 bottom-0 z-20"
+                    exit={{ opacity: 0, y: 4 }}
+                    initial={{ opacity: 0, y: 4 }}
+                    transition={transition}
+                  >
+                    <UserInputCard
+                      key={pendingUserInput.inputId}
+                      request={pendingUserInput}
+                      onCancel={() => abortMutation.mutateAsync(activeRunId)}
+                      onResolve={(submission) =>
+                        inputMutation.mutateAsync({
+                          inputId: pendingUserInput.inputId,
+                          runId: activeRunId,
+                          submission,
+                        })
+                      }
+                    />
+                  </motion.div>
+                ) : pendingApproval && pendingApprovalTool ? (
                   <motion.div
                     animate={{ opacity: 1, y: 0 }}
                     className="absolute inset-x-0 bottom-0 z-20 min-h-full"

@@ -20,6 +20,21 @@ export {
 } from "./planner.js";
 export { createReadDocumentTool } from "./read-document.js";
 export { createReadFileTool } from "./read-file.js";
+export {
+  createRequestUserInputTool,
+  type EditablePlan,
+  type RequestUserInputData,
+  RequestUserInputToolName,
+  type UserInputAnswer,
+  type UserInputQuestion,
+  type UserInputRequestHandler,
+  UserInputRequestKind,
+  type UserInputRequestKind as UserInputRequestKindValue,
+  UserInputResponseAction,
+  type UserInputResponseAction as UserInputResponseActionValue,
+  type UserInputSubmission,
+  type UserInputToolResult,
+} from "./request-user-input.js";
 export { createRunCommandTool } from "./run-command.js";
 export { createSearchTextTool } from "./search-text.js";
 export {

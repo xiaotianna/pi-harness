@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import type { UserInputSubmission } from "@pi-harness/agent-runtime";
 import {
   type AgentManager,
   type ApprovalResponseDecision,
@@ -56,7 +57,11 @@ import {
   createFallbackSessionTitle,
   normalizeGeneratedSessionTitle,
 } from "../utils/session-title.js";
-import type { HumanInteractionService, PendingToolApproval } from "./human-interaction-service.js";
+import type {
+  HumanInteractionService,
+  PendingToolApproval,
+  PendingUserInput,
+} from "./human-interaction-service.js";
 import type { ProviderService } from "./provider-service.js";
 import type { SessionEventService } from "./session-event-service.js";
 
@@ -131,6 +136,7 @@ export interface SessionBackgroundErrorContext {
 function normalizeRunUserInput(input: RunUserInput): RunUserInput {
   const normalized = {
     attachments: input.attachments ?? [],
+    ...(input.mode === undefined ? {} : { mode: input.mode }),
     prompt: input.prompt.trim(),
     references: input.references ?? [],
   } satisfies RunUserInput;
@@ -557,6 +563,7 @@ export class SessionService {
       }
       const userInput = {
         attachments: [],
+        ...(source.data.mode === undefined ? {} : { mode: source.data.mode }),
         prompt: normalizedPrompt,
         references: source.data.contextReferences ?? [],
       } satisfies RunUserInput;
@@ -818,7 +825,7 @@ export class SessionService {
 
   public getPendingApproval(sessionId: SessionId, runId: RunId): PendingToolApproval | null {
     this.getRequiredSession(sessionId);
-    return this.interactions.getCurrent(sessionId, runId);
+    return this.interactions.getCurrentApproval(sessionId, runId);
   }
 
   public resolveApproval(
@@ -828,7 +835,22 @@ export class SessionService {
     decision: ApprovalResponseDecision,
   ): void {
     this.getRequiredSession(sessionId);
-    this.interactions.resolve(sessionId, runId, approvalId, decision);
+    this.interactions.resolveApproval(sessionId, runId, approvalId, decision);
+  }
+
+  public getPendingInput(sessionId: SessionId, runId: RunId): PendingUserInput | null {
+    this.getRequiredSession(sessionId);
+    return this.interactions.getCurrentInput(sessionId, runId);
+  }
+
+  public resolveInput(
+    sessionId: SessionId,
+    runId: RunId,
+    inputId: string,
+    submission: UserInputSubmission,
+  ): void {
+    this.getRequiredSession(sessionId);
+    this.interactions.resolveInput(sessionId, runId, inputId, submission);
   }
 
   public async close(): Promise<void> {

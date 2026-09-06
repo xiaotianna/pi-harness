@@ -5,6 +5,7 @@ import type {
   WorkingStateResetHandler,
 } from "../tools/context-runtime.js";
 import type { PlanUpdateHandler } from "../tools/planner.js";
+import type { UserInputRequestHandler } from "../tools/request-user-input.js";
 import type { TodoUpdateHandler } from "../tools/todos.js";
 
 // 保存固定的 globalRoot、workspaceRoot 和受保护路径。
@@ -13,6 +14,7 @@ export interface WorkspaceToolContext {
   isSkillEnabled?: (directory: string) => boolean;
   onContextCheckpointRestored?: ContextCheckpointRestoreHandler;
   onPlanUpdated?: PlanUpdateHandler;
+  onUserInputRequested?: UserInputRequestHandler;
   onSessionHistorySearched?: SessionHistorySearchHandler;
   onTodosUpdated?: TodoUpdateHandler;
   onWorkingStateReset?: WorkingStateResetHandler;

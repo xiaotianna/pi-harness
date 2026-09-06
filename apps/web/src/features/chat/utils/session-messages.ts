@@ -6,7 +6,10 @@ import {
   MessageDeltaKind,
   selectActiveSessionEvents,
 } from "@pi-harness/agent-runtime/harness-event";
-import { isHarnessUserMessage } from "@pi-harness/agent-runtime/user-input";
+import {
+  isHarnessUserMessage,
+  RequestUserInputToolName,
+} from "@pi-harness/agent-runtime/user-input";
 import { UpdatePlanToolName, UpdateTodosToolName } from "@pi-harness/agent-runtime/working-state";
 import { isPlainObject } from "es-toolkit";
 import type { Session, SessionSnapshot } from "../api/session-api";
@@ -24,6 +27,7 @@ import {
   readRevertedSessionRunIds,
   summarizeSessionFileChangesByRun,
 } from "./session-file-changes";
+import { findPendingUserInput } from "./session-user-input";
 
 const TERMINAL_RUN_EVENTS = new Set<HarnessEvent["type"]>([
   HarnessEventType.RUN_ABORTED,
@@ -31,7 +35,11 @@ const TERMINAL_RUN_EVENTS = new Set<HarnessEvent["type"]>([
   HarnessEventType.RUN_FAILED,
 ]);
 
-const WORKING_STATE_TOOL_NAMES = new Set<string>([UpdatePlanToolName, UpdateTodosToolName]);
+const INTERACTION_TOOL_NAMES = new Set<string>([
+  UpdatePlanToolName,
+  UpdateTodosToolName,
+  RequestUserInputToolName,
+]);
 const messagesByEvents = new WeakMap<readonly HarnessEvent[], readonly ChatMessage[]>();
 
 function readContentText(value: unknown): string {
@@ -89,6 +97,7 @@ function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatM
           {
             ...(attachments.length === 0 ? {} : { attachments }),
             content: displayContent,
+            ...(harnessUserMessage?.mode === undefined ? {} : { mode: harnessUserMessage.mode }),
             id: event.id,
             sourceEventId: event.id,
             timestamp: event.timestamp,
@@ -109,7 +118,7 @@ function readCompletedMessages(event: HarnessEvent, messageId = event.id): ChatM
     ) {
       return [];
     }
-    if (WORKING_STATE_TOOL_NAMES.has(part.name)) return [];
+    if (INTERACTION_TOOL_NAMES.has(part.name)) return [];
     return [
       {
         input: part.arguments,
@@ -194,7 +203,7 @@ function readDelta(event: HarnessEvent): (StreamingContent & { contentIndex: num
     if (
       typeof event.data.toolCallId !== "string" ||
       typeof event.data.toolName !== "string" ||
-      WORKING_STATE_TOOL_NAMES.has(event.data.toolName)
+      INTERACTION_TOOL_NAMES.has(event.data.toolName)
     ) {
       return null;
     }
@@ -407,7 +416,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       typeof event.data.toolCallId === "string" &&
       typeof event.data.toolName === "string"
     ) {
-      if (WORKING_STATE_TOOL_NAMES.has(event.data.toolName)) continue;
+      if (INTERACTION_TOOL_NAMES.has(event.data.toolName)) continue;
       const existingTool = toolsByCallId.get(event.data.toolCallId);
       if (existingTool) {
         existingTool.input = event.data.arguments;
@@ -640,6 +649,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
   if (
     activeRunId &&
     !isAwaitingApproval &&
+    findPendingUserInput(events) === null &&
     !hasActiveTool &&
     !activeCompactionByRunId.has(activeRunId)
   ) {

@@ -6,7 +6,7 @@ import {
   TodoStatus as RuntimeTodoStatus,
   type TodoUpdatedData,
 } from "@pi-harness/agent-runtime/working-state";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentPlan } from "../../../components/ai/agent-plan";
 import { TodoList, TodoStatus } from "../../../components/ai/todo-list";
 import { cn } from "../../../shared/utils/cn";
@@ -25,6 +25,24 @@ export function WorkingStatePanel({
   todos,
 }: WorkingStatePanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isExpanded) return;
+    const closeOutside = (event: Event) => {
+      if (event.target instanceof Node && !panelRef.current?.contains(event.target)) {
+        setIsExpanded(false);
+      }
+    };
+    const close = () => setIsExpanded(false);
+    document.addEventListener("pointerdown", closeOutside, true);
+    document.addEventListener("focusin", closeOutside, true);
+    window.addEventListener("blur", close);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside, true);
+      document.removeEventListener("focusin", closeOutside, true);
+      window.removeEventListener("blur", close);
+    };
+  }, [isExpanded]);
   if (plan === null && todos === null) return null;
 
   const activeIndex =
@@ -43,6 +61,7 @@ export function WorkingStatePanel({
 
   return (
     <Disclosure
+      ref={panelRef}
       className={cn(
         "relative mx-auto w-[calc(100%-2rem)] pb-3 sm:w-full",
         plan && todos ? "sm:max-w-[640px]" : "sm:max-w-80",

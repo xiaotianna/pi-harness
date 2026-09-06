@@ -1,6 +1,7 @@
+import { PlanStepStatus, UserInputResponseAction } from "@pi-harness/agent-runtime";
 import { ApprovalDecision } from "@pi-harness/agent-runtime/harness-event";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
-import { UserContextReferenceKind } from "@pi-harness/agent-runtime/user-input";
+import { RunMode, UserContextReferenceKind } from "@pi-harness/agent-runtime/user-input";
 import { type Static, Type } from "typebox";
 
 const IdentifierSchema = Type.String({ maxLength: 256, minLength: 1 });
@@ -69,6 +70,14 @@ export const SessionApprovalParamsDtoSchema = Type.Object({
 
 export type SessionApprovalParamsDto = Static<typeof SessionApprovalParamsDtoSchema>;
 
+export const SessionInputParamsDtoSchema = Type.Object({
+  inputId: Type.String({ format: "uuid" }),
+  runId: Type.String({ format: "uuid" }),
+  sessionId: Type.String({ format: "uuid" }),
+});
+
+export type SessionInputParamsDto = Static<typeof SessionInputParamsDtoSchema>;
+
 export const ResolveApprovalDtoSchema = Type.Object({
   decision: Type.Union([
     Type.Literal(ApprovalDecision.APPROVED),
@@ -77,6 +86,45 @@ export const ResolveApprovalDtoSchema = Type.Object({
 });
 
 export type ResolveApprovalDto = Static<typeof ResolveApprovalDtoSchema>;
+
+const EditablePlanSchema = Type.Object({
+  explanation: Type.Optional(Type.String({ maxLength: 2_000 })),
+  plan: Type.Array(
+    Type.Object({
+      status: Type.Union([
+        Type.Literal(PlanStepStatus.PENDING),
+        Type.Literal(PlanStepStatus.IN_PROGRESS),
+        Type.Literal(PlanStepStatus.COMPLETED),
+      ]),
+      step: Type.String({ maxLength: 1_000, minLength: 1 }),
+    }),
+    { maxItems: 32, minItems: 1 },
+  ),
+});
+
+export const ResolveInputDtoSchema = Type.Object({
+  action: Type.Union([
+    Type.Literal(UserInputResponseAction.SUBMIT),
+    Type.Literal(UserInputResponseAction.CONFIRM_PLAN),
+  ]),
+  answers: Type.Array(
+    Type.Object({
+      questionId: Type.String({ minLength: 1 }),
+      selectedOption: Type.Optional(Type.String({ minLength: 1 })),
+      selectedOptions: Type.Optional(
+        Type.Array(Type.String({ minLength: 1 }), {
+          minItems: 1,
+          uniqueItems: true,
+        }),
+      ),
+      value: Type.String({ minLength: 1 }),
+    }),
+    { minItems: 1 },
+  ),
+  plan: Type.Optional(EditablePlanSchema),
+});
+
+export type ResolveInputDto = Static<typeof ResolveInputDtoSchema>;
 
 export const CreateSessionDtoSchema = Type.Object({
   modelId: IdentifierSchema,
@@ -124,6 +172,7 @@ const RunInputContextReferenceSchema = Type.Object({
 
 export const StartRunDtoSchema = Type.Object({
   attachments: Type.Optional(Type.Array(RunInputAttachmentSchema, { maxItems: 8 })),
+  mode: Type.Optional(Type.Union([Type.Literal(RunMode.DEFAULT), Type.Literal(RunMode.PLAN)])),
   prompt: Type.String({ maxLength: 1_000_000 }),
   references: Type.Optional(Type.Array(RunInputContextReferenceSchema, { maxItems: 32 })),
 });

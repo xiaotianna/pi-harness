@@ -1,6 +1,18 @@
 import type { UserMessage } from "@earendil-works/pi-ai";
 import { isPlainObject } from "es-toolkit";
 
+export {
+  type EditablePlan,
+  RequestUserInputToolName,
+  type UserInputAnswer,
+  UserInputRequestKind,
+  type UserInputRequestKind as UserInputRequestKindValue,
+  UserInputResponseAction,
+  type UserInputResponseAction as UserInputResponseActionValue,
+  type UserInputSubmission,
+  type UserInputToolResult,
+} from "@pi-harness/tools/request-user-input";
+
 // 上下文引用类型 `@`
 export const UserContextReferenceKind = {
   FILE: "file", // 工作区文件
@@ -17,6 +29,13 @@ export const BusySubmitBehavior = {
 } as const;
 
 export type BusySubmitBehavior = (typeof BusySubmitBehavior)[keyof typeof BusySubmitBehavior];
+
+export const RunMode = {
+  DEFAULT: "default",
+  PLAN: "plan",
+} as const;
+
+export type RunMode = (typeof RunMode)[keyof typeof RunMode];
 
 export function isBusySubmitBehavior(value: unknown): value is BusySubmitBehavior {
   return Object.values(BusySubmitBehavior).includes(value as BusySubmitBehavior);
@@ -41,6 +60,8 @@ export interface RunUserInput {
   // 用户从电脑上传的文件，文件内容已经传给后端
   attachments: readonly RunInputAttachment[];
   prompt: string;
+  // 只影响当前顶层 Run；Plan 模式会在用户确认前阻止副作用工具。
+  mode?: RunMode;
   // 用户通过 @ 选择的工作区文件或目录，只传路径，不直接上传内容
   references: readonly RunInputContextReference[];
 }
@@ -71,6 +92,8 @@ export interface HarnessUserAttachment {
 }
 
 export interface HarnessUserMessage extends UserMessage {
+  // 保留发送时的模式，用于消息回显和编辑重发。
+  mode?: RunMode;
   // 本次上传附件的元数据
   attachments?: readonly HarnessUserAttachment[];
   // 本次通过 @ 引用的工作区文件或目录
@@ -103,6 +126,7 @@ export function isHarnessUserMessage(value: unknown): value is HarnessUserMessag
     isPlainObject(value) &&
     value.role === "user" &&
     typeof value.displayText === "string" &&
+    (value.mode === undefined || value.mode === RunMode.DEFAULT || value.mode === RunMode.PLAN) &&
     (typeof value.content === "string" || Array.isArray(value.content)) &&
     (value.busySubmitBehavior === undefined || isBusySubmitBehavior(value.busySubmitBehavior))
   );

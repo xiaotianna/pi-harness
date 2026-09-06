@@ -2,12 +2,15 @@ import {
   type ApprovalRequestedData,
   type HarnessEvent,
   HarnessEventType,
+  type InputRequestedData,
+  isInputRequestedData,
   type RunId,
 } from "@pi-harness/agent-runtime";
 import { isPlainObject } from "es-toolkit";
 
 export interface InterruptedRun {
   pendingApprovals: readonly ApprovalRequestedData[];
+  pendingInputs: readonly InputRequestedData[];
   runId: RunId;
 }
 
@@ -30,11 +33,13 @@ function readApprovalRequest(event: HarnessEvent): ApprovalRequestedData | null 
 export function findInterruptedRun(events: readonly HarnessEvent[]): InterruptedRun | null {
   let runId: RunId | null = null;
   const pendingApprovals = new Map<string, ApprovalRequestedData>();
+  const pendingInputs = new Map<string, InputRequestedData>();
 
   for (const event of events) {
     if (event.type === HarnessEventType.RUN_STARTED && event.runId) {
       runId = event.runId;
       pendingApprovals.clear();
+      pendingInputs.clear();
       continue;
     }
     if (runId === null || event.runId !== runId) continue;
@@ -42,6 +47,19 @@ export function findInterruptedRun(events: readonly HarnessEvent[]): Interrupted
     if (event.type === HarnessEventType.APPROVAL_REQUESTED) {
       const request = readApprovalRequest(event);
       if (request) pendingApprovals.set(request.approvalId, request);
+      continue;
+    }
+    if (event.type === HarnessEventType.INPUT_REQUESTED && isInputRequestedData(event.data)) {
+      pendingInputs.set(event.data.inputId, event.data);
+      continue;
+    }
+    if (
+      (event.type === HarnessEventType.INPUT_RESOLVED ||
+        event.type === HarnessEventType.INPUT_EXPIRED) &&
+      isPlainObject(event.data) &&
+      typeof event.data.inputId === "string"
+    ) {
+      pendingInputs.delete(event.data.inputId);
       continue;
     }
     if (event.type === HarnessEventType.APPROVAL_RESOLVED && isPlainObject(event.data)) {
@@ -68,8 +86,15 @@ export function findInterruptedRun(events: readonly HarnessEvent[]): Interrupted
     ) {
       runId = null;
       pendingApprovals.clear();
+      pendingInputs.clear();
     }
   }
 
-  return runId === null ? null : { pendingApprovals: [...pendingApprovals.values()], runId };
+  return runId === null
+    ? null
+    : {
+        pendingApprovals: [...pendingApprovals.values()],
+        pendingInputs: [...pendingInputs.values()],
+        runId,
+      };
 }

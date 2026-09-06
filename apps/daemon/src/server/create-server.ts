@@ -41,7 +41,8 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   const protectedPaths = [config.globalRoot];
   const agents = new AgentManager(
     sessionEvents.handle,
-    interactions.request,
+    interactions.requestApproval,
+    interactions.requestInput,
     protectedPaths,
     config.globalRoot,
     config.webSearchUrl,

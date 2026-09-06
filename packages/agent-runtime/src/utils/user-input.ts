@@ -305,6 +305,7 @@ export function createHarnessUserMessageRecord(input: RunUserInput): HarnessUser
     content: [{ text: input.prompt, type: "text" }],
     ...(input.references.length === 0 ? {} : { contextReferences: input.references }),
     displayText: input.prompt,
+    ...(input.mode === undefined ? {} : { mode: input.mode }),
     role: "user",
     timestamp: Date.now(),
   };

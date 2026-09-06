@@ -15,14 +15,23 @@ import {
   createAssistantMessageEventStream,
   type Model,
 } from "@earendil-works/pi-ai";
-import { type ApprovalPolicyValue, evaluateToolCall, ToolPolicyDecision } from "@pi-harness/policy";
+import {
+  type ApprovalPolicyValue,
+  evaluateToolCall,
+  ToolPermission,
+  ToolPolicyDecision,
+} from "@pi-harness/policy";
 import {
   attachSuccessfulTodoEvidence,
   type PlanUpdatedData,
+  type RequestUserInputData,
   readFileChangeDetails,
   type SessionHistorySearchResult,
   type TodoUpdatedData,
   type ToolRegistry,
+  UserInputRequestKind,
+  UserInputResponseAction,
+  type UserInputToolResult,
 } from "@pi-harness/tools";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
 import { CONTEXT_WINDOW_EXCEEDED_ERROR_CODE, projectContext } from "./context/context-pipeline.js";
@@ -40,12 +49,16 @@ import {
   type HarnessEvent,
   type HarnessEventDraft,
   HarnessEventType,
+  type InputExpiredData,
+  type InputRequestedData,
+  type InputResolvedData,
   type RunContextData,
   type RunId,
   type RunInteractionData,
   type RunStartedData,
   type SessionId,
 } from "./harness-event.js";
+import type { HumanInputRequester } from "./human-input.js";
 import {
   applyModelResponsePreferences,
   type OutputDetail,
@@ -58,6 +71,7 @@ import {
   type HarnessUserMessage,
   isHarnessUserMessage,
   type QueuedRunInput,
+  RunMode,
   type RunUserInput,
   UserInputContextError,
 } from "./user-input.js";
@@ -100,6 +114,8 @@ export type HarnessEventListener = (event: HarnessEvent) => Promise<void> | void
 interface ActiveRun extends AgentEventAdapterContext {
   approvalPolicy: ApprovalPolicyValue;
   handleAutoFollowUp: ReturnType<typeof createAutoFollowUpHandler>;
+  isPlanApproved: boolean;
+  mode: RunMode;
   preparationAbortController: AbortController;
   runId: RunId;
   startMessageIndex: number;
@@ -170,6 +186,7 @@ export class RunCoordinator {
     private readonly workspaceRoot: string,
     private readonly protectedPaths: readonly string[],
     private readonly requestToolApproval: ToolApprovalRequester,
+    private readonly requestHumanInput: HumanInputRequester,
     private readonly setSupportsImageInput: (supportsImageInput: boolean) => void,
     private contextCheckpoint: ContextCompactedData | null,
     private contextCheckpointEventSeq: number | null,
@@ -328,6 +345,95 @@ export class RunCoordinator {
     this.planState = data;
   }
 
+  public async requestUserInput(
+    data: RequestUserInputData,
+    signal?: AbortSignal,
+  ): Promise<UserInputToolResult> {
+    const activeRun = this.activeRun;
+    if (activeRun === null) throw new Error("当前没有活动 Run");
+    const kind = data.kind ?? UserInputRequestKind.QUESTION;
+    const plan = kind === UserInputRequestKind.PLAN_REVIEW ? this.planState : null;
+    if (kind === UserInputRequestKind.PLAN_REVIEW && plan === null) {
+      throw new Error("计划确认前必须先调用 update_plan");
+    }
+
+    const inputId = randomUUID();
+    const interaction = this.requestHumanInput(
+      {
+        inputId,
+        kind,
+        ...(plan === null ? {} : { plan }),
+        questions: data.questions,
+        runId: activeRun.runId,
+        sessionId: this.sessionId,
+      },
+      signal,
+    );
+
+    try {
+      await this.emit(
+        {
+          data: interaction.request satisfies InputRequestedData,
+          type: HarnessEventType.INPUT_REQUESTED,
+        },
+        activeRun.runId,
+      );
+      await this.emit(
+        {
+          data: { interactionId: inputId, kind } satisfies RunInteractionData,
+          type: HarnessEventType.RUN_AWAITING_INPUT,
+        },
+        activeRun.runId,
+      );
+
+      const result = await interaction.result;
+      if (result.status === "expired") {
+        await this.emit(
+          {
+            data: { inputId } satisfies InputExpiredData,
+            type: HarnessEventType.INPUT_EXPIRED,
+          },
+          activeRun.runId,
+        );
+      } else {
+        let updatedPlan: PlanUpdatedData | undefined;
+        if (result.plan !== undefined) {
+          updatedPlan = { ...result.plan, updatedAt: Date.now() };
+          await this.updatePlan(updatedPlan);
+        }
+        if (
+          kind === UserInputRequestKind.PLAN_REVIEW &&
+          result.action === UserInputResponseAction.CONFIRM_PLAN
+        ) {
+          activeRun.isPlanApproved = true;
+        }
+        await this.emit(
+          {
+            data: {
+              action: result.action,
+              answers: result.answers,
+              inputId,
+              ...(updatedPlan === undefined ? {} : { plan: updatedPlan }),
+            } satisfies InputResolvedData,
+            type: HarnessEventType.INPUT_RESOLVED,
+          },
+          activeRun.runId,
+        );
+      }
+      await this.emit(
+        {
+          data: { interactionId: inputId, kind } satisfies RunInteractionData,
+          type: HarnessEventType.RUN_RESUMED,
+        },
+        activeRun.runId,
+      );
+      return result;
+    } catch (error: unknown) {
+      interaction.cancel();
+      throw error;
+    }
+  }
+
   public async updateTodos(data: TodoUpdatedData): Promise<TodoUpdatedData> {
     const activeRun = this.activeRun;
     if (activeRun === null) throw new Error("当前没有活动 Run");
@@ -439,11 +545,20 @@ export class RunCoordinator {
     const activeRun = this.activeRun;
     if (activeRun === null) return { block: true, reason: "当前没有活动 Run" };
 
+    const registration = this.toolRegistry.get(context.toolCall.name);
+    if (
+      activeRun.mode === RunMode.PLAN &&
+      !activeRun.isPlanApproved &&
+      registration?.policy.permission !== ToolPermission.READ_ONLY
+    ) {
+      return { block: true, reason: "Plan 尚未由用户确认，当前只允许读取和规划" };
+    }
+
     // 在工具真正执行前，根据工具权限和参数，决定“直接允许、直接拒绝，还是请求用户审批”
     const policy = await evaluateToolCall({
       approvalPolicy: activeRun.approvalPolicy,
       arguments: context.args, // 模型传给工具的参数
-      policy: this.toolRegistry.get(context.toolCall.name)?.policy, // 工具权限
+      policy: registration?.policy, // 工具权限
       protectedPaths: this.protectedPaths,
       workspaceRoot: this.workspaceRoot,
     });
@@ -689,6 +804,7 @@ export class RunCoordinator {
       contexts: [...input.contexts],
       maxTokens: input.model.maxTokens,
       modelId: input.modelId,
+      mode: input.userInput.mode ?? RunMode.DEFAULT,
       providerId: input.providerId,
       systemPrompt: input.systemPrompt,
       thinkingLevel,
@@ -735,6 +851,7 @@ export class RunCoordinator {
     this.activeRun = {
       approvalPolicy: input.approvalPolicy,
       handleAutoFollowUp: createAutoFollowUpHandler((message) => this.agent.followUp(message)),
+      isPlanApproved: false,
       preparationAbortController,
       ...runStartedData,
       runId: input.runId,

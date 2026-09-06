@@ -3,9 +3,11 @@ import type { HarnessConfig } from "../config/index.js";
 import type {
   CreateSessionDto,
   ResolveApprovalDto,
+  ResolveInputDto,
   RetryUserMessageDto,
   SessionApprovalParamsDto,
   SessionCheckpointParamsDto,
+  SessionInputParamsDto,
   SessionListQueryDto,
   SessionMessageParamsDto,
   SessionParamsDto,
@@ -26,6 +28,7 @@ import { type SessionService, SessionServiceError } from "../services/session-se
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
 import type {
   PendingToolApprovalVo,
+  PendingUserInputVo,
   QueuedRunInputVo,
   RunAcceptedVo,
   SessionSearchResultVo,
@@ -143,6 +146,7 @@ export class SessionController {
     try {
       const accepted = await this.sessions.startRun(request.params.sessionId, {
         attachments: request.body.attachments ?? [],
+        ...(request.body.mode === undefined ? {} : { mode: request.body.mode }),
         prompt: request.body.prompt,
         references: request.body.references ?? [],
       });
@@ -351,6 +355,35 @@ export class SessionController {
     }
   };
 
+  public getPendingInput = async (
+    request: FastifyRequest<{ Params: SessionRunParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | PendingUserInputVo | null> => {
+    try {
+      return this.sessions.getPendingInput(request.params.sessionId, request.params.runId);
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public resolveInput = async (
+    request: FastifyRequest<{ Body: ResolveInputDto; Params: SessionInputParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      this.sessions.resolveInput(
+        request.params.sessionId,
+        request.params.runId,
+        request.params.inputId,
+        request.body,
+      );
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
   private sendError(request: FastifyRequest, reply: FastifyReply, error: unknown): FastifyReply {
     if (error instanceof SessionServiceError) {
       const status =
@@ -373,9 +406,13 @@ export class SessionController {
     }
 
     if (error instanceof HumanInteractionServiceError) {
-      return reply
-        .status(error.code === HumanInteractionErrorCode.CONFLICT ? 409 : 404)
-        .send({ code: error.code, message: error.message });
+      const status =
+        error.code === HumanInteractionErrorCode.CONFLICT
+          ? 409
+          : error.code === HumanInteractionErrorCode.NOT_FOUND
+            ? 404
+            : 400;
+      return reply.status(status).send({ code: error.code, message: error.message });
     }
 
     request.log.error({ err: error }, "Session operation failed");

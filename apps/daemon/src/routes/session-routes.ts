@@ -8,6 +8,8 @@ import {
   CreateSessionDtoSchema,
   type ResolveApprovalDto,
   ResolveApprovalDtoSchema,
+  type ResolveInputDto,
+  ResolveInputDtoSchema,
   type RetryUserMessageDto,
   RetryUserMessageDtoSchema,
   type SessionApprovalParamsDto,
@@ -16,6 +18,8 @@ import {
   SessionCheckpointParamsDtoSchema,
   type SessionEventsQueryDto,
   SessionEventsQueryDtoSchema,
+  type SessionInputParamsDto,
+  SessionInputParamsDtoSchema,
   type SessionListQueryDto,
   SessionListQueryDtoSchema,
   type SessionMessageParamsDto,
@@ -42,6 +46,7 @@ import type { SessionEventBroker } from "../sse/session-event-broker.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
   PendingToolApprovalVoSchema,
+  PendingUserInputVoSchema,
   QueuedRunInputListVoSchema,
   QueuedRunInputVoSchema,
   RunAcceptedVoSchema,
@@ -307,6 +312,29 @@ export async function registerSessionRoutes(
       },
     },
     controller.resolveApproval,
+  );
+
+  server.get<{ Params: SessionRunParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/inputs/current",
+    {
+      schema: {
+        params: SessionRunParamsDtoSchema,
+        response: { 200: Type.Union([PendingUserInputVoSchema, Type.Null()]), ...errors },
+      },
+    },
+    controller.getPendingInput,
+  );
+
+  server.post<{ Body: ResolveInputDto; Params: SessionInputParamsDto }>(
+    "/api/sessions/:sessionId/runs/:runId/inputs/:inputId",
+    {
+      schema: {
+        body: ResolveInputDtoSchema,
+        params: SessionInputParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.resolveInput,
   );
 
   server.get<{ Params: SessionParamsDto; Querystring: SessionEventsQueryDto }>(

@@ -13,6 +13,8 @@ import type {
   RunId,
   SessionId,
 } from "./harness-event.js";
+import type { HumanInputRequester } from "./human-input.js";
+import { PLAN_MODE_SYSTEM_INSTRUCTION } from "./prompts/plan-mode-prompt.js";
 import { buildSystemPrompts } from "./prompts/system-prompt.js";
 import {
   type HarnessEventListener,
@@ -21,7 +23,7 @@ import {
   type StartRunInput,
 } from "./run-coordinator.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
-import type { QueuedRunInput, RunUserInput } from "./user-input.js";
+import { type QueuedRunInput, RunMode, type RunUserInput } from "./user-input.js";
 
 export interface RestoreAgentInput {
   contextCheckpoint: ContextCompactedData | null;
@@ -49,6 +51,7 @@ export class AgentManager {
   public constructor(
     private readonly onEvent: HarnessEventListener,
     private readonly requestToolApproval: ToolApprovalRequester,
+    private readonly requestHumanInput: HumanInputRequester,
     private readonly protectedPaths: readonly string[] = [],
     private readonly globalRoot: string,
     private readonly webSearchUrl: string,
@@ -70,9 +73,14 @@ export class AgentManager {
       isSkillEnabled: this.isSkillEnabled,
       workspaceRoot: input.workspaceRoot,
     });
+    const prompts = buildSystemPrompts(workspaceContext);
     const preparedInput = {
       ...input,
-      ...buildSystemPrompts(workspaceContext),
+      ...prompts,
+      systemPrompt:
+        input.userInput.mode === RunMode.PLAN
+          ? `${prompts.systemPrompt}\n${PLAN_MODE_SYSTEM_INSTRUCTION}`
+          : prompts.systemPrompt,
     };
     const runtime = this.getOrCreate(preparedInput);
     await runtime.start(preparedInput);
@@ -168,6 +176,10 @@ export class AgentManager {
         if (runtime === null) throw new Error("Session Runtime 尚未就绪");
         return runtime.updateTodos(data);
       },
+      onUserInputRequested: (data, signal) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.requestUserInput(data, signal);
+      },
       onWorkingStateReset: (reason) => {
         if (runtime === null) throw new Error("Session Runtime 尚未就绪");
         return runtime.resetWorkingState(reason);
@@ -187,6 +199,7 @@ export class AgentManager {
       input.workspaceRoot,
       this.protectedPaths,
       this.requestToolApproval,
+      this.requestHumanInput,
       (supportsImageInput) => {
         toolCapabilities.supportsImageInput = supportsImageInput;
       },

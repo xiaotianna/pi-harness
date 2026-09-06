@@ -9,6 +9,9 @@ import {
   isContextCheckpointRestoredData,
   isContextCompactedData,
   isContextWorkingStateResetData,
+  isInputExpiredData,
+  isInputRequestedData,
+  isInputResolvedData,
   isMessageBranchStartedData,
   isPlanUpdatedData,
   isTodoUpdatedData,
@@ -115,6 +118,15 @@ function parseHarnessEvent(value: unknown, expectedSessionId: SessionId): Harnes
   }
   if (event.type === HarnessEventType.TODO_UPDATED && !isTodoUpdatedData(event.data)) {
     throw new Error("Session todo event is invalid");
+  }
+  if (event.type === HarnessEventType.INPUT_REQUESTED && !isInputRequestedData(event.data)) {
+    throw new Error("Session input request event is invalid");
+  }
+  if (event.type === HarnessEventType.INPUT_RESOLVED && !isInputResolvedData(event.data)) {
+    throw new Error("Session input resolution event is invalid");
+  }
+  if (event.type === HarnessEventType.INPUT_EXPIRED && !isInputExpiredData(event.data)) {
+    throw new Error("Session input expiration event is invalid");
   }
 
   return event as unknown as HarnessEvent;

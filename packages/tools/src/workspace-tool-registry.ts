@@ -16,6 +16,7 @@ import { createListFilesTool } from "./tools/list-files.js";
 import { createUpdatePlanTool } from "./tools/planner.js";
 import { createReadDocumentTool } from "./tools/read-document.js";
 import { createReadFileTool } from "./tools/read-file.js";
+import { createRequestUserInputTool } from "./tools/request-user-input.js";
 import { createRunCommandTool } from "./tools/run-command.js";
 import { createSearchTextTool } from "./tools/search-text.js";
 import { createUpdateTodosTool } from "./tools/todos.js";
@@ -156,6 +157,16 @@ export function createWorkspaceToolRegistry(context: WorkspaceToolContext): Tool
             source: BUILT_IN_SOURCE,
             timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
             tool: createUpdatePlanTool(context.onPlanUpdated),
+          },
+        ]),
+    ...(context.onUserInputRequested === undefined
+      ? []
+      : [
+          {
+            policy: readOnlyPolicy,
+            source: BUILT_IN_SOURCE,
+            timeoutMs: 24 * 60 * 60_000 + 60_000,
+            tool: createRequestUserInputTool(context.onUserInputRequested),
           },
         ]),
     ...(context.onTodosUpdated === undefined

@@ -4,6 +4,7 @@ import {
   type ApprovalResolvedData,
   type HarnessEvent,
   HarnessEventType,
+  type InputExpiredData,
   type RunContextData,
   type RunFailureData,
   type SessionId,
@@ -181,6 +182,18 @@ export class SessionEventService {
           sessionId: session.id,
           timestamp,
           type: HarnessEventType.APPROVAL_RESOLVED,
+        });
+        nextSeq += 1;
+      }
+      for (const input of interrupted.pendingInputs) {
+        await this.handle({
+          data: { inputId: input.inputId } satisfies InputExpiredData,
+          id: randomUUID(),
+          runId: interrupted.runId,
+          seq: nextSeq,
+          sessionId: session.id,
+          timestamp,
+          type: HarnessEventType.INPUT_EXPIRED,
         });
         nextSeq += 1;
       }

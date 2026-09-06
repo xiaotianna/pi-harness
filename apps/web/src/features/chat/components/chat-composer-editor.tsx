@@ -4,7 +4,7 @@ import {
   File,
   FolderOpen,
   Picture as ImageIcon,
-  Terminal as SquareTerminal,
+  ListCheck,
   MagicWand as WandSparkles,
 } from "@gravity-ui/icons";
 import { Header, ListBox, ListLayout, Surface, Virtualizer } from "@heroui/react";
@@ -31,10 +31,10 @@ import {
 import { FileIconRender } from "../../../components/ui/file-icon-render";
 
 export const ChatComposerTokenKind = {
-  COMMAND: "command",
   FILE: "file",
   FOLDER: "folder",
   IMAGE: "image",
+  PLAN: "plan",
   SKILL: "skill",
 } as const;
 
@@ -81,7 +81,7 @@ interface SuggestionMenuState {
   trigger: "/" | "@";
 }
 
-const TOKEN_PATTERN = /\[\[(command|file|folder|image|skill):([^|\]]+)\|([^\]]+)\]\]/g;
+const TOKEN_PATTERN = /\[\[(file|folder|image|plan|skill):([^|\]]+)\|([^\]]+)\]\]/g;
 const SUGGESTION_MENU_GAP = 8;
 const SUGGESTION_MENU_HORIZONTAL_PADDING = 12;
 const SUGGESTION_MENU_MAX_HEIGHT = 336;
@@ -100,10 +100,10 @@ interface TokenVisualStrategy {
 }
 
 const TOKEN_VISUAL_STRATEGIES = {
-  [ChatComposerTokenKind.COMMAND]: {
-    colorClassName: "text-[var(--chat-token-command)]",
-    icon: SquareTerminal,
-    selectedClassName: "bg-[var(--chat-token-command-soft)]",
+  [ChatComposerTokenKind.PLAN]: {
+    colorClassName: "text-[var(--chat-token-plan)]",
+    icon: ListCheck,
+    selectedClassName: "bg-[var(--chat-token-plan-soft)]",
   },
   [ChatComposerTokenKind.FILE]: {
     colorClassName: "text-[var(--chat-token-file)]",
@@ -127,7 +127,7 @@ const TOKEN_VISUAL_STRATEGIES = {
 } satisfies Record<ChatComposerTokenKind, TokenVisualStrategy>;
 
 const tokenGroups = [
-  { kind: ChatComposerTokenKind.COMMAND, label: "命令" },
+  { kind: ChatComposerTokenKind.PLAN, label: "指令" },
   { kind: ChatComposerTokenKind.SKILL, label: "Skills" },
   { kind: ChatComposerTokenKind.IMAGE, label: "图片" },
   { kind: ChatComposerTokenKind.FILE, label: "文件" },
@@ -235,6 +235,7 @@ function readTokenAttributes(attributes: Record<string, unknown>): ChatComposerT
 }
 
 export function serializeChatComposerToken(token: ChatComposerToken): string {
+  if (token.kind === ChatComposerTokenKind.PLAN) return "";
   if (token.kind === ChatComposerTokenKind.SKILL) return `$${token.id}`;
   return `[[${token.kind}:${encodeURIComponent(token.id)}|${encodeURIComponent(token.label)}]]`;
 }
@@ -427,12 +428,13 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
     onEmptyChangeRef.current = onEmptyChange;
     onSubmitRef.current = onSubmit;
 
-    const updateEmptyState = (nextValue: string) => {
-      const nextIsEmpty = !nextValue.trim();
+    const updateEmptyState = (currentEditor: Editor) => {
+      const nextIsEmpty = !currentEditor.getText({ blockSeparator: "\n" }).trim();
+      // 模式标签不进入消息正文，但仍占据编辑器空间。
+      setIsEmpty(nextIsEmpty && readDocumentTokens(currentEditor.getJSON()).length === 0);
       if (isEmptyRef.current === nextIsEmpty) return;
 
       isEmptyRef.current = nextIsEmpty;
-      setIsEmpty(nextIsEmpty);
       onEmptyChangeRef.current?.(nextIsEmpty);
     };
 
@@ -512,6 +514,9 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
       },
       extensions: composerExtensions,
       immediatelyRender: false,
+      onCreate: ({ editor: currentEditor }) => {
+        updateEmptyState(currentEditor);
+      },
       onBlur: ({ event }) => {
         if (event.relatedTarget instanceof globalThis.Node) {
           if (suggestionMenuRef.current?.contains(event.relatedTarget)) return;
@@ -522,7 +527,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
         updateSuggestionMenu(currentEditor);
       },
       onUpdate: ({ editor: currentEditor }) => {
-        updateEmptyState(currentEditor.getText({ blockSeparator: "\n" }));
+        updateEmptyState(currentEditor);
         updateSuggestionMenu(currentEditor);
       },
     });
@@ -568,15 +573,25 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
       const currentSuggestionMenu = suggestionMenuStateRef.current;
       if (!editor || !currentSuggestionMenu) return;
 
-      editor
+      const chain = editor
         .chain()
         .focus()
-        .deleteRange({ from: currentSuggestionMenu.from, to: currentSuggestionMenu.to })
-        .insertContent([
-          { attrs: token, type: ChatComposerTokenNode.name },
+        .deleteRange({ from: currentSuggestionMenu.from, to: currentSuggestionMenu.to });
+      if (
+        token.kind !== ChatComposerTokenKind.PLAN ||
+        !readDocumentTokens(editor.getJSON()).some(
+          (item) => item.kind === ChatComposerTokenKind.PLAN,
+        )
+      ) {
+        chain.insertContent([
+          {
+            attrs: token.kind === ChatComposerTokenKind.PLAN ? { ...token, label: "Plan" } : token,
+            type: ChatComposerTokenNode.name,
+          },
           { text: " ", type: "text" },
-        ])
-        .run();
+        ]);
+      }
+      chain.run();
       setSuggestionMenu(null);
     };
 
@@ -595,7 +610,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
           if (!editor) return;
           editor.commands.setContent(createEditorDocument(""), { emitUpdate: false });
           setSuggestionMenu(null);
-          updateEmptyState("");
+          updateEmptyState(editor);
         },
         focus: () => {
           editor?.commands.focus();
@@ -603,6 +618,16 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
         getTokens: () => (editor ? readDocumentTokens(editor.getJSON()) : []),
         getValue: () => editor?.getText({ blockSeparator: "\n" }) ?? "",
         insertToken: (token) => {
+          if (
+            token.kind === ChatComposerTokenKind.PLAN &&
+            editor &&
+            readDocumentTokens(editor.getJSON()).some(
+              (item) => item.kind === ChatComposerTokenKind.PLAN,
+            )
+          ) {
+            editor.commands.focus();
+            return;
+          }
           editor
             ?.chain()
             .focus()
@@ -617,7 +642,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
           editor.commands.setContent(createEditorDocument(nextValue), { emitUpdate: false });
           editor.commands.focus("end");
           setSuggestionMenu(null);
-          updateEmptyState(nextValue);
+          updateEmptyState(editor);
         },
       }),
       [editor],
@@ -664,7 +689,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
                     aria-label={
                       suggestionMenu.trigger === "@"
                         ? "添加图片、文件或文件夹上下文"
-                        : "插入命令或 Skill"
+                        : "插入指令或 Skill"
                     }
                     className="min-h-0 overflow-y-auto"
                     items={groupedSuggestionItems}

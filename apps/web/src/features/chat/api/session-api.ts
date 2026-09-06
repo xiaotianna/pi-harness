@@ -7,7 +7,11 @@ import {
   ThinkingLevel,
   type ThinkingLevel as ThinkingLevelValue,
 } from "@pi-harness/agent-runtime/thinking-level";
-import type { QueuedRunInput, RunUserInput } from "@pi-harness/agent-runtime/user-input";
+import type {
+  QueuedRunInput,
+  RunUserInput,
+  UserInputSubmission,
+} from "@pi-harness/agent-runtime/user-input";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
@@ -365,6 +369,18 @@ export async function resolveToolApproval(
   await apiRequest(
     `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}`,
     { body: JSON.stringify({ decision }), method: "POST" },
+  );
+}
+
+export async function resolveUserInput(
+  sessionId: string,
+  runId: string,
+  inputId: string,
+  submission: UserInputSubmission,
+): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/inputs/${encodeURIComponent(inputId)}`,
+    { body: JSON.stringify(submission), method: "POST" },
   );
 }
 

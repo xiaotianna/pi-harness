@@ -140,16 +140,13 @@ function GeneralSettingsPanel() {
   };
 
   return (
-    <section
-      aria-label="通用设置"
-      className="w-full max-w-[720px] [&>:first-child]:pt-0 sm:[&>:first-child]:pt-6"
-    >
+    <section aria-label="通用设置" className="w-full max-w-[720px] [&>:first-child]:pt-0">
       <SettingsRow description="所有会话共用的权限模式。" title="权限">
         {approvalPolicy === undefined ? (
-          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl @xl/settings:w-40" />
         ) : (
           <ApprovalPolicySelect
-            className="w-full sm:min-w-40 sm:max-w-56"
+            className="w-full @xl/settings:w-40"
             isDisabled={isSaving("approvalPolicy")}
             value={approvalPolicy}
             onChange={(approvalPolicy) => {
@@ -165,13 +162,13 @@ function GeneralSettingsPanel() {
 
       <SettingsRow description="选择点击本地文件时使用的应用。" title="打开文件方式">
         {fileOpenMode === undefined ? (
-          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl @xl/settings:w-40" />
         ) : (
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex min-w-0 flex-col gap-2 @xl/settings:items-end @min-[42rem]/settings:flex-row @min-[42rem]/settings:items-center @min-[42rem]/settings:gap-3">
             {fileOpenMode === FileOpenMode.ALWAYS ? (
               <Button
                 aria-label={`更换默认应用，当前为 ${fileOpenApplication?.name ?? "尚未选择应用"}`}
-                className="min-w-0 max-w-full justify-start sm:max-w-48"
+                className="min-w-0 max-w-full justify-start @xl/settings:max-w-48"
                 isDisabled={isSaving("fileOpenMode")}
                 isPending={isSelectingFileOpenApplication}
                 variant="ghost"
@@ -195,7 +192,7 @@ function GeneralSettingsPanel() {
 
             <Select
               aria-label="打开文件方式"
-              className="w-full sm:w-40 sm:shrink-0"
+              className="w-full @xl/settings:w-40 @xl/settings:shrink-0"
               isDisabled={isSaving("fileOpenMode") || isSelectingFileOpenApplication}
               selectedKey={fileOpenMode}
               variant="secondary"
@@ -240,11 +237,11 @@ function GeneralSettingsPanel() {
 
       <SettingsRow description="选择模型回复包含细节的程度。" title="输出详细程度">
         {outputDetail === undefined ? (
-          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl @xl/settings:w-40" />
         ) : (
           <Select
             aria-label="输出详细程度"
-            className="w-full sm:min-w-40 sm:max-w-56"
+            className="w-full @xl/settings:w-40"
             isDisabled={isSaving("outputDetail")}
             selectedKey={outputDetail}
             variant="secondary"
@@ -294,11 +291,11 @@ function GeneralSettingsPanel() {
 
       <SettingsRow description="选择模型总结推理过程的方式。" title="推理摘要">
         {reasoningSummary === undefined ? (
-          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl @xl/settings:w-40" />
         ) : (
           <Select
             aria-label="推理摘要"
-            className="w-full sm:min-w-40 sm:max-w-56"
+            className="w-full @xl/settings:w-40"
             isDisabled={isSaving("reasoningSummary")}
             selectedKey={reasoningSummary}
             variant="secondary"
@@ -358,15 +355,27 @@ function GeneralSettingsPanel() {
             }
           }}
         >
-          <ToggleButton className="h-20" id="light" variant="ghost">
+          <ToggleButton
+            className="h-20 min-w-0 flex-col px-2 @lg/settings:flex-row"
+            id="light"
+            variant="ghost"
+          >
             <Sun />
             浅色
           </ToggleButton>
-          <ToggleButton className="h-20" id="dark" variant="ghost">
+          <ToggleButton
+            className="h-20 min-w-0 flex-col px-2 @lg/settings:flex-row"
+            id="dark"
+            variant="ghost"
+          >
             <Moon />
             深色
           </ToggleButton>
-          <ToggleButton className="h-20" id="system" variant="ghost">
+          <ToggleButton
+            className="h-20 min-w-0 flex-col px-2 @lg/settings:flex-row"
+            id="system"
+            variant="ghost"
+          >
             <Monitor />
             跟随系统
           </ToggleButton>
@@ -380,11 +389,11 @@ function GeneralSettingsPanel() {
         title="繁忙时 Enter 键行为"
       >
         {busySubmitBehavior === undefined ? (
-          <Skeleton aria-hidden className="h-10 w-full rounded-xl sm:w-40" />
+          <Skeleton aria-hidden className="h-10 w-full rounded-xl @xl/settings:w-40" />
         ) : (
           <Select
             aria-label="繁忙时 Enter 键行为"
-            className="w-full sm:min-w-40 sm:max-w-56"
+            className="w-full @xl/settings:w-40"
             isDisabled={isSaving("busySubmitBehavior")}
             selectedKey={busySubmitBehavior}
             variant="secondary"
@@ -524,14 +533,14 @@ export function SettingsDialog({
 
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Container size="cover">
+      <Modal.Container size="lg">
         <Modal.Dialog className="h-full min-h-0 max-w-5xl overflow-hidden p-0 sm:h-[640px]">
           <Modal.CloseTrigger aria-label="关闭设置" className="z-20" />
-          <Modal.Body className="m-0 overflow-hidden p-0">
-            <div className="flex h-full min-h-0 flex-col lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
-              <aside className="shrink-0 p-4 pb-2 lg:min-h-0 lg:overflow-y-auto lg:pb-4">
+          <Modal.Body className="@container/settings-dialog m-0 min-h-0 overflow-hidden p-0">
+            <div className="flex h-full min-h-0 flex-col @3xl/settings-dialog:grid @3xl/settings-dialog:grid-cols-[12rem_minmax(0,1fr)]">
+              <aside className="shrink-0 p-4 pb-2 @3xl/settings-dialog:min-h-0 @3xl/settings-dialog:overflow-y-auto @3xl/settings-dialog:pb-4">
                 <Modal.Heading className="px-2 py-2">设置</Modal.Heading>
-                <div className="mt-3 lg:hidden">
+                <div className="mt-3 @3xl/settings-dialog:hidden">
                   <Select
                     aria-label="设置分类"
                     className="w-full"
@@ -566,7 +575,7 @@ export function SettingsDialog({
                     </Select.Popover>
                   </Select>
                 </div>
-                <div className="hidden lg:block">
+                <div className="hidden @3xl/settings-dialog:block">
                   <ListBox
                     aria-label="设置分类"
                     className="mt-4 p-0"
@@ -598,7 +607,7 @@ export function SettingsDialog({
                 </div>
               </aside>
 
-              <main className="@container/settings min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-2 pb-6 lg:py-8 lg:pr-16 lg:pl-8">
+              <main className="@container/settings min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-2 pb-6 @3xl/settings-dialog:py-8 @3xl/settings-dialog:pr-12 @3xl/settings-dialog:pl-8 [&>section]:mx-auto">
                 {activeSectionId === "general" ? (
                   <GeneralSettingsPanel />
                 ) : activeSectionId === "models" ? (

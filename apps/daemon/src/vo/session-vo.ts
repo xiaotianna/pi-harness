@@ -1,3 +1,4 @@
+import { PlanStepStatus, UserInputRequestKind } from "@pi-harness/agent-runtime";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { type Static, Type } from "typebox";
 
@@ -99,3 +100,49 @@ export const PendingToolApprovalVoSchema = Type.Object({
 });
 
 export type PendingToolApprovalVo = Static<typeof PendingToolApprovalVoSchema>;
+
+export const PendingUserInputVoSchema = Type.Object({
+  expiresAt: Type.Integer({ minimum: 0 }),
+  inputId: Type.String({ format: "uuid" }),
+  kind: Type.Optional(
+    Type.Union([
+      Type.Literal(UserInputRequestKind.QUESTION),
+      Type.Literal(UserInputRequestKind.PLAN_REVIEW),
+    ]),
+  ),
+  plan: Type.Optional(
+    Type.Object({
+      explanation: Type.Optional(Type.String()),
+      plan: Type.Array(
+        Type.Object({
+          status: Type.Union([
+            Type.Literal(PlanStepStatus.PENDING),
+            Type.Literal(PlanStepStatus.IN_PROGRESS),
+            Type.Literal(PlanStepStatus.COMPLETED),
+          ]),
+          step: Type.String({ minLength: 1 }),
+        }),
+      ),
+      updatedAt: Type.Integer({ minimum: 0 }),
+    }),
+  ),
+  questions: Type.Array(
+    Type.Object({
+      allowCustomInput: Type.Optional(Type.Boolean()),
+      multiSelect: Type.Optional(Type.Boolean()),
+      header: Type.String({ minLength: 1 }),
+      id: Type.String({ minLength: 1 }),
+      options: Type.Array(
+        Type.Object({
+          description: Type.Optional(Type.String()),
+          label: Type.String({ minLength: 1 }),
+        }),
+      ),
+      question: Type.String({ minLength: 1 }),
+    }),
+  ),
+  runId: Type.String({ format: "uuid" }),
+  sessionId: Type.String({ format: "uuid" }),
+});
+
+export type PendingUserInputVo = Static<typeof PendingUserInputVoSchema>;
