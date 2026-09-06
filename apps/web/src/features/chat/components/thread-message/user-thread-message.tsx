@@ -59,13 +59,13 @@ export function UserThreadMessage({
           >
             {draft === null ? (
               <SearchHighlightedText>
-                {renderChatContextMentions(renderSkillMentions(content))}
                 {message.mode === RunMode.PLAN ? (
-                  <span className="ml-1 inline-flex h-[1lh] items-baseline gap-1 align-baseline text-[var(--chat-token-plan)]">
+                  <span className="mr-1 inline-flex h-[1lh] items-baseline gap-1 align-baseline text-[var(--chat-token-plan)]">
                     <ListCheck aria-hidden className="size-[1em] shrink-0 self-center" />
                     <span>Plan</span>
                   </span>
                 ) : null}
+                {renderChatContextMentions(renderSkillMentions(content))}
               </SearchHighlightedText>
             ) : (
               <>

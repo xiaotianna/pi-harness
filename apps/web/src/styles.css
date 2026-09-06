@@ -274,8 +274,8 @@
     --chat-token-file: oklch(0.64 0.18 252);
     --chat-token-folder: var(--chat-token-file);
     --chat-token-image: oklch(0.64 0.13 160);
-    --chat-token-skill: oklch(0.64 0.16 305);
-    --chat-token-plan: oklch(0.55 0.17 285);
+    --chat-token-skill: oklch(0.64 0.16 55);
+    --chat-token-plan: oklch(0.64 0.17 245);
     --chat-token-plan-soft: color-mix(in oklab, var(--chat-token-plan) 12%, transparent);
     --chat-token-file-soft: color-mix(in oklab, var(--chat-token-file) 12%, transparent);
     --chat-token-folder-soft: var(--chat-token-file-soft);
@@ -297,8 +297,8 @@
     --chat-token-file: oklch(0.72 0.14 252);
     --chat-token-folder: var(--chat-token-file);
     --chat-token-image: oklch(0.72 0.11 165);
-    --chat-token-skill: oklch(0.72 0.13 305);
-    --chat-token-plan: oklch(0.76 0.13 285);
+    --chat-token-skill: oklch(0.76 0.13 60);
+    --chat-token-plan: oklch(0.76 0.13 245);
     --chat-token-plan-soft: color-mix(in oklab, var(--chat-token-plan) 14%, transparent);
     --chat-token-file-soft: color-mix(in oklab, var(--chat-token-file) 14%, transparent);
     --chat-token-folder-soft: var(--chat-token-file-soft);
