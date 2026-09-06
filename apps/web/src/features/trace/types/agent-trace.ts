@@ -79,6 +79,6 @@ export interface AgentTraceSession {
 }
 
 export interface AgentTraceRange {
-  endMs: number;
-  startMs: number;
+  endIndex: number;
+  startIndex: number;
 }

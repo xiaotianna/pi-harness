@@ -33,6 +33,7 @@ import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { Brain } from "lucide-react";
 import { type ComponentType, type SVGProps, useState } from "react";
 import { FileOpenMode } from "../../../shared/constants/file-open";
+import { cn } from "../../../shared/utils/cn";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
 import { useAppSettings } from "../hooks/use-app-settings";
 import { useAppTheme } from "../theme-provider";
@@ -523,6 +524,7 @@ export function SettingsDialog({
   workspaces,
 }: SettingsDialogProps) {
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
+  const hasOverlayScrollbar = activeSectionId === "plugins" || activeSectionId === "skills";
 
   const selectSection = (key: string | number) => {
     const nextSection = SETTINGS_SECTIONS.find((section) => section.id === key);
@@ -607,7 +609,12 @@ export function SettingsDialog({
                 </div>
               </aside>
 
-              <main className="@container/settings min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-2 pb-6 @3xl/settings-dialog:py-8 @3xl/settings-dialog:pr-12 @3xl/settings-dialog:pl-8 [&>section]:mx-auto">
+              <main
+                className={cn(
+                  "@container/settings min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-2 pb-6 @3xl/settings-dialog:py-8 @3xl/settings-dialog:pr-12 @3xl/settings-dialog:pl-8 [&>section]:mx-auto",
+                  hasOverlayScrollbar && "overlay-scrollbar session-scrollbars",
+                )}
+              >
                 {activeSectionId === "general" ? (
                   <GeneralSettingsPanel />
                 ) : activeSectionId === "models" ? (

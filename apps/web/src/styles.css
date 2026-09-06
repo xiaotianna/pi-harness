@@ -100,6 +100,12 @@
   scrollbar-gutter: stable;
 }
 
+.overlay-scrollbar {
+  --scrollbar-gutter: auto;
+  overflow-y: overlay;
+  scrollbar-gutter: auto;
+}
+
 .session-scrollbars,
 .session-scrollbars * {
   --scrollbar-color: color-mix(in oklab, var(--muted) 18%, transparent) transparent;

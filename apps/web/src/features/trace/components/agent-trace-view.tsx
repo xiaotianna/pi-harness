@@ -78,8 +78,8 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
           .filter((record) => record.turn === selectedRecord.turn)
           .findIndex((record) => record.id === selectedRecord.id) + 1
       : 0;
-  const visibleRecordCount = records.filter((record) =>
-    isTraceRecordInRange(record.startMs, record.durationMs, range),
+  const visibleRecordCount = records.filter((_, index) =>
+    isTraceRecordInRange(index, range),
   ).length;
   const turnCount = new Set(
     trace?.records.filter((record) => record.turn > 0).map((record) => record.turn) ?? [],
@@ -214,7 +214,6 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
         </div>
 
         <TraceTimeline
-          durationMs={trace.durationMs}
           range={range}
           records={records}
           selectedRecordId={selectedRecordId}

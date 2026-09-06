@@ -3,8 +3,18 @@ import { ToolPermission, type ToolPolicy } from "@pi-harness/policy";
 import { createPatch } from "diff";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { type SkillRegistry, SkillScope, type SkillSummary } from "../skill-registry.js";
+import type { SkillRegistry, SkillSummary } from "../skill-registry.js";
 import type { FileChangeDetails } from "../utils/file.js";
+import { type SkillDefinition, SkillScope } from "./types.js";
+
+export const skillCreatorSystemSkill = {
+  description: "Create a new project or global Skill with the built-in skill creator.",
+  id: `${SkillScope.SYSTEM}:skill-creator`,
+  instructions:
+    "Help the user define a focused Skill, then use the built-in `skill_creator` tool to create it. Ask only for information that materially affects the Skill. Use a lowercase kebab-case name, a precise discovery description, and concise instructions. Create the Skill in the current project unless the user explicitly requests a global Skill. The tool creates new Skills only, so never overwrite an existing Skill.",
+  name: "skill-creator",
+  scope: SkillScope.SYSTEM,
+} satisfies SkillDefinition;
 
 const SkillCreatorParameters = Type.Object({
   description: Type.String({

@@ -10,6 +10,7 @@ import {
 import { isPathWithin, resolveWorkspacePath } from "@pi-harness/policy";
 import {
   hasIgnoredWorkspaceDirectory,
+  type SkillDefinition,
   SkillRegistry,
   SkillScope,
   type SkillScope as SkillScopeValue,
@@ -365,6 +366,8 @@ export class WorkspaceService {
     private readonly globalRoot: string,
     private readonly settings: AppSettingRepository,
     private readonly fileOpen: FileOpenService,
+    private readonly skillGatewayUrl: string,
+    private readonly getRegisteredGlobalSkills: () => readonly SkillDefinition[],
   ) {}
 
   public async list() {
@@ -436,16 +439,21 @@ export class WorkspaceService {
 
   public async listSkills(workspaceId: string) {
     const disabledDirectories = new Set(this.settings.getDisabledSkillDirectories());
+    const disabledCollectionSkills = new Set(this.settings.getDisabledSkillCollectionSkillIds());
     const registry = await this.createSkillRegistry(workspaceId);
     return (await registry.discoverListItems()).map((skill) => ({
+      collectionId: skill.collectionId,
       description: skill.description,
       directory: skill.directory,
       id: skill.id,
       isEnabled:
-        skill.scope === SkillScope.SYSTEM ||
-        (skill.directory !== null && !disabledDirectories.has(skill.directory)),
+        skill.collectionId !== null
+          ? !disabledCollectionSkills.has(skill.id)
+          : skill.scope === SkillScope.SYSTEM ||
+            (skill.directory !== null && !disabledDirectories.has(skill.directory)),
       name: skill.name,
       scope: skill.scope,
+      type: skill.type,
     }));
   }
 
@@ -680,7 +688,9 @@ export class WorkspaceService {
 
   private async createSkillRegistry(workspaceId: string): Promise<SkillRegistry> {
     return new SkillRegistry({
+      getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
       globalRoot: this.globalRoot,
+      skillGatewayUrl: this.skillGatewayUrl,
       workspaceRoot: await resolveWorkspaceRoot(this.getRequired(workspaceId).rootPath),
     });
   }

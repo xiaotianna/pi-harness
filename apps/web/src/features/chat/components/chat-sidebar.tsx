@@ -87,7 +87,7 @@ export const ChatSidebar = memo(function ChatSidebar({
 
   return (
     <>
-      <Sidebar>
+      <Sidebar className="shadow-none!">
         <SidebarContents {...contentProps} />
         <Sidebar.Rail aria-label="切换侧边栏" />
       </Sidebar>

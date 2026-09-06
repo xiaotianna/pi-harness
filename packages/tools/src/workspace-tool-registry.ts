@@ -81,7 +81,7 @@ export function createWorkspaceToolRegistry(context: WorkspaceToolContext): Tool
       policy: readOnlyPolicy,
       source: BUILT_IN_SOURCE,
       timeoutMs: DOCUMENT_TOOL_TIMEOUT_MS,
-      tool: createWebFetchTool(),
+      tool: createWebFetchTool(context),
     },
     {
       policy: {

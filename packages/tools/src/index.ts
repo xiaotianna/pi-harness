@@ -1,6 +1,12 @@
 export type { WorkspaceToolContext } from "./lib/tool-context.js";
 export { type ToolRegistration, ToolRegistry } from "./lib/tool-registry.js";
 export {
+  AVAILABLE_PLUGINS,
+  type PluginDefinition,
+  type PluginSkillDefinition,
+  resolveRegisteredPluginSkills,
+} from "./plugins/index.js";
+export {
   type CreatedSkill,
   type CreateSkillInput,
   type LoadedSkill,
@@ -8,12 +14,17 @@ export {
   type SkillListItem,
   SkillRegistry,
   type SkillRegistryContext,
-  SkillScope,
-  type SkillScope as SkillScopeValue,
   type SkillSummary,
   type WritableSkillScope,
 } from "./skill-registry.js";
 export * from "./skills/index.js";
+export {
+  type SkillDefinition,
+  SkillScope,
+  type SkillScope as SkillScopeValue,
+  SkillType,
+  type SkillType as SkillTypeValue,
+} from "./skills/types.js";
 export { ToolExecutionGuard } from "./tool-execution-guard.js";
 export * from "./tools/index.js";
 export {

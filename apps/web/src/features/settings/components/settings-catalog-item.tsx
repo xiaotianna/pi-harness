@@ -17,7 +17,7 @@ export function SettingsCatalogItem({
   secondary: ReactNode;
 }) {
   return (
-    <li className="relative min-h-16 rounded-xl">
+    <li className="group relative min-h-16 rounded-xl">
       <Button
         aria-label={ariaLabel}
         className="absolute inset-0 z-0 h-full w-full cursor-[var(--cursor-interactive)] rounded-xl"

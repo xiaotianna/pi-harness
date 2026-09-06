@@ -1,7 +1,7 @@
 import type { FileHandle } from "node:fs/promises";
 import { open } from "node:fs/promises";
 import { resolveWorkspacePath } from "@pi-harness/policy";
-import { SkillRegistry, type SkillSummary } from "@pi-harness/tools";
+import { type SkillDefinition, SkillRegistry, type SkillSummary } from "@pi-harness/tools";
 
 const MAX_AGENTS_BYTES = 128 * 1024;
 
@@ -11,6 +11,7 @@ export interface WorkspaceAgentContext {
 }
 
 export interface WorkspaceAgentContextSource {
+  getRegisteredGlobalSkills?: () => readonly SkillDefinition[];
   globalRoot: string;
   isSkillEnabled?: (directory: string) => boolean;
   workspaceRoot: string;

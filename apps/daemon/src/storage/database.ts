@@ -84,7 +84,9 @@ export interface AppSettingRepository {
   getApprovalPolicy(): ApprovalPolicyValue;
   getBusySubmitBehavior(): BusySubmitBehaviorValue;
   getDefaultModel(): DefaultModelSetting | null;
+  getDisabledSkillCollectionSkillIds(): readonly string[];
   getDisabledSkillDirectories(): readonly string[];
+  getInstalledSkillCollectionIds(): readonly string[];
   getFileOpenApplication(): FileOpenApplicationSetting | null;
   getFileOpenMode(): FileOpenModeValue;
   getOutputDetail(): OutputDetailValue;
@@ -92,7 +94,9 @@ export interface AppSettingRepository {
   setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void;
   setBusySubmitBehavior(behavior: BusySubmitBehaviorValue, updatedAt: number): void;
   setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void;
+  setDisabledSkillCollectionSkillIds(skillIds: readonly string[], updatedAt: number): void;
   setDisabledSkillDirectories(directories: readonly string[], updatedAt: number): void;
+  setInstalledSkillCollectionIds(collectionIds: readonly string[], updatedAt: number): void;
   setFileOpenApplication(application: FileOpenApplicationSetting, updatedAt: number): void;
   setFileOpenMode(mode: FileOpenModeValue, updatedAt: number): void;
   setOutputDetail(outputDetail: OutputDetailValue, updatedAt: number): void;
@@ -531,7 +535,9 @@ class SqliteProviderSettingRepository implements ProviderSettingRepository {
 const APPROVAL_POLICY_KEY = "approval_policy";
 const BUSY_SUBMIT_BEHAVIOR_KEY = "busy_submit_behavior";
 const DEFAULT_MODEL_KEY = "default_model";
+const DISABLED_SKILL_COLLECTION_SKILLS_KEY = "disabled_skill_collection_skills";
 const DISABLED_SKILL_DIRECTORIES_KEY = "disabled_skill_directories";
+const INSTALLED_SKILL_COLLECTIONS_KEY = "installed_skill_collections";
 const FILE_OPEN_APPLICATION_KEY = "file_open_application";
 const FILE_OPEN_MODE_KEY = "file_open_mode";
 const OUTPUT_DETAIL_KEY = "output_detail";
@@ -599,6 +605,32 @@ class SqliteAppSettingRepository implements AppSettingRepository {
     const value = JSON.parse(readRequiredString(row, "value")) as unknown;
     if (!Array.isArray(value) || !value.every((directory) => typeof directory === "string")) {
       throw new Error("Invalid database value for disabled skill directories");
+    }
+    return value;
+  }
+
+  public getDisabledSkillCollectionSkillIds(): readonly string[] {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(DISABLED_SKILL_COLLECTION_SKILLS_KEY) as DatabaseRow | undefined;
+    if (!row) return [];
+
+    const value = JSON.parse(readRequiredString(row, "value")) as unknown;
+    if (!Array.isArray(value) || !value.every((skillId) => typeof skillId === "string")) {
+      throw new Error("Invalid database value for disabled Skill collection skills");
+    }
+    return value;
+  }
+
+  public getInstalledSkillCollectionIds(): readonly string[] {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(INSTALLED_SKILL_COLLECTIONS_KEY) as DatabaseRow | undefined;
+    if (!row) return [];
+
+    const value = JSON.parse(readRequiredString(row, "value")) as unknown;
+    if (!Array.isArray(value) || !value.every((collectionId) => typeof collectionId === "string")) {
+      throw new Error("Invalid database value for installed Skill collections");
     }
     return value;
   }
@@ -698,6 +730,24 @@ class SqliteAppSettingRepository implements AppSettingRepository {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       )
       .run(DISABLED_SKILL_DIRECTORIES_KEY, JSON.stringify(directories), updatedAt);
+  }
+
+  public setDisabledSkillCollectionSkillIds(skillIds: readonly string[], updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(DISABLED_SKILL_COLLECTION_SKILLS_KEY, JSON.stringify(skillIds), updatedAt);
+  }
+
+  public setInstalledSkillCollectionIds(collectionIds: readonly string[], updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(INSTALLED_SKILL_COLLECTIONS_KEY, JSON.stringify(collectionIds), updatedAt);
   }
 
   public setFileOpenApplication(application: FileOpenApplicationSetting, updatedAt: number): void {

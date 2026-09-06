@@ -30,7 +30,6 @@ import {
 } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
-import { AssistantMarkdown } from "../../../components/ai/assistant-markdown";
 import {
   openSkillDirectory,
   openSkillRootDirectory,
@@ -42,9 +41,9 @@ import {
   skillQueryKeys,
   updateSkill,
 } from "../../skills";
-import { SettingsCatalogDetail } from "./settings-catalog-detail";
 import { SettingsCatalogItem } from "./settings-catalog-item";
 import { SettingsPanelHeader } from "./settings-panel-header";
+import { SettingsSkillDetail } from "./settings-skill-detail";
 
 const ALL_SKILLS_TAB_ID = "all";
 const SKILL_CREATOR_NAME = "skill-creator";
@@ -143,7 +142,7 @@ function SkillDetail({
   const displayName = getSkillDisplayName(entry.skill);
 
   return (
-    <SettingsCatalogDetail
+    <SettingsSkillDetail
       action={
         isSystemSkill ? (
           <span className="text-sm text-muted">系统</span>
@@ -168,10 +167,11 @@ function SkillDetail({
           </div>
         )
       }
-      ariaLabel={`${displayName} 技能详情`}
       backLabel="返回技能"
+      content={contentQuery.data}
+      contentError={contentQuery.error}
       description={entry.skill.description}
-      icon={<MagicWand aria-hidden className="size-6 text-muted" />}
+      isContentPending={contentQuery.isPending}
       name={displayName}
       toolbarAction={
         isSystemSkill ? null : (
@@ -193,28 +193,7 @@ function SkillDetail({
         )
       }
       onBack={onBack}
-    >
-      <div className="mt-8">
-        {contentQuery.isPending ? (
-          <div aria-busy="true" className="space-y-3">
-            <span className="sr-only">正在加载技能内容</span>
-            <Skeleton className="h-5 w-2/3 rounded-lg" />
-            <Skeleton className="h-4 w-full rounded-lg" />
-            <Skeleton className="h-4 w-5/6 rounded-lg" />
-          </div>
-        ) : contentQuery.isError ? (
-          <Alert className="bg-danger-soft" role="alert" status="danger">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>技能内容加载失败</Alert.Title>
-              <Alert.Description>{contentQuery.error.message}</Alert.Description>
-            </Alert.Content>
-          </Alert>
-        ) : (
-          <AssistantMarkdown>{contentQuery.data}</AssistantMarkdown>
-        )}
-      </div>
-    </SettingsCatalogDetail>
+    />
   );
 }
 
@@ -260,10 +239,10 @@ export function SkillSettingsPanel({
   }));
   const globalGroup = workspaceGroups.find((group) => group.skills !== undefined);
   const globalEntries = (globalGroup?.skills ?? [])
-    .filter((skill) => skill.scope === "global")
+    .filter((skill) => skill.scope === "global" && skill.collectionId === null)
     .map((skill) => ({ skill, workspaceId: globalGroup?.workspace.id ?? "" }));
   const systemEntries = (globalGroup?.skills ?? [])
-    .filter((skill) => skill.scope === "system")
+    .filter((skill) => skill.scope === "system" && skill.collectionId === null)
     .map((skill) => ({ skill, workspaceId: globalGroup?.workspace.id ?? "" }));
   const hasAnySkill =
     systemEntries.length > 0 ||

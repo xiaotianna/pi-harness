@@ -1,5 +1,7 @@
+import { randomBytes } from "node:crypto";
 import cors from "@fastify/cors";
 import { AgentManager } from "@pi-harness/agent-runtime";
+import { resolveRegisteredPluginSkills } from "@pi-harness/tools";
 import Fastify from "fastify";
 import { type HarnessConfig, loadHarnessConfig } from "../config/index.js";
 import { registerAppSettingsRoutes } from "../routes/app-settings-routes.js";
@@ -7,6 +9,7 @@ import { registerAuthRoutes } from "../routes/auth-routes.js";
 import { registerHealthRoutes } from "../routes/health-routes.js";
 import { registerProviderRoutes } from "../routes/provider-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
+import { registerSkillConnectionRoutes } from "../routes/skill-connection-routes.js";
 import { registerWorkspaceRoutes } from "../routes/workspace-routes.js";
 import { AppSettingsService } from "../services/app-settings-service.js";
 import { FileOpenService } from "../services/file-open-service.js";
@@ -14,12 +17,14 @@ import { HumanInteractionService } from "../services/human-interaction-service.j
 import { ProviderService } from "../services/provider-service.js";
 import { SessionEventService } from "../services/session-event-service.js";
 import { SessionService } from "../services/session-service.js";
+import { SkillConnectionService } from "../services/skill-connection-service.js";
 import { WorkspaceService } from "../services/workspace-service.js";
 import { SessionEventBroker } from "../sse/session-event-broker.js";
 import { AllowedCommandPrefixStore } from "../storage/allowed-command-prefix-store.js";
 import { openHarnessDatabase } from "../storage/database.js";
 import { FileCredentialStore } from "../storage/provider-credential-store.js";
 import { SessionEventStore } from "../storage/session-event-store.js";
+import { SkillCredentialStore } from "../storage/skill-credential-store.js";
 
 const LOCAL_WEB_ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
 
@@ -34,6 +39,13 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   const appSettings = new AppSettingsService(database.appSettings);
   const fileOpen = new FileOpenService(database.appSettings);
   const credentials = await FileCredentialStore.open(config.credentialsPath);
+  const skillCredentials = await SkillCredentialStore.open(config.skillCredentialsPath);
+  const skillConnections = new SkillConnectionService(
+    skillCredentials,
+    database.appSettings,
+    config.skillGatewayUrl,
+  );
+  const skillGatewayToken = randomBytes(32).toString("base64url");
   const eventStore = new SessionEventStore(config.sessionsPath);
   await eventStore.initialize();
   const broker = new SessionEventBroker();
@@ -41,6 +53,11 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   await sessionEvents.recoverInterruptedRuns();
   const interactions = new HumanInteractionService();
   const protectedPaths = [config.globalRoot];
+  const getRegisteredGlobalSkills = () =>
+    resolveRegisteredPluginSkills(
+      database.appSettings.getInstalledSkillCollectionIds(),
+      database.appSettings.getDisabledSkillCollectionSkillIds(),
+    );
   const agents = new AgentManager(
     sessionEvents.handle,
     interactions.requestApproval,
@@ -48,6 +65,9 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     protectedPaths,
     config.globalRoot,
     config.webSearchUrl,
+    config.skillGatewayUrl,
+    skillGatewayToken,
+    getRegisteredGlobalSkills,
     (directory) => !database.appSettings.getDisabledSkillDirectories().includes(directory),
     () => allowedCommandPrefixes.getAll(),
   );
@@ -56,6 +76,8 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     config.globalRoot,
     database.appSettings,
     fileOpen,
+    config.skillGatewayUrl,
+    getRegisteredGlobalSkills,
   );
   let sessions: SessionService | undefined;
   const providers = await ProviderService.create(
@@ -83,6 +105,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   const allowedHosts = new Set([
     new URL(config.webUrl).host,
     `${config.host}:${config.port}`,
+    new URL(config.skillGatewayUrl).host,
     ...[...LOCAL_WEB_ORIGINS].map((origin) => new URL(origin).host),
   ]);
   if (config.githubOAuth !== null) {
@@ -124,6 +147,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   await registerHealthRoutes(server);
   await registerProviderRoutes(server, config, providers);
   await registerSessionRoutes(server, config, sessions, broker);
+  await registerSkillConnectionRoutes(server, config, skillConnections, skillGatewayToken);
   await registerWorkspaceRoutes(server, config, workspaces);
 
   return server;

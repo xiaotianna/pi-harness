@@ -1,0 +1,21 @@
+id: microsoft
+displayName: Microsoft
+apiUrl: http://127.0.0.1:4005
+description: Inspect Microsoft Entra ID sign-in and the connected Graph profile through the local emulator.
+category: productivity
+type: oauth
+oauth:
+  authorizationPath: /oauth2/v2.0/authorize
+  tokenPath: /oauth2/v2.0/token
+  scopes: [openid, profile, email, User.Read]
+  profile:
+    source: userinfo
+    path: /v1.0/me
+    idField: id
+    usernameField: userPrincipalName
+    displayNameField: displayName
+skills:
+  - id: microsoft-profile
+    displayName: Microsoft 账户
+  - id: microsoft-identity-diagnostics
+    displayName: Entra ID 诊断

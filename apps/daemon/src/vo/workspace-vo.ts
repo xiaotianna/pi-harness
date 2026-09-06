@@ -1,5 +1,5 @@
 import { UserContextReferenceKind } from "@pi-harness/agent-runtime/user-input";
-import { SkillScope } from "@pi-harness/tools";
+import { SkillScope, SkillType } from "@pi-harness/tools";
 import { type Static, Type } from "typebox";
 import { FileOpenResultStatus } from "../schemas/file-open.js";
 
@@ -39,6 +39,7 @@ export const OpenWorkspacePathVoSchema = Type.Object({
 export type OpenWorkspacePathVo = Static<typeof OpenWorkspacePathVoSchema>;
 
 export const WorkspaceSkillVoSchema = Type.Object({
+  collectionId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
   description: Type.String({ minLength: 1 }),
   directory: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
   id: Type.String({ minLength: 1 }),
@@ -49,6 +50,7 @@ export const WorkspaceSkillVoSchema = Type.Object({
     Type.Literal(SkillScope.PROJECT),
     Type.Literal(SkillScope.GLOBAL),
   ]),
+  type: Type.Union([Type.Literal(SkillType.NONE), Type.Literal(SkillType.OAUTH)]),
 });
 
 export type WorkspaceSkillVo = Static<typeof WorkspaceSkillVoSchema>;

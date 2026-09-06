@@ -1,0 +1,22 @@
+id: vercel
+displayName: Vercel
+apiUrl: http://127.0.0.1:4000
+description: Inspect projects and diagnose deployments through the local Vercel emulator.
+category: developer
+type: oauth
+oauth:
+  authorizationPath: /oauth/authorize
+  tokenPath: /login/oauth/token
+  scopes: []
+  profile:
+    source: userinfo
+    path: /v2/user
+    idField: user.id
+    usernameField: user.username
+    displayNameField: user.name
+    avatarUrlField: user.avatar
+skills:
+  - id: vercel-deployment-diagnostics
+    displayName: 部署诊断
+  - id: vercel-project-overview
+    displayName: 项目概览

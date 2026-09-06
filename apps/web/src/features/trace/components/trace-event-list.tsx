@@ -136,7 +136,7 @@ export const TraceEventList = memo(function TraceEventList({
           if (!item) return null;
 
           const { record, isTurnStart } = item;
-          const isInRange = isTraceRecordInRange(record.startMs, record.durationMs, range);
+          const isInRange = isTraceRecordInRange(virtualItem.index, range);
           const isSelected = selectedRequestRecordId === null && record.id === selectedRecordId;
 
           return (

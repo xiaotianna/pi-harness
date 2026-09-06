@@ -1,4 +1,5 @@
 import { resolveWorkspacePath } from "@pi-harness/policy";
+import type { SkillDefinition } from "../skills/types.js";
 import type {
   ContextCheckpointRestoreHandler,
   SessionHistorySearchHandler,
@@ -10,6 +11,7 @@ import type { TodoUpdateHandler } from "../tools/todos.js";
 
 // 保存固定的 globalRoot、workspaceRoot 和受保护路径。
 export interface WorkspaceToolContext {
+  getRegisteredGlobalSkills?: () => readonly SkillDefinition[];
   globalRoot: string;
   isSkillEnabled?: (directory: string) => boolean;
   onContextCheckpointRestored?: ContextCheckpointRestoreHandler;
@@ -19,6 +21,8 @@ export interface WorkspaceToolContext {
   onTodosUpdated?: TodoUpdateHandler;
   onWorkingStateReset?: WorkingStateResetHandler;
   protectedPaths?: readonly string[];
+  skillGatewayToken?: string;
+  skillGatewayUrl?: string;
   webSearchUrl: string;
   supportsImageInput?: () => boolean;
   workspaceRoot: string;

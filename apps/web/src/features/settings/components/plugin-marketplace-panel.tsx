@@ -1,29 +1,26 @@
 "use client";
 
-import {
-  Pulse as Activity,
-  ChartBar as BarChart3,
-  Cloud,
-  Diamond as Component,
-  LogoFigma as Figma,
-  FileMagnifier as FileSearch,
-  LogoGithub as Github,
-  CodePullRequest as GitPullRequest,
-  Globe as Globe2,
-  Comment as MessageSquare,
-  Pencil,
-  Rocket,
-  Magnifier as Search,
-  LayoutCells as Table2,
-  Pipeline as Workflow,
-} from "@gravity-ui/icons";
-import { Button, Switch } from "@heroui/react";
-import { CircleDot } from "lucide-react";
-import { type ComponentType, type SVGProps, useState } from "react";
+import { MagicWand } from "@gravity-ui/icons";
+import { Alert, AlertDialog, Button, Skeleton, Switch, toast } from "@heroui/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
+import {
+  disconnectSkill,
+  installSkillCollection,
+  type SkillCollection,
+  skillCollectionDetailQueryOptions,
+  skillCollectionQueryOptions,
+  skillConnectionQueryOptions,
+  skillQueryKeys,
+  startSkillOAuth,
+  uninstallSkillCollection,
+  updateSkillCollectionSkill,
+} from "../../skills";
 import { SettingsCatalogDetail } from "./settings-catalog-detail";
 import { SettingsCatalogItem } from "./settings-catalog-item";
 import { SettingsPanelHeader } from "./settings-panel-header";
+import { SettingsSkillDetail } from "./settings-skill-detail";
 
 const PLUGIN_CATEGORIES = [
   { id: "all", label: "全部" },
@@ -32,178 +29,277 @@ const PLUGIN_CATEGORIES = [
 ] as const;
 
 type PluginCategoryId = (typeof PLUGIN_CATEGORIES)[number]["id"];
+type PluginSkill = SkillCollection["skills"][number];
 
-const PLUGINS = [
-  {
-    id: "github",
-    name: "GitHub",
-    description:
-      "连接代码仓库、Issue、Pull Request 和 Actions，为 Agent 补充完整的项目协作上下文。",
-    category: "developer",
-    icon: Github,
-    isInstalled: true,
-    skills: [
-      {
-        id: "github-repository-search",
-        name: "仓库检索",
-        description: "搜索仓库中的代码、提交记录与文件内容。",
-        icon: Search,
-        isEnabled: true,
-      },
-      {
-        id: "github-pull-request-review",
-        name: "Pull Request 审查",
-        description: "读取变更、评论和检查结果，辅助完成代码审查。",
-        icon: GitPullRequest,
-        isEnabled: true,
-      },
-      {
-        id: "github-issue-management",
-        name: "Issue 管理",
-        description: "查询并整理 Issue、标签和关联上下文。",
-        icon: CircleDot,
-        isEnabled: false,
-      },
-      {
-        id: "github-actions-diagnostics",
-        name: "Actions 诊断",
-        description: "读取工作流运行状态和日志，定位自动化任务问题。",
-        icon: Workflow,
-        isEnabled: true,
-      },
-    ],
-  },
-  {
-    id: "figma",
-    name: "Figma",
-    description: "读取设计稿、评论和组件信息，让界面实现与设计规范保持一致。",
-    category: "productivity",
-    icon: Figma,
-    isInstalled: true,
-    skills: [
-      {
-        id: "figma-design-reader",
-        name: "设计稿读取",
-        description: "读取页面、图层、样式和布局信息。",
-        icon: FileSearch,
-        isEnabled: true,
-      },
-      {
-        id: "figma-comments",
-        name: "评论协作",
-        description: "获取设计评论与讨论上下文。",
-        icon: MessageSquare,
-        isEnabled: true,
-      },
-      {
-        id: "figma-components",
-        name: "组件规范同步",
-        description: "读取组件属性和设计变量，辅助还原组件规范。",
-        icon: Component,
-        isEnabled: false,
-      },
-    ],
-  },
-  {
-    id: "cloudflare",
-    name: "Cloudflare",
-    description: "查询部署、域名和运行状态，帮助定位线上环境与发布流程问题。",
-    category: "developer",
-    icon: Cloud,
-    isInstalled: false,
-    skills: [
-      {
-        id: "cloudflare-deployments",
-        name: "部署查询",
-        description: "查看 Pages 与 Workers 的部署状态和版本。",
-        icon: Rocket,
-        isEnabled: true,
-      },
-      {
-        id: "cloudflare-dns",
-        name: "域名管理",
-        description: "查询站点、DNS 记录和域名配置。",
-        icon: Globe2,
-        isEnabled: true,
-      },
-      {
-        id: "cloudflare-observability",
-        name: "运行状态诊断",
-        description: "检查服务状态与运行指标，辅助定位线上问题。",
-        icon: Activity,
-        isEnabled: false,
-      },
-    ],
-  },
-  {
-    id: "airtable",
-    name: "Airtable",
-    description: "访问团队表格与业务记录，为任务补充结构化数据和项目上下文。",
-    category: "productivity",
-    icon: Table2,
-    isInstalled: false,
-    skills: [
-      {
-        id: "airtable-record-search",
-        name: "记录检索",
-        description: "按条件查找表格中的记录和关联数据。",
-        icon: Search,
-        isEnabled: true,
-      },
-      {
-        id: "airtable-record-update",
-        name: "记录更新",
-        description: "新增或更新业务记录和字段内容。",
-        icon: Pencil,
-        isEnabled: false,
-      },
-      {
-        id: "airtable-summary",
-        name: "数据汇总",
-        description: "整理表格数据并生成简明的任务摘要。",
-        icon: BarChart3,
-        isEnabled: true,
-      },
-    ],
-  },
-] as const satisfies readonly {
-  id: string;
-  name: string;
-  description: string;
-  category: "developer" | "productivity";
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
-  isInstalled: boolean;
-  skills: readonly {
-    id: string;
-    name: string;
-    description: string;
-    icon: ComponentType<SVGProps<SVGSVGElement>>;
-    isEnabled: boolean;
-  }[];
-}[];
+function PluginLogo({ logo, size }: { logo: string | null; size: number }) {
+  return logo ? (
+    <img alt="" aria-hidden className="shrink-0" height={size} src={logo} width={size} />
+  ) : (
+    <MagicWand aria-hidden className="shrink-0 text-muted" height={size} width={size} />
+  );
+}
 
-type Plugin = (typeof PLUGINS)[number];
+function PluginSkillSwitch({
+  isDisabled,
+  skill,
+  onChange,
+}: {
+  isDisabled: boolean;
+  skill: PluginSkill;
+  onChange: (isEnabled: boolean) => void;
+}) {
+  return (
+    <Switch
+      aria-label={`${skill.name} 可用状态`}
+      isDisabled={isDisabled}
+      isSelected={skill.isEnabled}
+      size="sm"
+      onChange={onChange}
+    >
+      <Switch.Content>
+        <Switch.Control>
+          <Switch.Thumb />
+        </Switch.Control>
+      </Switch.Content>
+    </Switch>
+  );
+}
 
-function PluginInstallButton({ plugin }: { plugin: Plugin }) {
+function PluginSkillDetail({
+  isUpdating,
+  onBack,
+  onEnabledChange,
+  plugin,
+  skill,
+}: {
+  isUpdating: boolean;
+  onBack: () => void;
+  onEnabledChange: (isEnabled: boolean) => void;
+  plugin: SkillCollection;
+  skill: PluginSkill;
+}) {
+  const contentQuery = useQuery(skillCollectionDetailQueryOptions(plugin.id, skill.id));
+  return (
+    <SettingsSkillDetail
+      action={
+        plugin.isInstalled ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-sm text-muted">{skill.isEnabled ? "已开启" : "已关闭"}</span>
+            <PluginSkillSwitch isDisabled={isUpdating} skill={skill} onChange={onEnabledChange} />
+          </div>
+        ) : null
+      }
+      backLabel={`返回 ${plugin.name}`}
+      content={contentQuery.data}
+      contentError={contentQuery.error}
+      description={skill.description}
+      icon={<PluginLogo logo={plugin.logo} size={24} />}
+      isContentPending={contentQuery.isPending}
+      name={skill.name}
+      onBack={onBack}
+    />
+  );
+}
+
+function PluginConnectionPanel({ plugin }: { plugin: SkillCollection }) {
+  const queryClient = useQueryClient();
+  const statusQuery = useQuery({
+    ...skillConnectionQueryOptions(plugin.id),
+    enabled: plugin.type === "oauth",
+  });
+  const [isAwaitingAuthorization, setIsAwaitingAuthorization] = useState(false);
+  const startMutation = useMutation({
+    mutationFn: async (authorizationWindow: Window) => {
+      authorizationWindow.location.replace(await startSkillOAuth(plugin.id));
+    },
+    onError: (error: Error, authorizationWindow) => {
+      authorizationWindow.close();
+      setIsAwaitingAuthorization(false);
+      toast.danger(error.message);
+    },
+    onSuccess: () => {
+      window.addEventListener(
+        "focus",
+        () => {
+          setIsAwaitingAuthorization(false);
+          void queryClient.invalidateQueries({ queryKey: skillQueryKeys.connection(plugin.id) });
+        },
+        { once: true },
+      );
+    },
+  });
+  const disconnectMutation = useMutation({
+    mutationFn: () => disconnectSkill(plugin.id),
+    onError: (error: Error) => toast.danger(error.message),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: skillQueryKeys.connection(plugin.id) });
+      toast.success(`${plugin.name} 已断开连接`);
+    },
+  });
+
+  const isConnected = statusQuery.data?.isConnected === true;
+  const isPending =
+    statusQuery.isPending ||
+    startMutation.isPending ||
+    disconnectMutation.isPending ||
+    isAwaitingAuthorization;
+
+  return (
+    <section
+      aria-label={`${plugin.name} 授权`}
+      className="mt-6 flex min-h-16 items-center justify-between gap-4 rounded-xl bg-surface-secondary px-4 py-3"
+    >
+      <div className="min-w-0">
+        <h3 className="text-sm font-medium text-foreground">账户授权</h3>
+        <p className="mt-0.5 truncate text-sm text-muted">
+          {isConnected
+            ? `已连接 ${statusQuery.data?.account?.displayName ?? statusQuery.data?.account?.username ?? plugin.name}`
+            : `授权后，Agent 才能使用 ${plugin.name} 技能。`}
+        </p>
+      </div>
+      <Button
+        aria-label={`${isConnected ? "断开" : "授权"} ${plugin.name}`}
+        isPending={isPending}
+        size="sm"
+        variant={isConnected ? "tertiary" : "primary"}
+        onPress={() => {
+          if (isConnected) {
+            disconnectMutation.mutate();
+            return;
+          }
+          const authorizationWindow = window.open(
+            "about:blank",
+            "pi-harness-skill-oauth",
+            "popup,width=720,height=760",
+          );
+          if (!authorizationWindow) {
+            toast.danger("浏览器阻止了授权窗口，请允许弹窗后重试");
+            return;
+          }
+          setIsAwaitingAuthorization(true);
+          startMutation.mutate(authorizationWindow);
+        }}
+      >
+        {isAwaitingAuthorization ? "等待授权" : isConnected ? "断开授权" : "授权"}
+      </Button>
+    </section>
+  );
+}
+
+function PluginUninstallButton({
+  plugin,
+  showInstalledStatus = false,
+}: {
+  plugin: SkillCollection;
+  showInstalledStatus?: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [isOpen, setIsOpen] = useState(false);
+  const mutation = useMutation({
+    mutationFn: () => uninstallSkillCollection(plugin.id),
+    onError: (error: Error) => toast.danger(error.message),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: skillQueryKeys.collections() }),
+        queryClient.invalidateQueries({ queryKey: skillQueryKeys.connection(plugin.id) }),
+        queryClient.invalidateQueries({ queryKey: skillQueryKeys.lists() }),
+      ]);
+      setIsOpen(false);
+      toast.success(`${plugin.name} 已卸载`);
+    },
+  });
+
+  return (
+    <>
+      <Button
+        aria-label={`卸载 ${plugin.name}`}
+        className={
+          showInstalledStatus
+            ? "[--button-bg-hover:var(--danger-soft-hover)] [--button-bg-pressed:var(--danger-soft-hover)] [--button-bg:var(--success-soft)] [--button-fg:var(--success-soft-foreground)] group-hover:[--button-bg:var(--danger-soft)] group-hover:[--button-fg:var(--danger-soft-foreground)] group-focus-within:[--button-bg:var(--danger-soft)] group-focus-within:[--button-fg:var(--danger-soft-foreground)]"
+            : ""
+        }
+        size="sm"
+        variant={showInstalledStatus ? "secondary" : "danger-soft"}
+        onPress={() => setIsOpen(true)}
+      >
+        {showInstalledStatus ? (
+          <span className="grid">
+            <span className="col-start-1 row-start-1 group-hover:invisible group-focus-within:invisible">
+              已安装
+            </span>
+            <span className="invisible col-start-1 row-start-1 group-hover:visible group-focus-within:visible">
+              卸载
+            </span>
+          </span>
+        ) : (
+          "卸载"
+        )}
+      </Button>
+      <AlertDialog.Backdrop isOpen={isOpen} onOpenChange={setIsOpen}>
+        <AlertDialog.Container>
+          <AlertDialog.Dialog className="sm:max-w-[420px]">
+            <AlertDialog.Header>
+              <AlertDialog.Icon status="warning" />
+              <AlertDialog.Heading>卸载 {plugin.name}？</AlertDialog.Heading>
+            </AlertDialog.Header>
+            <AlertDialog.Body>
+              <p>插件包含的技能将停止使用，已有授权也会一并移除。</p>
+            </AlertDialog.Body>
+            <AlertDialog.Footer>
+              <Button slot="close" variant="tertiary">
+                取消
+              </Button>
+              <Button
+                isDisabled={mutation.isPending}
+                variant="danger"
+                onPress={() => mutation.mutate()}
+              >
+                确认卸载
+              </Button>
+            </AlertDialog.Footer>
+          </AlertDialog.Dialog>
+        </AlertDialog.Container>
+      </AlertDialog.Backdrop>
+    </>
+  );
+}
+
+function PluginInstallAction({
+  plugin,
+  showInstalledStatus = false,
+}: {
+  plugin: SkillCollection;
+  showInstalledStatus?: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => installSkillCollection(plugin.id),
+    onError: (error: Error) => toast.danger(error.message),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: skillQueryKeys.collections() }),
+        queryClient.invalidateQueries({ queryKey: skillQueryKeys.lists() }),
+      ]);
+      toast.success(`${plugin.name} 已安装`);
+    },
+  });
+
+  if (plugin.isInstalled) {
+    return showInstalledStatus ? (
+      <PluginUninstallButton plugin={plugin} showInstalledStatus />
+    ) : (
+      <PluginUninstallButton plugin={plugin} />
+    );
+  }
+
   return (
     <Button
-      aria-label={`${plugin.isInstalled ? "卸载" : "安装"} ${plugin.name}`}
-      className={`group min-w-16 ${
-        plugin.isInstalled
-          ? "[--button-bg:var(--success-soft)] [--button-bg-hover:var(--danger-soft-hover)] [--button-bg-pressed:var(--danger-soft-hover)] [--button-fg:var(--success-soft-foreground)] hover:[--button-fg:var(--danger-soft-foreground)] focus-visible:[--button-bg:var(--danger-soft)] focus-visible:[--button-fg:var(--danger-soft-foreground)]"
-          : ""
-      }`}
+      isPending={mutation.isPending}
       size="sm"
-      variant="tertiary"
+      variant="secondary"
+      onPress={() => mutation.mutate()}
     >
-      {plugin.isInstalled ? (
-        <>
-          <span className="group-hover:hidden group-focus-visible:hidden">已安装</span>
-          <span className="hidden group-hover:inline group-focus-visible:inline">卸载</span>
-        </>
-      ) : (
-        "安装"
-      )}
+      安装
     </Button>
   );
 }
@@ -212,88 +308,152 @@ function PluginList({
   plugins,
   onSelect,
 }: {
-  plugins: readonly Plugin[];
+  plugins: readonly SkillCollection[];
   onSelect: (id: string) => void;
 }) {
   return (
     <ul className="flex flex-col gap-1">
-      {plugins.map((plugin) => {
-        const Icon = plugin.icon;
-
-        return (
-          <SettingsCatalogItem
-            action={<PluginInstallButton plugin={plugin} />}
-            ariaLabel={`查看 ${plugin.name} 插件详情`}
-            icon={<Icon aria-hidden className="size-5 text-muted" />}
-            key={plugin.id}
-            name={plugin.name}
-            secondary={<span className="min-w-0 flex-1 truncate">{plugin.description}</span>}
-            onPress={() => onSelect(plugin.id)}
-          />
-        );
-      })}
+      {plugins.map((plugin) => (
+        <SettingsCatalogItem
+          action={<PluginInstallAction plugin={plugin} showInstalledStatus />}
+          ariaLabel={`查看 ${plugin.name} 插件详情`}
+          icon={<PluginLogo logo={plugin.logo} size={20} />}
+          key={plugin.id}
+          name={plugin.name}
+          secondary={<span className="min-w-0 flex-1 truncate">{plugin.description}</span>}
+          onPress={() => onSelect(plugin.id)}
+        />
+      ))}
     </ul>
   );
 }
 
-function PluginDetail({ onBack, plugin }: { onBack: () => void; plugin: Plugin }) {
-  const Icon = plugin.icon;
+function PluginDetail({ onBack, plugin }: { onBack: () => void; plugin: SkillCollection }) {
+  const queryClient = useQueryClient();
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const updateMutation = useMutation<
+    void,
+    Error,
+    { isEnabled: boolean; skillId: string },
+    readonly SkillCollection[] | undefined
+  >({
+    mutationFn: ({ isEnabled, skillId }) =>
+      updateSkillCollectionSkill(plugin.id, skillId, isEnabled),
+    onError: (error, _variables, previousCollections) => {
+      queryClient.setQueryData(skillQueryKeys.collections(), previousCollections);
+      toast.danger(error.message);
+    },
+    onMutate: async ({ isEnabled, skillId }) => {
+      await queryClient.cancelQueries({ queryKey: skillQueryKeys.collections() });
+      const previousCollections = queryClient.getQueryData<readonly SkillCollection[]>(
+        skillQueryKeys.collections(),
+      );
+      queryClient.setQueryData<readonly SkillCollection[]>(
+        skillQueryKeys.collections(),
+        (collections) =>
+          collections?.map((collection) =>
+            collection.id === plugin.id
+              ? {
+                  ...collection,
+                  skills: collection.skills.map((skill) =>
+                    skill.id === skillId ? { ...skill, isEnabled } : skill,
+                  ),
+                }
+              : collection,
+          ),
+      );
+      return previousCollections;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: skillQueryKeys.lists() }),
+  });
+  const selectedSkill = plugin.skills.find((skill) => skill.id === selectedSkillId);
+
+  if (selectedSkill) {
+    return (
+      <PluginSkillDetail
+        isUpdating={
+          updateMutation.isPending && updateMutation.variables.skillId === selectedSkill.id
+        }
+        plugin={plugin}
+        skill={selectedSkill}
+        onBack={() => setSelectedSkillId(null)}
+        onEnabledChange={(isEnabled) =>
+          updateMutation.mutate({ isEnabled, skillId: selectedSkill.id })
+        }
+      />
+    );
+  }
 
   return (
     <SettingsCatalogDetail
-      action={<PluginInstallButton plugin={plugin} />}
+      action={<PluginInstallAction plugin={plugin} />}
       ariaLabel={`${plugin.name} 插件详情`}
       backLabel="返回插件市场"
       description={plugin.description}
-      icon={<Icon aria-hidden className="size-6 text-muted" />}
+      icon={<PluginLogo logo={plugin.logo} size={24} />}
       name={plugin.name}
       onBack={onBack}
     >
+      {plugin.isInstalled && plugin.type === "oauth" ? (
+        <PluginConnectionPanel plugin={plugin} />
+      ) : null}
       <div className="mt-8">
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-foreground">包含的技能</h3>
           <span className="text-sm tabular-nums text-muted">{plugin.skills.length}</span>
         </div>
-        <div className="mt-3 flex flex-col gap-2">
+        <ul className="mt-3 flex flex-col gap-1">
           {plugin.skills.map((skill) => {
-            const SkillIcon = skill.icon;
+            const isUpdating =
+              updateMutation.isPending && updateMutation.variables.skillId === skill.id;
 
             return (
-              <div
-                className="flex min-h-16 items-center gap-3 rounded-xl px-3 py-2.5"
+              <SettingsCatalogItem
+                action={
+                  plugin.isInstalled ? (
+                    <PluginSkillSwitch
+                      isDisabled={isUpdating}
+                      skill={skill}
+                      onChange={(isEnabled) =>
+                        updateMutation.mutate({ isEnabled, skillId: skill.id })
+                      }
+                    />
+                  ) : null
+                }
+                ariaLabel={`查看 ${skill.name} 技能详情`}
+                icon={<PluginLogo logo={plugin.logo} size={20} />}
                 key={skill.id}
-              >
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface-secondary">
-                  <SkillIcon aria-hidden className="size-4 text-muted" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">{skill.name}</p>
-                  <p className="mt-0.5 truncate text-sm text-muted">{skill.description}</p>
-                </div>
-                <Switch
-                  aria-label={`${skill.name} 可用状态`}
-                  defaultSelected={skill.isEnabled}
-                  size="sm"
-                >
-                  <Switch.Content>
-                    <Switch.Control>
-                      <Switch.Thumb />
-                    </Switch.Control>
-                  </Switch.Content>
-                </Switch>
-              </div>
+                name={skill.name}
+                secondary={<span className="min-w-0 flex-1 truncate">{skill.description}</span>}
+                onPress={() => setSelectedSkillId(skill.id)}
+              />
             );
           })}
-        </div>
+        </ul>
       </div>
     </SettingsCatalogDetail>
+  );
+}
+
+function PluginMarketplaceSkeleton() {
+  return (
+    <div aria-busy="true" className="mt-3 flex min-h-16 items-center gap-3 px-3 py-2">
+      <span className="sr-only">正在加载插件市场</span>
+      <Skeleton className="size-10 shrink-0 rounded-xl" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <Skeleton className="h-5 w-28 rounded-lg" />
+        <Skeleton className="h-4 w-full rounded-lg" />
+      </div>
+      <Skeleton className="h-8 w-20 rounded-xl" />
+    </div>
   );
 }
 
 export function PluginMarketplacePanel() {
   const [activeCategoryId, setActiveCategoryId] = useState<PluginCategoryId>("all");
   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
-  const selectedPlugin = PLUGINS.find((plugin) => plugin.id === selectedPluginId);
+  const pluginsQuery = useQuery(skillCollectionQueryOptions);
+  const selectedPlugin = pluginsQuery.data?.find((plugin) => plugin.id === selectedPluginId);
 
   if (selectedPlugin) {
     return <PluginDetail plugin={selectedPlugin} onBack={() => setSelectedPluginId(null)} />;
@@ -301,13 +461,13 @@ export function PluginMarketplacePanel() {
 
   const visiblePlugins =
     activeCategoryId === "all"
-      ? PLUGINS
-      : PLUGINS.filter((plugin) => plugin.category === activeCategoryId);
+      ? pluginsQuery.data
+      : pluginsQuery.data?.filter((plugin) => plugin.category === activeCategoryId);
 
   return (
     <section aria-label="插件市场" className="w-full max-w-[720px]">
       <SettingsPanelHeader
-        description="发现并安装插件，让 Agent 安全地连接常用工具和外部服务。"
+        description="发现并连接 Skill 集合，让 Agent 安全地使用外部服务。"
         title="插件市场"
       />
 
@@ -319,10 +479,7 @@ export function PluginMarketplacePanel() {
         selectionMode="single"
         onSelectionChange={(keys) => {
           const [key] = keys;
-
-          if (typeof key === "string") {
-            setActiveCategoryId(key as PluginCategoryId);
-          }
+          if (typeof key === "string") setActiveCategoryId(key as PluginCategoryId);
         }}
       >
         {PLUGIN_CATEGORIES.map((category) => (
@@ -336,9 +493,23 @@ export function PluginMarketplacePanel() {
         ))}
       </ToggleButtonGroup>
 
-      <div className="mt-3">
-        <PluginList plugins={visiblePlugins} onSelect={setSelectedPluginId} />
-      </div>
+      {pluginsQuery.isPending ? (
+        <PluginMarketplaceSkeleton />
+      ) : pluginsQuery.isError ? (
+        <Alert className="mt-3 bg-danger-soft" role="alert" status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>插件市场加载失败</Alert.Title>
+            <Alert.Description>{pluginsQuery.error.message}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : visiblePlugins?.length ? (
+        <div className="mt-3">
+          <PluginList plugins={visiblePlugins} onSelect={setSelectedPluginId} />
+        </div>
+      ) : (
+        <p className="py-8 text-center text-sm text-muted">当前分类暂无插件</p>
+      )}
     </section>
   );
 }

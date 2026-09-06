@@ -18,24 +18,23 @@ import {
 import { formatTraceDuration } from "../utils/format-trace-duration";
 
 const TIMELINE_LANES = [AgentTraceLane.INPUT, AgentTraceLane.MODEL, AgentTraceLane.TOOLS] as const;
-const MINIMUM_RANGE_MS = 240;
 const TRACE_RECORD_TOOLTIP_DELAY_MS = 1_000;
 
 interface TraceTurnStart {
-  startMs: number;
+  index: number;
   turn: number;
 }
 
 interface TraceTimelineConnection {
   id: string;
-  timeMs: number;
+  index: number;
 }
 
 interface TraceTimelineRecordProps {
+  index: number;
   isSelected: boolean;
   record: AgentTraceRecord;
-  timelineDurationMs: number;
-  visualDurationMs: number;
+  recordCount: number;
   onSelect: (record: AgentTraceRecord) => void;
 }
 
@@ -43,50 +42,32 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
 }
 
-function normalizeRange(startMs: number, endMs: number, durationMs: number): AgentTraceRange {
-  const rangeStart = Math.min(startMs, endMs);
-  const rangeEnd = Math.max(startMs, endMs);
-
-  if (rangeEnd - rangeStart >= MINIMUM_RANGE_MS) {
-    return { endMs: rangeEnd, startMs: rangeStart };
-  }
-
-  const center = (rangeStart + rangeEnd) / 2;
-  const expandedStart = clamp(center - MINIMUM_RANGE_MS / 2, 0, durationMs);
-  const expandedEnd = clamp(expandedStart + MINIMUM_RANGE_MS, 0, durationMs);
-
+function normalizeRange(startIndex: number, endIndex: number): AgentTraceRange {
   return {
-    endMs: expandedEnd,
-    startMs: Math.max(0, expandedEnd - MINIMUM_RANGE_MS),
+    endIndex: Math.max(startIndex, endIndex),
+    startIndex: Math.min(startIndex, endIndex),
   };
 }
 
 function getTraceTurnStarts(records: readonly AgentTraceRecord[]): TraceTurnStart[] {
-  const startMsByTurn = new Map<number, number>();
+  const indexByTurn = new Map<number, number>();
 
-  for (const record of records) {
-    if (record.turn <= 0) continue;
-
-    const currentStartMs = startMsByTurn.get(record.turn);
-    if (currentStartMs === undefined || record.startMs < currentStartMs) {
-      startMsByTurn.set(record.turn, record.startMs);
-    }
+  for (const [index, record] of records.entries()) {
+    if (record.turn > 0 && !indexByTurn.has(record.turn)) indexByTurn.set(record.turn, index);
   }
 
-  return Array.from(startMsByTurn, ([turn, startMs]) => ({ startMs, turn })).sort(
-    (left, right) => left.startMs - right.startMs,
-  );
+  return Array.from(indexByTurn, ([turn, index]) => ({ index, turn }));
 }
 
 function getApprovalToolConnections(
   records: readonly AgentTraceRecord[],
 ): TraceTimelineConnection[] {
-  const toolsByCallId = new Map<string, AgentTraceRecord>();
+  const toolsByCallId = new Map<string, { index: number; record: AgentTraceRecord }>();
 
-  for (const record of records) {
+  for (const [index, record] of records.entries()) {
     if (record.kind !== AgentTraceRecordKind.TOOL) continue;
     const toolCallId = record.raw.toolCallId;
-    if (typeof toolCallId === "string") toolsByCallId.set(toolCallId, record);
+    if (typeof toolCallId === "string") toolsByCallId.set(toolCallId, { index, record });
   }
 
   return records.flatMap((record) => {
@@ -94,44 +75,18 @@ function getApprovalToolConnections(
     const toolCallId = record.raw.toolCallId;
     if (typeof toolCallId !== "string") return [];
     const tool = toolsByCallId.get(toolCallId);
-    const timeMs = record.startMs + record.durationMs;
-    return tool?.startMs === timeMs ? [{ id: `${record.id}:${tool.id}`, timeMs }] : [];
+    const handoffTimeMs = record.startMs + record.durationMs;
+    return tool?.record.startMs === handoffTimeMs
+      ? [{ id: `${record.id}:${tool.record.id}`, index: tool.index }]
+      : [];
   });
 }
 
-function getTraceRecordVisualDurations(
-  records: readonly AgentTraceRecord[],
-): ReadonlyMap<string, number> {
-  const durations = new Map<string, number>();
-  let currentStartMs: number | undefined;
-  let nextStartMs: number | undefined;
-
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const record = records[index];
-    if (!record) continue;
-
-    if (record.startMs !== currentStartMs) {
-      nextStartMs = currentStartMs;
-      currentStartMs = record.startMs;
-    }
-
-    const gapDurationMs = nextStartMs === undefined ? 0 : nextStartMs - record.startMs;
-    const isUnexecutedTool =
-      record.kind === AgentTraceRecordKind.TOOL && typeof record.raw.startedAt !== "number";
-    durations.set(
-      record.id,
-      isUnexecutedTool ? record.durationMs : Math.max(record.durationMs, gapDurationMs),
-    );
-  }
-
-  return durations;
-}
-
 function TraceTimelineRecord({
+  index,
   isSelected,
   record,
-  timelineDurationMs,
-  visualDurationMs,
+  recordCount,
   onSelect,
 }: TraceTimelineRecordProps) {
   const endMs = record.startMs + record.durationMs;
@@ -150,8 +105,8 @@ function TraceTimelineRecord({
         className={`group absolute inset-y-0 cursor-[var(--cursor-interactive)] ${isSelected ? "z-40" : "hover:z-40"}`}
         data-trace-timeline-record
         style={{
-          left: `${(record.startMs / timelineDurationMs) * 100}%`,
-          width: `${Math.max((visualDurationMs / timelineDurationMs) * 100, 0.7)}%`,
+          left: `${(index / recordCount) * 100}%`,
+          width: `${100 / recordCount}%`,
         }}
         onClick={() => onSelect(record)}
         onKeyDown={handleKeyDown}
@@ -184,7 +139,6 @@ function TraceTimelineRecord({
 }
 
 export interface TraceTimelineProps {
-  durationMs: number;
   range: AgentTraceRange | null;
   records: readonly AgentTraceRecord[];
   selectedRecordId: string | null;
@@ -193,7 +147,6 @@ export interface TraceTimelineProps {
 }
 
 export const TraceTimeline = memo(function TraceTimeline({
-  durationMs,
   range,
   records,
   selectedRecordId,
@@ -209,21 +162,19 @@ export const TraceTimeline = memo(function TraceTimeline({
     const indicator = selectionIndicatorRef.current;
     if (!indicator) return;
 
-    if (!nextRange) {
+    if (!nextRange || records.length === 0) {
       indicator.style.opacity = "0";
       return;
     }
 
-    const startMs = Math.min(nextRange.startMs, nextRange.endMs);
-    const endMs = Math.max(nextRange.startMs, nextRange.endMs);
-    indicator.style.left = `${(startMs / durationMs) * 100}%`;
-    indicator.style.width = `${((endMs - startMs) / durationMs) * 100}%`;
+    indicator.style.left = `${(nextRange.startIndex / records.length) * 100}%`;
+    indicator.style.width = `${((nextRange.endIndex - nextRange.startIndex + 1) / records.length) * 100}%`;
     indicator.style.opacity = "1";
   };
 
   useEffect(() => {
     updateSelectionIndicator(range);
-  }, [durationMs, range]);
+  }, [range, records.length]);
 
   useEffect(() => {
     if (range === null) return;
@@ -241,17 +192,21 @@ export const TraceTimeline = memo(function TraceTimeline({
     return () => document.removeEventListener("pointerdown", handleOutsidePointerDown, true);
   }, [onRangeChange, range]);
 
-  const resolveTime = (event: ReactPointerEvent<HTMLElement>): number => {
+  const resolveIndex = (event: ReactPointerEvent<HTMLElement>): number => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const ratio = clamp((event.clientX - bounds.left) / bounds.width, 0, 1);
-    return ratio * durationMs;
+    return clamp(Math.floor(ratio * records.length), 0, records.length - 1);
   };
 
   const updateHoverIndicator = (event: ReactPointerEvent<HTMLElement>) => {
     const indicator = hoverIndicatorRef.current;
     if (!indicator) return;
+    if (records.length === 0) {
+      indicator.style.opacity = "0";
+      return;
+    }
 
-    indicator.style.left = `${(resolveTime(event) / durationMs) * 100}%`;
+    indicator.style.left = `${((resolveIndex(event) + 0.5) / records.length) * 100}%`;
     indicator.style.opacity = "1";
   };
 
@@ -265,27 +220,27 @@ export const TraceTimeline = memo(function TraceTimeline({
       return;
     }
 
-    const startMs = resolveTime(event);
-    dragStartRef.current = startMs;
+    const startIndex = resolveIndex(event);
+    if (startIndex < 0) return;
+    dragStartRef.current = startIndex;
     event.currentTarget.setPointerCapture(event.pointerId);
-    updateSelectionIndicator({ endMs: startMs, startMs });
+    updateSelectionIndicator({ endIndex: startIndex, startIndex });
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
-    const currentTimeMs = resolveTime(event);
     updateHoverIndicator(event);
 
     if (dragStartRef.current !== null) {
-      updateSelectionIndicator(normalizeRange(dragStartRef.current, currentTimeMs, durationMs));
+      updateSelectionIndicator(normalizeRange(dragStartRef.current, resolveIndex(event)));
     }
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLElement>) => {
-    const startMs = dragStartRef.current;
-    if (startMs === null) return;
+    const startIndex = dragStartRef.current;
+    if (startIndex === null) return;
 
     dragStartRef.current = null;
-    const nextRange = normalizeRange(startMs, resolveTime(event), durationMs);
+    const nextRange = normalizeRange(startIndex, resolveIndex(event));
     updateSelectionIndicator(nextRange);
     onRangeChange(nextRange);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -299,15 +254,12 @@ export const TraceTimeline = memo(function TraceTimeline({
     onSelectRecord(record);
   };
 
-  const selectionStart = range ? Math.min(range.startMs, range.endMs) : null;
-  const selectionEnd = range ? Math.max(range.startMs, range.endMs) : null;
   const turnStarts = getTraceTurnStarts(records);
   const approvalToolConnections = getApprovalToolConnections(records);
-  const visualDurations = getTraceRecordVisualDurations(records);
   const timelineLabel =
-    selectionStart !== null && selectionEnd !== null
-      ? `Agent 时间轴，已选择 ${formatTraceDuration(selectionStart)} 到 ${formatTraceDuration(selectionEnd)}`
-      : "Agent 时间轴，当前显示全部轨迹";
+    range !== null
+      ? `Agent 事件轨迹，已选择第 ${range.startIndex + 1} 到第 ${range.endIndex + 1} 个事件`
+      : "Agent 事件轨迹，当前显示全部记录";
 
   return (
     <div className="relative grid h-[50px] grid-cols-[40px_minmax(0,1fr)] items-center border-b border-separator bg-background">
@@ -336,37 +288,36 @@ export const TraceTimeline = memo(function TraceTimeline({
             aria-hidden
             className="pointer-events-none absolute top-1 bottom-1 z-10 w-px bg-warning/60"
             key={connection.id}
-            style={{ left: `${(connection.timeMs / durationMs) * 100}%` }}
+            style={{ left: `${(connection.index / records.length) * 100}%` }}
           />
         ))}
         {TIMELINE_LANES.map((lane) => (
           <div className="relative h-2" key={lane}>
-            {records
-              .filter((record) => record.lane === lane)
-              .map((record) => {
-                const isSelected = record.id === selectedRecordId;
+            {records.map((record, index) => {
+              if (record.lane !== lane) return null;
+              const isSelected = record.id === selectedRecordId;
 
-                return (
-                  <TraceTimelineRecord
-                    isSelected={isSelected}
-                    key={record.id}
-                    record={record}
-                    timelineDurationMs={durationMs}
-                    visualDurationMs={visualDurations.get(record.id) ?? record.durationMs}
-                    onSelect={handleRecordSelect}
-                  />
-                );
-              })}
+              return (
+                <TraceTimelineRecord
+                  index={index}
+                  isSelected={isSelected}
+                  key={record.id}
+                  record={record}
+                  recordCount={records.length}
+                  onSelect={handleRecordSelect}
+                />
+              );
+            })}
           </div>
         ))}
       </section>
       <div className="pointer-events-none absolute inset-y-0 right-0 left-10 z-20">
-        {turnStarts.map(({ startMs, turn }) => (
+        {turnStarts.map(({ index, turn }) => (
           <span
             aria-hidden
             className="absolute inset-y-0 w-px bg-separator"
             key={turn}
-            style={{ left: `${(startMs / durationMs) * 100}%` }}
+            style={{ left: `${(index / records.length) * 100}%` }}
             title={`Turn ${turn}`}
           />
         ))}

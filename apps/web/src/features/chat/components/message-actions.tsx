@@ -55,7 +55,6 @@ export function MessageActions({
       ) : null}
       {variant === "full" ? (
         <>
-          <ChatMessageActions.Regenerate aria-label="重新生成" tooltip="重新生成" />
           <ChatMessageActions.ThumbsUp aria-label="有帮助" tooltip="有帮助" />
           <ChatMessageActions.ThumbsDown aria-label="没有帮助" tooltip="没有帮助" />
         </>

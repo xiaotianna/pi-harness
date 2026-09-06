@@ -7,6 +7,7 @@ import type { Readable } from "node:stream";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
+import type { WorkspaceToolContext } from "../lib/tool-context.js";
 import { parseDocumentText } from "../utils/document-text.js";
 
 const DEFAULT_CHARACTER_LIMIT = 30_000;
@@ -86,6 +87,11 @@ interface WebResponse {
   statusCode: number;
 }
 
+interface SkillGatewayAccess {
+  origin: string;
+  token: string;
+}
+
 function parseWebUrl(value: string): URL {
   let url: URL;
   try {
@@ -155,15 +161,22 @@ async function readResponseBody(
 async function requestPage(
   url: URL,
   signal?: AbortSignal,
+  gateway?: SkillGatewayAccess,
 ): Promise<{
   body: Buffer;
   headers: Record<string, unknown>;
   location?: string;
   statusCode: number;
 }> {
-  const resolved = await resolvePublicAddress(url);
-  const pinnedLookup: LookupFunction = (_hostname, options, callback) =>
-    options.all ? callback(null, [resolved]) : callback(null, resolved.address, resolved.family);
+  const isGatewayRequest =
+    gateway !== undefined &&
+    url.origin === gateway.origin &&
+    url.pathname.startsWith("/api/skill-gateway/");
+  const resolved = isGatewayRequest ? null : await resolvePublicAddress(url);
+  const pinnedLookup: LookupFunction | undefined = resolved
+    ? (_hostname, options, callback) =>
+        options.all ? callback(null, [resolved]) : callback(null, resolved.address, resolved.family)
+    : undefined;
   const requester = url.protocol === "https:" ? httpsRequest : httpRequest;
   const response = await new Promise<Parameters<typeof readResponseBody>[0]>((resolve, reject) => {
     const request = requester(
@@ -174,8 +187,9 @@ async function requestPage(
             "text/html,application/xhtml+xml,application/json,application/pdf,text/plain,text/markdown,application/xml;q=0.9,*/*;q=0.1",
           "accept-encoding": "br, gzip, deflate",
           "user-agent": "PI-Harness/1.0 (+local agent web fetch)",
+          ...(isGatewayRequest ? { "x-pi-harness-skill-gateway": gateway?.token ?? "" } : {}),
         },
-        lookup: pinnedLookup,
+        ...(pinnedLookup === undefined ? {} : { lookup: pinnedLookup }),
         ...(signal === undefined ? {} : { signal }),
       },
       resolve,
@@ -203,11 +217,15 @@ async function requestPage(
   return { body: await readResponseBody(response), headers, statusCode };
 }
 
-async function fetchWebResponse(url: URL, signal?: AbortSignal): Promise<WebResponse> {
+async function fetchWebResponse(
+  url: URL,
+  signal?: AbortSignal,
+  gateway?: SkillGatewayAccess,
+): Promise<WebResponse> {
   let currentUrl = url;
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
     signal?.throwIfAborted();
-    const response = await requestPage(currentUrl, signal);
+    const response = await requestPage(currentUrl, signal, gateway);
     if (response.location === undefined) {
       const rawContentType = response.headers["content-type"];
       return {
@@ -311,7 +329,13 @@ async function extractWebContent(
   };
 }
 
-export function createWebFetchTool(): AgentTool<typeof WebFetchParameters, WebFetchDetails> {
+export function createWebFetchTool(
+  context?: Pick<WorkspaceToolContext, "skillGatewayToken" | "skillGatewayUrl">,
+): AgentTool<typeof WebFetchParameters, WebFetchDetails> {
+  const gateway =
+    context?.skillGatewayToken && context.skillGatewayUrl
+      ? { origin: new URL(context.skillGatewayUrl).origin, token: context.skillGatewayToken }
+      : undefined;
   return {
     name: "web_fetch",
     label: "Web fetch",
@@ -328,7 +352,7 @@ export function createWebFetchTool(): AgentTool<typeof WebFetchParameters, WebFe
         });
 
       update("connecting", "正在连接网页…");
-      const response = await fetchWebResponse(requestedUrl, signal);
+      const response = await fetchWebResponse(requestedUrl, signal, gateway);
       update("downloading", "网页已响应，正在读取内容…");
       update("parsing", "正在提取网页正文…");
       const extracted = await extractWebContent(response, signal);

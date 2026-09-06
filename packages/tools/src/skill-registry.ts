@@ -5,21 +5,28 @@ import { isPlainObject } from "es-toolkit";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { parse, stringify } from "yaml";
-import { findSystemSkill, SYSTEM_SKILL_SCOPE, SYSTEM_SKILLS } from "./skills/system-skills.js";
+import { skillCreatorSystemSkill } from "./skills/skill-creator.js";
+import { skillInstallerSystemSkill } from "./skills/skill-installer.js";
+import {
+  type SkillDefinition,
+  SkillScope,
+  SkillType,
+  type SkillType as SkillTypeValue,
+} from "./skills/types.js";
 
 const MAX_SKILL_BYTES = 128 * 1024;
 const MAX_RESOURCE_BYTES = 1024 * 1024;
 const MAX_RESOURCES = 200;
 const SKILL_NAME_PATTERN = "^[a-z0-9]+(?:-[a-z0-9]+)*$";
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+const SYSTEM_SKILLS = [skillCreatorSystemSkill, skillInstallerSystemSkill];
 
-export const SkillScope = {
-  GLOBAL: "global",
-  PROJECT: "project",
-  SYSTEM: SYSTEM_SKILL_SCOPE,
-} as const;
+function findSystemSkill(name: string) {
+  return SYSTEM_SKILLS.find((skill) => skill.name === name);
+}
 
-export type SkillScope = (typeof SkillScope)[keyof typeof SkillScope];
+export { SkillScope };
+export type SkillScopeValue = SkillScope;
 export type WritableSkillScope = typeof SkillScope.GLOBAL | typeof SkillScope.PROJECT;
 
 const SkillFrontmatterSchema = Type.Object(
@@ -31,6 +38,7 @@ const SkillFrontmatterSchema = Type.Object(
     license: Type.Optional(Type.String({ minLength: 1 })),
     metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
     name: Type.String({ maxLength: 64, minLength: 1, pattern: SKILL_NAME_PATTERN }),
+    type: Type.Optional(Type.Union([Type.Literal(SkillType.NONE), Type.Literal(SkillType.OAUTH)])),
   },
   { additionalProperties: false },
 );
@@ -38,10 +46,12 @@ const SkillFrontmatterSchema = Type.Object(
 type SkillFrontmatter = Static<typeof SkillFrontmatterSchema>;
 
 export interface SkillSummary {
+  collectionId: string | null;
   description: string;
   id: string;
   name: string;
   scope: SkillScope;
+  type: SkillTypeValue;
 }
 
 export interface SkillListItem extends SkillSummary {
@@ -80,8 +90,10 @@ interface FileSkillRecord extends SkillRecord {
 }
 
 export interface SkillRegistryContext {
+  getRegisteredGlobalSkills?: () => readonly SkillDefinition[];
   globalRoot: string;
   isSkillEnabled?: (directory: string) => boolean;
+  skillGatewayUrl?: string;
   workspaceRoot: string;
 }
 
@@ -130,6 +142,24 @@ async function readBoundedText(path: string, maxBytes: number): Promise<string> 
 
 function skillId(scope: SkillScope, name: string): string {
   return `${scope}:${name}`;
+}
+
+function toDefinitionRecord(
+  skill: SkillDefinition,
+  skillGatewayUrl: string | undefined,
+): SkillRecord {
+  return {
+    collectionId: skill.collectionId ?? null,
+    description: skill.description,
+    directory: null,
+    id: skill.id,
+    instructions: skill.instructions.replaceAll("{skillGatewayUrl}", skillGatewayUrl ?? ""),
+    name: skill.name,
+    resources: [],
+    resourcesTruncated: false,
+    scope: skill.scope,
+    type: skill.type ?? SkillType.NONE,
+  };
 }
 
 function toSummary({
@@ -258,15 +288,17 @@ export class SkillRegistry {
       if (currentScope === SkillScope.SYSTEM) {
         for (const skill of SYSTEM_SKILLS) {
           if (registeredNames.has(skill.name)) continue;
-          records.push({
-            ...skill,
-            directory: null,
-            resources: [],
-            resourcesTruncated: false,
-          });
+          records.push(toDefinitionRecord(skill, this.context.skillGatewayUrl));
           registeredNames.add(skill.name);
         }
         continue;
+      }
+      if (currentScope === SkillScope.GLOBAL) {
+        for (const skill of this.context.getRegisteredGlobalSkills?.() ?? []) {
+          if (registeredNames.has(skill.name)) continue;
+          records.push(toDefinitionRecord(skill, this.context.skillGatewayUrl));
+          registeredNames.add(skill.name);
+        }
       }
       const root = await this.resolveRoot(currentScope, false);
       if (root === null) continue;
@@ -299,14 +331,17 @@ export class SkillRegistry {
       if (currentScope === SkillScope.SYSTEM) {
         const systemSkill = findSystemSkill(name);
         if (systemSkill) {
-          return {
-            ...systemSkill,
-            directory: null,
-            resources: [],
-            resourcesTruncated: false,
-          };
+          return toDefinitionRecord(systemSkill, this.context.skillGatewayUrl);
         }
         continue;
+      }
+      if (currentScope === SkillScope.GLOBAL) {
+        const registeredSkill = this.context
+          .getRegisteredGlobalSkills?.()
+          .find((skill) => skill.name === name);
+        if (registeredSkill) {
+          return toDefinitionRecord(registeredSkill, this.context.skillGatewayUrl);
+        }
       }
       const root = await this.resolveRoot(currentScope, false);
       if (root === null) continue;
@@ -353,6 +388,7 @@ export class SkillRegistry {
     }
     resources.sort((left, right) => left.localeCompare(right));
     return {
+      collectionId: null,
       description: frontmatter.description,
       directory,
       id: skillId(scope, name),
@@ -361,6 +397,7 @@ export class SkillRegistry {
       resources,
       resourcesTruncated,
       scope,
+      type: frontmatter.type ?? SkillType.NONE,
     };
   }
 

@@ -1,0 +1,26 @@
+id: github
+displayName: GitHub
+apiUrl: http://127.0.0.1:4001
+description: Search repositories, review pull requests, manage issues, and diagnose Actions.
+category: developer
+type: oauth
+oauth:
+  authorizationPath: /login/oauth/authorize
+  tokenPath: /login/oauth/access_token
+  scopes: [repo, user]
+  profile:
+    source: userinfo
+    path: /user
+    idField: id
+    usernameField: login
+    displayNameField: name
+    avatarUrlField: avatar_url
+skills:
+  - id: github-repository-search
+    displayName: 仓库检索
+  - id: github-pull-request-review
+    displayName: Pull Request 审查
+  - id: github-issue-management
+    displayName: Issue 管理
+  - id: github-actions-diagnostics
+    displayName: Actions 诊断

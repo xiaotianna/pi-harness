@@ -4,6 +4,7 @@ import type { CommandPrefixRule } from "@pi-harness/policy";
 import {
   createWorkspaceToolRegistry,
   type PlanUpdatedData,
+  type SkillDefinition,
   type TodoUpdatedData,
 } from "@pi-harness/tools";
 import { loadWorkspaceAgentContext } from "./context/workspace-agent-context.js";
@@ -56,6 +57,9 @@ export class AgentManager {
     private readonly protectedPaths: readonly string[] = [],
     private readonly globalRoot: string,
     private readonly webSearchUrl: string,
+    private readonly skillGatewayUrl: string,
+    private readonly skillGatewayToken: string,
+    private readonly getRegisteredGlobalSkills: () => readonly SkillDefinition[] = () => [],
     private readonly isSkillEnabled: (directory: string) => boolean = () => true,
     private readonly getAllowedCommandPrefixes: () => readonly CommandPrefixRule[] = () => [],
   ) {}
@@ -71,6 +75,7 @@ export class AgentManager {
 
   public async startRun(input: StartSessionRunInput): Promise<void> {
     const workspaceContext = await loadWorkspaceAgentContext({
+      getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
       globalRoot: this.globalRoot,
       isSkillEnabled: this.isSkillEnabled,
       workspaceRoot: input.workspaceRoot,
@@ -160,6 +165,7 @@ export class AgentManager {
     };
     let runtime: RunCoordinator | null = null;
     const toolRegistry = createWorkspaceToolRegistry({
+      getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
       globalRoot: this.globalRoot,
       isSkillEnabled: this.isSkillEnabled,
       onPlanUpdated: (data) => {
@@ -187,6 +193,8 @@ export class AgentManager {
         return runtime.resetWorkingState(reason);
       },
       protectedPaths: this.protectedPaths,
+      skillGatewayToken: this.skillGatewayToken,
+      skillGatewayUrl: this.skillGatewayUrl,
       webSearchUrl: this.webSearchUrl,
       supportsImageInput: () => toolCapabilities.supportsImageInput,
       workspaceRoot: input.workspaceRoot,

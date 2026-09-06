@@ -52,7 +52,7 @@ export function NewChatPage() {
   });
 
   return (
-    <div className="flex h-[calc(100svh-var(--chat-navbar-height,56px))] flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col justify-center px-4 pb-32">
           <div className="mb-4 flex flex-col gap-1">

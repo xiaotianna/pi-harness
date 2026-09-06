@@ -16,6 +16,7 @@ const EnvironmentSchema = Type.Object({
   PI_HARNESS_HOST: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_LOG_LEVEL: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_PORT: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_GATEWAY_URL: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_WEB_SEARCH_URL: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_WEB_URL: Type.Optional(Type.String({ minLength: 1 })),
 });
@@ -39,6 +40,8 @@ export interface HarnessConfig {
   port: number;
   webSearchUrl: string;
   sessionsPath: string;
+  skillCredentialsPath: string;
+  skillGatewayUrl: string;
   webUrl: string;
 }
 
@@ -58,7 +61,10 @@ function parsePort(value: string | undefined): number {
 function parseLoopbackUrl(name: string, value: string): string {
   const url = new URL(value);
   const isLoopback =
-    url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]";
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "localhost" ||
+    url.hostname.endsWith(".localhost") ||
+    url.hostname === "[::1]";
 
   // daemon 仅供本机访问。拒绝非回环地址，避免误配置远程绑定后，
   // OAuth 回调和本地凭据意外暴露为网络服务。
@@ -99,6 +105,10 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
 
   const env = input as HarnessEnvironment;
   const port = parsePort(env.PI_HARNESS_PORT);
+  const skillGatewayUrl = parseLoopbackUrl(
+    "PI_HARNESS_SKILL_GATEWAY_URL",
+    env.PI_HARNESS_SKILL_GATEWAY_URL ?? `http://127.0.0.1:${port}`,
+  );
 
   const databasePath =
     env.PI_HARNESS_DATABASE_PATH ?? join(homedir(), ".pi-harness", "harness.sqlite");
@@ -118,6 +128,8 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
       env.PI_HARNESS_WEB_SEARCH_URL ?? DEFAULT_WEB_SEARCH_URL,
     ),
     sessionsPath: join(globalRoot, "sessions"),
+    skillCredentialsPath: join(globalRoot, "skill-credentials.json"),
+    skillGatewayUrl,
     webUrl: parseLoopbackUrl("PI_HARNESS_WEB_URL", env.PI_HARNESS_WEB_URL ?? DEFAULT_WEB_URL),
   };
 }
