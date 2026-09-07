@@ -1,0 +1,12 @@
+id: spreadsheets
+displayName: Spreadsheets
+apiUrl: https://localhost.invalid
+description: Create and edit spreadsheets.
+category: productivity
+type: none
+gateway:
+  allowedPaths:
+    - '^/$'
+skills:
+  - id: spreadsheets
+    displayName: Spreadsheets

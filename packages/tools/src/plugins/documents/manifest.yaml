@@ -1,0 +1,12 @@
+id: documents
+displayName: Documents
+apiUrl: https://localhost.invalid
+description: Create and edit documents.
+category: productivity
+type: none
+gateway:
+  allowedPaths:
+    - '^/$'
+skills:
+  - id: documents
+    displayName: Documents

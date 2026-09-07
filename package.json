@@ -9,15 +9,13 @@
     "pnpm": ">=10.0.0"
   },
   "scripts": {
+    "env:encrypt": "node scripts/env-crypt.mjs encrypt",
+    "env:decrypt": "node scripts/env-crypt.mjs decrypt",
+    "env:check": "node scripts/env-crypt.mjs check",
     "dev": "pnpm --parallel --filter @pi-harness/daemon --filter @pi-harness/web dev",
     "dev:daemon": "pnpm --filter @pi-harness/daemon dev",
     "dev:oauth": "emulate --seed emulate.config.yaml",
     "dev:web": "pnpm --filter @pi-harness/web dev",
-    "env:check": "node scripts/env-crypto.mjs check",
-    "env:decrypt": "node scripts/env-crypto.mjs decrypt",
-    "env:encrypt": "node scripts/env-crypto.mjs encrypt",
-    "env:key:copy": "node scripts/env-crypto.mjs copy-key",
-    "env:key:store": "node scripts/env-crypto.mjs store-key",
     "eval:context": "pnpm --filter @pi-harness/evals eval:context",
     "eval:context:live": "pnpm --filter @pi-harness/evals eval:context:live",
     "dev:docker": "docker compose -f docker-compose.dev.yml up -d",

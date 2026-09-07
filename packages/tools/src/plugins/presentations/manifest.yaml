@@ -1,0 +1,12 @@
+id: presentations
+displayName: Presentations
+apiUrl: https://localhost.invalid
+description: Create and edit presentations.
+category: productivity
+type: none
+gateway:
+  allowedPaths:
+    - '^/$'
+skills:
+  - id: presentations
+    displayName: Presentations

@@ -2,7 +2,18 @@ import { type SkillDefinition, SkillScope } from "../skills/types.js";
 import { loadPlugin } from "./load-plugin.js";
 import type { PluginDefinition } from "./types.js";
 
-const BUILT_IN_PLUGIN_IDS = ["vercel", "github", "google", "gmail", "notion", "supabase"] as const;
+const BUILT_IN_PLUGIN_IDS = [
+  "vercel",
+  "github",
+  "google",
+  "gmail",
+  "notion",
+  "supabase",
+  "documents",
+  "pdf",
+  "spreadsheets",
+  "presentations",
+] as const;
 
 export const AVAILABLE_PLUGINS: readonly PluginDefinition[] = BUILT_IN_PLUGIN_IDS.map(loadPlugin);
 

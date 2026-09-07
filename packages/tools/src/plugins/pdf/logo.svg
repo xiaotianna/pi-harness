@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs><linearGradient id="a" x1="5" y1="4" x2="27" y2="28" gradientUnits="userSpaceOnUse"><stop stop-color="#FF6A72"/><stop offset="1" stop-color="#E52E45"/></linearGradient></defs>
+  <rect x="3" y="2" width="26" height="28" rx="6" fill="url(#a)"/>
+  <path d="M10 7h8l5 5v13H10V7Z" fill="white" fill-opacity=".96"/>
+  <path d="M18 7v5h5" fill="#FFD4D8"/>
+  <text x="16.5" y="21.5" fill="#DB2940" font-family="Arial, sans-serif" font-size="6" font-weight="700" text-anchor="middle">PDF</text>
+</svg>

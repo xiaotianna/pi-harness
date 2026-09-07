@@ -1,0 +1,12 @@
+id: pdf
+displayName: PDF
+apiUrl: https://localhost.invalid
+description: Read, create, and verify PDFs.
+category: productivity
+type: none
+gateway:
+  allowedPaths:
+    - '^/$'
+skills:
+  - id: pdf
+    displayName: PDF
