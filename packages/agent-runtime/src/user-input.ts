@@ -91,6 +91,7 @@ export interface HarnessUserAttachment {
 }
 
 export interface HarnessUserMessage extends UserMessage {
+  activatedSkills?: readonly { id: string; contentIndex: number }[];
   // 保留发送时的模式，用于消息回显和编辑重发。
   mode?: RunMode;
   // 本次上传附件的元数据
@@ -145,8 +146,8 @@ export function rewriteHarnessUserMessage(
     content:
       typeof message.content === "string"
         ? rewriteText(message.content)
-        : message.content.map((part) =>
-            part.type === "text" ? { ...part, text: rewriteText(part.text) } : part,
+        : message.content.map((part, index) =>
+            part.type === "text" && index === 0 ? { ...part, text: rewriteText(part.text) } : part,
           ),
     displayText: prompt,
     timestamp: Date.now(),

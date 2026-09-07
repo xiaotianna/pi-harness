@@ -4,7 +4,7 @@ import { type ToolRegistration, ToolRegistry } from "./lib/tool-registry.js";
 import { SkillRegistry } from "./skill-registry.js";
 import { createFindSkillTool } from "./skills/find-skill.js";
 import { createGetSkillTool } from "./skills/get-skill.js";
-import { createLoadSkillTool } from "./skills/load-skill.js";
+import { createLoadSkillPolicy, createLoadSkillTool } from "./skills/load-skill.js";
 import { createSkillCreatorTool, skillCreatorToolPolicy } from "./skills/skill-creator.js";
 import {
   createResetWorkingStateTool,
@@ -31,9 +31,11 @@ const DEFAULT_TOOL_TIMEOUT_MS = 30_000;
 const DOCUMENT_TOOL_TIMEOUT_MS = 60_000;
 const RUN_COMMAND_TIMEOUT_MS = 610_000;
 
-export function createWorkspaceToolRegistry(context: WorkspaceToolContext): ToolRegistry {
+export function createWorkspaceToolRegistry(
+  context: WorkspaceToolContext,
+  skillRegistry = new SkillRegistry(context),
+): ToolRegistry {
   const readOnlyPolicy = { permission: ToolPermission.READ_ONLY } as const;
-  const skillRegistry = new SkillRegistry(context);
   const builtInTools: ToolRegistration[] = [
     {
       policy: readOnlyPolicy,
@@ -126,10 +128,10 @@ export function createWorkspaceToolRegistry(context: WorkspaceToolContext): Tool
       tool: createGetSkillTool(skillRegistry),
     },
     {
-      policy: readOnlyPolicy,
+      policy: createLoadSkillPolicy(skillRegistry),
       source: BUILT_IN_SOURCE,
       timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
-      tool: createLoadSkillTool(skillRegistry),
+      tool: createLoadSkillTool(skillRegistry, context.supportsImageInput),
     },
     {
       policy: skillCreatorToolPolicy,

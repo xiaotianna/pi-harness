@@ -22,8 +22,8 @@ export function createGetSkillTool(
     label: "Get skill",
     name: "get_skill",
     parameters: GetSkillParameters,
-    async execute(_toolCallId, input) {
-      const skill = await registry.get(input.name, input.scope);
+    async execute(_toolCallId, input, signal) {
+      const skill = await registry.get(input.name, input.scope, signal);
       return { content: [{ type: "text", text: JSON.stringify(skill) }], details: skill };
     },
   };

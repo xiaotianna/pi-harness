@@ -1,4 +1,5 @@
 import type { SkillType } from "../skills/types.js";
+import type { SkillFrontmatter } from "../utils/skill-document.js";
 
 export interface PluginOAuthDefinition {
   authorizationParams?: Readonly<Record<string, string>>;
@@ -30,6 +31,8 @@ export interface PluginGatewayDefinition {
 }
 
 export interface PluginSkillDefinition {
+  directory: string;
+  frontmatter: SkillFrontmatter;
   description: string;
   displayName: string;
   icon?: string;

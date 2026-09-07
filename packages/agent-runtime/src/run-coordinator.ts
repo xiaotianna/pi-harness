@@ -27,6 +27,7 @@ import {
   type RequestUserInputData,
   readFileChangeDetails,
   type SessionHistorySearchResult,
+  type SkillRegistry,
   type TodoUpdatedData,
   type ToolRegistry,
   UserInputRequestKind,
@@ -83,6 +84,7 @@ import {
 } from "./user-input.js";
 import { isPlanExecutionAcknowledgement } from "./utils/agent-message.js";
 import { estimateContextUsage } from "./utils/context-usage.js";
+import { expandExplicitSkills } from "./utils/skill-context.js";
 import {
   createHarnessUserMessage,
   createHarnessUserMessageRecord,
@@ -231,6 +233,7 @@ export class RunCoordinator {
     private planState: PlanUpdatedData | null,
     private todoState: TodoUpdatedData | null,
     private readonly getAllowedCommandPrefixes: () => readonly (readonly string[])[] = () => [],
+    private readonly skillRegistry?: SkillRegistry,
   ) {
     this.executionGuard = toolRegistry.executionGuard;
     for (const message of agent.state.messages) {
@@ -603,7 +606,13 @@ export class RunCoordinator {
     if (
       activeRun.mode === RunMode.PLAN &&
       !activeRun.isPlanApproved &&
-      registration?.policy.permission !== ToolPermission.READ_ONLY
+      registration?.policy.permission !== ToolPermission.READ_ONLY &&
+      !(
+        registration?.policy.permission === ToolPermission.SKILL_ACTIVATION &&
+        typeof context.args === "object" &&
+        context.args !== null &&
+        (!("approveTools" in context.args) || context.args.approveTools !== true)
+      )
     ) {
       return { block: true, reason: "Plan 尚未由用户确认，当前只允许读取和规划" };
     }
@@ -612,6 +621,12 @@ export class RunCoordinator {
     const policy = await evaluateToolCall({
       approvalPolicy: activeRun.approvalPolicy,
       allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
+      isSkillToolPreapproved:
+        (await this.skillRegistry?.isToolPreapproved(
+          context.toolCall.name,
+          context.args,
+          signal,
+        )) ?? false,
       arguments: context.args, // 模型传给工具的参数
       policy: registration?.policy, // 工具权限
       protectedPaths: this.protectedPaths,
@@ -749,6 +764,12 @@ export class RunCoordinator {
         const currentPolicy = await evaluateToolCall({
           approvalPolicy: activeRun.approvalPolicy,
           allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
+          isSkillToolPreapproved:
+            (await this.skillRegistry?.isToolPreapproved(
+              context.toolCall.name,
+              context.args,
+              signal,
+            )) ?? false,
           arguments: context.args,
           policy: this.toolRegistry.get(context.toolCall.name)?.policy,
           protectedPaths: this.protectedPaths,
@@ -871,6 +892,7 @@ export class RunCoordinator {
       throw new Error(`Session ${this.sessionId} already has an active run`);
     }
 
+    this.skillRegistry?.clearGrants();
     this.agent.state.model = input.model;
     this.setSupportsImageInput(input.model.input.includes("image"));
     const thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
@@ -951,15 +973,20 @@ export class RunCoordinator {
     try {
       let message: AgentMessage;
       try {
-        message =
-          input.userMessage ??
-          (await createHarnessUserMessage({
-            input: input.userInput,
-            model: input.model,
-            protectedPaths: this.protectedPaths,
-            signal: preparationAbortController.signal,
-            workspaceRoot: this.workspaceRoot,
-          }));
+        message = input.userMessage
+          ? await expandExplicitSkills(
+              input.userMessage,
+              this.skillRegistry,
+              preparationAbortController.signal,
+            )
+          : await createHarnessUserMessage({
+              input: input.userInput,
+              skillRegistry: this.skillRegistry,
+              model: input.model,
+              protectedPaths: this.protectedPaths,
+              signal: preparationAbortController.signal,
+              workspaceRoot: this.workspaceRoot,
+            });
       } catch (error: unknown) {
         await this.emit(
           {
@@ -1089,6 +1116,7 @@ export class RunCoordinator {
       if (activeRun?.runId !== runId) return false;
       const message = await createHarnessUserMessage({
         input,
+        skillRegistry: this.skillRegistry,
         model: this.agent.state.model,
         protectedPaths: this.protectedPaths,
         signal: activeRun.preparationAbortController.signal,
@@ -1117,6 +1145,7 @@ export class RunCoordinator {
       if (activeRun?.runId !== runId) return null;
       const message = await createHarnessUserMessage({
         input,
+        skillRegistry: this.skillRegistry,
         model: this.agent.state.model,
         protectedPaths: this.protectedPaths,
         signal: activeRun.preparationAbortController.signal,
@@ -1154,6 +1183,7 @@ export class RunCoordinator {
       const input = { ...current.input, prompt };
       const message = await createHarnessUserMessage({
         input,
+        skillRegistry: this.skillRegistry,
         model: this.agent.state.model,
         protectedPaths: this.protectedPaths,
         signal: activeRun.preparationAbortController.signal,

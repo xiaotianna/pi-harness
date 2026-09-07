@@ -1,3 +1,4 @@
+import type { SkillFrontmatter } from "../utils/skill-document.js";
 export const SkillScope = {
   GLOBAL: "global",
   PROJECT: "project",
@@ -15,6 +16,8 @@ export type SkillType = (typeof SkillType)[keyof typeof SkillType];
 
 export interface SkillDefinition {
   collectionId?: string;
+  directory?: string;
+  frontmatter?: SkillFrontmatter;
   description: string;
   id: string;
   instructions: string;

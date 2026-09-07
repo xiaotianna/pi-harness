@@ -7,6 +7,7 @@ import {
   extractDocumentText,
   hasIgnoredWorkspaceDirectory,
   resolveDocumentFileType,
+  type SkillRegistry,
 } from "@pi-harness/tools";
 import { buildUserContextPrompt, type UserContextSection } from "../prompts/user-context-prompt.js";
 import {
@@ -19,6 +20,7 @@ import {
   UserContextReferenceKind,
   UserInputContextError,
 } from "../user-input.js";
+import { expandExplicitSkills } from "./skill-context.js";
 
 const MAX_TEXT_CONTEXT_BYTES = 64 * 1024;
 const MAX_IMAGE_CONTEXT_BYTES = 5 * 1024 * 1024;
@@ -124,7 +126,9 @@ function limitHarnessUserMessageText(
   const nextContent =
     typeof content === "string"
       ? nextText
-      : content.map((part) => (part.type === "text" ? { ...part, text: nextText } : part));
+      : content.map((part, index) =>
+          part.type === "text" && index === 0 ? { ...part, text: nextText } : part,
+        );
   return { ...message, content: nextContent };
 }
 
@@ -287,6 +291,7 @@ async function readWorkspaceFolder(
 }
 
 export interface CreateHarnessUserMessageInput {
+  skillRegistry?: SkillRegistry | undefined;
   input: RunUserInput;
   model: Model<Api>;
   protectedPaths: readonly string[];
@@ -403,9 +408,13 @@ export async function createHarnessUserMessage(
     ),
     type: "text",
   };
-  return {
-    ...createHarnessUserMessageRecord(source.input),
-    ...(attachments.length === 0 ? {} : { attachments }),
-    content: [text, ...images],
-  };
+  return expandExplicitSkills(
+    {
+      ...createHarnessUserMessageRecord(source.input),
+      ...(attachments.length === 0 ? {} : { attachments }),
+      content: [text, ...images],
+    },
+    source.skillRegistry,
+    source.signal,
+  );
 }

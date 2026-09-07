@@ -1,14 +1,15 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { parse } from "yaml";
 import { SkillType } from "../skills/types.js";
+import { readSkillDocument } from "../utils/skill-document.js";
 import type { PluginDefinition } from "./types.js";
 
 const MAX_DOCUMENT_BYTES = 128 * 1024;
 const MAX_LOGO_BYTES = 64 * 1024;
 const NAME_PATTERN = "^[a-z0-9]+(?:-[a-z0-9]+)*$";
-const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 const PathOrUrlSchema = Type.Union([
   Type.String({ minLength: 1, pattern: "^/" }),
   Type.String({ format: "uri", minLength: 1 }),
@@ -116,17 +117,7 @@ const PluginMetadataSchema = Type.Object(
   { additionalProperties: false },
 );
 
-const SkillMetadataSchema = Type.Object(
-  {
-    description: Type.String({ maxLength: 1024, minLength: 1 }),
-    name: Type.String({ maxLength: 64, minLength: 1 }),
-  },
-  { additionalProperties: false },
-);
-
 type PluginMetadata = Static<typeof PluginMetadataSchema>;
-type SkillMetadata = Static<typeof SkillMetadataSchema>;
-type MarkdownSchema = typeof PluginMetadataSchema | typeof SkillMetadataSchema;
 
 const RESERVED_GATEWAY_HEADERS = new Set(["authorization", "content-type", "user-agent"]);
 const RESERVED_OAUTH_PARAMS = new Set([
@@ -155,33 +146,7 @@ function readSvgDataUrl(url: URL, label: string): string {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
 }
 
-function readMarkdown<T>(
-  url: URL,
-  schema: MarkdownSchema,
-): {
-  body: string;
-  metadata: T;
-} {
-  const source = readBoundedText(url, MAX_DOCUMENT_BYTES);
-  const match = FRONTMATTER_PATTERN.exec(source);
-  if (!match) throw new Error(`PLUGIN_INVALID: ${url.pathname} 缺少 YAML frontmatter`);
-
-  let metadata: unknown;
-  try {
-    metadata = parse(match[1] ?? "", { maxAliasCount: 0, uniqueKeys: true });
-  } catch {
-    throw new Error(`PLUGIN_INVALID: ${url.pathname} frontmatter 不是有效 YAML`);
-  }
-  if (!Value.Check(schema, metadata)) {
-    throw new Error(`PLUGIN_INVALID: ${url.pathname} frontmatter 不符合结构规范`);
-  }
-
-  const body = source.slice(match[0].length).trim();
-  if (!body) throw new Error(`PLUGIN_INVALID: ${url.pathname} 正文不能为空`);
-  return { body, metadata: metadata as T };
-}
-
-function readYaml<T>(url: URL, schema: MarkdownSchema): T {
+function readYaml<T>(url: URL, schema: typeof PluginMetadataSchema): T {
   let metadata: unknown;
   try {
     metadata = parse(readBoundedText(url, MAX_DOCUMENT_BYTES), {
@@ -265,21 +230,21 @@ export function loadPlugin(pluginId: string): PluginDefinition {
     name: metadata.displayName,
     ...(metadata.oauth === undefined ? {} : { oauth: metadata.oauth }),
     skills: metadata.skills.map(({ displayName, icon, id: skillId }) => {
-      const { body, metadata: skill } = readMarkdown<SkillMetadata>(
-        new URL(`skills/${skillId}/SKILL.md`, root),
-        SkillMetadataSchema,
+      const directory = fileURLToPath(new URL(`skills/${skillId}/`, root));
+      const { instructions, frontmatter: skill } = readSkillDocument(
+        readBoundedText(new URL(`skills/${skillId}/SKILL.md`, root), MAX_DOCUMENT_BYTES),
+        skillId,
       );
-      if (skill.name !== skillId) {
-        throw new Error(`PLUGIN_INVALID: ${pluginId}/${skillId} 的目录名必须与 SKILL.md name 一致`);
-      }
       return {
+        directory,
+        frontmatter: skill,
         description: skill.description,
         displayName,
         ...(icon === undefined
           ? {}
           : { icon: readSvgDataUrl(new URL(icon, root), `${pluginId}/${icon}`) }),
         id: skillId,
-        instructions: body,
+        instructions,
         name: skillId,
         type: metadata.type,
       };

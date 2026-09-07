@@ -19,12 +19,19 @@ export type ToolPolicyDecision = (typeof ToolPolicyDecision)[keyof typeof ToolPo
 
 // 工具权限
 export const ToolPermission = {
+  SKILL_ACTIVATION: "skill_activation",
   READ_ONLY: "read_only", // 只读工具，自动放行
   WORKSPACE_WRITE: "workspace_write", // 修改 workspace 内文件的工具，需要用户审批
   SHELL: "shell", // 执行 Shell 命令的工具，需要用户审批
 } as const;
 
 export type ToolPolicy =
+  | {
+      permission: typeof ToolPermission.SKILL_ACTIVATION;
+      resolveGrant: (
+        args: unknown,
+      ) => Promise<{ fingerprint: string; target: string; summary: string; risk: string } | null>;
+    }
   | { permission: typeof ToolPermission.READ_ONLY }
   | { permission: typeof ToolPermission.SHELL }
   | {
@@ -51,6 +58,7 @@ export type ToolPolicyResult =
 
 export interface EvaluateToolCallInput {
   approvalPolicy: ApprovalPolicyValue;
+  isSkillToolPreapproved?: boolean;
   allowedCommandPrefixes?: readonly CommandPrefixRule[];
   arguments: unknown;
   policy: ToolPolicy | undefined;
@@ -130,6 +138,13 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
   }
 
   switch (input.policy.permission) {
+    case ToolPermission.SKILL_ACTIVATION: {
+      const grant = await input.policy.resolveGrant(input.arguments);
+      if (grant === null) return { decision: ToolPolicyDecision.ALLOW };
+      if (input.approvalPolicy === ApprovalPolicy.FULL_ACCESS)
+        return { decision: ToolPolicyDecision.ALLOW, fingerprint: grant.fingerprint };
+      return { ...grant, decision: ToolPolicyDecision.ASK };
+    }
     case ToolPermission.READ_ONLY:
       return { decision: ToolPolicyDecision.ALLOW };
     case ToolPermission.WORKSPACE_WRITE: {
@@ -159,7 +174,10 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
         target.path,
         input.policy.allowMissing,
       );
-      if (input.approvalPolicy !== ApprovalPolicy.REQUEST_APPROVAL) {
+      if (
+        input.approvalPolicy !== ApprovalPolicy.REQUEST_APPROVAL ||
+        input.isSkillToolPreapproved === true
+      ) {
         return { decision: ToolPolicyDecision.ALLOW, fingerprint: resolvedTarget.fingerprint };
       }
       return {
@@ -179,7 +197,10 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
       if (input.approvalPolicy === ApprovalPolicy.FULL_ACCESS) {
         return { decision: ToolPolicyDecision.ALLOW, fingerprint };
       }
-      if (isCommandAllowedByPrefixes(command, input.allowedCommandPrefixes ?? [])) {
+      if (
+        input.isSkillToolPreapproved === true ||
+        isCommandAllowedByPrefixes(command, input.allowedCommandPrefixes ?? [])
+      ) {
         return { decision: ToolPolicyDecision.ALLOW, fingerprint };
       }
       const commandPrefix = readApplicableCommandPrefix(

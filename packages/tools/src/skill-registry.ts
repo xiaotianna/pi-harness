@@ -1,10 +1,10 @@
-import { glob, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { isUtf8 } from "node:buffer";
+import { createHash } from "node:crypto";
+import { glob, mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { isPathWithin, resolveWorkspacePath } from "@pi-harness/policy";
-import { isPlainObject } from "es-toolkit";
-import { type Static, Type } from "typebox";
-import { Value } from "typebox/value";
-import { parse, stringify } from "yaml";
+import { isPathWithin, matchesSkillTool, resolveWorkspacePath } from "@pi-harness/policy";
+import { stringify } from "yaml";
 import { skillCreatorSystemSkill } from "./skills/skill-creator.js";
 import { skillInstallerSystemSkill } from "./skills/skill-installer.js";
 import {
@@ -13,12 +13,16 @@ import {
   SkillType,
   type SkillType as SkillTypeValue,
 } from "./skills/types.js";
+import { detectImageMimeType, readRegularFile } from "./utils/media-file.js";
+import {
+  readSkillDocument,
+  SKILL_NAME_PATTERN,
+  type SkillFrontmatter,
+} from "./utils/skill-document.js";
 
 const MAX_SKILL_BYTES = 128 * 1024;
 const MAX_RESOURCE_BYTES = 1024 * 1024;
 const MAX_RESOURCES = 200;
-const SKILL_NAME_PATTERN = "^[a-z0-9]+(?:-[a-z0-9]+)*$";
-const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 const SYSTEM_SKILLS = [skillCreatorSystemSkill, skillInstallerSystemSkill];
 
 function findSystemSkill(name: string) {
@@ -28,22 +32,6 @@ function findSystemSkill(name: string) {
 export { SkillScope };
 export type SkillScopeValue = SkillScope;
 export type WritableSkillScope = typeof SkillScope.GLOBAL | typeof SkillScope.PROJECT;
-
-const SkillFrontmatterSchema = Type.Object(
-  {
-    "allowed-tools": Type.Optional(
-      Type.Union([Type.String(), Type.Array(Type.String({ minLength: 1 }))]),
-    ),
-    description: Type.String({ maxLength: 1024, minLength: 1 }),
-    license: Type.Optional(Type.String({ minLength: 1 })),
-    metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-    name: Type.String({ maxLength: 64, minLength: 1, pattern: SKILL_NAME_PATTERN }),
-    type: Type.Optional(Type.Union([Type.Literal(SkillType.NONE), Type.Literal(SkillType.OAUTH)])),
-  },
-  { additionalProperties: false },
-);
-
-type SkillFrontmatter = Static<typeof SkillFrontmatterSchema>;
 
 export interface SkillSummary {
   collectionId: string | null;
@@ -59,11 +47,15 @@ export interface SkillListItem extends SkillSummary {
 }
 
 export interface SkillDetails extends SkillListItem {
+  frontmatter: SkillFrontmatter;
   resources: readonly string[];
   resourcesTruncated: boolean;
 }
 
-export interface LoadedSkill extends SkillSummary {
+export interface LoadedSkill extends SkillDetails {
+  image?: { data: string; mimeType: string; type: "image" };
+  resourcePath?: string;
+  size?: number;
   content: string;
   resource: string;
 }
@@ -92,6 +84,7 @@ interface FileSkillRecord extends SkillRecord {
 export interface SkillRegistryContext {
   getRegisteredGlobalSkills?: () => readonly SkillDefinition[];
   globalRoot: string;
+  homeRoot?: string;
   isSkillEnabled?: (directory: string) => boolean;
   skillGatewayUrl?: string;
   workspaceRoot: string;
@@ -99,45 +92,6 @@ export interface SkillRegistryContext {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
-}
-
-function readSkillDocument(
-  content: string,
-  directoryName: string,
-): {
-  frontmatter: SkillFrontmatter;
-  instructions: string;
-} {
-  const match = FRONTMATTER_PATTERN.exec(content);
-  if (!match) throw new Error("SKILL_INVALID: SKILL.md 缺少有效 YAML frontmatter");
-
-  let frontmatter: unknown;
-  try {
-    frontmatter = parse(match[1] ?? "", { maxAliasCount: 0, uniqueKeys: true });
-  } catch {
-    throw new Error("SKILL_INVALID: SKILL.md frontmatter 不是有效 YAML");
-  }
-  if (!isPlainObject(frontmatter) || !Value.Check(SkillFrontmatterSchema, frontmatter)) {
-    throw new Error("SKILL_INVALID: SKILL.md frontmatter 不符合 Skill 结构规范");
-  }
-  if (frontmatter.name !== directoryName) {
-    throw new Error("SKILL_INVALID: Skill 目录名必须与 frontmatter.name 一致");
-  }
-  if (frontmatter.description.includes("<") || frontmatter.description.includes(">")) {
-    throw new Error("SKILL_INVALID: Skill description 不能包含尖括号");
-  }
-
-  const instructions = content.slice(match[0].length).trim();
-  if (!instructions) throw new Error("SKILL_INVALID: Skill instructions 不能为空");
-  return { frontmatter, instructions };
-}
-
-async function readBoundedText(path: string, maxBytes: number): Promise<string> {
-  const metadata = await stat(path);
-  if (!metadata.isFile() || metadata.size > maxBytes) {
-    throw new Error(`SKILL_INVALID: 文件不是普通文件或超过 ${maxBytes} 字节限制`);
-  }
-  return readFile(path, "utf8");
 }
 
 function skillId(scope: SkillScope, name: string): string {
@@ -151,7 +105,8 @@ function toDefinitionRecord(
   return {
     collectionId: skill.collectionId ?? null,
     description: skill.description,
-    directory: null,
+    directory: skill.directory ?? null,
+    frontmatter: skill.frontmatter ?? { name: skill.name, description: skill.description },
     id: skill.id,
     instructions: skill.instructions.replaceAll("{skillGatewayUrl}", skillGatewayUrl ?? ""),
     name: skill.name,
@@ -163,6 +118,7 @@ function toDefinitionRecord(
 }
 
 function toSummary({
+  frontmatter: _frontmatter,
   directory: _directory,
   instructions: _instructions,
   resources: _resources,
@@ -177,6 +133,7 @@ function toDetails({ instructions: _instructions, ...skill }: SkillRecord): Skil
 }
 
 function toListItem({
+  frontmatter: _frontmatter,
   instructions: _instructions,
   resources: _resources,
   resourcesTruncated: _resourcesTruncated,
@@ -187,11 +144,61 @@ function toListItem({
 
 // SkillRegistry 负责发现、校验、查询、读取和创建 Skill
 export class SkillRegistry {
+  private readonly pendingGrants = new Map<string, string>();
+  private readonly grants = new Map<string, SkillDetails & { fingerprint: string }>();
+
   public constructor(private readonly context: SkillRegistryContext) {}
 
+  public clearGrants(): void {
+    this.grants.clear();
+    this.pendingGrants.clear();
+  }
+
+  public fingerprint(skill: LoadedSkill): string {
+    return createHash("sha256")
+      .update(JSON.stringify([skill.id, skill.directory, skill.frontmatter, skill.content]))
+      .digest("hex");
+  }
+
+  public prepareGrant(skill: LoadedSkill): string {
+    const fingerprint = this.fingerprint(skill);
+    this.pendingGrants.set(skill.id, fingerprint);
+    return fingerprint;
+  }
+
+  public grant(skill: LoadedSkill): void {
+    const fingerprint = this.fingerprint(skill);
+    if (
+      skill.frontmatter["allowed-tools"]?.length &&
+      this.pendingGrants.get(skill.id) !== fingerprint
+    ) {
+      throw new Error("SKILL_CHANGED: Skill 在审批后发生变化，请重新加载并申请授权");
+    }
+    this.pendingGrants.delete(skill.id);
+    this.grants.set(skill.id, { ...skill, fingerprint });
+  }
+
+  public async isToolPreapproved(
+    name: string,
+    args: unknown,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    for (const grant of this.grants.values()) {
+      signal?.throwIfAborted();
+      const current = await this.load(grant.name, grant.scope, undefined, signal).catch(() => null);
+      signal?.throwIfAborted();
+      if (current === null || this.fingerprint(current) !== grant.fingerprint) {
+        this.grants.delete(grant.id);
+        continue;
+      }
+      if (matchesSkillTool(current.frontmatter["allowed-tools"], name, args)) return true;
+    }
+    return false;
+  }
+
   // 扫描全部有效 Skill，返回简要信息
-  public async discover(): Promise<readonly SkillSummary[]> {
-    return (await this.discoverRecords()).map(toSummary);
+  public async discover(signal?: AbortSignal): Promise<readonly SkillSummary[]> {
+    return (await this.discoverRecords(undefined, signal)).map(toSummary);
   }
 
   public async discoverListItems(): Promise<readonly SkillListItem[]> {
@@ -199,10 +206,14 @@ export class SkillRegistry {
   }
 
   // 根据名称和描述搜索 Skill
-  public async find(query: string, scope?: SkillScope): Promise<readonly SkillSummary[]> {
+  public async find(
+    query: string,
+    scope?: SkillScope,
+    signal?: AbortSignal,
+  ): Promise<readonly SkillSummary[]> {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) return [];
-    return (await this.discoverRecords(scope))
+    return (await this.discoverRecords(scope, signal))
       .filter((skill) =>
         `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(normalizedQuery),
       )
@@ -211,34 +222,53 @@ export class SkillRegistry {
   }
 
   // 获取 Skill 元数据和资源文件列表
-  public async get(name: string, scope?: SkillScope): Promise<SkillDetails> {
-    return toDetails(await this.getRecord(name, scope));
+  public async get(name: string, scope?: SkillScope, signal?: AbortSignal): Promise<SkillDetails> {
+    return toDetails(await this.getRecord(name, scope, true, signal));
   }
 
   // 加载 SKILL.md 指令或指定资源内容
-  public async load(name: string, scope?: SkillScope, resource?: string): Promise<LoadedSkill> {
-    const skill = await this.getRecord(name, scope, false);
-    const summary = toSummary(skill);
+  public async load(
+    name: string,
+    scope?: SkillScope,
+    resource?: string,
+    signal?: AbortSignal,
+  ): Promise<LoadedSkill> {
+    signal?.throwIfAborted();
+    const skill = await this.getRecord(name, scope, true, signal);
+    signal?.throwIfAborted();
+    const details = toDetails(skill);
     if (resource === undefined || resource === "SKILL.md") {
-      return { ...summary, content: skill.instructions, resource: "SKILL.md" };
+      return { ...details, content: skill.instructions, resource: "SKILL.md" };
     }
-    if (skill.directory === null) {
-      throw new Error("SKILL_RESOURCE_INVALID: 系统 Skill 不包含可读取资源");
-    }
+    if (skill.directory === null) throw new Error("SKILL_RESOURCE_INVALID: Skill 不包含本地资源");
     if (isAbsolute(resource) || resource.split(/[\\/]/).includes("..")) {
       throw new Error("SKILL_RESOURCE_INVALID: resource 必须是 Skill 目录内的相对路径");
     }
     const path = await realpath(resolve(skill.directory, resource));
-    if (!isPathWithin(skill.directory, path)) {
+    if (!isPathWithin(skill.directory, path))
       throw new Error("SKILL_RESOURCE_INVALID: 拒绝读取 Skill 目录外的资源");
-    }
-    const content = await readBoundedText(path, MAX_RESOURCE_BYTES);
-    return { ...summary, content, resource };
+    const buffer = await readRegularFile(path, MAX_RESOURCE_BYTES, signal);
+    const mimeType = detectImageMimeType(buffer);
+    const content =
+      mimeType !== null || buffer.includes(0) || !isUtf8(buffer)
+        ? `Binary resource: ${path} (${buffer.byteLength} bytes). Use this absolute path with run_command to process or copy the file under the current approval policy.`
+        : buffer.toString("utf8");
+    return {
+      ...details,
+      content,
+      resource,
+      resourcePath: path,
+      size: buffer.byteLength,
+      ...(mimeType === null
+        ? {}
+        : { image: { data: buffer.toString("base64"), mimeType, type: "image" as const } }),
+    };
   }
 
   public async remove(name: string, scope: WritableSkillScope): Promise<void> {
     const skill = await this.getRecord(name, scope, false);
-    if (skill.directory === null) throw new Error("SKILL_READ_ONLY: 系统 Skill 不可卸载");
+    if (skill.directory === null || skill.collectionId !== null)
+      throw new Error("SKILL_READ_ONLY: 系统或插件 Skill 不可单独卸载");
     await rm(skill.directory, { recursive: true });
   }
 
@@ -279,16 +309,20 @@ export class SkillRegistry {
     }
   }
 
-  private async discoverRecords(scope?: SkillScope): Promise<readonly SkillRecord[]> {
+  private async discoverRecords(
+    scope?: SkillScope,
+    signal?: AbortSignal,
+  ): Promise<readonly SkillRecord[]> {
     const scopes = scope ? [scope] : [SkillScope.SYSTEM, SkillScope.PROJECT, SkillScope.GLOBAL];
     const records: SkillRecord[] = [];
     const registeredNames = new Set<string>();
 
     for (const currentScope of scopes) {
+      signal?.throwIfAborted();
       if (currentScope === SkillScope.SYSTEM) {
         for (const skill of SYSTEM_SKILLS) {
           if (registeredNames.has(skill.name)) continue;
-          records.push(toDefinitionRecord(skill, this.context.skillGatewayUrl));
+          records.push(await this.definitionRecord(skill, false, signal));
           registeredNames.add(skill.name);
         }
         continue;
@@ -296,21 +330,26 @@ export class SkillRegistry {
       if (currentScope === SkillScope.GLOBAL) {
         for (const skill of this.context.getRegisteredGlobalSkills?.() ?? []) {
           if (registeredNames.has(skill.name)) continue;
-          records.push(toDefinitionRecord(skill, this.context.skillGatewayUrl));
+          records.push(await this.definitionRecord(skill, false, signal));
           registeredNames.add(skill.name);
         }
       }
-      const root = await this.resolveRoot(currentScope, false);
-      if (root === null) continue;
-      for (const entry of await readdir(root, { withFileTypes: true })) {
-        if (!entry.isDirectory() || registeredNames.has(entry.name)) continue;
-        try {
-          const record = await this.readRecord(root, entry.name, currentScope, false);
-          if (this.context.isSkillEnabled?.(record.directory) === false) continue;
-          records.push(record);
-          registeredNames.add(record.name);
-        } catch {
-          // 无效 Skill 不进入运行时 Registry；显式读取时会返回结构错误。
+      for (const root of await this.resolveRoots(currentScope)) {
+        for (const entry of await readdir(root, { withFileTypes: true })) {
+          signal?.throwIfAborted();
+          if (!entry.isDirectory() || registeredNames.has(entry.name)) continue;
+          try {
+            const record = await this.readRecord(root, entry.name, currentScope, false, signal);
+            if (this.context.isSkillEnabled?.(record.directory) === false) {
+              registeredNames.add(record.name);
+              continue;
+            }
+            records.push(record);
+            registeredNames.add(record.name);
+          } catch {
+            signal?.throwIfAborted();
+            // 无效 Skill 不进入运行时 Registry；显式读取时会返回结构错误。
+          }
         }
       }
     }
@@ -321,6 +360,7 @@ export class SkillRegistry {
     name: string,
     scope?: SkillScope,
     shouldListResources = true,
+    signal?: AbortSignal,
   ): Promise<SkillRecord> {
     if (!new RegExp(SKILL_NAME_PATTERN).test(name) || name.length > 64) {
       throw new Error("SKILL_INVALID: Skill 名称无效");
@@ -328,10 +368,11 @@ export class SkillRegistry {
     const scopes = scope ? [scope] : [SkillScope.SYSTEM, SkillScope.PROJECT, SkillScope.GLOBAL];
     let invalidError: unknown;
     for (const currentScope of scopes) {
+      signal?.throwIfAborted();
       if (currentScope === SkillScope.SYSTEM) {
         const systemSkill = findSystemSkill(name);
         if (systemSkill) {
-          return toDefinitionRecord(systemSkill, this.context.skillGatewayUrl);
+          return this.definitionRecord(systemSkill, shouldListResources, signal);
         }
         continue;
       }
@@ -340,20 +381,27 @@ export class SkillRegistry {
           .getRegisteredGlobalSkills?.()
           .find((skill) => skill.name === name);
         if (registeredSkill) {
-          return toDefinitionRecord(registeredSkill, this.context.skillGatewayUrl);
+          return this.definitionRecord(registeredSkill, shouldListResources, signal);
         }
       }
-      const root = await this.resolveRoot(currentScope, false);
-      if (root === null) continue;
-      try {
-        const record = await this.readRecord(root, name, currentScope, shouldListResources);
-        if (this.context.isSkillEnabled?.(record.directory) === false) {
-          throw new Error(`SKILL_DISABLED: ${name}`);
+      for (const root of await this.resolveRoots(currentScope)) {
+        try {
+          const record = await this.readRecord(
+            root,
+            name,
+            currentScope,
+            shouldListResources,
+            signal,
+          );
+          if (this.context.isSkillEnabled?.(record.directory) === false) {
+            throw new Error(`SKILL_DISABLED: ${name}`);
+          }
+          return record;
+        } catch (error: unknown) {
+          if (isNodeError(error) && error.code === "ENOENT") continue;
+          if (error instanceof Error && error.message.startsWith("SKILL_DISABLED:")) throw error;
+          invalidError = error;
         }
-        return record;
-      } catch (error: unknown) {
-        if (isNodeError(error) && error.code === "ENOENT") continue;
-        invalidError = error;
       }
     }
     if (invalidError !== undefined) throw invalidError;
@@ -365,15 +413,25 @@ export class SkillRegistry {
     name: string,
     scope: WritableSkillScope,
     shouldListResources = true,
+    signal?: AbortSignal,
   ): Promise<FileSkillRecord> {
     const directory = await realpath(resolve(root, name));
     if (!isPathWithin(root, directory)) throw new Error("SKILL_INVALID: Skill 目录越界");
-    const content = await readBoundedText(join(directory, "SKILL.md"), MAX_SKILL_BYTES);
+    const documentPath = await realpath(join(directory, "SKILL.md"));
+    if (!isPathWithin(directory, documentPath)) throw new Error("SKILL_INVALID: SKILL.md 路径越界");
+    const content = (await readRegularFile(documentPath, MAX_SKILL_BYTES, signal)).toString("utf8");
     const { frontmatter, instructions } = readSkillDocument(content, name);
     const resources: string[] = [];
     let resourcesTruncated = false;
     if (shouldListResources) {
+      let entriesVisited = 0;
       for await (const entry of glob("**/*", { cwd: directory, withFileTypes: true })) {
+        signal?.throwIfAborted();
+        entriesVisited += 1;
+        if (entriesVisited > 2000) {
+          resourcesTruncated = true;
+          break;
+        }
         if (!entry.isFile() || entry.name === "SKILL.md") continue;
         if (resources.length === MAX_RESOURCES) {
           resourcesTruncated = true;
@@ -389,6 +447,7 @@ export class SkillRegistry {
     resources.sort((left, right) => left.localeCompare(right));
     return {
       collectionId: null,
+      frontmatter,
       description: frontmatter.description,
       directory,
       id: skillId(scope, name),
@@ -399,6 +458,65 @@ export class SkillRegistry {
       scope,
       type: frontmatter.type ?? SkillType.NONE,
     };
+  }
+
+  private async definitionRecord(
+    skill: SkillDefinition,
+    shouldListResources: boolean,
+    signal?: AbortSignal,
+  ): Promise<SkillRecord> {
+    const definition = toDefinitionRecord(skill, this.context.skillGatewayUrl);
+    if (!skill.directory) return definition;
+    const record = await this.readRecord(
+      resolve(skill.directory, ".."),
+      skill.name,
+      SkillScope.GLOBAL,
+      shouldListResources,
+      signal,
+    );
+    return {
+      ...record,
+      collectionId: definition.collectionId,
+      id: definition.id,
+      type: definition.type,
+      instructions: record.instructions.replaceAll(
+        "{skillGatewayUrl}",
+        this.context.skillGatewayUrl ?? "",
+      ),
+    };
+  }
+
+  private async resolveRoots(scope: WritableSkillScope): Promise<string[]> {
+    const home = this.context.homeRoot ?? homedir();
+    const paths =
+      scope === SkillScope.PROJECT
+        ? [
+            join(this.context.workspaceRoot, ".agents/skills"),
+            join(this.context.workspaceRoot, ".claude/skills"),
+          ]
+        : [
+            join(this.context.globalRoot, "skills"),
+            join(home, ".agents/skills"),
+            join(home, ".claude/skills"),
+          ];
+    const roots: string[] = [];
+    for (const path of paths) {
+      try {
+        const root =
+          scope === SkillScope.PROJECT
+            ? await resolveWorkspacePath({
+                path,
+                allowMissing: true,
+                workspaceRoot: this.context.workspaceRoot,
+              })
+            : await realpath(path);
+        if ((await stat(root)).isDirectory() && !roots.includes(root)) roots.push(root);
+      } catch (error: unknown) {
+        if (isNodeError(error) && error.code === "ENOENT") continue;
+        throw error;
+      }
+    }
+    return roots;
   }
 
   private async resolveRoot(

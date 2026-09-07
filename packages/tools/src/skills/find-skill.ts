@@ -22,8 +22,8 @@ export function createFindSkillTool(
     label: "Find skill",
     name: "find_skill",
     parameters: FindSkillParameters,
-    async execute(_toolCallId, input) {
-      const skills = await registry.find(input.query, input.scope);
+    async execute(_toolCallId, input, signal) {
+      const skills = await registry.find(input.query, input.scope, signal);
       return { content: [{ type: "text", text: JSON.stringify(skills) }], details: skills };
     },
   };

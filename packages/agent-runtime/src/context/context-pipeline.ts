@@ -15,6 +15,7 @@ import { buildContextCompactionPrompt } from "../prompts/context-compaction-prom
 import { buildApprovedPlanContractPrompt } from "../prompts/plan-mode-prompt.js";
 import { isHarnessUserMessage } from "../user-input.js";
 import { estimateContextUsage, estimateMessageTokens } from "../utils/context-usage.js";
+import { preserveSkillInstructions } from "../utils/skill-context.js";
 import { limitUserInputContext } from "../utils/user-input.js";
 
 const COMPACTION_TRIGGER_SHARE = 0.8;
@@ -89,7 +90,15 @@ function isLlmMessage(message: AgentMessage): message is Message {
 
 function limitToolResults(messages: readonly AgentMessage[]): AgentMessage[] {
   return messages.map((message) => {
-    if (!isLlmMessage(message) || message.role !== "toolResult") return message;
+    if (
+      !isLlmMessage(message) ||
+      message.role !== "toolResult" ||
+      (message.toolName === "load_skill" &&
+        !message.isError &&
+        isPlainObject(message.details) &&
+        message.details.resource === "SKILL.md")
+    )
+      return message;
     return {
       ...message,
       content: message.content.map((part) =>
@@ -369,6 +378,9 @@ function buildProjectedMessages(
     const taskContract = createTaskContractMessage(messages[activeRunStartMessageIndex]);
     if (taskContract !== null) projected.push(taskContract);
   }
+  projected.push(
+    ...preserveSkillInstructions(messages, activeRunStartMessageIndex, tailStartMessageIndex),
+  );
   projected.push(...messages.slice(tailStartMessageIndex));
   return projected;
 }

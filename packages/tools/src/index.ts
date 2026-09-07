@@ -6,6 +6,7 @@ export {
   type PluginSkillDefinition,
   resolveRegisteredPluginSkills,
 } from "./plugins/index.js";
+export { formatLoadedSkill } from "./prompts/skill-content.js";
 export {
   type CreatedSkill,
   type CreateSkillInput,

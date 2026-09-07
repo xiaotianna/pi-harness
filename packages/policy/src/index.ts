@@ -26,3 +26,5 @@ export {
   type ToolWriteTarget,
 } from "./tool-policy.js";
 export { isPathWithin } from "./utils/path.js";
+
+export { matchesSkillTool } from "./utils/skill-tools.js";

@@ -32,6 +32,8 @@ export function resolveRegisteredPluginSkills(
       )
       .map((skill) => ({
         collectionId: plugin.id,
+        directory: skill.directory,
+        frontmatter: skill.frontmatter,
         description: skill.description,
         id: `plugin:${plugin.id}:${skill.id}`,
         instructions: skill.instructions,

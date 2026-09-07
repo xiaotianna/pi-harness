@@ -5,6 +5,7 @@ import {
   createWorkspaceToolRegistry,
   type PlanUpdatedData,
   type SkillDefinition,
+  SkillRegistry,
   type TodoUpdatedData,
 } from "@pi-harness/tools";
 import { loadWorkspaceAgentContext } from "./context/workspace-agent-context.js";
@@ -164,41 +165,51 @@ export class AgentManager {
       supportsImageInput: input.model.input.includes("image"),
     };
     let runtime: RunCoordinator | null = null;
-    const toolRegistry = createWorkspaceToolRegistry({
-      getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
-      globalRoot: this.globalRoot,
-      isSkillEnabled: this.isSkillEnabled,
-      onPlanUpdated: (data) => {
-        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-        return runtime.updatePlan(data);
-      },
-      onContextCheckpointRestored: (steps) => {
-        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-        return runtime.restoreContextCheckpoint(steps);
-      },
-      onSessionHistorySearched: (searchInput) => {
-        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-        return runtime.searchSessionHistory(searchInput);
-      },
-      onTodosUpdated: (data) => {
-        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-        return runtime.updateTodos(data);
-      },
-      onUserInputRequested: (data, signal) => {
-        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-        return runtime.requestUserInput(data, signal);
-      },
-      onWorkingStateReset: (reason) => {
-        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-        return runtime.resetWorkingState(reason);
-      },
-      protectedPaths: this.protectedPaths,
-      skillGatewayToken: this.skillGatewayToken,
-      skillGatewayUrl: this.skillGatewayUrl,
-      webSearchUrl: this.webSearchUrl,
-      supportsImageInput: () => toolCapabilities.supportsImageInput,
+    const skillRegistry = new SkillRegistry({
       workspaceRoot: input.workspaceRoot,
+      globalRoot: this.globalRoot,
+      getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
+      isSkillEnabled: this.isSkillEnabled,
+      skillGatewayUrl: this.skillGatewayUrl,
     });
+    const toolRegistry = createWorkspaceToolRegistry(
+      {
+        getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
+        globalRoot: this.globalRoot,
+        isSkillEnabled: this.isSkillEnabled,
+        onPlanUpdated: (data) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.updatePlan(data);
+        },
+        onContextCheckpointRestored: (steps) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.restoreContextCheckpoint(steps);
+        },
+        onSessionHistorySearched: (searchInput) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.searchSessionHistory(searchInput);
+        },
+        onTodosUpdated: (data) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.updateTodos(data);
+        },
+        onUserInputRequested: (data, signal) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.requestUserInput(data, signal);
+        },
+        onWorkingStateReset: (reason) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.resetWorkingState(reason);
+        },
+        protectedPaths: this.protectedPaths,
+        skillGatewayToken: this.skillGatewayToken,
+        skillGatewayUrl: this.skillGatewayUrl,
+        webSearchUrl: this.webSearchUrl,
+        supportsImageInput: () => toolCapabilities.supportsImageInput,
+        workspaceRoot: input.workspaceRoot,
+      },
+      skillRegistry,
+    );
     const agent = createAgent({ ...input, tools: toolRegistry.tools });
     runtime = new RunCoordinator(
       input.sessionId,
@@ -220,6 +231,7 @@ export class AgentManager {
       input.plan,
       input.todos,
       this.getAllowedCommandPrefixes,
+      skillRegistry,
     );
     this.runtimes.set(input.sessionId, runtime);
     return runtime;
