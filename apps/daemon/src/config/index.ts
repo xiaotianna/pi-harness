@@ -16,7 +16,19 @@ const EnvironmentSchema = Type.Object({
   PI_HARNESS_HOST: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_LOG_LEVEL: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_PORT: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_GITHUB_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_GITHUB_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_SKILL_GATEWAY_URL: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_GMAIL_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_GMAIL_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_GOOGLE_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_GOOGLE_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_NOTION_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_NOTION_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_SUPABASE_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_SUPABASE_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_VERCEL_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_SKILL_VERCEL_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_WEB_SEARCH_URL: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_WEB_URL: Type.Optional(Type.String({ minLength: 1 })),
 });
@@ -25,6 +37,11 @@ type HarnessEnvironment = Static<typeof EnvironmentSchema>;
 
 export interface GitHubOAuthConfig {
   callbackUrl: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+export interface SkillOAuthClientConfig {
   clientId: string;
   clientSecret: string;
 }
@@ -42,6 +59,7 @@ export interface HarnessConfig {
   sessionsPath: string;
   skillCredentialsPath: string;
   skillGatewayUrl: string;
+  skillOAuthClients: Readonly<Record<string, SkillOAuthClientConfig>>;
   webUrl: string;
 }
 
@@ -97,6 +115,36 @@ function resolveGitHubOAuth(env: HarnessEnvironment, port: number): GitHubOAuthC
   return { callbackUrl, clientId, clientSecret };
 }
 
+function resolveSkillOAuthClients(
+  env: HarnessEnvironment,
+): Readonly<Record<string, SkillOAuthClientConfig>> {
+  const configured = [
+    ["github", env.PI_HARNESS_SKILL_GITHUB_CLIENT_ID, env.PI_HARNESS_SKILL_GITHUB_CLIENT_SECRET],
+    ["google", env.PI_HARNESS_SKILL_GOOGLE_CLIENT_ID, env.PI_HARNESS_SKILL_GOOGLE_CLIENT_SECRET],
+    ["gmail", env.PI_HARNESS_SKILL_GMAIL_CLIENT_ID, env.PI_HARNESS_SKILL_GMAIL_CLIENT_SECRET],
+    ["notion", env.PI_HARNESS_SKILL_NOTION_CLIENT_ID, env.PI_HARNESS_SKILL_NOTION_CLIENT_SECRET],
+    [
+      "supabase",
+      env.PI_HARNESS_SKILL_SUPABASE_CLIENT_ID,
+      env.PI_HARNESS_SKILL_SUPABASE_CLIENT_SECRET,
+    ],
+    ["vercel", env.PI_HARNESS_SKILL_VERCEL_CLIENT_ID, env.PI_HARNESS_SKILL_VERCEL_CLIENT_SECRET],
+  ] as const;
+  const clients: Record<string, SkillOAuthClientConfig> = {};
+
+  for (const [pluginId, clientId, clientSecret] of configured) {
+    if (clientId === undefined && clientSecret === undefined) continue;
+    if (clientId === undefined || clientSecret === undefined) {
+      throw new Error(
+        `PI_HARNESS_SKILL_${pluginId.toUpperCase()} OAuth client must be configured together`,
+      );
+    }
+    clients[pluginId] = { clientId, clientSecret };
+  }
+
+  return clients;
+}
+
 /** 加载 daemon 专用配置，OAuth 密钥不会传递到 Web。 */
 export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): HarnessConfig {
   if (!Value.Check(EnvironmentSchema, input)) {
@@ -109,11 +157,9 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
     "PI_HARNESS_SKILL_GATEWAY_URL",
     env.PI_HARNESS_SKILL_GATEWAY_URL ?? `http://127.0.0.1:${port}`,
   );
-
   const databasePath =
     env.PI_HARNESS_DATABASE_PATH ?? join(homedir(), ".pi-harness", "harness.sqlite");
   const globalRoot = dirname(databasePath);
-
   return {
     allowedCommandPrefixesPath: join(globalRoot, "allowed-command-prefixes.json"),
     credentialsPath: join(globalRoot, "credentials.json"),
@@ -130,6 +176,7 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
     sessionsPath: join(globalRoot, "sessions"),
     skillCredentialsPath: join(globalRoot, "skill-credentials.json"),
     skillGatewayUrl,
+    skillOAuthClients: resolveSkillOAuthClients(env),
     webUrl: parseLoopbackUrl("PI_HARNESS_WEB_URL", env.PI_HARNESS_WEB_URL ?? DEFAULT_WEB_URL),
   };
 }

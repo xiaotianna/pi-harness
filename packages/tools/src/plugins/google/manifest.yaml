@@ -1,12 +1,25 @@
 id: google
 displayName: Google
-apiUrl: http://127.0.0.1:4002
-description: Search Drive files and review calendar schedules through the local Google emulator.
+apiUrl: https://www.googleapis.com
+description: Search Drive files and review calendar schedules in a connected Google account.
 category: productivity
 type: oauth
+gateway:
+  allowedPaths:
+    - '^/drive/v3/files(?:/[^/]+)?/?$'
+    - '^/calendar/v3/users/[^/]+/calendarList/?$'
+    - '^/calendar/v3/calendars/[^/]+/events/?$'
 oauth:
-  authorizationPath: /o/oauth2/v2/auth
-  tokenPath: /oauth2/token
+  authorizationParams:
+    access_type: offline
+    prompt: consent
+  authorizationPath: https://accounts.google.com/o/oauth2/v2/auth
+  tokenPath: https://oauth2.googleapis.com/token
+  clientId: ''
+  clientSecret: ''
+  pkce: true
+  tokenAuth: body
+  tokenFormat: form
   scopes:
     - openid
     - email
@@ -14,8 +27,7 @@ oauth:
     - https://www.googleapis.com/auth/drive.readonly
     - https://www.googleapis.com/auth/calendar.readonly
   profile:
-    source: userinfo
-    path: /oauth2/v2/userinfo
+    source: id-token
     idField: sub
     usernameField: email
     displayNameField: name
@@ -23,5 +35,7 @@ oauth:
 skills:
   - id: google-drive-search
     displayName: Drive 检索
+    icon: google-drive.svg
   - id: google-calendar-agenda
     displayName: 日程查询
+    icon: google-calendar.svg

@@ -3,17 +3,17 @@
 import { MagicWand } from "@gravity-ui/icons";
 import { Alert, AlertDialog, Button, Skeleton, Switch, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import {
   disconnectSkill,
+  getSkillOAuthLaunchUrl,
   installSkillCollection,
   type SkillCollection,
   skillCollectionDetailQueryOptions,
   skillCollectionQueryOptions,
   skillConnectionQueryOptions,
   skillQueryKeys,
-  startSkillOAuth,
   uninstallSkillCollection,
   updateSkillCollectionSkill,
 } from "../../skills";
@@ -93,7 +93,7 @@ function PluginSkillDetail({
       content={contentQuery.data}
       contentError={contentQuery.error}
       description={skill.description}
-      icon={<PluginLogo logo={plugin.logo} size={24} />}
+      icon={<PluginLogo logo={skill.icon} size={24} />}
       isContentPending={contentQuery.isPending}
       name={skill.name}
       onBack={onBack}
@@ -103,31 +103,26 @@ function PluginSkillDetail({
 
 function PluginConnectionPanel({ plugin }: { plugin: SkillCollection }) {
   const queryClient = useQueryClient();
+  const [authorizationWindow, setAuthorizationWindow] = useState<Window | null>(null);
+  const isAwaitingAuthorization = authorizationWindow !== null;
   const statusQuery = useQuery({
     ...skillConnectionQueryOptions(plugin.id),
     enabled: plugin.type === "oauth",
+    refetchInterval: isAwaitingAuthorization ? 1_000 : false,
+    refetchIntervalInBackground: true,
   });
-  const [isAwaitingAuthorization, setIsAwaitingAuthorization] = useState(false);
-  const startMutation = useMutation({
-    mutationFn: async (authorizationWindow: Window) => {
-      authorizationWindow.location.replace(await startSkillOAuth(plugin.id));
-    },
-    onError: (error: Error, authorizationWindow) => {
-      authorizationWindow.close();
-      setIsAwaitingAuthorization(false);
-      toast.danger(error.message);
-    },
-    onSuccess: () => {
-      window.addEventListener(
-        "focus",
-        () => {
-          setIsAwaitingAuthorization(false);
-          void queryClient.invalidateQueries({ queryKey: skillQueryKeys.connection(plugin.id) });
-        },
-        { once: true },
-      );
-    },
-  });
+  useEffect(() => {
+    if (!authorizationWindow) return;
+    if (statusQuery.data?.isConnected) {
+      setAuthorizationWindow(null);
+      toast.success(`${plugin.name} 已授权`);
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      if (authorizationWindow.closed) setAuthorizationWindow(null);
+    }, 500);
+    return () => window.clearInterval(intervalId);
+  }, [authorizationWindow, plugin.name, statusQuery.data?.isConnected]);
   const disconnectMutation = useMutation({
     mutationFn: () => disconnectSkill(plugin.id),
     onError: (error: Error) => toast.danger(error.message),
@@ -139,10 +134,7 @@ function PluginConnectionPanel({ plugin }: { plugin: SkillCollection }) {
 
   const isConnected = statusQuery.data?.isConnected === true;
   const isPending =
-    statusQuery.isPending ||
-    startMutation.isPending ||
-    disconnectMutation.isPending ||
-    isAwaitingAuthorization;
+    statusQuery.isPending || disconnectMutation.isPending || isAwaitingAuthorization;
 
   return (
     <section
@@ -168,16 +160,15 @@ function PluginConnectionPanel({ plugin }: { plugin: SkillCollection }) {
             return;
           }
           const authorizationWindow = window.open(
-            "about:blank",
-            "pi-harness-skill-oauth",
+            getSkillOAuthLaunchUrl(plugin.id),
+            "_blank",
             "popup,width=720,height=760",
           );
           if (!authorizationWindow) {
             toast.danger("浏览器阻止了授权窗口，请允许弹窗后重试");
             return;
           }
-          setIsAwaitingAuthorization(true);
-          startMutation.mutate(authorizationWindow);
+          setAuthorizationWindow(authorizationWindow);
         }}
       >
         {isAwaitingAuthorization ? "等待授权" : isConnected ? "断开授权" : "授权"}
@@ -421,7 +412,7 @@ function PluginDetail({ onBack, plugin }: { onBack: () => void; plugin: SkillCol
                   ) : null
                 }
                 ariaLabel={`查看 ${skill.name} 技能详情`}
-                icon={<PluginLogo logo={plugin.logo} size={20} />}
+                icon={<PluginLogo logo={skill.icon} size={20} />}
                 key={skill.id}
                 name={skill.name}
                 secondary={<span className="min-w-0 flex-1 truncate">{skill.description}</span>}

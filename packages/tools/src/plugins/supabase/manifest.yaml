@@ -1,0 +1,26 @@
+id: supabase
+displayName: Supabase
+apiUrl: https://api.supabase.com
+description: Inspect Supabase organizations, projects, database schemas, configuration, and service health.
+category: developer
+type: oauth
+gateway:
+  allowedPaths:
+    - '^/v1/(?:profile|organizations|projects)/?$'
+    - '^/v1/organizations/[^/]+(?:/projects)?/?$'
+    - '^/v1/projects/[^/]+(?:/health|/database/openapi|/config/database/(?:postgres|pooler|pgbouncer)|/readonly)?/?$'
+oauth:
+  authorizationPath: /v1/oauth/authorize
+  callbackUrl: http://localhost:4310/api/skill-connections/supabase/oauth/callback
+  tokenPath: /v1/oauth/token
+  clientId: ''
+  clientSecret: ''
+  pkce: true
+  tokenAuth: basic
+  tokenFormat: form
+  scopes: []
+skills:
+  - id: supabase-project-overview
+    displayName: 项目概览
+  - id: supabase-database-inspection
+    displayName: 数据库检查

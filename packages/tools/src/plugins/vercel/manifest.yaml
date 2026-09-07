@@ -1,20 +1,36 @@
 id: vercel
 displayName: Vercel
-apiUrl: http://127.0.0.1:4000
-description: Inspect projects and diagnose deployments through the local Vercel emulator.
+apiUrl: https://api.vercel.com
+description: Inspect projects and diagnose deployments in a connected Vercel account.
 category: developer
 type: oauth
+gateway:
+  allowedPaths:
+    - '^/v2/(?:user|teams(?:/[^/]+(?:/members)?)?)/?$'
+    - '^/v9/projects/?$'
+    - '^/v9/projects/[^/]+(?:/(?:domains|env)(?:/[^/]+)?)?/?$'
+    - '^/v(?:2|3|6|13)/deployments(?:/[^/]+(?:/(?:aliases|events|files))?)?/?$'
+  deniedQueryValues:
+    decrypt: ['true']
 oauth:
-  authorizationPath: /oauth/authorize
-  tokenPath: /login/oauth/token
-  scopes: []
+  authorizationParams:
+    prompt: consent
+  authorizationPath: https://vercel.com/oauth/authorize
+  tokenPath: https://api.vercel.com/login/oauth/token
+  clientId: ''
+  clientSecret: ''
+  pkce: true
+  tokenAuth: body
+  tokenFormat: form
+  scopes: [openid, email, profile, offline_access]
   profile:
     source: userinfo
-    path: /v2/user
-    idField: user.id
-    usernameField: user.username
-    displayNameField: user.name
-    avatarUrlField: user.avatar
+    method: POST
+    path: /login/oauth/userinfo
+    idField: sub
+    usernameField: preferred_username
+    displayNameField: name
+    avatarUrlField: picture
 skills:
   - id: vercel-deployment-diagnostics
     displayName: 部署诊断

@@ -9,6 +9,7 @@ coverage/
 *.db-shm
 *.db-wal
 .pi-harness/
+.env
 
 .DS_Store
 .idea/

@@ -9,8 +9,11 @@ export interface SkillOAuthCredential {
     displayName: string | null;
     id: string;
     username: string;
-  };
+  } | null;
+  apiUrl?: string;
   connectedAt: number;
+  expiresAt?: number;
+  refreshToken?: string;
 }
 
 function isSkillOAuthCredential(value: unknown): value is SkillOAuthCredential {
@@ -19,11 +22,17 @@ function isSkillOAuthCredential(value: unknown): value is SkillOAuthCredential {
     typeof value.accessToken === "string" &&
     value.accessToken.length > 0 &&
     typeof value.connectedAt === "number" &&
-    isPlainObject(value.account) &&
-    typeof value.account.id === "string" &&
-    typeof value.account.username === "string" &&
-    (typeof value.account.displayName === "string" || value.account.displayName === null) &&
-    (typeof value.account.avatarUrl === "string" || value.account.avatarUrl === null)
+    (value.apiUrl === undefined || typeof value.apiUrl === "string") &&
+    (value.expiresAt === undefined ||
+      (typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt))) &&
+    (value.refreshToken === undefined ||
+      (typeof value.refreshToken === "string" && value.refreshToken.length > 0)) &&
+    (value.account === null ||
+      (isPlainObject(value.account) &&
+        typeof value.account.id === "string" &&
+        typeof value.account.username === "string" &&
+        (typeof value.account.displayName === "string" || value.account.displayName === null) &&
+        (typeof value.account.avatarUrl === "string" || value.account.avatarUrl === null)))
   );
 }
 

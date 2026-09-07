@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import cors from "@fastify/cors";
 import { AgentManager } from "@pi-harness/agent-runtime";
-import { resolveRegisteredPluginSkills } from "@pi-harness/tools";
+import { AVAILABLE_PLUGINS, resolveRegisteredPluginSkills } from "@pi-harness/tools";
 import Fastify from "fastify";
 import { type HarnessConfig, loadHarnessConfig } from "../config/index.js";
 import { registerAppSettingsRoutes } from "../routes/app-settings-routes.js";
@@ -44,6 +44,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     skillCredentials,
     database.appSettings,
     config.skillGatewayUrl,
+    config.skillOAuthClients,
   );
   const skillGatewayToken = randomBytes(32).toString("base64url");
   const eventStore = new SessionEventStore(config.sessionsPath);
@@ -106,6 +107,9 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     new URL(config.webUrl).host,
     `${config.host}:${config.port}`,
     new URL(config.skillGatewayUrl).host,
+    ...AVAILABLE_PLUGINS.flatMap(({ oauth }) =>
+      oauth?.callbackUrl === undefined ? [] : [new URL(oauth.callbackUrl).host],
+    ),
     ...[...LOCAL_WEB_ORIGINS].map((origin) => new URL(origin).host),
   ]);
   if (config.githubOAuth !== null) {

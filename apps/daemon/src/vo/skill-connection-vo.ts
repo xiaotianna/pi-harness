@@ -5,6 +5,10 @@ const SkillTypeSchema = Type.Union([Type.Literal(SkillType.NONE), Type.Literal(S
 
 const SkillCollectionItemVoSchema = Type.Object({
   description: Type.String({ minLength: 1 }),
+  icon: Type.Union([
+    Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
+    Type.Null(),
+  ]),
   id: Type.String({ minLength: 1 }),
   isEnabled: Type.Boolean(),
   name: Type.String({ minLength: 1 }),

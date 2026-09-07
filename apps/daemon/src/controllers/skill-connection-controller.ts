@@ -22,13 +22,24 @@ import type {
   SkillOAuthStartVo,
 } from "../vo/skill-connection-vo.js";
 
-function renderOAuthResult(pluginName: string, isSuccessful: boolean): string {
+function escapeHtmlText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function renderOAuthResult(
+  pluginName: string,
+  isSuccessful: boolean,
+  failureMessage?: string,
+): string {
   const title = isSuccessful ? `${pluginName} 已连接` : `${pluginName} 连接失败`;
   const description = isSuccessful
     ? "授权凭据已安全保存到本地 daemon，可以关闭此窗口。"
-    : "授权没有完成，请关闭此窗口后从插件市场重试。";
-  const closeScript = isSuccessful ? "<script>window.close()</script>" : "";
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><body><main><h1>${title}</h1><p>${description}</p><button onclick="window.close()">关闭窗口</button></main>${closeScript}</body></html>`;
+    : (failureMessage ?? "授权没有完成，请关闭此窗口后从插件市场重试。");
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtmlText(title)}</title><body><main><h1>${escapeHtmlText(title)}</h1><p>${escapeHtmlText(description)}</p><button onclick="window.close()">关闭窗口</button></main></body></html>`;
+}
+
+function renderOAuthLaunch(): string {
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>正在打开授权页面</title><body><main><h1>正在打开授权页面…</h1><p id="status">请稍候。</p></main><script>(async()=>{try{const response=await fetch(location.pathname.slice(0,-7),{method:"POST",headers:{Accept:"application/json","X-PI-Harness-Request":"1"}});const body=await response.json();if(!response.ok||typeof body.authorizationUrl!=="string")throw new Error(typeof body.message==="string"?body.message:"无法创建 OAuth 授权请求");location.replace(body.authorizationUrl)}catch(error){document.title="授权启动失败";document.querySelector("h1").textContent="授权启动失败";document.querySelector("#status").textContent=error instanceof Error?error.message:"请关闭窗口后重试"}})()</script></body></html>`;
 }
 
 export class SkillConnectionController {
@@ -48,6 +59,7 @@ export class SkillConnectionController {
       name: collection.name,
       skills: collection.skills.map((skill) => ({
         description: skill.description,
+        icon: skill.icon ?? collection.logo ?? null,
         id: skill.id,
         isEnabled: this.connections.isSkillEnabled(collection.id, skill.id),
         name: skill.displayName ?? skill.name,
@@ -151,6 +163,19 @@ export class SkillConnectionController {
     }
   };
 
+  public launchOAuth = (
+    _request: FastifyRequest<{ Params: SkillConnectionParamsDto }>,
+    reply: FastifyReply,
+  ): FastifyReply =>
+    reply
+      .header(
+        "Content-Security-Policy",
+        "default-src 'none'; connect-src 'self'; script-src 'unsafe-inline'",
+      )
+      .header("Cache-Control", "no-store")
+      .type("text/html; charset=utf-8")
+      .send(renderOAuthLaunch());
+
   public completeOAuth = async (
     request: FastifyRequest<{
       Params: SkillConnectionParamsDto;
@@ -160,23 +185,42 @@ export class SkillConnectionController {
   ): Promise<FastifyReply> => {
     const { code, error, state } = request.query;
     if (error !== undefined || code === undefined || state === undefined) {
-      return this.sendOAuthPage(reply, request.params.collectionId, false, 400);
+      const reason = error === undefined ? "missing_callback_parameters" : "provider_error";
+      request.log.warn(
+        { code: SkillConnectionErrorCode.OAUTH_FAILED, reason },
+        "Plugin OAuth callback failed",
+      );
+      return this.sendOAuthPage(
+        reply,
+        request.params.collectionId,
+        false,
+        400,
+        error === undefined
+          ? "OAuth 回调缺少 code 或 state，请重新连接。"
+          : "OAuth 提供方拒绝或取消了授权，请重新连接。",
+      );
     }
 
     try {
       await this.connections.completeAuthorization(request.params.collectionId, code, state);
       return this.sendOAuthPage(reply, request.params.collectionId, true, 200);
     } catch (cause: unknown) {
+      const error =
+        cause instanceof SkillConnectionError
+          ? cause
+          : new SkillConnectionError(
+              SkillConnectionErrorCode.OAUTH_FAILED,
+              "插件 OAuth 授权失败，请查看 daemon 日志。",
+            );
       request.log.warn(
         {
-          code:
-            cause instanceof SkillConnectionError
-              ? cause.code
-              : SkillConnectionErrorCode.OAUTH_FAILED,
+          code: error.code,
+          err: cause,
+          reason: error.message,
         },
         "Plugin OAuth callback failed",
       );
-      return this.sendOAuthPage(reply, request.params.collectionId, false, 400);
+      return this.sendOAuthPage(reply, request.params.collectionId, false, 400, error.message);
     }
   };
 
@@ -250,6 +294,7 @@ export class SkillConnectionController {
     collectionId: string,
     isSuccessful: boolean,
     statusCode: number,
+    failureMessage?: string,
   ): FastifyReply {
     return reply
       .header(
@@ -262,6 +307,7 @@ export class SkillConnectionController {
         renderOAuthResult(
           AVAILABLE_PLUGINS.find(({ id }) => id === collectionId)?.name ?? "插件",
           isSuccessful,
+          failureMessage,
         ),
       );
   }

@@ -1,12 +1,25 @@
 id: github
 displayName: GitHub
-apiUrl: http://127.0.0.1:4001
+apiUrl: https://api.github.com
 description: Search repositories, review pull requests, manage issues, and diagnose Actions.
 category: developer
 type: oauth
+gateway:
+  allowedPaths:
+    - '^/user(?:/repos)?/?$'
+    - '^/users/[^/]+(?:/repos)?/?$'
+    - '^/search/(?:repositories|issues|users|code|commits|topics|labels)/?$'
+    - '^/repos/[^/]+/[^/]+(?:/.*)?$'
+  headers:
+    Accept: application/vnd.github+json
 oauth:
-  authorizationPath: /login/oauth/authorize
-  tokenPath: /login/oauth/access_token
+  authorizationPath: https://github.com/login/oauth/authorize
+  tokenPath: https://github.com/login/oauth/access_token
+  clientId: ''
+  clientSecret: ''
+  pkce: true
+  tokenAuth: body
+  tokenFormat: form
   scopes: [repo, user]
   profile:
     source: userinfo
