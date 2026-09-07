@@ -1,7 +1,7 @@
 id: supabase
 displayName: Supabase
 apiUrl: https://api.supabase.com
-description: Inspect Supabase organizations, projects, database schemas, configuration, and service health.
+description: Develop and troubleshoot Supabase integrations, optimize Postgres, and inspect connected projects.
 category: developer
 type: oauth
 gateway:
@@ -24,3 +24,7 @@ skills:
     displayName: 项目概览
   - id: supabase-database-inspection
     displayName: 数据库检查
+  - id: supabase
+    displayName: 开发与排障
+  - id: supabase-postgres-best-practices
+    displayName: Postgres 最佳实践

@@ -1,7 +1,7 @@
 id: vercel
 displayName: Vercel
 apiUrl: https://api.vercel.com
-description: Inspect projects and diagnose deployments in a connected Vercel account.
+description: Vercel ecosystem development guidance, deployment workflows, and connected project diagnostics.
 category: developer
 type: oauth
 gateway:
@@ -32,7 +32,111 @@ oauth:
     displayNameField: name
     avatarUrlField: picture
 skills:
-  - id: vercel-deployment-diagnostics
-    displayName: 部署诊断
-  - id: vercel-project-overview
-    displayName: 项目概览
+  - id: agent-browser
+    displayName: agent-browser
+  - id: agent-browser-verify
+    displayName: agent-browser-verify
+  - id: ai-elements
+    displayName: ai-elements
+  - id: ai-gateway
+    displayName: ai-gateway
+  - id: ai-generation-persistence
+    displayName: ai-generation-persistence
+  - id: ai-sdk
+    displayName: ai-sdk
+  - id: auth
+    displayName: auth
+  - id: bootstrap
+    displayName: bootstrap
+  - id: cdn-caching
+    displayName: cdn-caching
+  - id: chat-sdk
+    displayName: chat-sdk
+  - id: cms
+    displayName: cms
+  - id: cron-jobs
+    displayName: cron-jobs
+  - id: deployments-cicd
+    displayName: deployments-cicd
+  - id: email
+    displayName: email
+  - id: env-vars
+    displayName: env-vars
+  - id: eve
+    displayName: eve
+  - id: geist
+    displayName: geist
+  - id: geistdocs
+    displayName: geistdocs
+  - id: investigation-mode
+    displayName: investigation-mode
+  - id: json-render
+    displayName: json-render
+  - id: knowledge-update
+    displayName: knowledge-update
+  - id: marketplace
+    displayName: marketplace
+  - id: micro
+    displayName: micro
+  - id: microfrontends
+    displayName: microfrontends
+  - id: ncc
+    displayName: ncc
+  - id: next-cache-components
+    displayName: next-cache-components
+  - id: next-forge
+    displayName: next-forge
+  - id: next-upgrade
+    displayName: next-upgrade
+  - id: nextjs
+    displayName: nextjs
+  - id: observability
+    displayName: observability
+  - id: payments
+    displayName: payments
+  - id: react-best-practices
+    displayName: react-best-practices
+  - id: routing-middleware
+    displayName: routing-middleware
+  - id: runtime-cache
+    displayName: runtime-cache
+  - id: satori
+    displayName: satori
+  - id: shadcn
+    displayName: shadcn
+  - id: sign-in-with-vercel
+    displayName: sign-in-with-vercel
+  - id: swr
+    displayName: swr
+  - id: turbopack
+    displayName: turbopack
+  - id: turborepo
+    displayName: turborepo
+  - id: v0-dev
+    displayName: v0-dev
+  - id: vercel-agent
+    displayName: vercel-agent
+  - id: vercel-api
+    displayName: vercel-api
+  - id: vercel-cli
+    displayName: vercel-cli
+  - id: vercel-connect
+    displayName: vercel-connect
+  - id: vercel-firewall
+    displayName: vercel-firewall
+  - id: vercel-flags
+    displayName: vercel-flags
+  - id: vercel-functions
+    displayName: vercel-functions
+  - id: vercel-queues
+    displayName: vercel-queues
+  - id: vercel-sandbox
+    displayName: vercel-sandbox
+  - id: vercel-services
+    displayName: vercel-services
+  - id: vercel-storage
+    displayName: vercel-storage
+  - id: verification
+    displayName: verification
+  - id: workflow
+    displayName: workflow

@@ -1,7 +1,7 @@
 id: notion
 displayName: Notion
 apiUrl: https://api.notion.com
-description: Search and review pages, databases, and workspace knowledge in Notion.
+description: Search Notion and prepare knowledge records, meeting materials, research reports, and implementation plans.
 category: productivity
 type: oauth
 gateway:
@@ -37,3 +37,11 @@ skills:
     displayName: 工作区检索
   - id: notion-page-review
     displayName: 页面与数据库查看
+  - id: notion-knowledge-capture
+    displayName: 知识整理
+  - id: notion-meeting-intelligence
+    displayName: 会议准备
+  - id: notion-research-documentation
+    displayName: 研究文档
+  - id: notion-spec-to-implementation
+    displayName: 需求转实施

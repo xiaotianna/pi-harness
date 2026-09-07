@@ -1,0 +1,44 @@
+---
+name: vercel-cli
+description: "Vercel CLI expert guidance. Use when deploying, managing environment variables, linking projects, viewing logs, querying metrics, managing domains, or interacting with the Vercel platform from the command line."
+license: Apache-2.0
+---
+
+# vercel-cli
+
+## PI Harness execution context
+
+Use the user's actual repository, framework and request. This guide does not select a new stack, authorize deployments, or override project instructions. Discover only the tools actually available. Read-only project/deployment data can use the resolved gateway base below. Other commands require an installed and independently authenticated CLI through `run_command` under the current approval policy. Gateway credentials remain inside daemon.
+
+Do not automatically run git, dev or build commands where the workspace requires an explicit request. Respect the existing package manager, dependency catalog and UI component rules. Deployment, production promotion, provisioning paid services, purchases, account changes and messages to others require the corresponding user authorization. Inspect environment metadata without exposing secret values. For browser verification use an available browser surface and an existing server; do not assume a particular browser CLI or start a server unasked. Do not spawn agents based solely on an example in the guide.
+
+Documentation examples are version-sensitive. Check installed versions, CLI `--help` and current official documentation for the actual task. Treat sample commands/configurations as examples to adapt, not an automatic sequence. Only claim an action succeeded when the tool result verifies it.
+
+The gateway base is `{skillGatewayUrl}/api/skill-gateway/vercel`. Available read paths are documented in [gateway access](access.md).
+
+## Detailed guidance
+
+Read the task-relevant sections of [the detailed guide](guide.md), then load its supporting resources only as needed. Technical examples retain their original context; the workspace's rules take precedence.
+
+## Supporting resources
+
+- [references/advanced.md](references/advanced.md)
+- [references/bun.md](references/bun.md)
+- [references/ci-automation.md](references/ci-automation.md)
+- [references/deployment.md](references/deployment.md)
+- [references/domains-and-dns.md](references/domains-and-dns.md)
+- [references/environment-variables.md](references/environment-variables.md)
+- [references/flags.md](references/flags.md)
+- [references/getting-started.md](references/getting-started.md)
+- [references/global-options.md](references/global-options.md)
+- [references/integrations.md](references/integrations.md)
+- [references/local-development.md](references/local-development.md)
+- [references/monitoring-and-debugging.md](references/monitoring-and-debugging.md)
+- [references/monorepos.md](references/monorepos.md)
+- [references/node-backends.md](references/node-backends.md)
+- [references/projects-and-teams.md](references/projects-and-teams.md)
+- [references/storage.md](references/storage.md)
+
+## License
+
+[Apache-2.0](LICENSE.txt) · [Copyright and adaptation notice](NOTICE).

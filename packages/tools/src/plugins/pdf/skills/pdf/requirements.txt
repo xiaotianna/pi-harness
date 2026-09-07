@@ -1,0 +1,4 @@
+pypdf>=6,<7
+reportlab>=4,<5
+pdfplumber>=0.11,<1
+PyMuPDF>=1.26,<2

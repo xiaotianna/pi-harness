@@ -132,9 +132,45 @@ function PluginConnectionPanel({ plugin }: { plugin: SkillCollection }) {
     },
   });
 
-  const isConnected = statusQuery.data?.isConnected === true;
-  const isPending =
-    statusQuery.isPending || disconnectMutation.isPending || isAwaitingAuthorization;
+  if (statusQuery.isPending) {
+    return (
+      <section
+        aria-busy="true"
+        aria-label={`${plugin.name} 授权`}
+        className="mt-6 flex min-h-16 items-center justify-between gap-4 rounded-xl bg-surface-secondary px-4 py-3"
+      >
+        <span className="sr-only">正在加载授权状态</span>
+        <div className="min-w-0 flex-1 space-y-2">
+          <Skeleton animationType="none" className="h-4 w-20 rounded-lg" />
+          <Skeleton animationType="none" className="h-4 w-2/3 rounded-lg" />
+        </div>
+        <Skeleton animationType="none" className="h-8 w-20 shrink-0 rounded-xl" />
+      </section>
+    );
+  }
+
+  if (statusQuery.isError) {
+    return (
+      <Alert className="mt-6 bg-danger-soft" role="alert" status="danger">
+        <Alert.Indicator />
+        <Alert.Content>
+          <Alert.Title>授权状态加载失败</Alert.Title>
+          <Alert.Description>{statusQuery.error.message}</Alert.Description>
+          <Button
+            isPending={statusQuery.isFetching}
+            size="sm"
+            variant="tertiary"
+            onPress={() => void statusQuery.refetch()}
+          >
+            重试
+          </Button>
+        </Alert.Content>
+      </Alert>
+    );
+  }
+
+  const isConnected = statusQuery.data.isConnected;
+  const isPending = disconnectMutation.isPending || isAwaitingAuthorization;
 
   return (
     <section
@@ -145,7 +181,7 @@ function PluginConnectionPanel({ plugin }: { plugin: SkillCollection }) {
         <h3 className="text-sm font-medium text-foreground">账户授权</h3>
         <p className="mt-0.5 truncate text-sm text-muted">
           {isConnected
-            ? `已连接 ${statusQuery.data?.account?.displayName ?? statusQuery.data?.account?.username ?? plugin.name}`
+            ? `已连接 ${statusQuery.data.account?.displayName ?? statusQuery.data.account?.username ?? plugin.name}`
             : `授权后，Agent 才能使用 ${plugin.name} 技能。`}
         </p>
       </div>
@@ -177,15 +213,25 @@ function PluginConnectionPanel({ plugin }: { plugin: SkillCollection }) {
   );
 }
 
-function PluginUninstallButton({
-  plugin,
-  showInstalledStatus = false,
-}: {
-  plugin: SkillCollection;
-  showInstalledStatus?: boolean;
-}) {
+function PluginInstalledActions({ plugin }: { plugin: SkillCollection }) {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
+  const updateMutation = useMutation({
+    mutationFn: async (isEnabled: boolean) => {
+      // ponytail: sequential per-skill updates; use a batch endpoint if atomic toggles are needed.
+      for (const skill of plugin.skills) {
+        if (skill.isEnabled !== isEnabled) {
+          await updateSkillCollectionSkill(plugin.id, skill.id, isEnabled);
+        }
+      }
+    },
+    onError: (error: Error) => toast.danger(error.message),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: skillQueryKeys.collections() }),
+        queryClient.invalidateQueries({ queryKey: skillQueryKeys.lists() }),
+      ]),
+  });
   const mutation = useMutation({
     mutationFn: () => uninstallSkillCollection(plugin.id),
     onError: (error: Error) => toast.danger(error.message),
@@ -202,30 +248,30 @@ function PluginUninstallButton({
 
   return (
     <>
-      <Button
-        aria-label={`卸载 ${plugin.name}`}
-        className={
-          showInstalledStatus
-            ? "[--button-bg-hover:var(--danger-soft-hover)] [--button-bg-pressed:var(--danger-soft-hover)] [--button-bg:var(--success-soft)] [--button-fg:var(--success-soft-foreground)] group-hover:[--button-bg:var(--danger-soft)] group-hover:[--button-fg:var(--danger-soft-foreground)] group-focus-within:[--button-bg:var(--danger-soft)] group-focus-within:[--button-fg:var(--danger-soft-foreground)]"
-            : ""
-        }
-        size="sm"
-        variant={showInstalledStatus ? "secondary" : "danger-soft"}
-        onPress={() => setIsOpen(true)}
-      >
-        {showInstalledStatus ? (
-          <span className="grid">
-            <span className="col-start-1 row-start-1 group-hover:invisible group-focus-within:invisible">
-              已安装
-            </span>
-            <span className="invisible col-start-1 row-start-1 group-hover:visible group-focus-within:visible">
-              卸载
-            </span>
-          </span>
-        ) : (
-          "卸载"
-        )}
-      </Button>
+      <div className="flex shrink-0 items-center gap-2">
+        <Switch
+          aria-label={`${plugin.name} 可用状态`}
+          isDisabled={updateMutation.isPending || mutation.isPending || isOpen}
+          isSelected={plugin.skills.some((skill) => skill.isEnabled)}
+          size="sm"
+          onChange={(isEnabled) => updateMutation.mutate(isEnabled)}
+        >
+          <Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+          </Switch.Content>
+        </Switch>
+        <Button
+          aria-label={`卸载 ${plugin.name}`}
+          isDisabled={updateMutation.isPending || mutation.isPending}
+          size="sm"
+          variant="danger-soft"
+          onPress={() => setIsOpen(true)}
+        >
+          卸载
+        </Button>
+      </div>
       <AlertDialog.Backdrop isOpen={isOpen} onOpenChange={setIsOpen}>
         <AlertDialog.Container>
           <AlertDialog.Dialog className="sm:max-w-[420px]">
@@ -255,13 +301,7 @@ function PluginUninstallButton({
   );
 }
 
-function PluginInstallAction({
-  plugin,
-  showInstalledStatus = false,
-}: {
-  plugin: SkillCollection;
-  showInstalledStatus?: boolean;
-}) {
+function PluginInstallAction({ plugin }: { plugin: SkillCollection }) {
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: () => installSkillCollection(plugin.id),
@@ -276,11 +316,7 @@ function PluginInstallAction({
   });
 
   if (plugin.isInstalled) {
-    return showInstalledStatus ? (
-      <PluginUninstallButton plugin={plugin} showInstalledStatus />
-    ) : (
-      <PluginUninstallButton plugin={plugin} />
-    );
+    return <PluginInstalledActions plugin={plugin} />;
   }
 
   return (
@@ -306,7 +342,7 @@ function PluginList({
     <ul className="flex flex-col gap-1">
       {plugins.map((plugin) => (
         <SettingsCatalogItem
-          action={<PluginInstallAction plugin={plugin} showInstalledStatus />}
+          action={<PluginInstallAction plugin={plugin} />}
           ariaLabel={`查看 ${plugin.name} 插件详情`}
           icon={<PluginLogo logo={plugin.logo} size={20} />}
           key={plugin.id}

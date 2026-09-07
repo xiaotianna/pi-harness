@@ -1,0 +1,2 @@
+python-pptx>=1,<2
+Pillow>=11,<13

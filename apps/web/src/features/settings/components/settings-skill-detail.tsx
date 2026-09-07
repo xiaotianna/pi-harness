@@ -29,7 +29,16 @@ export function SettingsSkillDetail({
 }) {
   return (
     <SettingsCatalogDetail
-      action={action}
+      action={
+        isContentPending && action ? (
+          <div aria-busy="true" className="shrink-0">
+            <span className="sr-only">正在加载技能详情</span>
+            <Skeleton animationType="none" className="h-6 w-24 rounded-lg" />
+          </div>
+        ) : (
+          action
+        )
+      }
       ariaLabel={`${name} 技能详情`}
       backLabel={backLabel}
       description={description}

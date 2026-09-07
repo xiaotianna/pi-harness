@@ -14,3 +14,7 @@ callback from its gateway URL and plugin ID. The callback must be an HTTP(S) loo
 ## Logo
 
 The Notion logo is provided by the Iconify Logos collection.
+
+## Knowledge workflows
+
+Four additional skills prepare knowledge records, meeting materials, research reports, and implementation plans from accessible Notion context. Templates are loaded on demand. The gateway remains read-only; outputs are reviewable local drafts, and publishing requires an available write integration. Each adapted skill includes the Notion Labs license.

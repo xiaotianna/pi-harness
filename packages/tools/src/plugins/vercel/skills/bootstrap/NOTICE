@@ -1,0 +1,3 @@
+Copyright 2026 Vercel, Inc.
+Materials from vercel/vercel-plugin, licensed under Apache-2.0.
+Modified for PI Harness: discovery metadata, progressive loading and execution-context adaptation.

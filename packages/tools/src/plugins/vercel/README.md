@@ -1,6 +1,6 @@
 # Vercel
 
-Connect a Vercel account and give the Agent focused, read-only Vercel skills.
+54 Vercel ecosystem skills with connected read-only inspection and authorized local CLI workflows.
 
 ## OAuth configuration
 
@@ -15,3 +15,7 @@ The configured manifest contains a credential and must not be published or share
 ## Logo
 
 The Vercel logo is provided by [LobeHub Icons](https://lobehub.com/zh/icons/vercel) under the MIT license.
+
+## Workflow skills
+
+Includes 54 Vercel ecosystem skills with task-specific detailed guides. Source-derived resources carry Apache-2.0 notices; execution follows workspace rules and current user authorization.

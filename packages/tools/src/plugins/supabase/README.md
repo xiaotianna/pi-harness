@@ -1,6 +1,6 @@
 # Supabase
 
-Connect a Supabase account and give the Agent focused, read-only Management API skills.
+Supabase development guidance and Postgres best practices, plus connected read-only project and database inspection. Development commands use an independently configured local CLI through the normal command approval policy.
 
 ## OAuth configuration
 
@@ -13,3 +13,11 @@ Grant only the read scopes used by the bundled skills.
 ## Logo
 
 The Supabase logo is provided by the Iconify Logos collection.
+
+## Skills and resources
+
+- `supabase`: development, troubleshooting, access review and local migrations.
+- `supabase-postgres-best-practices`: task-specific SQL rules in eight categories.
+- `supabase-project-overview` and `supabase-database-inspection`: connected read-only Management API inspection.
+
+The development and Postgres guides include Supabase MIT notices in their Skill directories. Gateway authentication and local CLI authentication are separate.

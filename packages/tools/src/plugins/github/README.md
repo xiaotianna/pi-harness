@@ -1,6 +1,6 @@
 # GitHub
 
-Connect a GitHub account and give the Agent focused, read-only GitHub skills.
+GitHub repository triage, review follow-up, CI fixes and publishing workflows, with connected read-only access and authorized local CLI operations.
 
 ## OAuth configuration
 
@@ -13,3 +13,7 @@ The configured manifest contains a credential and must not be published or share
 ## Logo
 
 The GitHub logo is provided by [LobeHub Icons](https://lobehub.com/zh/icons/github) under the MIT license.
+
+## Workflow skills
+
+Includes repository triage, review follow-up, Actions fixes and explicitly requested Git/PR publishing through local CLI. Gateway operations remain read-only.
