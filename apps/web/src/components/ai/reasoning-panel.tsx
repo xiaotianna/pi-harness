@@ -83,6 +83,7 @@ export function ReasoningPanel({
                   index > 0 && "mt-4",
                 )}
                 key={`${step.title}-${index}`}
+                isStreaming={streaming && index === shownSteps.length - 1}
               >
                 {step.body}
               </AssistantMarkdown>

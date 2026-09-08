@@ -466,6 +466,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                 <ChatConversation
                   ref={handleConversationRef}
                   className="session-scrollbar h-full min-h-0"
+                  style={{ overflowAnchor: "none" }}
                   initial="instant"
                   resize="instant"
                   onPointerDown={(event) => {

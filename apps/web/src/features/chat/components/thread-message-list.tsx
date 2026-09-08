@@ -229,6 +229,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
 
       return { turnIdByItemIndex, turnItemIndexById };
     }, [items]);
+    const getItemKey = useCallback((index: number) => items[index]?.id ?? index, [items]);
     const virtualizer = useVirtualizer({
       anchorTo: isEditingMessage ? "start" : "end",
       count: isVirtualized ? items.length : 0,
@@ -236,7 +237,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       enabled: isVirtualized,
       estimateSize: () => 180,
       followOnAppend: true,
-      getItemKey: (index) => items[index]?.id ?? index,
+      getItemKey,
       getScrollElement: () => scrollContainerRef?.current ?? null,
       initialOffset: () => items.length * 180 + 80,
       initialRect: { height: 1, width: 1 },
@@ -245,7 +246,6 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       paddingStart: 40,
       scrollPaddingStart: 40,
       scrollEndThreshold,
-      useFlushSync: false,
     });
     const targetMessageId = useMemo(() => {
       if (!searchTarget?.messageEventId) return null;

@@ -13,6 +13,7 @@ import { useChatSidebarStore } from "../state/chat-sidebar-store";
 import { updateSnapshotWithEvents } from "../utils/session-messages";
 
 const RECONNECT_DELAY_MS = 2_000;
+const STREAM_FLUSH_INTERVAL_MS = 100;
 const STALE_CONNECTION_TIMEOUT_MS = 45_000;
 const EVENT_TYPES = Object.values(HarnessEventType);
 
@@ -34,6 +35,8 @@ export function useSessionEvents(sessionId: string, initialSeq: number, isRead: 
     let source: EventSource | null = null;
     let reconnectTimer: number | undefined;
     let staleConnectionTimer: number | undefined;
+    let flushTimer: number | undefined;
+    let pendingEvents: HarnessEvent[] = [];
     let isClosed = false;
 
     const clearStaleConnectionTimer = () => {
@@ -110,15 +113,43 @@ export function useSessionEvents(sessionId: string, initialSeq: number, isRead: 
       }
     };
 
+    const invalidateSnapshots = () => {
+      void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.detail(sessionId) });
+      void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.trace(sessionId) });
+    };
+
+    const flush = () => {
+      if (flushTimer !== undefined) window.clearTimeout(flushTimer);
+      flushTimer = undefined;
+      const events = pendingEvents;
+      pendingEvents = [];
+      try {
+        commit(events);
+      } catch {
+        invalidateSnapshots();
+      }
+    };
+
     const receive = (message: MessageEvent<string>) => {
+      if (isClosed) return;
       markConnectionAlive();
       try {
         const event = parseSessionEvent(message.data);
-        if (event.sessionId !== sessionId || event.seq <= lastSeqRef.current) return;
-        commit([event]);
+        const lastReceivedSeq = Math.max(lastSeqRef.current, pendingEvents.at(-1)?.seq ?? 0);
+        if (event.sessionId !== sessionId || event.seq <= lastReceivedSeq) return;
+        pendingEvents.push(event);
+        if (
+          event.type === HarnessEventType.MESSAGE_DELTA ||
+          event.type === HarnessEventType.TOOL_UPDATED
+        ) {
+          flushTimer ??= window.setTimeout(flush, STREAM_FLUSH_INTERVAL_MS);
+        } else {
+          // 状态事件与此前的增量一起提交，保持审批、完成和中止即时且有序。
+          flush();
+        }
       } catch {
-        void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.detail(sessionId) });
-        void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.trace(sessionId) });
+        flush();
+        invalidateSnapshots();
       }
     };
 
@@ -140,6 +171,7 @@ export function useSessionEvents(sessionId: string, initialSeq: number, isRead: 
       source?.close();
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       clearStaleConnectionTimer();
+      flush();
     };
   }, [isRead, queryClient, sessionId]);
 }

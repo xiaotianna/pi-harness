@@ -10,7 +10,9 @@ export function AssistantThreadMessage({ message }: { message: ChatAssistantMess
       <ChatMessagePrimitive.Body>
         {message.content ? (
           <ChatMessagePrimitive.Content>
-            <AssistantMarkdown>{message.content}</AssistantMarkdown>
+            <AssistantMarkdown isStreaming={message.isStreaming ?? false}>
+              {message.content}
+            </AssistantMarkdown>
           </ChatMessagePrimitive.Content>
         ) : null}
         {message.fileChanges?.length && message.turnId ? (

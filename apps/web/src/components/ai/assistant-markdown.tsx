@@ -1,7 +1,7 @@
 import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
 import {
-  Markdown as MarkdownPrimitive,
-  type MarkdownProps,
+  StreamMarkdown as MarkdownPrimitive,
+  type StreamMarkdownProps,
 } from "@agile-avocation/ui-pro/markdown";
 import { Checkbox, Table } from "@heroui/react";
 import { Children, Fragment, isValidElement, type ReactNode } from "react";
@@ -136,6 +136,12 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
   p: ({ children }) => <p>{renderMarkdownText(children)}</p>,
 } satisfies Components;
 
-export function AssistantMarkdown(props: Omit<MarkdownProps, "components">) {
-  return <MarkdownPrimitive components={ASSISTANT_MARKDOWN_COMPONENTS} {...props} />;
+// 两种代码入口复用同一渲染器，保留路径链接、Skill 和可视化代码块的处理。
+const STREAM_MARKDOWN_COMPONENTS = {
+  ...ASSISTANT_MARKDOWN_COMPONENTS,
+  inlineCode: ASSISTANT_MARKDOWN_COMPONENTS.code,
+};
+
+export function AssistantMarkdown(props: Omit<StreamMarkdownProps, "components" | "animated">) {
+  return <MarkdownPrimitive animated={false} components={STREAM_MARKDOWN_COMPONENTS} {...props} />;
 }

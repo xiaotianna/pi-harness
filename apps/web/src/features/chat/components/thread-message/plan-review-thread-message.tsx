@@ -34,7 +34,9 @@ export function PlanReviewThreadMessage({ message }: { message: ChatPlanReviewMe
             {isExpanded ? (
               <div className="px-4 pb-2">
                 {message.planMarkdown ? (
-                  <AssistantMarkdown>{message.planMarkdown}</AssistantMarkdown>
+                  <AssistantMarkdown isStreaming={message.isStreaming ?? false}>
+                    {message.planMarkdown}
+                  </AssistantMarkdown>
                 ) : null}
               </div>
             ) : (
@@ -44,7 +46,9 @@ export function PlanReviewThreadMessage({ message }: { message: ChatPlanReviewMe
                 orientation="vertical"
               >
                 {message.planMarkdown ? (
-                  <AssistantMarkdown>{message.planMarkdown}</AssistantMarkdown>
+                  <AssistantMarkdown isStreaming={message.isStreaming ?? false}>
+                    {message.planMarkdown}
+                  </AssistantMarkdown>
                 ) : null}
               </ScrollShadow>
             )}
