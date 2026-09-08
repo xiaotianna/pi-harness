@@ -42,7 +42,6 @@ const SkillCollectionSchema = Type.Object({
       name: Type.String({ minLength: 1 }),
       type: Type.Union([Type.Literal("none"), Type.Literal("oauth")]),
     }),
-    { minItems: 1 },
   ),
   type: Type.Union([Type.Literal("none"), Type.Literal("oauth")]),
 });

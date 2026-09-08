@@ -20,10 +20,6 @@ oauth:
   tokenFormat: form
   scopes: []
 skills:
-  - id: supabase-project-overview
-    displayName: 项目概览
-  - id: supabase-database-inspection
-    displayName: 数据库检查
   - id: supabase
     displayName: 开发与排障
   - id: supabase-postgres-best-practices

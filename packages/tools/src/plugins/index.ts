@@ -6,7 +6,6 @@ const BUILT_IN_PLUGIN_IDS = [
   "vercel",
   "github",
   "google",
-  "gmail",
   "notion",
   "supabase",
   "documents",

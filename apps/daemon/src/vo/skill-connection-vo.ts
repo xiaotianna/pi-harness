@@ -25,7 +25,7 @@ export const SkillCollectionVoSchema = Type.Object({
     Type.Null(),
   ]),
   name: Type.String({ minLength: 1 }),
-  skills: Type.Array(SkillCollectionItemVoSchema, { minItems: 1 }),
+  skills: Type.Array(SkillCollectionItemVoSchema),
   type: SkillTypeSchema,
 });
 

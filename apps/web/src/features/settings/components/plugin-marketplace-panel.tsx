@@ -249,19 +249,21 @@ function PluginInstalledActions({ plugin }: { plugin: SkillCollection }) {
   return (
     <>
       <div className="flex shrink-0 items-center gap-2">
-        <Switch
-          aria-label={`${plugin.name} 可用状态`}
-          isDisabled={updateMutation.isPending || mutation.isPending || isOpen}
-          isSelected={plugin.skills.some((skill) => skill.isEnabled)}
-          size="sm"
-          onChange={(isEnabled) => updateMutation.mutate(isEnabled)}
-        >
-          <Switch.Content>
-            <Switch.Control>
-              <Switch.Thumb />
-            </Switch.Control>
-          </Switch.Content>
-        </Switch>
+        {plugin.skills.length > 0 && (
+          <Switch
+            aria-label={`${plugin.name} 可用状态`}
+            isDisabled={updateMutation.isPending || mutation.isPending || isOpen}
+            isSelected={plugin.skills.some((skill) => skill.isEnabled)}
+            size="sm"
+            onChange={(isEnabled) => updateMutation.mutate(isEnabled)}
+          >
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
+          </Switch>
+        )}
         <Button
           aria-label={`卸载 ${plugin.name}`}
           isDisabled={updateMutation.isPending || mutation.isPending}

@@ -111,7 +111,7 @@ const PluginMetadataSchema = Type.Object(
     gateway: PluginGatewaySchema,
     id: Type.String({ maxLength: 64, minLength: 1, pattern: NAME_PATTERN }),
     oauth: Type.Optional(PluginOAuthSchema),
-    skills: Type.Array(PluginSkillSchema, { minItems: 1 }),
+    skills: Type.Array(PluginSkillSchema),
     type: SkillTypeSchema,
   },
   { additionalProperties: false },

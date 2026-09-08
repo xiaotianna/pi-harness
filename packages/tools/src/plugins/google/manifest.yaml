@@ -1,19 +1,22 @@
 id: google
 displayName: Google
 apiUrl: https://www.googleapis.com
-description: Search Drive files and review calendar schedules in a connected Google account.
+description: Inspect Drive content and comments and prepare Docs, Sheets, and Slides workflows.
 category: productivity
 type: oauth
 gateway:
   allowedPaths:
     - '^/drive/v3/files(?:/[^/]+)?/?$'
+    - '^/drive/v3/files/[^/]+/export/?$'
+    - '^/drive/v3/files/[^/]+/comments(?:/[^/]+(?:/replies(?:/[^/]+)?)?)?/?$'
     - '^/calendar/v3/users/[^/]+/calendarList/?$'
-    - '^/calendar/v3/calendars/[^/]+/events/?$'
+    - '^/calendar/v3/calendars/[^/]+/events(?:/[^/]+)?/?$'
 oauth:
   authorizationParams:
     access_type: offline
     prompt: consent
   authorizationPath: https://accounts.google.com/o/oauth2/v2/auth
+  callbackUrl: http://127.0.0.1:4310/api/skill-connections/google/oauth/callback
   tokenPath: https://oauth2.googleapis.com/token
   clientId: ''
   clientSecret: ''
@@ -33,9 +36,18 @@ oauth:
     displayNameField: name
     avatarUrlField: picture
 skills:
-  - id: google-drive-search
-    displayName: Drive 检索
+  - id: google-drive
+    displayName: Drive 文件工作流
     icon: google-drive.svg
-  - id: google-calendar-agenda
-    displayName: 日程查询
-    icon: google-calendar.svg
+  - id: google-drive-comments
+    displayName: Drive 评论审阅
+    icon: google-drive.svg
+  - id: google-docs
+    displayName: Google 文档
+    icon: google-drive.svg
+  - id: google-sheets
+    displayName: Google 表格
+    icon: google-drive.svg
+  - id: google-slides
+    displayName: Google 幻灯片
+    icon: google-drive.svg

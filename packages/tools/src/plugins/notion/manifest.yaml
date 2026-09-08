@@ -33,10 +33,6 @@ oauth:
     displayNameField: workspace_name
     avatarUrlField: workspace_icon
 skills:
-  - id: notion-workspace-search
-    displayName: 工作区检索
-  - id: notion-page-review
-    displayName: 页面与数据库查看
   - id: notion-knowledge-capture
     displayName: 知识整理
   - id: notion-meeting-intelligence

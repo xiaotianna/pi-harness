@@ -18,6 +18,5 @@ The Supabase logo is provided by the Iconify Logos collection.
 
 - `supabase`: development, troubleshooting, access review and local migrations.
 - `supabase-postgres-best-practices`: task-specific SQL rules in eight categories.
-- `supabase-project-overview` and `supabase-database-inspection`: connected read-only Management API inspection.
 
 The development and Postgres guides include Supabase MIT notices in their Skill directories. Gateway authentication and local CLI authentication are separate.

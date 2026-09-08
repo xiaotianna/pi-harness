@@ -19,8 +19,6 @@ const EnvironmentSchema = Type.Object({
   PI_HARNESS_SKILL_GITHUB_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_SKILL_GITHUB_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_SKILL_GATEWAY_URL: Type.Optional(Type.String({ minLength: 1 })),
-  PI_HARNESS_SKILL_GMAIL_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
-  PI_HARNESS_SKILL_GMAIL_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_SKILL_GOOGLE_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_SKILL_GOOGLE_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_SKILL_NOTION_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
@@ -121,7 +119,6 @@ function resolveSkillOAuthClients(
   const configured = [
     ["github", env.PI_HARNESS_SKILL_GITHUB_CLIENT_ID, env.PI_HARNESS_SKILL_GITHUB_CLIENT_SECRET],
     ["google", env.PI_HARNESS_SKILL_GOOGLE_CLIENT_ID, env.PI_HARNESS_SKILL_GOOGLE_CLIENT_SECRET],
-    ["gmail", env.PI_HARNESS_SKILL_GMAIL_CLIENT_ID, env.PI_HARNESS_SKILL_GMAIL_CLIENT_SECRET],
     ["notion", env.PI_HARNESS_SKILL_NOTION_CLIENT_ID, env.PI_HARNESS_SKILL_NOTION_CLIENT_SECRET],
     [
       "supabase",
