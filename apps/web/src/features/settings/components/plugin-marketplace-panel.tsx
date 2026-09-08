@@ -3,7 +3,6 @@
 import { Alert, AlertDialog, Button, Skeleton, Switch, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import {
   disconnectSkill,
   getSkillOAuthLaunchUrl,
@@ -19,6 +18,7 @@ import {
 } from "../../skills";
 import { SettingsCatalogDetail } from "./settings-catalog-detail";
 import { SettingsCatalogItem } from "./settings-catalog-item";
+import { SettingsFilterTabs } from "./settings-filter-tabs";
 import { SettingsPanelHeader } from "./settings-panel-header";
 import { SettingsSkillDetail } from "./settings-skill-detail";
 
@@ -492,27 +492,13 @@ export function PluginMarketplacePanel() {
         title="插件市场"
       />
 
-      <ToggleButtonGroup
-        aria-label="插件分类"
-        className="mt-5 flex flex-wrap gap-1"
-        disallowEmptySelection
-        selectedKeys={[activeCategoryId]}
-        selectionMode="single"
-        onSelectionChange={(keys) => {
-          const [key] = keys;
-          if (typeof key === "string") setActiveCategoryId(key as PluginCategoryId);
-        }}
-      >
-        {PLUGIN_CATEGORIES.map((category) => (
-          <ToggleButton
-            className="h-8 cursor-[var(--cursor-interactive)] rounded-lg px-3 text-sm text-muted outline-none hover:bg-default data-[focus-visible]:bg-default data-[selected]:bg-accent-soft data-[selected]:font-medium data-[selected]:text-accent-soft-foreground"
-            id={category.id}
-            key={category.id}
-          >
-            {category.label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
+      <SettingsFilterTabs
+        label="插件分类"
+        className="mt-5"
+        items={PLUGIN_CATEGORIES}
+        selectedKey={activeCategoryId}
+        onSelectionChange={setActiveCategoryId}
+      />
 
       {pluginsQuery.isPending ? (
         <PluginMarketplaceSkeleton />

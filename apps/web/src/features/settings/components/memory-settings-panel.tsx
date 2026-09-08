@@ -1,189 +1,273 @@
 "use client";
 
+import { FolderOpen, Gear, Person, Plus, TrashBin } from "@gravity-ui/icons";
+import { AlertDialog, Button, Popover, SearchField, Switch, Tooltip, toast } from "@heroui/react";
+import { useState } from "react";
 import {
-  FolderFlows as FolderKanban,
-  Bulb as Lightbulb,
-  ShieldCheck,
-  TrashBin as Trash2,
-  Person as UserRound,
-} from "@gravity-ui/icons";
-import { Button, Card, Chip, Switch, Tabs, Tooltip } from "@heroui/react";
-import { Brain } from "lucide-react";
+  MEMORY_SCOPES,
+  type MemoryEntry,
+  MemoryScope,
+  MemoryStatus,
+  useMemoryDemoStore,
+} from "../state/memory-demo-store";
+import { MemoryEditorDialog } from "./memory-editor-dialog";
+import { SettingsCatalogItem } from "./settings-catalog-item";
+import { SettingsFilterTabs } from "./settings-filter-tabs";
 import { SettingsPanelHeader } from "./settings-panel-header";
-import { SettingsRow } from "./settings-row";
 
-const MEMORY_ITEMS = [
-  {
-    id: "memory-1",
-    category: "preference",
-    title: "默认使用中文沟通",
-    summary: "解释实现方案、变更摘要和错误信息时优先使用简体中文。",
-    source: "来自 8 月 12 日的对话",
-    updatedAt: "3 天前",
-  },
-  {
-    id: "memory-2",
-    category: "project",
-    title: "PI Harness 的 UI 约定",
-    summary: "基础组件使用 HeroUI v3，不添加 focus ring，也不混用其他组件库。",
-    source: "项目 · pi-harness",
-    updatedAt: "昨天",
-  },
-  {
-    id: "memory-3",
-    category: "preference",
-    title: "先给出结论再说明细节",
-    summary: "技术说明保持简洁，优先展示最终结果、风险和需要确认的事项。",
-    source: "从多次反馈中学习",
-    updatedAt: "今天",
-  },
-  {
-    id: "memory-4",
-    category: "project",
-    title: "本地副作用需要审批",
-    summary: "写文件和执行 Shell 命令前，需要明确展示目标、参数摘要与风险。",
-    source: "项目 · pi-harness",
-    updatedAt: "今天",
-  },
-] as const;
-
-function MemoryList({
-  items,
-}: {
-  items: typeof MEMORY_ITEMS | readonly (typeof MEMORY_ITEMS)[number][];
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      {items.map((memory) => {
-        const isProjectMemory = memory.category === "project";
-        const Icon = isProjectMemory ? FolderKanban : UserRound;
-
-        return (
-          <Card key={memory.id} variant="secondary">
-            <Card.Header className="flex-row items-start gap-4">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-default">
-                <Icon aria-hidden className="size-4 text-muted" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Card.Title>{memory.title}</Card.Title>
-                  <Chip size="sm" variant="soft">
-                    {isProjectMemory ? "项目" : "偏好"}
-                  </Chip>
-                </div>
-                <Card.Description className="mt-1">{memory.summary}</Card.Description>
-              </div>
-              <Tooltip delay={0}>
-                <Button
-                  isIconOnly
-                  aria-label={`删除记忆：${memory.title}`}
-                  size="sm"
-                  variant="ghost"
-                >
-                  <Trash2 className="size-4 text-muted" />
-                </Button>
-                <Tooltip.Content placement="top">删除记忆</Tooltip.Content>
-              </Tooltip>
-            </Card.Header>
-            <Card.Content className="mt-3 flex-row items-center justify-between gap-4 text-xs text-muted">
-              <span>{memory.source}</span>
-              <span>{memory.updatedAt}</span>
-            </Card.Content>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
+const MemoryView = {
+  ALL: "all",
+  USER: "user",
+  PROJECT: "project",
+  SUGGESTED: "suggested",
+} as const;
+const MEMORY_FILTERS = [
+  { id: MemoryView.ALL, label: "全部记忆" },
+  { id: MemoryView.USER, label: "个人记忆" },
+  { id: MemoryView.PROJECT, label: "项目记忆" },
+  { id: MemoryView.SUGGESTED, label: "待确认" },
+];
 
 export function MemorySettingsPanel() {
-  const preferenceMemories = MEMORY_ITEMS.filter((memory) => memory.category === "preference");
-  const projectMemories = MEMORY_ITEMS.filter((memory) => memory.category === "project");
+  const { memories, isEnabled, canSuggest, setEnabled, setCanSuggest, save, remove } =
+    useMemoryDemoStore();
+  const [view, setView] = useState<string>(MemoryView.ALL);
+  const [search, setSearch] = useState("");
+  const [editor, setEditor] = useState<{ entry: MemoryEntry | null } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MemoryEntry | null>(null);
+  const suggestions = memories.filter(({ status }) => status === MemoryStatus.SUGGESTED);
+  const saved = memories.filter(({ status }) => status === MemoryStatus.SAVED);
+  const visible = (view === MemoryView.SUGGESTED ? suggestions : saved).filter(
+    (entry) =>
+      (view !== MemoryView.USER || entry.scope === MemoryScope.USER) &&
+      (view !== MemoryView.PROJECT || entry.scope !== MemoryScope.USER) &&
+      `${entry.content} ${entry.source} ${MEMORY_SCOPES.find(({ id }) => id === entry.scope)?.label}`
+        .toLowerCase()
+        .includes(search.trim().toLowerCase()),
+  );
 
   return (
     <section aria-label="记忆设置" className="w-full max-w-[720px]">
       <SettingsPanelHeader
-        description="让 Agent 在不同对话中延续你的偏好和项目背景。你可以随时查看或删除保存的内容。"
         title="记忆"
+        description="管理个人偏好和项目背景。"
+        action={
+          <div className="flex items-center gap-2">
+            <Popover>
+              <Button size="sm" variant="ghost">
+                <Gear aria-hidden className="size-4" />
+                记忆设置
+              </Button>
+              <Popover.Content
+                className="w-80 max-w-[calc(100vw-2rem)]"
+                offset={8}
+                placement="bottom end"
+              >
+                <Popover.Dialog className="p-3">
+                  <Popover.Heading className="text-sm font-medium">记忆设置</Popover.Heading>
+                  <div className="mt-3 flex flex-col gap-4">
+                    <div className="flex items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">使用记忆</p>
+                        <p className="mt-1 text-xs text-muted">
+                          {isEnabled
+                            ? "在对话中参考已保存的记忆。"
+                            : "已暂停使用，仍可查看和管理记忆。"}
+                        </p>
+                      </div>
+                      <Switch
+                        aria-label="使用记忆"
+                        className="mt-0.5 shrink-0"
+                        isSelected={isEnabled}
+                        onChange={setEnabled}
+                      >
+                        <Switch.Content>
+                          <Switch.Control>
+                            <Switch.Thumb />
+                          </Switch.Control>
+                        </Switch.Content>
+                      </Switch>
+                    </div>
+                    <div className="flex items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">从对话中学习</p>
+                        <p className="mt-1 text-xs text-muted">
+                          {canSuggest && isEnabled
+                            ? "新的记忆建议经你确认后保存。"
+                            : "已暂停产生新建议，已有建议仍可处理。"}
+                        </p>
+                      </div>
+                      <Switch
+                        aria-label="从对话中学习"
+                        className="mt-0.5 shrink-0"
+                        isSelected={canSuggest}
+                        onChange={setCanSuggest}
+                        isDisabled={!isEnabled}
+                      >
+                        <Switch.Content>
+                          <Switch.Control>
+                            <Switch.Thumb />
+                          </Switch.Control>
+                        </Switch.Content>
+                      </Switch>
+                    </div>
+                  </div>
+                </Popover.Dialog>
+              </Popover.Content>
+            </Popover>
+            <Button size="sm" variant="secondary" onPress={() => setEditor({ entry: null })}>
+              <Plus aria-hidden className="size-4" />
+              添加记忆
+            </Button>
+          </div>
+        }
       />
-
-      <div className="mt-6 rounded-2xl bg-default px-4">
-        <SettingsRow
-          description="启用后，Agent 可以在后续对话中使用已保存的记忆。"
-          title="启用记忆"
-        >
-          <Switch aria-label="启用记忆" defaultSelected>
-            <Switch.Content>
-              <Switch.Control>
-                <Switch.Thumb />
-              </Switch.Control>
-            </Switch.Content>
-          </Switch>
-        </SettingsRow>
-      </div>
-
-      <Card className="mt-4" variant="secondary">
-        <Card.Header className="flex-row items-start gap-4">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft">
-            <Brain aria-hidden className="size-5 text-accent-soft-foreground" />
-          </div>
-          <div>
-            <Card.Title>记忆由你掌控</Card.Title>
-            <Card.Description className="mt-1">
-              Agent 只保存有助于未来任务的稳定信息，不会把密钥、完整文件内容或临时输出写入记忆。
-            </Card.Description>
-          </div>
-        </Card.Header>
-        <Card.Content className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="flex items-center gap-2 rounded-xl bg-default p-3 text-sm text-foreground">
-            <ShieldCheck aria-hidden className="size-4 shrink-0 text-success" />
-            敏感内容不会被记住
-          </div>
-          <div className="flex items-center gap-2 rounded-xl bg-default p-3 text-sm text-foreground">
-            <Lightbulb aria-hidden className="size-4 shrink-0 text-accent" />
-            重要偏好会主动建议保存
-          </div>
-        </Card.Content>
-      </Card>
-
-      <div className="mt-8 flex items-center justify-between gap-4">
-        <div>
-          <h3 className="font-medium text-foreground">已保存的记忆</h3>
-          <p className="mt-1 text-sm text-muted">共 4 条，最近更新于今天。</p>
+      <div className="mt-5 flex flex-col gap-3">
+        <div className="flex flex-col gap-3 @xl/settings:flex-row @xl/settings:items-center @xl/settings:justify-between">
+          <SettingsFilterTabs
+            label="筛选记忆"
+            items={MEMORY_FILTERS}
+            selectedKey={view}
+            onSelectionChange={setView}
+          />
+          <SearchField
+            aria-label="搜索记忆"
+            className="w-full min-w-0 @xl/settings:w-64"
+            value={search}
+            onChange={setSearch}
+            variant="secondary"
+          >
+            <SearchField.Group>
+              <SearchField.SearchIcon />
+              <SearchField.Input placeholder="搜索记忆" />
+              <SearchField.ClearButton aria-label="清除搜索" />
+            </SearchField.Group>
+          </SearchField>
         </div>
-        <Button size="sm" variant="tertiary">
-          <Lightbulb className="size-4" />
-          添加记忆
-        </Button>
+        {view === MemoryView.SUGGESTED && (
+          <p className="text-sm text-muted">确认后加入记忆库，用于后续对话。</p>
+        )}
+        <ul className="flex flex-col gap-1">
+          {visible.map((entry) => {
+            const scope = MEMORY_SCOPES.find(({ id }) => id === entry.scope);
+            const Icon = entry.scope === MemoryScope.USER ? Person : FolderOpen;
+            return (
+              <SettingsCatalogItem
+                key={entry.id}
+                ariaLabel={`编辑记忆：${entry.content}`}
+                name={entry.content}
+                icon={<Icon aria-hidden className="size-5 text-muted" />}
+                onPress={() => setEditor({ entry })}
+                secondary={
+                  <span className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                    <span>{scope?.label}</span>
+                    <span>{entry.source}</span>
+                    <span>{entry.updatedAt}</span>
+                  </span>
+                }
+                action={
+                  <div className="flex flex-col items-end gap-1 @xl/settings:flex-row @xl/settings:items-center">
+                    {entry.status === MemoryStatus.SUGGESTED && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onPress={() => {
+                          save({ ...entry, status: MemoryStatus.SAVED, updatedAt: "刚刚" });
+                          toast.success("已加入记忆库");
+                        }}
+                      >
+                        记住
+                      </Button>
+                    )}
+                    <Tooltip>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted data-[hovered]:text-danger"
+                        aria-label={`删除记忆：${entry.content}`}
+                        onPress={() => setDeleteTarget(entry)}
+                      >
+                        <TrashBin aria-hidden className="size-4" />
+                      </Button>
+                      <Tooltip.Content>
+                        {entry.status === MemoryStatus.SUGGESTED ? "忽略建议" : "删除记忆"}
+                      </Tooltip.Content>
+                    </Tooltip>
+                  </div>
+                }
+              />
+            );
+          })}
+        </ul>
+        {!visible.length && (
+          <div className="py-8 text-center" role="status">
+            <p className="text-sm text-muted">
+              {search
+                ? "没有找到匹配的记忆"
+                : view === MemoryView.SUGGESTED
+                  ? "暂无待确认的记忆"
+                  : "暂无记忆"}
+            </p>
+            {search && (
+              <Button className="mt-3" size="sm" variant="tertiary" onPress={() => setSearch("")}>
+                清除搜索
+              </Button>
+            )}
+          </div>
+        )}
       </div>
-
-      <Tabs className="mt-4" defaultSelectedKey="all" variant="secondary">
-        <Tabs.ListContainer>
-          <Tabs.List aria-label="记忆分类">
-            <Tabs.Tab id="all">
-              全部
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab id="preference">
-              个人偏好
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab id="project">
-              项目记忆
-              <Tabs.Indicator />
-            </Tabs.Tab>
-          </Tabs.List>
-        </Tabs.ListContainer>
-        <Tabs.Panel className="p-0" id="all">
-          <MemoryList items={MEMORY_ITEMS} />
-        </Tabs.Panel>
-        <Tabs.Panel className="p-0" id="preference">
-          <MemoryList items={preferenceMemories} />
-        </Tabs.Panel>
-        <Tabs.Panel className="p-0" id="project">
-          <MemoryList items={projectMemories} />
-        </Tabs.Panel>
-      </Tabs>
+      {editor && (
+        <MemoryEditorDialog
+          entry={editor.entry}
+          onClose={() => setEditor(null)}
+          onSave={(entry) => {
+            save(entry);
+            setEditor(null);
+            toast.success(
+              entry.status === MemoryStatus.SUGGESTED ? "建议已更新，确认后生效" : "记忆已保存",
+            );
+          }}
+        />
+      )}
+      <AlertDialog.Backdrop
+        isOpen={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialog.Container>
+          <AlertDialog.Dialog className="sm:max-w-[420px]">
+            <AlertDialog.Header>
+              <AlertDialog.Icon status="warning" />
+              <AlertDialog.Heading>
+                {deleteTarget?.status === MemoryStatus.SUGGESTED
+                  ? "忽略这条建议？"
+                  : "删除这条记忆？"}
+              </AlertDialog.Heading>
+            </AlertDialog.Header>
+            <AlertDialog.Body>
+              <p className="break-words">{deleteTarget?.content}</p>
+              <p className="mt-3 text-sm text-muted">删除后，此内容将从记忆库中移除。</p>
+            </AlertDialog.Body>
+            <AlertDialog.Footer>
+              <Button variant="tertiary" onPress={() => setDeleteTarget(null)}>
+                取消
+              </Button>
+              <Button
+                variant="danger"
+                onPress={() => {
+                  if (deleteTarget) remove(deleteTarget.id);
+                  setDeleteTarget(null);
+                  toast.success("已移除");
+                }}
+              >
+                确认移除
+              </Button>
+            </AlertDialog.Footer>
+          </AlertDialog.Dialog>
+        </AlertDialog.Container>
+      </AlertDialog.Backdrop>
     </section>
   );
 }
