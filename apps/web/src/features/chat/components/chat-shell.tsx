@@ -360,8 +360,6 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [disableNavigation]);
 
-  // ponytail: AppLayout drops its aside Panel at responsive breakpoints and leaves a stale
-  // handle behind; restore resizing when the upstream panel registration stays stable.
   return (
     <AppLayout
       aside={
@@ -377,11 +375,15 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
           <div aria-hidden className="h-full w-full" />
         )
       }
+      asideDefaultSize="320px"
+      asideMinSize="280px"
+      asideResizable
       asideMobile="sheet"
       asideOpen={isInspectorVisible}
       defaultAsideOpen={false}
       navigate={navigate}
       reduceMotion={shouldReduceMotion ?? false}
+      resizableAutoSaveId="chat-layout"
       scrollMode="content"
       sidebarCollapsible="offcanvas"
       onAsideOpenChange={handleInspectorOpenChange}

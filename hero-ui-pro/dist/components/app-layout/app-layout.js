@@ -1,6 +1,6 @@
 'use client';
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, } from 'react';
 import { Button, Tooltip } from '@heroui/react';
 import { composeTwRenderProps } from '../../utils/compose';
 import { setCookie } from '../../utils/cookie-storage';
@@ -16,7 +16,7 @@ export const AppLayoutContext = createContext(null);
 export const useAppLayout = () => useContext(AppLayoutContext);
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
 function useMediaQuery(query) {
-    const [matches, setMatches] = useState(false);
+    const [matches, setMatches] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
     useEffect(() => {
         if (typeof window === 'undefined')
             return;
@@ -91,7 +91,6 @@ export const AppLayoutRoot = ({ aside, asideDefaultSize = 20, asideMaxSize = 40,
     }, [asideToggleShortcut, aside, toggleAside]);
     const isMobile = useMediaQuery('(max-width: 768px)');
     const isTablet = useMediaQuery('(max-width: 1024px)');
-    const isResizable = (sidebarResizable || asideResizable) && !isMobile;
     // Separate MobileAside content from regular children
     const { contentChildren, mobileAsideContent } = useMemo(() => {
         let mobileAsideNode = null;
@@ -114,6 +113,7 @@ export const AppLayoutRoot = ({ aside, asideDefaultSize = 20, asideMaxSize = 40,
     }
     const isSidebarResizable = sidebarResizable && sidebarCollapsible !== 'icon' && !isMobile;
     const isAsideResizable = asideResizable && !isTablet;
+    const isResizable = isSidebarResizable || isAsideResizable;
     const contextValue = useMemo(() => ({
         hasMobileAside,
         isAsideOpen,
@@ -143,7 +143,7 @@ export const AppLayoutRoot = ({ aside, asideDefaultSize = 20, asideMaxSize = 40,
 const ResizableLayout = ({ aside, asideDefaultSize, asideMaxSize, asideMinSize, asideResizable, asideResizeBehavior, bodySection, isAsideOpen, isSidebarOpen, resizableAutoSaveId, setAsideOpen, setSidebarOpen, sidebar, sidebarDefaultSize, sidebarMaxSize, sidebarMinSize, sidebarResizable, sidebarResizeBehavior, sidebarSide, }) => {
     const sidebarRef = useRef(null);
     const asideRef = useRef(null);
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!sidebarResizable)
             return;
         const panel = sidebarRef.current;
@@ -154,7 +154,7 @@ const ResizableLayout = ({ aside, asideDefaultSize, asideMaxSize, asideMinSize, 
         else if (!isSidebarOpen && !panel.isCollapsed())
             panel.collapse();
     }, [isSidebarOpen, sidebarResizable]);
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!asideResizable)
             return;
         const panel = asideRef.current;
@@ -168,13 +168,15 @@ const ResizableLayout = ({ aside, asideDefaultSize, asideMaxSize, asideMinSize, 
     const sidebarPanel = sidebar && sidebarResizable ? (_jsx(Resizable.Panel, { collapsible: true, className: "app-layout__sidebar-panel", collapsedSize: 0, defaultSize: sidebarDefaultSize, groupResizeBehavior: sidebarResizeBehavior, handleRef: sidebarRef, id: "app-layout-sidebar", maxSize: sidebarMaxSize, minSize: sidebarMinSize, onCollapse: () => setSidebarOpen(false), onExpand: () => setSidebarOpen(true), children: sidebar }, "sidebar-panel")) : null;
     const sidebarHandle = sidebar && sidebarResizable ? (_jsx(Resizable.Handle, { type: "line", variant: "primary" }, "sidebar-handle")) : null;
     const asidePanel = aside && asideResizable ? (_jsx(Resizable.Panel, { collapsible: true, className: "app-layout__aside-panel", collapsedSize: 0, defaultSize: asideDefaultSize, groupResizeBehavior: asideResizeBehavior, handleRef: asideRef, id: "app-layout-aside", maxSize: asideMaxSize, minSize: asideMinSize, onCollapse: () => setAsideOpen(false), onExpand: () => setAsideOpen(true), children: aside }, "aside-panel")) : null;
-    const asideHandle = aside && asideResizable ? (_jsx(Resizable.Handle, { type: "line", variant: "primary" }, "aside-handle")) : null;
+    const asideHandle = aside && asideResizable ? (_jsx(Resizable.Handle, { className: isAsideOpen ? undefined : "hidden", disabled: !isAsideOpen, type: "line", variant: "primary" }, "aside-handle")) : null;
     const staticSidebar = sidebar && !sidebarResizable ? sidebar : null;
     const staticAside = aside && !asideResizable ? (_jsx("aside", { className: "app-layout__aside", "data-slot": "app-layout-aside", "data-state": isAsideOpen ? 'open' : 'closed', children: aside })) : null;
     const mainPanel = (_jsx(Resizable.Panel, { className: "app-layout__main-panel", id: "app-layout-main", minSize: 30, children: bodySection }, "main-panel"));
+    // Re-register the group when its panel topology changes across responsive breakpoints.
+    const layoutKey = `${Boolean(sidebar && sidebarResizable)}:${Boolean(aside && asideResizable)}:${sidebarSide}`;
     return (_jsxs(_Fragment, { children: [staticSidebar, _jsx(Resizable, { autoSaveId: resizableAutoSaveId, className: "app-layout__resizable", orientation: "horizontal", children: sidebarSide === 'left'
                     ? [sidebarPanel, sidebarHandle, mainPanel, asideHandle, asidePanel]
-                    : [asidePanel, asideHandle, mainPanel, sidebarHandle, sidebarPanel] }), staticAside] }));
+                    : [asidePanel, asideHandle, mainPanel, sidebarHandle, sidebarPanel] }, layoutKey), staticAside] }));
 };
 export { AppLayoutAsideTrigger as default };
 //# sourceMappingURL=app-layout.js.map

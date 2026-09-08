@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  File,
-  FolderOpen,
-  Picture as ImageIcon,
-  ListCheck,
-  MagicWand as WandSparkles,
-} from "@gravity-ui/icons";
+import { File, FolderOpen, Picture as ImageIcon, ListCheck } from "@gravity-ui/icons";
 import { Header, ListBox, ListLayout, Surface, Virtualizer } from "@heroui/react";
 import { type Editor, type JSONContent, mergeAttributes, Node } from "@tiptap/core";
 import {
@@ -19,8 +13,10 @@ import {
 import StarterKit from "@tiptap/starter-kit";
 import {
   type ComponentType,
+  createContext,
   forwardRef,
   type SVGProps,
+  useContext,
   useEffect,
   useId,
   useImperativeHandle,
@@ -29,6 +25,7 @@ import {
   useState,
 } from "react";
 import { FileIconRender } from "../../../components/ui/file-icon-render";
+import { SkillIcon } from "../../skills";
 
 export const ChatComposerTokenKind = {
   FILE: "file",
@@ -42,6 +39,7 @@ export type ChatComposerTokenKind =
   (typeof ChatComposerTokenKind)[keyof typeof ChatComposerTokenKind];
 
 export interface ChatComposerToken {
+  icon?: string | null;
   id: string;
   kind: ChatComposerTokenKind;
   label: string;
@@ -121,7 +119,6 @@ const TOKEN_VISUAL_STRATEGIES = {
   },
   [ChatComposerTokenKind.SKILL]: {
     colorClassName: "text-[var(--chat-token-skill)]",
-    icon: WandSparkles,
     selectedClassName: "bg-[var(--chat-token-skill-soft)]",
   },
 } satisfies Record<ChatComposerTokenKind, TokenVisualStrategy>;
@@ -146,7 +143,14 @@ function getTokenVisualStrategy(kind: ChatComposerTokenKind): TokenVisualStrateg
   return TOKEN_VISUAL_STRATEGIES[kind];
 }
 
+const ComposerTokensContext = createContext<readonly ChatComposerToken[]>([]);
+
 function TokenVisualIcon({ className, token }: { className: string; token: ChatComposerToken }) {
+  const tokens = useContext(ComposerTokensContext);
+  if (token.kind === ChatComposerTokenKind.SKILL) {
+    const icon = tokens.find((item) => item.kind === token.kind && item.id === token.id)?.icon;
+    return <SkillIcon className={className} icon={icon ?? token.icon ?? null} />;
+  }
   const Icon = getTokenVisualStrategy(token.kind).icon;
   return Icon ? (
     <Icon aria-hidden className={className} />
@@ -664,103 +668,105 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
     }, [editor, suggestionMenu, suggestionMenuId]);
 
     return (
-      <div
-        ref={editorContainerRef}
-        className="relative mb-14 text-sm leading-6 text-foreground"
-        data-disabled={isDisabled || undefined}
-        data-slot="chat-composer-editor"
-        style={{ minHeight }}
-      >
-        {suggestionMenu ? (
-          <div
-            ref={suggestionMenuRef}
-            className="absolute z-50 w-[min(24rem,calc(100%-1.5rem))] -translate-y-full"
-            style={{ left: suggestionMenu.anchorLeft, top: suggestionMenu.anchorTop }}
-            onPointerDown={(event) => event.preventDefault()}
-          >
-            <Surface
-              className="flex flex-col rounded-2xl p-2 shadow-overlay"
-              style={{ maxHeight: suggestionMenu.maxHeight }}
+      <ComposerTokensContext value={slashMenuItems}>
+        <div
+          ref={editorContainerRef}
+          className="relative mb-14 text-sm leading-6 text-foreground"
+          data-disabled={isDisabled || undefined}
+          data-slot="chat-composer-editor"
+          style={{ minHeight }}
+        >
+          {suggestionMenu ? (
+            <div
+              ref={suggestionMenuRef}
+              className="absolute z-50 w-[min(24rem,calc(100%-1.5rem))] -translate-y-full"
+              style={{ left: suggestionMenu.anchorLeft, top: suggestionMenu.anchorTop }}
+              onPointerDown={(event) => event.preventDefault()}
             >
-              {filteredSuggestionItems.length > 0 ? (
-                <Virtualizer layout={ListLayout} layoutOptions={SUGGESTION_MENU_LAYOUT_OPTIONS}>
-                  <ListBox
-                    id={suggestionMenuId}
-                    aria-label={
-                      suggestionMenu.trigger === "@"
-                        ? "添加图片、文件或文件夹上下文"
-                        : "插入指令或 Skill"
-                    }
-                    className="min-h-0 overflow-y-auto"
-                    items={groupedSuggestionItems}
-                    selectedKeys={
-                      selectedSuggestionItem ? [getTokenKey(selectedSuggestionItem)] : []
-                    }
-                    selectionMode="single"
-                    style={{ maxHeight: Math.max(suggestionMenu.maxHeight - 16, 0) }}
-                    onSelectionChange={(keys) => {
-                      if (keys === "all") return;
-                      const [key] = keys;
-                      const selectedIndex = filteredSuggestionItems.findIndex(
-                        (item) => getTokenKey(item) === key,
-                      );
-                      if (selectedIndex >= 0) {
-                        setSuggestionMenu((current) =>
-                          current ? { ...current, selectedIndex } : current,
-                        );
+              <Surface
+                className="flex flex-col rounded-2xl p-2 shadow-overlay"
+                style={{ maxHeight: suggestionMenu.maxHeight }}
+              >
+                {filteredSuggestionItems.length > 0 ? (
+                  <Virtualizer layout={ListLayout} layoutOptions={SUGGESTION_MENU_LAYOUT_OPTIONS}>
+                    <ListBox
+                      id={suggestionMenuId}
+                      aria-label={
+                        suggestionMenu.trigger === "@"
+                          ? "添加图片、文件或文件夹上下文"
+                          : "插入指令或 Skill"
                       }
-                    }}
-                  >
-                    {(group) => (
-                      <ListBox.Section id={group.kind}>
-                        <Header className="px-2 pb-1 pt-2 text-xs font-medium text-muted first:pt-1">
-                          {group.label}
-                        </Header>
-                        {group.items.map((token) => {
-                          const visualStrategy = getTokenVisualStrategy(token.kind);
-                          return (
-                            <ListBox.Item
-                              key={getTokenKey(token)}
-                              id={getTokenKey(token)}
-                              textValue={token.label}
-                              onPress={() => selectSuggestionTokenRef.current(token)}
-                            >
-                              <TokenVisualIcon
-                                className={`size-4 shrink-0 ${visualStrategy.colorClassName}`}
-                                token={token}
-                              />
-                              <span className="min-w-0 truncate">{token.label}</span>
-                            </ListBox.Item>
+                      className="min-h-0 overflow-y-auto"
+                      items={groupedSuggestionItems}
+                      selectedKeys={
+                        selectedSuggestionItem ? [getTokenKey(selectedSuggestionItem)] : []
+                      }
+                      selectionMode="single"
+                      style={{ maxHeight: Math.max(suggestionMenu.maxHeight - 16, 0) }}
+                      onSelectionChange={(keys) => {
+                        if (keys === "all") return;
+                        const [key] = keys;
+                        const selectedIndex = filteredSuggestionItems.findIndex(
+                          (item) => getTokenKey(item) === key,
+                        );
+                        if (selectedIndex >= 0) {
+                          setSuggestionMenu((current) =>
+                            current ? { ...current, selectedIndex } : current,
                           );
-                        })}
-                      </ListBox.Section>
-                    )}
-                  </ListBox>
-                </Virtualizer>
-              ) : (
-                <div className="px-3 py-6 text-center text-sm text-muted">
-                  {suggestionMenu.trigger === "@" && contextMenuStatus === "loading"
-                    ? "正在扫描 Workspace..."
-                    : suggestionMenu.trigger === "@" && contextMenuStatus === "error"
-                      ? "Workspace 上下文加载失败"
-                      : "没有匹配的内容"}
-                </div>
-              )}
-            </Surface>
-          </div>
-        ) : null}
-        <div className="relative overflow-y-auto px-3 pt-2" style={{ maxHeight, minHeight }}>
-          {isEmpty ? (
-            <span aria-hidden className="pointer-events-none absolute left-3 top-2 text-muted">
-              {placeholder}
-            </span>
+                        }
+                      }}
+                    >
+                      {(group) => (
+                        <ListBox.Section id={group.kind}>
+                          <Header className="px-2 pb-1 pt-2 text-xs font-medium text-muted first:pt-1">
+                            {group.label}
+                          </Header>
+                          {group.items.map((token) => {
+                            const visualStrategy = getTokenVisualStrategy(token.kind);
+                            return (
+                              <ListBox.Item
+                                key={getTokenKey(token)}
+                                id={getTokenKey(token)}
+                                textValue={token.label}
+                                onPress={() => selectSuggestionTokenRef.current(token)}
+                              >
+                                <TokenVisualIcon
+                                  className={`size-4 shrink-0 ${visualStrategy.colorClassName}`}
+                                  token={token}
+                                />
+                                <span className="min-w-0 truncate">{token.label}</span>
+                              </ListBox.Item>
+                            );
+                          })}
+                        </ListBox.Section>
+                      )}
+                    </ListBox>
+                  </Virtualizer>
+                ) : (
+                  <div className="px-3 py-6 text-center text-sm text-muted">
+                    {suggestionMenu.trigger === "@" && contextMenuStatus === "loading"
+                      ? "正在扫描 Workspace..."
+                      : suggestionMenu.trigger === "@" && contextMenuStatus === "error"
+                        ? "Workspace 上下文加载失败"
+                        : "没有匹配的内容"}
+                  </div>
+                )}
+              </Surface>
+            </div>
           ) : null}
-          <EditorContent
-            className="min-h-[inherit] [&_.ProseMirror-selectednode]:outline-none [&_.tiptap_p]:m-0"
-            editor={editor}
-          />
+          <div className="relative overflow-y-auto px-3 pt-2" style={{ maxHeight, minHeight }}>
+            {isEmpty ? (
+              <span aria-hidden className="pointer-events-none absolute left-3 top-2 text-muted">
+                {placeholder}
+              </span>
+            ) : null}
+            <EditorContent
+              className="min-h-[inherit] [&_.ProseMirror-selectednode]:outline-none [&_.tiptap_p]:m-0"
+              editor={editor}
+            />
+          </div>
         </div>
-      </div>
+      </ComposerTokensContext>
     );
   },
 );

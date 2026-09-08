@@ -15,6 +15,7 @@ import {
   type SkillConnectionService,
 } from "../services/skill-connection-service.js";
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
+import { resolveSkillIcon } from "../utils/skill-icon.js";
 import type {
   SkillCollectionSkillContentVo,
   SkillCollectionVo,
@@ -59,7 +60,7 @@ export class SkillConnectionController {
       name: collection.name,
       skills: collection.skills.map((skill) => ({
         description: skill.description,
-        icon: skill.icon ?? collection.logo ?? null,
+        icon: resolveSkillIcon(collection.id, skill.id),
         id: skill.id,
         isEnabled: this.connections.isSkillEnabled(collection.id, skill.id),
         name: skill.displayName ?? skill.name,

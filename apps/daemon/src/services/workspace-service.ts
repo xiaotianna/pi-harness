@@ -23,6 +23,7 @@ import type {
   WorkspaceRecord,
   WorkspaceRepository,
 } from "../storage/database.js";
+import { resolveSkillIcon } from "../utils/skill-icon.js";
 import {
   FileOpenErrorCode,
   type FileOpenService,
@@ -443,6 +444,7 @@ export class WorkspaceService {
     const registry = await this.createSkillRegistry(workspaceId);
     return (await registry.discoverListItems()).map((skill) => ({
       collectionId: skill.collectionId,
+      icon: resolveSkillIcon(skill.collectionId, skill.name),
       description: skill.description,
       directory: skill.directory,
       id: skill.id,

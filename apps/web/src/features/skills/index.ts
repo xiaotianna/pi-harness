@@ -24,4 +24,5 @@ export {
   skillListQueryOptions,
   skillQueryKeys,
 } from "./api/skill-queries";
+export { SkillIcon } from "./components/skill-icon";
 export { SkillInstallDialog } from "./components/skill-install-dialog";

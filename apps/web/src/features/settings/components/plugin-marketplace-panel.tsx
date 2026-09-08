@@ -1,6 +1,5 @@
 "use client";
 
-import { MagicWand } from "@gravity-ui/icons";
 import { Alert, AlertDialog, Button, Skeleton, Switch, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -10,6 +9,7 @@ import {
   getSkillOAuthLaunchUrl,
   installSkillCollection,
   type SkillCollection,
+  SkillIcon,
   skillCollectionDetailQueryOptions,
   skillCollectionQueryOptions,
   skillConnectionQueryOptions,
@@ -30,14 +30,6 @@ const PLUGIN_CATEGORIES = [
 
 type PluginCategoryId = (typeof PLUGIN_CATEGORIES)[number]["id"];
 type PluginSkill = SkillCollection["skills"][number];
-
-function PluginLogo({ logo, size }: { logo: string | null; size: number }) {
-  return logo ? (
-    <img alt="" aria-hidden className="shrink-0" height={size} src={logo} width={size} />
-  ) : (
-    <MagicWand aria-hidden className="shrink-0 text-muted" height={size} width={size} />
-  );
-}
 
 function PluginSkillSwitch({
   isDisabled,
@@ -93,7 +85,7 @@ function PluginSkillDetail({
       content={contentQuery.data}
       contentError={contentQuery.error}
       description={skill.description}
-      icon={<PluginLogo logo={skill.icon} size={24} />}
+      icon={<SkillIcon icon={skill.icon} className="size-6 shrink-0 text-muted" />}
       isContentPending={contentQuery.isPending}
       name={skill.name}
       onBack={onBack}
@@ -346,7 +338,7 @@ function PluginList({
         <SettingsCatalogItem
           action={<PluginInstallAction plugin={plugin} />}
           ariaLabel={`查看 ${plugin.name} 插件详情`}
-          icon={<PluginLogo logo={plugin.logo} size={20} />}
+          icon={<SkillIcon icon={plugin.logo} className="size-5 shrink-0 text-muted" />}
           key={plugin.id}
           name={plugin.name}
           secondary={<span className="min-w-0 flex-1 truncate">{plugin.description}</span>}
@@ -419,7 +411,7 @@ function PluginDetail({ onBack, plugin }: { onBack: () => void; plugin: SkillCol
       ariaLabel={`${plugin.name} 插件详情`}
       backLabel="返回插件市场"
       description={plugin.description}
-      icon={<PluginLogo logo={plugin.logo} size={24} />}
+      icon={<SkillIcon icon={plugin.logo} className="size-6 shrink-0 text-muted" />}
       name={plugin.name}
       onBack={onBack}
     >
@@ -450,7 +442,7 @@ function PluginDetail({ onBack, plugin }: { onBack: () => void; plugin: SkillCol
                   ) : null
                 }
                 ariaLabel={`查看 ${skill.name} 技能详情`}
-                icon={<PluginLogo logo={skill.icon} size={20} />}
+                icon={<SkillIcon icon={skill.icon} className="size-5 shrink-0 text-muted" />}
                 key={skill.id}
                 name={skill.name}
                 secondary={<span className="min-w-0 flex-1 truncate">{skill.description}</span>}

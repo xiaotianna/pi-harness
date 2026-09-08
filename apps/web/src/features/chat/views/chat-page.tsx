@@ -55,7 +55,7 @@ const CHAT_VIEW_TRANSITION = {
   duration: 0.18,
   ease: [0.22, 1, 0.36, 1],
 } as const;
-const CHAT_AUTO_SCROLL_THRESHOLD_PX = 96;
+const CHAT_AUTO_SCROLL_THRESHOLD_PX = 1;
 const EMPTY_SESSION_EVENTS = [] as const;
 
 export interface ChatPageProps {

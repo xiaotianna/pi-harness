@@ -88,7 +88,7 @@ function getItemMessage(item: ThreadMessageListItem): ChatMessage | undefined {
   return item.kind === "message" ? item.message : item.messages[0];
 }
 
-function SearchTargetMessage({
+const SearchTargetMessage = memo(function SearchTargetMessage({
   isLastUserMessage = false,
   message,
   onComplete,
@@ -127,9 +127,9 @@ function SearchTargetMessage({
       </SearchHighlightProvider>
     </div>
   );
-}
+});
 
-function IntermediateTurn({
+const IntermediateTurn = memo(function IntermediateTurn({
   messages,
   onSearchTargetComplete,
   searchQuery,
@@ -179,7 +179,7 @@ function IntermediateTurn({
       </Disclosure.Content>
     </Disclosure>
   );
-}
+});
 
 const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessageListProps>(
   function ThreadMessageList(
@@ -245,7 +245,6 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       paddingStart: 40,
       scrollPaddingStart: 40,
       scrollEndThreshold,
-      useAnimationFrameWithResizeObserver: true,
       useFlushSync: false,
     });
     const targetMessageId = useMemo(() => {

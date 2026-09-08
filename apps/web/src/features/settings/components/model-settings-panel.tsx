@@ -1,19 +1,7 @@
 "use client";
 
-import { CircleExclamation as CircleAlert, Key as KeyRound, Plus } from "@gravity-ui/icons";
-import {
-  Button,
-  Card,
-  Chip,
-  Description,
-  Header,
-  Label,
-  ListBox,
-  Select,
-  Skeleton,
-  Switch,
-  toast,
-} from "@heroui/react";
+import { Key as KeyRound, Plus } from "@gravity-ui/icons";
+import { Button, Card, Chip, Skeleton, Switch, toast } from "@heroui/react";
 import {
   DEFAULT_THINKING_LEVEL,
   resolveThinkingLevel,
@@ -22,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   createModelSelectionKey,
+  ModelPicker,
   type ModelProvider,
   ModelProviderIcon,
   providerQueryKeys,
@@ -159,14 +148,12 @@ export function ModelSettingsPanel() {
               className="h-10 w-full rounded-xl @xl/settings:w-56"
             />
           ) : (
-            <Select
-              aria-label="默认模型"
-              className="w-full @xl/settings:min-w-56 @xl/settings:max-w-64"
+            <ModelPicker
+              compactMobile={false}
               isDisabled={isSaving("defaultModel")}
-              placeholder="暂无可用模型"
-              value={defaultModelKey ?? ""}
-              variant="secondary"
-              onChange={(key) => {
+              providers={enabledProviders}
+              selectedModelKey={defaultModelKey}
+              onModelChange={(key) => {
                 if (typeof key !== "string") return;
                 const provider = enabledProviders.find((item) =>
                   item.models.some((model) => createModelSelectionKey(item.id, model.id) === key),
@@ -189,42 +176,7 @@ export function ModelSettingsPanel() {
                   toast.danger(error instanceof Error ? error.message : "保存默认模型失败");
                 });
               }}
-            >
-              <Select.Trigger className="ps-0 sm:ps-3">
-                <Select.Value className="flex items-center gap-2" />
-                <Select.Indicator className="end-0 sm:end-2" />
-              </Select.Trigger>
-              <Select.Popover className="w-(--trigger-width) sm:w-auto">
-                <ListBox>
-                  {enabledProviders.length === 0 ? (
-                    <ListBox.Item isDisabled id="no-default-model" textValue="暂无可用模型">
-                      <CircleAlert className="size-4 text-muted" />
-                      <div className="flex flex-col">
-                        <Label>暂无可用模型</Label>
-                        <Description>请先配置并启用一个 Provider</Description>
-                      </div>
-                    </ListBox.Item>
-                  ) : (
-                    enabledProviders.map((provider) => (
-                      <ListBox.Section key={provider.id}>
-                        <Header>{provider.name}</Header>
-                        {provider.models.map((model) => (
-                          <ListBox.Item
-                            id={createModelSelectionKey(provider.id, model.id)}
-                            key={createModelSelectionKey(provider.id, model.id)}
-                            textValue={`${model.name} · ${provider.name}`}
-                          >
-                            <ModelProviderIcon isColor providerId={provider.id} size={16} />
-                            <Label>{model.name}</Label>
-                            <ListBox.ItemIndicator />
-                          </ListBox.Item>
-                        ))}
-                      </ListBox.Section>
-                    ))
-                  )}
-                </ListBox>
-              </Select.Popover>
-            </Select>
+            />
           )}
         </SettingsRow>
       </div>

@@ -22,7 +22,9 @@ export {
   updateProvider,
 } from "./api/provider-api";
 export { providerQueryKeys, providerQueryOptions } from "./api/provider-queries";
+export { ModelPicker } from "./components/model-picker";
 export { ModelProviderIcon, type ModelProviderIconProps } from "./components/model-provider-icon";
+export { THINKING_LEVEL_OPTIONS } from "./constants/model-picker";
 export {
   createModelSelectionKey,
   ModelId,
