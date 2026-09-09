@@ -427,14 +427,24 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     messagesByRunId.set(message.turnId, runMessages);
   };
 
-  const placeTurnActions = (event: HarnessEvent, message?: ChatAssistantMessage) => {
+  const placeTurnFooter = (event: HarnessEvent, message?: ChatAssistantMessage) => {
     if (!event.runId) return;
+    const fileChanges = fileChangesByRunId.get(event.runId);
+    const fileChangeSummary = fileChanges?.length
+      ? {
+          areFileChangesReverted: revertedRunIds.has(event.runId),
+          fileChanges,
+          sessionId: event.sessionId,
+        }
+      : {};
     if (message && messagesByRunId.get(event.runId)?.at(-1) === message) {
+      Object.assign(message, fileChangeSummary);
       message.actions = "full";
       message.timestamp = event.timestamp;
       return;
     }
     pushMessage({
+      ...fileChangeSummary,
       ...(message ? { actionContent: message.content } : {}),
       actions: message ? "full" : "timestamp",
       content: "",
@@ -616,6 +626,7 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
         const preview = readApprovalPreview(tool);
         tool.approval = {
           approvalId: event.data.approvalId,
+          ...(event.data.allowSession === false ? { allowSession: false } : {}),
           ...(isCommandPrefixRule(event.data.commandPrefix)
             ? { commandPrefix: event.data.commandPrefix }
             : {}),
@@ -744,53 +755,35 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     if (event.type === HarnessEventType.RUN_COMPLETED && event.runId) {
       const message = lastAssistantMessageByRunId.get(event.runId);
       const startedAt = runStartedAtById.get(event.runId);
-      const fileChanges = fileChangesByRunId.get(event.runId);
-      if (message) {
-        if (fileChanges?.length) {
-          message.areFileChangesReverted = revertedRunIds.has(event.runId);
-          message.fileChanges = fileChanges;
-          message.sessionId = event.sessionId;
-        }
-      }
       markRunIntermediateMessages(
         messagesByRunId.get(event.runId) ?? [],
         event.runId,
         startedAt === undefined ? undefined : Math.max(0, event.timestamp - startedAt),
         message?.id,
       );
-      placeTurnActions(event, message);
+      placeTurnFooter(event, message);
     }
 
     if (event.type === HarnessEventType.RUN_FAILED && event.runId) {
       const startedAt = runStartedAtById.get(event.runId);
-      const fileChanges = fileChangesByRunId.get(event.runId);
       markRunIntermediateMessages(
         messagesByRunId.get(event.runId) ?? [],
         event.runId,
         startedAt === undefined ? undefined : Math.max(0, event.timestamp - startedAt),
       );
       pushMessage({
-        areFileChangesReverted: revertedRunIds.has(event.runId),
         content: readFailureMessage(event),
-        ...(fileChanges?.length ? { fileChanges } : {}),
         id: `failed-${event.id}`,
-        sessionId: event.sessionId,
         type: ChatMessageType.ERROR,
         turnId: event.runId,
       });
-      placeTurnActions(event, lastAssistantMessageByRunId.get(event.runId));
+      placeTurnFooter(event, lastAssistantMessageByRunId.get(event.runId));
       streamingContentByRunId.delete(event.runId);
     }
 
     if (event.type === HarnessEventType.RUN_ABORTED && event.runId) {
       const message = lastAssistantMessageByRunId.get(event.runId);
-      const fileChanges = fileChangesByRunId.get(event.runId);
-      if (message && fileChanges?.length) {
-        message.areFileChangesReverted = revertedRunIds.has(event.runId);
-        message.fileChanges = fileChanges;
-        message.sessionId = event.sessionId;
-      }
-      placeTurnActions(event, message);
+      placeTurnFooter(event, message);
       streamingContentByRunId.delete(event.runId);
     }
   }

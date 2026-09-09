@@ -15,6 +15,7 @@ import {
   OpenRouter,
   Qwen,
   XiaomiMiMo,
+  ZAI,
   Zhipu,
 } from "@lobehub/icons";
 import { cn } from "@/shared/utils/cn";
@@ -38,7 +39,7 @@ const MONO_PROVIDER_ICONS: Readonly<Record<string, IconType>> = {
   xai: Grok,
   xiaomi: XiaomiMiMo,
   "xiaomi-token-plan-cn": XiaomiMiMo,
-  zai: Zhipu,
+  zai: ZAI,
   "zai-coding-cn": Zhipu,
 };
 
@@ -61,7 +62,7 @@ const COLOR_PROVIDER_ICONS: Readonly<Record<string, IconType>> = {
   xai: Grok,
   xiaomi: XiaomiMiMo,
   "xiaomi-token-plan-cn": XiaomiMiMo,
-  zai: Zhipu.Color,
+  zai: ZAI,
   "zai-coding-cn": Zhipu.Color,
 };
 
