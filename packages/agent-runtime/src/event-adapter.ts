@@ -173,15 +173,21 @@ export function adaptAgentEvent(
         data: sanitizeAgentMessage(event.message),
         type: HarnessEventType.MESSAGE_COMPLETED,
       };
-    case "tool_execution_start":
+    case "tool_execution_start": {
+      const definition = context.tools.find(
+        (tool) => tool.name === event.toolName && tool.source?.startsWith("mcp:"),
+      );
       return {
         data: {
+          ...(definition?.source ? { source: definition.source } : {}),
+          ...(definition?.displayName ? { displayName: definition.displayName } : {}),
           arguments: event.args,
           toolCallId: event.toolCallId,
           toolName: event.toolName,
         } satisfies ToolStartedData,
         type: HarnessEventType.TOOL_STARTED,
       };
+    }
     case "tool_execution_update":
       return {
         data: {

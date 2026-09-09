@@ -19,6 +19,7 @@ export type ToolPolicyDecision = (typeof ToolPolicyDecision)[keyof typeof ToolPo
 
 // 工具权限
 export const ToolPermission = {
+  EXTERNAL: "external",
   SKILL_ACTIVATION: "skill_activation",
   READ_ONLY: "read_only", // 只读工具，自动放行
   WORKSPACE_WRITE: "workspace_write", // 修改 workspace 内文件的工具，需要用户审批
@@ -26,6 +27,13 @@ export const ToolPermission = {
 } as const;
 
 export type ToolPolicy =
+  | {
+      permission: typeof ToolPermission.EXTERNAL;
+      resolveGrant: (
+        args: unknown,
+        signal?: AbortSignal,
+      ) => Promise<{ fingerprint: string; target: string; summary: string; risk: string }>;
+    }
   | {
       permission: typeof ToolPermission.SKILL_ACTIVATION;
       resolveGrant: (
@@ -58,6 +66,7 @@ export type ToolPolicyResult =
 
 export interface EvaluateToolCallInput {
   approvalPolicy: ApprovalPolicyValue;
+  signal?: AbortSignal;
   isSkillToolPreapproved?: boolean;
   allowedCommandPrefixes?: readonly CommandPrefixRule[];
   arguments: unknown;
@@ -138,6 +147,12 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
   }
 
   switch (input.policy.permission) {
+    case ToolPermission.EXTERNAL:
+      // 本地 full_access 不代表对外部账号的写入授权。
+      return {
+        ...(await input.policy.resolveGrant(input.arguments, input.signal)),
+        decision: ToolPolicyDecision.ASK,
+      };
     case ToolPermission.SKILL_ACTIVATION: {
       const grant = await input.policy.resolveGrant(input.arguments);
       if (grant === null) return { decision: ToolPolicyDecision.ALLOW };

@@ -8,6 +8,7 @@ import {
   Folder,
   Display as Monitor,
   Moon,
+  PlugConnection,
   Sliders as Settings2,
   ShoppingBag as Store,
   Sun,
@@ -38,6 +39,7 @@ import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp
 import { useAppSettings } from "../hooks/use-app-settings";
 import { useAppTheme } from "../theme-provider";
 import { ApprovalPolicySelect } from "./approval-policy-select";
+import { McpSettingsPanel } from "./mcp-settings-panel";
 import { MemorySettingsPanel } from "./memory-settings-panel";
 import { ModelSettingsPanel } from "./model-settings-panel";
 import { PluginMarketplacePanel } from "./plugin-marketplace-panel";
@@ -96,6 +98,12 @@ const SETTINGS_SECTIONS = [
     label: "插件市场",
     description: "发现并安装可连接外部服务的插件。",
     icon: Store,
+  },
+  {
+    id: "mcp",
+    label: "MCP 服务器",
+    description: "连接外部 MCP 服务器并管理全局授权。",
+    icon: PlugConnection,
   },
   {
     id: "skills",
@@ -623,6 +631,8 @@ export function SettingsDialog({
                   <MemorySettingsPanel />
                 ) : activeSectionId === "plugins" ? (
                   <PluginMarketplacePanel />
+                ) : activeSectionId === "mcp" ? (
+                  <McpSettingsPanel />
                 ) : activeSectionId === "skills" ? (
                   <SkillSettingsPanel
                     currentWorkspaceId={currentWorkspaceId}

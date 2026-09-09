@@ -38,5 +38,6 @@ export {
   isFileChangeDetails,
   readFileChangeDetails,
 } from "./utils/file.js";
+export { createToolFingerprint } from "./utils/tool-fingerprint.js";
 export { hasIgnoredWorkspaceDirectory } from "./utils/workspace-file-changes.js";
 export { createWorkspaceToolRegistry } from "./workspace-tool-registry.js";

@@ -2,10 +2,11 @@ import { Buffer } from "node:buffer";
 import { lookup } from "node:dns/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { BlockList, isIP, type LookupFunction } from "node:net";
+import { isIP, type LookupFunction } from "node:net";
 import type { Readable } from "node:stream";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { classifyNetworkAddress, NetworkAddressKind } from "@pi-harness/policy";
 import { Type } from "typebox";
 import type { WorkspaceToolContext } from "../lib/tool-context.js";
 import { parseDocumentText } from "../utils/document-text.js";
@@ -14,39 +15,6 @@ const DEFAULT_CHARACTER_LIMIT = 30_000;
 const MAX_CHARACTER_LIMIT = 50_000;
 const MAX_REDIRECTS = 5;
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
-const PRIVATE_NETWORKS = new BlockList();
-const PROXY_FAKE_IP_NETWORKS = new BlockList();
-
-PROXY_FAKE_IP_NETWORKS.addSubnet("198.18.0.0", 15, "ipv4");
-
-for (const [network, prefix] of [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.0.2.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 3],
-] as const) {
-  PRIVATE_NETWORKS.addSubnet(network, prefix, "ipv4");
-}
-for (const [network, prefix] of [
-  ["::", 128],
-  ["::1", 128],
-  ["2001:db8::", 32],
-  ["fc00::", 7],
-  ["fe80::", 10],
-  ["ff00::", 8],
-] as const) {
-  PRIVATE_NETWORKS.addSubnet(network, prefix, "ipv6");
-}
-
 const WebFetchParameters = Type.Object({
   url: Type.String({
     description: "要读取的公开 HTTP(S) 网页 URL",
@@ -116,11 +84,11 @@ async function resolvePublicAddress(url: URL): Promise<{ address: string; family
     : await lookup(hostname, { all: true, verbatim: true });
   if (
     addresses.length === 0 ||
-    addresses.some(({ address, family }) => {
-      const addressFamily = family === 6 ? "ipv6" : "ipv4";
+    addresses.some(({ address }) => {
+      const kind = classifyNetworkAddress(address);
       return (
-        PRIVATE_NETWORKS.check(address, addressFamily) &&
-        (literalFamily !== 0 || !PROXY_FAKE_IP_NETWORKS.check(address, addressFamily))
+        kind !== NetworkAddressKind.PUBLIC &&
+        !(literalFamily === 0 && kind === NetworkAddressKind.PROXY_FAKE)
       );
     })
   ) {

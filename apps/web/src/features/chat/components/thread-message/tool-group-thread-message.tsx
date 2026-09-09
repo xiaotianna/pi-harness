@@ -17,9 +17,9 @@ export function ToolGroupThreadMessage({ message }: { message: ChatToolGroupMess
       tool.state === ChatToolState.INPUT_AVAILABLE || tool.state === ChatToolState.REQUIRES_ACTION,
   );
   const isActive = message.active ?? activeTool !== undefined;
-  const toolNames = [...new Set(message.tools.map((tool) => toolDisplayName(tool.toolName)))].join(
-    "、",
-  );
+  const toolNames = [
+    ...new Set(message.tools.map((tool) => tool.displayName ?? toolDisplayName(tool.toolName))),
+  ].join("、");
 
   return (
     <ChatMessagePrimitive.Assistant className="!py-0">
@@ -39,7 +39,7 @@ export function ToolGroupThreadMessage({ message }: { message: ChatToolGroupMess
               <span className="text-start">
                 {isActive ? (
                   <TextShimmer className="leading-none">
-                    {`正在调用 ${activeTool ? toolDisplayName(activeTool.toolName) : "工具"} ${Math.min(completedCount + 1, message.tools.length)}/${message.tools.length}`}
+                    {`正在调用 ${activeTool ? (activeTool.displayName ?? toolDisplayName(activeTool.toolName)) : "工具"} ${Math.min(completedCount + 1, message.tools.length)}/${message.tools.length}`}
                   </TextShimmer>
                 ) : (
                   `已调用 ${toolNames} · ${message.tools.length} 次`

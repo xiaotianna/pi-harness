@@ -1,7 +1,6 @@
-import { createHash } from "node:crypto";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { isPlainObject } from "es-toolkit";
 import type { TSchema } from "typebox";
+import { createToolFingerprint } from "./utils/tool-fingerprint.js";
 
 const MAX_PARALLEL_TOOL_CALLS = 4;
 
@@ -37,17 +36,7 @@ export class ToolExecutionGuard {
     argumentsValue: unknown,
     workspaceFingerprint: string,
   ): string {
-    // ponytail: 当前副作用工具参数都是扁平对象；引入嵌套参数时再改为递归规范化。
-    const normalizedArguments = isPlainObject(argumentsValue)
-      ? Object.fromEntries(
-          Object.entries(argumentsValue).sort(([left], [right]) =>
-            left < right ? -1 : left > right ? 1 : 0,
-          ),
-        )
-      : argumentsValue;
-    return createHash("sha256")
-      .update(JSON.stringify([toolName, normalizedArguments, workspaceFingerprint]))
-      .digest("hex");
+    return createToolFingerprint([toolName, argumentsValue, workspaceFingerprint]);
   }
 
   public getBlockReason(toolCallId: string, fingerprint: string): string | null {

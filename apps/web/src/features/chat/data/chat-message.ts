@@ -58,6 +58,7 @@ export const ChatToolState = {
 export type ChatToolState = (typeof ChatToolState)[keyof typeof ChatToolState];
 
 export type ChatMessageTool = {
+  displayName?: string;
   activeLabel?: string;
   approval?: {
     approvalId: string;

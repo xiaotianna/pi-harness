@@ -34,6 +34,7 @@ import {
   UserInputResponseAction,
   type UserInputToolResult,
 } from "@pi-harness/tools";
+import type { PreparedExternalTools, PrepareExternalTools } from "./agent-manager.js";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
 import { CONTEXT_WINDOW_EXCEEDED_ERROR_CODE, projectContext } from "./context/context-pipeline.js";
 import { type AgentEventAdapterContext, adaptAgentEvent } from "./event-adapter.js";
@@ -84,6 +85,7 @@ import {
 } from "./user-input.js";
 import { isPlanExecutionAcknowledgement } from "./utils/agent-message.js";
 import { estimateContextUsage } from "./utils/context-usage.js";
+import { createRunToolSnapshot } from "./utils/run-tool-snapshot.js";
 import { expandExplicitSkills } from "./utils/skill-context.js";
 import {
   createHarnessUserMessage,
@@ -234,6 +236,7 @@ export class RunCoordinator {
     private todoState: TodoUpdatedData | null,
     private readonly getAllowedCommandPrefixes: () => readonly (readonly string[])[] = () => [],
     private readonly skillRegistry?: SkillRegistry,
+    private readonly prepareExternalTools?: PrepareExternalTools,
   ) {
     this.executionGuard = toolRegistry.executionGuard;
     for (const message of agent.state.messages) {
@@ -627,6 +630,7 @@ export class RunCoordinator {
           context.args,
           signal,
         )) ?? false,
+      ...(signal ? { signal } : {}),
       arguments: context.args, // 模型传给工具的参数
       policy: registration?.policy, // 工具权限
       protectedPaths: this.protectedPaths,
@@ -770,6 +774,7 @@ export class RunCoordinator {
               context.args,
               signal,
             )) ?? false,
+          ...(signal ? { signal } : {}),
           arguments: context.args,
           policy: this.toolRegistry.get(context.toolCall.name)?.policy,
           protectedPaths: this.protectedPaths,
@@ -911,11 +916,7 @@ export class RunCoordinator {
       providerId: input.providerId,
       systemPrompt: input.systemPrompt,
       thinkingLevel,
-      tools: this.agent.state.tools.map(({ description, name, parameters }) => ({
-        description,
-        name,
-        parameters,
-      })),
+      tools: createRunToolSnapshot(this.toolRegistry),
     } satisfies RunStartedData;
     let requestIndex = 0;
     this.agent.streamFunction = async (model, context, options) => {
@@ -970,9 +971,22 @@ export class RunCoordinator {
       this.todoState,
     );
 
+    let externalTools: PreparedExternalTools | undefined;
+    let hasPreparedTools = false;
     try {
       let message: AgentMessage;
       try {
+        externalTools = await this.prepareExternalTools?.(
+          this.sessionId,
+          this.workspaceRoot,
+          preparationAbortController.signal,
+        );
+        preparationAbortController.signal.throwIfAborted();
+        this.toolRegistry.replaceExternal(externalTools?.registrations ?? []);
+        this.agent.state.tools = this.toolRegistry.tools;
+        runStartedData.tools = createRunToolSnapshot(this.toolRegistry);
+        activeRun.tools = runStartedData.tools;
+        hasPreparedTools = true;
         message = input.userMessage
           ? await expandExplicitSkills(
               input.userMessage,
@@ -1010,11 +1024,13 @@ export class RunCoordinator {
             data: isAborted
               ? { code: "RUN_ABORTED", message: "运行已停止" }
               : {
-                  code: "USER_CONTEXT_INVALID",
+                  code: hasPreparedTools ? "USER_CONTEXT_INVALID" : "MCP_PREPARATION_FAILED",
                   message:
                     error instanceof UserInputContextError
                       ? error.message
-                      : "无法读取附件或引用上下文，请确认文件仍然存在且可访问",
+                      : hasPreparedTools
+                        ? "无法读取附件或引用上下文，请确认文件仍然存在且可访问"
+                        : "无法准备 MCP 工具，请检查设置中的服务器连接、工具 schema 和数量限制",
                 },
             type: isAborted ? HarnessEventType.RUN_ABORTED : HarnessEventType.RUN_FAILED,
           },
@@ -1065,6 +1081,9 @@ export class RunCoordinator {
         }
       }
     } finally {
+      externalTools?.release();
+      this.toolRegistry.replaceExternal([]);
+      this.agent.state.tools = this.toolRegistry.tools;
       this.executionGuard.reset();
       this.pendingFileChanges.clear();
       this.pendingFollowUps.clear();

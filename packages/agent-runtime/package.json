@@ -12,7 +12,8 @@
     "./thinking-level": "./src/thinking-level.ts",
     "./tool-approval": "./src/tool-approval.ts",
     "./user-input": "./src/user-input.ts",
-    "./working-state": "./src/working-state.ts"
+    "./working-state": "./src/working-state.ts",
+    "./mcp-contract": "./src/mcp-contract.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

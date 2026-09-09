@@ -1,12 +1,17 @@
 import { randomBytes } from "node:crypto";
+import { join } from "node:path";
 import cors from "@fastify/cors";
 import { AgentManager } from "@pi-harness/agent-runtime";
 import { AVAILABLE_PLUGINS, resolveRegisteredPluginSkills } from "@pi-harness/tools";
 import Fastify from "fastify";
 import { type HarnessConfig, loadHarnessConfig } from "../config/index.js";
+import { McpClientManager } from "../mcp/client-manager.js";
+import { McpDiscovery } from "../mcp/discovery.js";
+import { createMcpTransportFactory } from "../mcp/transports/factory.js";
 import { registerAppSettingsRoutes } from "../routes/app-settings-routes.js";
 import { registerAuthRoutes } from "../routes/auth-routes.js";
 import { registerHealthRoutes } from "../routes/health-routes.js";
+import { registerMcpRoutes } from "../routes/mcp-routes.js";
 import { registerProviderRoutes } from "../routes/provider-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerSkillConnectionRoutes } from "../routes/skill-connection-routes.js";
@@ -14,6 +19,9 @@ import { registerWorkspaceRoutes } from "../routes/workspace-routes.js";
 import { AppSettingsService } from "../services/app-settings-service.js";
 import { FileOpenService } from "../services/file-open-service.js";
 import { HumanInteractionService } from "../services/human-interaction-service.js";
+import { McpDiagnosticsService } from "../services/mcp-diagnostics-service.js";
+import { McpServerService } from "../services/mcp-server-service.js";
+import { McpToolService } from "../services/mcp-tool-service.js";
 import { ProviderService } from "../services/provider-service.js";
 import { SessionEventService } from "../services/session-event-service.js";
 import { SessionService } from "../services/session-service.js";
@@ -22,6 +30,7 @@ import { WorkspaceService } from "../services/workspace-service.js";
 import { SessionEventBroker } from "../sse/session-event-broker.js";
 import { AllowedCommandPrefixStore } from "../storage/allowed-command-prefix-store.js";
 import { openHarnessDatabase } from "../storage/database.js";
+import { McpCredentialStore } from "../storage/mcp-credential-store.js";
 import { FileCredentialStore } from "../storage/provider-credential-store.js";
 import { SessionEventStore } from "../storage/session-event-store.js";
 import { SkillCredentialStore } from "../storage/skill-credential-store.js";
@@ -40,6 +49,27 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   const fileOpen = new FileOpenService(database.appSettings);
   const credentials = await FileCredentialStore.open(config.credentialsPath);
   const skillCredentials = await SkillCredentialStore.open(config.skillCredentialsPath);
+  const mcpCredentials = await McpCredentialStore.open(
+    join(config.globalRoot, "mcp-credentials.json"),
+  );
+  const mcpClients = new McpClientManager(
+    createMcpTransportFactory(
+      (context) => mcpServers.verifyContext(context),
+      [
+        config.port,
+        ...[config.webUrl, config.skillGatewayUrl].map((value) => {
+          const url = new URL(value);
+          return Number(url.port || (url.protocol === "https:" ? 443 : 80));
+        }),
+      ],
+    ),
+    (error) => server.log.warn({ code: error.code }, "MCP connection lifecycle failed"),
+    (context) => mcpServers.verifyContext(context),
+  );
+  const mcpServers = new McpServerService(database.mcpServers, mcpCredentials, (id) =>
+    mcpClients.invalidateServer(id),
+  );
+  const mcpDiagnostics = new McpDiagnosticsService(mcpServers, mcpClients, new McpDiscovery());
   const skillConnections = new SkillConnectionService(
     skillCredentials,
     database.appSettings,
@@ -59,6 +89,12 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
       database.appSettings.getInstalledSkillCollectionIds(),
       database.appSettings.getDisabledSkillCollectionSkillIds(),
     );
+  const mcpTools = new McpToolService(
+    mcpServers,
+    mcpClients,
+    new McpDiscovery(),
+    database.sessions,
+  );
   const agents = new AgentManager(
     sessionEvents.handle,
     interactions.requestApproval,
@@ -71,6 +107,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     getRegisteredGlobalSkills,
     (directory) => !database.appSettings.getDisabledSkillDirectories().includes(directory),
     () => allowedCommandPrefixes.getAll(),
+    mcpTools.prepare,
   );
   const workspaces = new WorkspaceService(
     database.workspaces,
@@ -141,6 +178,8 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     fileOpen.close();
     workspaces.close();
     await sessions.close();
+    await mcpServers.close();
+    await mcpClients.close();
     await providers.close();
     broker.clear();
     database.close();
@@ -149,6 +188,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   await registerAuthRoutes(server, config, database.authSessions);
   await registerAppSettingsRoutes(server, config, appSettings, fileOpen);
   await registerHealthRoutes(server);
+  await registerMcpRoutes(server, config, mcpServers, mcpDiagnostics);
   await registerProviderRoutes(server, config, providers);
   await registerSessionRoutes(server, config, sessions, broker);
   await registerSkillConnectionRoutes(server, config, skillConnections, skillGatewayToken);

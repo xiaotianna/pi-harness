@@ -63,8 +63,8 @@ function toolPresentation(tool: ChatMessageTool) {
       return {
         active: "正在使用工具",
         done: "已使用工具",
-        failed: "工具调用失败",
-        query: tool.toolName,
+        failed: tool.errorText?.includes("MCP_RESULT_UNKNOWN:") ? "执行结果未知" : "工具调用失败",
+        query: tool.displayName ?? tool.toolName,
       };
   }
 }

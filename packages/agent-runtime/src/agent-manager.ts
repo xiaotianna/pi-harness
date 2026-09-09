@@ -7,6 +7,7 @@ import {
   type SkillDefinition,
   SkillRegistry,
   type TodoUpdatedData,
+  type ToolRegistration,
 } from "@pi-harness/tools";
 import { loadWorkspaceAgentContext } from "./context/workspace-agent-context.js";
 import { createAgent } from "./create-agent.js";
@@ -46,6 +47,17 @@ export interface RestoreAgentInput {
 export type StartSessionRunInput = RestoreAgentInput &
   Omit<StartRunInput, "contexts" | "systemPrompt">;
 
+export interface PreparedExternalTools {
+  registrations: readonly ToolRegistration[];
+  release(): void;
+}
+
+export type PrepareExternalTools = (
+  sessionId: string,
+  workspaceRoot: string,
+  signal: AbortSignal,
+) => Promise<PreparedExternalTools>;
+
 // Session 注册表
 // 核心：Map<SessionId, RunCoordinator>
 export class AgentManager {
@@ -63,6 +75,7 @@ export class AgentManager {
     private readonly getRegisteredGlobalSkills: () => readonly SkillDefinition[] = () => [],
     private readonly isSkillEnabled: (directory: string) => boolean = () => true,
     private readonly getAllowedCommandPrefixes: () => readonly CommandPrefixRule[] = () => [],
+    private readonly prepareExternalTools?: PrepareExternalTools,
   ) {}
 
   public isProviderActive(providerId: string): boolean {
@@ -232,6 +245,7 @@ export class AgentManager {
       input.todos,
       this.getAllowedCommandPrefixes,
       skillRegistry,
+      this.prepareExternalTools,
     );
     this.runtimes.set(input.sessionId, runtime);
     return runtime;

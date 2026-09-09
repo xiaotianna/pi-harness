@@ -15,6 +15,10 @@ export class ToolRegistry {
   private readonly registrations = new Map<string, ToolRegistration>();
 
   public constructor(registrations: readonly ToolRegistration[]) {
+    this.add(registrations);
+  }
+
+  private add(registrations: readonly ToolRegistration[]): void {
     for (const registration of registrations) {
       const { tool } = registration;
       if (!tool.name.trim() || !tool.description.trim()) {
@@ -38,6 +42,21 @@ export class ToolRegistry {
         tool: this.executionGuard.guard(tool, registration.timeoutMs),
       });
     }
+  }
+
+  /** Called only while the owning Run is preparing or has finished. */
+  public replaceExternal(registrations: readonly ToolRegistration[]): void {
+    if (registrations.some((registration) => !registration.source.startsWith("mcp:")))
+      throw new Error("外部工具缺少 MCP 来源");
+    const next = new ToolRegistry(registrations);
+    for (const name of next.registrations.keys()) {
+      const current = this.registrations.get(name);
+      if (current && !current.source.startsWith("mcp:")) throw new Error("外部工具名称冲突");
+    }
+    for (const [name, registration] of this.registrations) {
+      if (registration.source.startsWith("mcp:")) this.registrations.delete(name);
+    }
+    this.add(registrations);
   }
 
   public get(toolName: string): ToolRegistration | undefined {

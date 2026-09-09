@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "catalog:",
     "@fastify/cors": "catalog:",
     "@pi-harness/agent-runtime": "workspace:*",
     "@pi-harness/policy": "workspace:*",

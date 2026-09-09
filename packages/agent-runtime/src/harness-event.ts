@@ -193,6 +193,8 @@ export interface HarnessEvent<TData = unknown> {
  */
 // 对应 run.started 事件
 export interface RunToolDefinition {
+  source?: string;
+  displayName?: string;
   description: string;
   name: string;
   parameters: unknown;
@@ -550,6 +552,8 @@ export function selectActiveSessionEvents(events: readonly HarnessEvent[]): Harn
 
 // tool.started
 export interface ToolStartedData {
+  source?: string;
+  displayName?: string;
   arguments: unknown;
   toolCallId: string;
   toolName: string;

@@ -227,4 +227,60 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       DROP TABLE session_thinking_levels;
     `,
   },
+  {
+    version: "014-mcp-servers.sql",
+    sql: `
+      CREATE TABLE mcp_servers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        config_json TEXT NOT NULL CHECK (json_valid(config_json)),
+        enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+        revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+
+      CREATE TABLE workspace_mcp_servers (
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        PRIMARY KEY (workspace_id, server_id)
+      ) STRICT;
+      CREATE INDEX workspace_mcp_servers_server_idx ON workspace_mcp_servers(server_id);
+
+      CREATE TABLE mcp_server_trust (
+        server_id TEXT PRIMARY KEY REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        approved_at INTEGER NOT NULL
+      ) STRICT;
+
+      CREATE TABLE mcp_tool_settings (
+        server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        tool_name TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        trusted_read_only INTEGER NOT NULL DEFAULT 0 CHECK (trusted_read_only IN (0, 1)),
+        definition_fingerprint TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (server_id, tool_name)
+      ) STRICT;
+
+      CREATE TABLE mcp_grants (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        identity TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        definition_fingerprint TEXT NOT NULL,
+        arguments_fingerprint TEXT NOT NULL,
+        config_revision INTEGER NOT NULL CHECK (config_revision > 0),
+        expires_at INTEGER,
+        created_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE INDEX mcp_grants_scope_idx ON mcp_grants(server_id, workspace_id, tool_name);
+    `,
+  },
+  {
+    version: "015-global-mcp-servers.sql",
+    // 全局配置、启用状态、信任及凭据保持原值，只移除旧的项目启用关系。
+    sql: `DROP TABLE workspace_mcp_servers;`,
+  },
 ];

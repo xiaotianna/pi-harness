@@ -19,6 +19,7 @@ import {
 import { ApprovalPolicy, type ApprovalPolicyValue, isApprovalPolicy } from "@pi-harness/policy";
 import { isPlainObject } from "es-toolkit";
 import { FileOpenMode, type FileOpenMode as FileOpenModeValue } from "../schemas/file-open.js";
+import { type McpServerRepository, SqliteMcpServerRepository } from "./mcp-server-repository.js";
 import { DATABASE_MIGRATIONS } from "./migrations.js";
 
 export interface AuthUser {
@@ -1056,6 +1057,7 @@ class SqliteWorkspaceRepository implements WorkspaceRepository {
 }
 
 export interface HarnessDatabase {
+  mcpServers: McpServerRepository;
   appSettings: AppSettingRepository;
   authSessions: AuthSessionRepository;
   close(): void;
@@ -1073,6 +1075,7 @@ export function openHarnessDatabase(databasePath: string): HarnessDatabase {
   runMigrations(database);
 
   return {
+    mcpServers: new SqliteMcpServerRepository(database),
     appSettings: new SqliteAppSettingRepository(database),
     authSessions: new SqliteAuthSessionRepository(database),
     close: () => database.close(),

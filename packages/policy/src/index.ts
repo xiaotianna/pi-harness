@@ -10,6 +10,11 @@ export {
   isPersistableCommandPrefixRule,
   readApplicableCommandPrefix,
 } from "./command-policy.js";
+export {
+  type ExternalConnectionPolicyInput,
+  type ExternalConnectionPolicyResult,
+  evaluateExternalConnection,
+} from "./external-connection-policy.js";
 export { type ResolveWorkspacePathInput, resolveWorkspacePath } from "./path-policy.js";
 export {
   PathPolicyError,
@@ -25,6 +30,7 @@ export {
   type ToolPolicyResult,
   type ToolWriteTarget,
 } from "./tool-policy.js";
+export { classifyNetworkAddress, NetworkAddressKind } from "./utils/network-address.js";
 export { isPathWithin } from "./utils/path.js";
 
 export { matchesSkillTool } from "./utils/skill-tools.js";

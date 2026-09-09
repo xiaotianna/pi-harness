@@ -21,6 +21,8 @@ export {
 } from "@pi-harness/tools";
 export {
   AgentManager,
+  type PreparedExternalTools,
+  type PrepareExternalTools,
   type RestoreAgentInput,
   type StartSessionRunInput,
 } from "./agent-manager.js";
