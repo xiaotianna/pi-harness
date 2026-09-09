@@ -7,8 +7,11 @@ import { isPlainObject } from "es-toolkit";
 import { type ChatFileChange, ChatFileChangeStatus } from "../data/chat";
 
 interface FileChangeState {
-  after: string;
-  before: string | null;
+  after?: string;
+  before?: string | null;
+  sessionId?: string;
+  runId?: string;
+  status?: ChatFileChangeStatus;
   path: string;
   seq: number;
 }
@@ -17,6 +20,26 @@ function readFileChange(event: HarnessEvent): FileChangeState | null {
   if (event.type !== HarnessEventType.FILE_CHANGED || !isPlainObject(event.data)) return null;
 
   const { after, before, path, toolName } = event.data;
+  if (
+    event.data.hasContent === true &&
+    typeof path === "string" &&
+    event.runId &&
+    toolName !== RunFileChangeOperation.REAPPLY &&
+    toolName !== RunFileChangeOperation.REVERT
+  ) {
+    return {
+      path,
+      seq: event.seq,
+      sessionId: event.sessionId,
+      runId: event.runId,
+      status:
+        event.data.isAdded === true
+          ? ChatFileChangeStatus.ADDED
+          : event.data.isDeleted === true
+            ? ChatFileChangeStatus.DELETED
+            : ChatFileChangeStatus.MODIFIED,
+    };
+  }
   if (toolName === RunFileChangeOperation.REAPPLY || toolName === RunFileChangeOperation.REVERT) {
     return null;
   }
@@ -66,7 +89,7 @@ export function summarizeSessionFileChangesByRun(
     const existing = changesByPath.get(change.path);
     changesByPath.set(change.path, {
       ...change,
-      before: existing ? existing.before : change.before,
+      ...(existing?.before === undefined ? {} : { before: existing.before }),
     });
     changesByRunId.set(event.runId, changesByPath);
   }
@@ -75,18 +98,22 @@ export function summarizeSessionFileChangesByRun(
     [...changesByRunId].map(([runId, changesByPath]) => [
       runId,
       [...changesByPath.values()]
-        .filter((change) => (change.before ?? "") !== change.after)
+        .filter((change) => change.after === undefined || (change.before ?? "") !== change.after)
         .sort((left, right) => right.seq - left.seq)
-        .map(({ after, before, path }) => ({
-          after,
-          before,
+        .map(({ after, before, path, seq, sessionId, runId, status }) => ({
+          ...(after === undefined ? {} : { after }),
+          ...(before === undefined ? {} : { before }),
+          ...(sessionId === undefined ? {} : { sessionId }),
+          ...(runId === undefined ? {} : { runId }),
+          eventSeq: seq,
           path,
           status:
-            before === null
+            status ??
+            (before === null
               ? ChatFileChangeStatus.ADDED
               : after === ""
                 ? ChatFileChangeStatus.DELETED
-                : ChatFileChangeStatus.MODIFIED,
+                : ChatFileChangeStatus.MODIFIED),
         })),
     ]),
   );

@@ -86,8 +86,15 @@ const QueuedRunInputSchema = Type.Object({
 const QueuedRunInputListSchema = Type.Array(QueuedRunInputSchema);
 
 export type Session = Static<typeof SessionSchema>;
+export interface SessionSnapshotEventMetadata {
+  changedRunIds: ReadonlySet<string>;
+  stableEvents: readonly HarnessEvent[];
+  transientByKey: ReadonlyMap<string, HarnessEvent>;
+}
 export interface SessionSnapshot {
-  events: HarnessEvent[];
+  /** Client-only incremental state. The daemon response never includes this field. */
+  eventMetadata?: SessionSnapshotEventMetadata;
+  events: readonly HarnessEvent[];
   session: Session;
 }
 export type SessionSearchResult = Static<typeof SessionSearchResultSchema>;
@@ -388,6 +395,49 @@ export function parseSessionEvent(value: string): HarnessEvent {
   return parseEvent(JSON.parse(value) as unknown);
 }
 
-export function sessionEventsUrl(sessionId: string, afterSeq: number): string {
-  return `/api/sessions/${encodeURIComponent(sessionId)}/events?afterSeq=${afterSeq}`;
+export function sessionEventsUrl(sessionId: string, afterSeq: number, isTrace = false): string {
+  return `/api/sessions/${encodeURIComponent(sessionId)}/events?afterSeq=${afterSeq}&conversation=${!isTrace}`;
+}
+
+const SessionFileChangesSchema = Type.Array(
+  Type.Object({
+    path: Type.String(),
+    status: Type.Union([Type.Literal("added"), Type.Literal("deleted"), Type.Literal("modified")]),
+    additions: Type.Optional(Type.Integer({ minimum: 0 })),
+    deletions: Type.Optional(Type.Integer({ minimum: 0 })),
+    before: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    after: Type.Optional(Type.String()),
+  }),
+);
+
+export async function getSessionRunFileChanges(
+  sessionId: string,
+  runId: string,
+  includeContent: boolean,
+  signal?: AbortSignal,
+) {
+  const response = await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/file-changes?includeContent=${includeContent}`,
+    signal ? { signal } : undefined,
+  );
+  const body: unknown = await response.json();
+  if (
+    !Value.Check(SessionFileChangesSchema, body) ||
+    (includeContent && body.some((file) => file.after === undefined || file.before === undefined))
+  ) {
+    throw new Error("daemon 返回了无效的文件变更");
+  }
+  return body;
+}
+
+export async function getSessionEvent(
+  sessionId: string,
+  eventSeq: number,
+  signal?: AbortSignal,
+): Promise<HarnessEvent> {
+  const response = await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/events/${eventSeq}`,
+    signal ? { signal } : undefined,
+  );
+  return parseEvent(await response.json());
 }

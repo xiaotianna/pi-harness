@@ -18,6 +18,8 @@ import {
   SessionCheckpointParamsDtoSchema,
   type SessionEventsQueryDto,
   SessionEventsQueryDtoSchema,
+  type SessionFileChangesQueryDto,
+  SessionFileChangesQueryDtoSchema,
   type SessionInputParamsDto,
   SessionInputParamsDtoSchema,
   type SessionListQueryDto,
@@ -45,11 +47,13 @@ import type { SessionService } from "../services/session-service.js";
 import type { SessionEventBroker } from "../sse/session-event-broker.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
+  HarnessEventVoSchema,
   PendingToolApprovalVoSchema,
   PendingUserInputVoSchema,
   QueuedRunInputListVoSchema,
   QueuedRunInputVoSchema,
   RunAcceptedVoSchema,
+  SessionFileChangesVoSchema,
   SessionListVoSchema,
   SessionSearchResultListVoSchema,
   SessionSnapshotVoSchema,
@@ -103,6 +107,29 @@ export async function registerSessionRoutes(
       },
     },
     controller.create,
+  );
+
+  server.get<{ Params: SessionCheckpointParamsDto }>(
+    "/api/sessions/:sessionId/events/:eventSeq",
+    {
+      schema: {
+        params: SessionCheckpointParamsDtoSchema,
+        response: { 200: HarnessEventVoSchema, ...errors },
+      },
+    },
+    controller.getEvent,
+  );
+
+  server.get<{ Params: SessionRunParamsDto; Querystring: SessionFileChangesQueryDto }>(
+    "/api/sessions/:sessionId/runs/:runId/file-changes",
+    {
+      schema: {
+        params: SessionRunParamsDtoSchema,
+        querystring: SessionFileChangesQueryDtoSchema,
+        response: { 200: SessionFileChangesVoSchema, ...errors },
+      },
+    },
+    controller.getFileChanges,
   );
 
   server.get<{ Params: SessionParamsDto }>(

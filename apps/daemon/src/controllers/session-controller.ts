@@ -7,6 +7,7 @@ import type {
   RetryUserMessageDto,
   SessionApprovalParamsDto,
   SessionCheckpointParamsDto,
+  SessionFileChangesQueryDto,
   SessionInputParamsDto,
   SessionListQueryDto,
   SessionMessageParamsDto,
@@ -76,6 +77,35 @@ export class SessionController {
     try {
       const snapshot = await this.sessions.getSnapshot(request.params.sessionId);
       return { events: [...snapshot.events], session: snapshot.session };
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public getEvent = async (
+    request: FastifyRequest<{ Params: SessionCheckpointParamsDto }>,
+    reply: FastifyReply,
+  ) => {
+    try {
+      return await this.sessions.getEvent(request.params.sessionId, request.params.eventSeq);
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public getFileChanges = async (
+    request: FastifyRequest<{
+      Params: SessionRunParamsDto;
+      Querystring: SessionFileChangesQueryDto;
+    }>,
+    reply: FastifyReply,
+  ) => {
+    try {
+      return await this.sessions.getRunFileChanges(
+        request.params.sessionId,
+        request.params.runId,
+        request.query.includeContent ?? false,
+      );
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     }

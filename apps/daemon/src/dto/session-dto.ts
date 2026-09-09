@@ -177,7 +177,13 @@ export const RetryUserMessageDtoSchema = Type.Object({
 export type RetryUserMessageDto = Static<typeof RetryUserMessageDtoSchema>;
 
 export const SessionEventsQueryDtoSchema = Type.Object({
+  conversation: Type.Optional(Type.Boolean()),
   afterSeq: Type.Optional(Type.Integer({ minimum: 0 })),
 });
 
 export type SessionEventsQueryDto = Static<typeof SessionEventsQueryDtoSchema>;
+
+export const SessionFileChangesQueryDtoSchema = Type.Object({
+  includeContent: Type.Optional(Type.Boolean()),
+});
+export type SessionFileChangesQueryDto = Static<typeof SessionFileChangesQueryDtoSchema>;

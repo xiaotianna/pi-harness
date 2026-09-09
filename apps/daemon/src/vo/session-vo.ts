@@ -134,3 +134,14 @@ export const PendingUserInputVoSchema = Type.Object({
 });
 
 export type PendingUserInputVo = Static<typeof PendingUserInputVoSchema>;
+
+export const SessionFileChangesVoSchema = Type.Array(
+  Type.Object({
+    path: Type.String(),
+    status: Type.Union([Type.Literal("added"), Type.Literal("deleted"), Type.Literal("modified")]),
+    additions: Type.Optional(Type.Integer({ minimum: 0 })),
+    deletions: Type.Optional(Type.Integer({ minimum: 0 })),
+    before: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    after: Type.Optional(Type.String()),
+  }),
+);

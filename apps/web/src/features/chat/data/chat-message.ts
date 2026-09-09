@@ -32,8 +32,13 @@ export const ChatFileChangeStatus = {
 export type ChatFileChangeStatus = (typeof ChatFileChangeStatus)[keyof typeof ChatFileChangeStatus];
 
 export type ChatFileChange = {
-  after: string;
-  before: string | null;
+  after?: string;
+  before?: string | null;
+  additions?: number;
+  deletions?: number;
+  sessionId?: string;
+  runId?: string;
+  eventSeq?: number;
   path: string;
   status: ChatFileChangeStatus;
 };
@@ -74,6 +79,7 @@ export type ChatMessageTool = {
   errorText?: string;
   input?: unknown;
   output?: unknown;
+  resultSource?: { sessionId: string; seq: number };
   state: ChatToolState;
   toolCallId?: string;
   toolName: string;

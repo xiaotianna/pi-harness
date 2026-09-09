@@ -5,6 +5,8 @@ import type { SessionEventsQueryDto, SessionParamsDto } from "../dto/session-dto
 import { type SessionService, SessionServiceError } from "../services/session-service.js";
 import type { SessionEventBroker } from "../sse/session-event-broker.js";
 
+import { projectSessionConversationEvents } from "../utils/session-conversation.js";
+
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 
 function writeEvent(response: ServerResponse, event: HarnessEvent): void {
@@ -40,7 +42,10 @@ export class SessionEventsController {
     const send = (event: HarnessEvent) => {
       if (isClosed || event.seq <= lastSentSeq) return;
       try {
-        writeEvent(reply.raw, event);
+        const projected = request.query.conversation
+          ? projectSessionConversationEvents([event])[0]
+          : event;
+        if (projected) writeEvent(reply.raw, projected);
         lastSentSeq = event.seq;
       } catch {
         close();

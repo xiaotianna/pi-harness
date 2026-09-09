@@ -59,10 +59,17 @@ function readUnknown(value: unknown): string {
   return clip(stringifyUnknown(value));
 }
 
+const serializedValues = new WeakMap<object, string>();
+
 function stringifyUnknown(value: unknown): string {
   if (typeof value === "string") return value;
   try {
-    return JSON.stringify(value) ?? "undefined";
+    const key = value !== null && typeof value === "object" ? value : null;
+    const cached = key ? serializedValues.get(key) : undefined;
+    if (cached !== undefined) return cached;
+    const serialized = JSON.stringify(value) ?? "undefined";
+    if (key) serializedValues.set(key, serialized);
+    return serialized;
   } catch {
     return "无法预览该值";
   }
@@ -195,6 +202,18 @@ function readRunErrorCode(event: HarnessEvent | undefined): string | undefined {
     : undefined;
 }
 
+const EMPTY_TOOL_DEFINITIONS: AgentTraceToolDefinition[] = [];
+
+const completedTraces = new WeakMap<
+  HarnessEvent,
+  {
+    events: readonly HarnessEvent[];
+    toolDefinitions: AgentTraceToolDefinition[];
+    trace: AgentTraceSession;
+  }
+>();
+const toolDefinitionsCache = new WeakMap<object, AgentTraceToolDefinition[]>();
+
 function createTrace(
   runEvents: readonly HarnessEvent[],
   now: number,
@@ -209,6 +228,15 @@ function createTrace(
       event.type === HarnessEventType.RUN_FAILED ||
       event.type === HarnessEventType.RUN_ABORTED,
   );
+  const cached = completedTraces.get(started);
+  if (
+    terminal &&
+    cached &&
+    cached.toolDefinitions === toolDefinitions &&
+    cached.events.length === runEvents.length &&
+    runEvents.every((event, index) => event === cached.events[index])
+  )
+    return cached.trace;
   const runData = isPlainObject(started.data) ? started.data : {};
   const endedAt = terminal?.timestamp ?? now;
   const records: AgentTraceRecord[] = [];
@@ -680,7 +708,7 @@ function createTrace(
   );
   const runErrorCode = readRunErrorCode(terminal);
 
-  return {
+  const trace: AgentTraceSession = {
     durationMs: Math.max(1, endedAt - started.timestamp),
     ...(runErrorCode ? { errorCode: runErrorCode } : {}),
     model: typeof runData.modelId === "string" ? runData.modelId : "未知模型",
@@ -690,6 +718,8 @@ function createTrace(
     tokenUsage,
     traceId: started.runId,
   };
+  if (terminal) completedTraces.set(started, { events: runEvents, toolDefinitions, trace });
+  return trace;
 }
 
 export function sessionEventsToAgentTraces(
@@ -698,7 +728,7 @@ export function sessionEventsToAgentTraces(
 ): AgentTraceSession[] {
   const byRunId = new Map<string, HarnessEvent[]>();
   const toolDefinitionsByRunId = new Map<string, AgentTraceToolDefinition[]>();
-  let currentToolDefinitions: AgentTraceToolDefinition[] = [];
+  let currentToolDefinitions: AgentTraceToolDefinition[] = EMPTY_TOOL_DEFINITIONS;
   for (const event of events) {
     if (!event.runId) continue;
     const runEvents = byRunId.get(event.runId) ?? [];
@@ -706,7 +736,9 @@ export function sessionEventsToAgentTraces(
     byRunId.set(event.runId, runEvents);
     if (event.type === HarnessEventType.RUN_STARTED && isPlainObject(event.data)) {
       if (Array.isArray(event.data.tools)) {
-        currentToolDefinitions = readToolDefinitions(event.data.tools);
+        const tools = event.data.tools;
+        currentToolDefinitions = toolDefinitionsCache.get(tools) ?? readToolDefinitions(tools);
+        toolDefinitionsCache.set(tools, currentToolDefinitions);
       }
       toolDefinitionsByRunId.set(event.runId, currentToolDefinitions);
     }

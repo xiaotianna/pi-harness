@@ -35,7 +35,6 @@ import {
   getSupportedThinkingLevels,
   type Model,
 } from "@pi-harness/providers";
-import { isPlainObject } from "es-toolkit";
 import {
   buildSessionTitlePrompt,
   SESSION_TITLE_SYSTEM_PROMPT,
@@ -48,6 +47,7 @@ import type {
   WorkspaceRepository,
 } from "../storage/database.js";
 import type { SessionEventSnapshot, SessionEventStore } from "../storage/session-event-store.js";
+import { readRunFileChanges, summarizeRunFileChanges } from "../utils/run-file-changes.js";
 import { projectSessionConversationEvents } from "../utils/session-conversation.js";
 import {
   createSessionSearchDocument,
@@ -163,45 +163,9 @@ function normalizeTitle(value: string | undefined): string {
   return title ? title : DEFAULT_SESSION_TITLE;
 }
 
-interface RunFileChange {
-  after: string;
-  before: string | null;
-  path: string;
-}
-
 interface WorkspaceFileState {
   content: string | null;
   mode?: number;
-}
-
-function readRunFileChanges(events: readonly HarnessEvent[], runId: RunId): RunFileChange[] {
-  const changesByPath = new Map<string, RunFileChange>();
-
-  for (const event of events) {
-    if (
-      event.runId !== runId ||
-      event.type !== HarnessEventType.FILE_CHANGED ||
-      !isPlainObject(event.data)
-    ) {
-      continue;
-    }
-    const { after, before, path, toolName } = event.data;
-    if (
-      typeof after !== "string" ||
-      (before !== null && typeof before !== "string") ||
-      typeof path !== "string" ||
-      path.length === 0
-    ) {
-      continue;
-    }
-    if (toolName === RunFileChangeOperation.REAPPLY || toolName === RunFileChangeOperation.REVERT) {
-      continue;
-    }
-    const existing = changesByPath.get(path);
-    changesByPath.set(path, { after, before: existing ? existing.before : before, path });
-  }
-
-  return [...changesByPath.values()].filter((change) => (change.before ?? "") !== change.after);
 }
 
 async function readWorkspaceFileState(path: string): Promise<WorkspaceFileState> {
@@ -412,6 +376,22 @@ export class SessionService {
     const snapshot = await this.eventStore.load(sessionId);
     this.reconcileIndex(session, snapshot);
     return { events: snapshot.events, session: this.getRequiredSession(sessionId) };
+  }
+
+  public async getEvent(sessionId: SessionId, eventSeq: number): Promise<HarnessEvent> {
+    const snapshot = await this.getSnapshot(sessionId);
+    const event = snapshot.events.find((event) => event.seq === eventSeq);
+    if (!event) throw new SessionServiceError(SessionErrorCode.NOT_FOUND, "会话事件不存在");
+    return event;
+  }
+
+  public async getRunFileChanges(sessionId: SessionId, runId: RunId, includeContent: boolean) {
+    const snapshot = await this.getSnapshot(sessionId);
+    const events = selectActiveSessionEvents(snapshot.events);
+    if (!events.some((event) => event.runId === runId)) {
+      throw new SessionServiceError(SessionErrorCode.RUN_NOT_FOUND, "Run 不存在");
+    }
+    return summarizeRunFileChanges(events, runId, includeContent);
   }
 
   public async getConversationSnapshot(sessionId: SessionId): Promise<SessionSnapshot> {

@@ -13,7 +13,6 @@ import { BusySubmitBehavior, type QueuedRunInput } from "@pi-harness/agent-runti
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AgentTraceView } from "../../trace";
 import {
   abortSessionRun,
   followUpSessionRun,
@@ -23,6 +22,7 @@ import {
   retrySessionUserMessage,
   type Session,
   type SessionSnapshot,
+  type SessionSnapshotEventMetadata,
   startSessionRun,
   steerQueuedSessionRunInput,
   steerSessionRun,
@@ -33,9 +33,9 @@ import {
   queuedSessionRunInputsQueryOptions,
   sessionQueryKeys,
   sessionSnapshotQueryOptions,
-  sessionTraceSnapshotQueryOptions,
 } from "../api/session-queries";
 import { ChatComposer } from "../components/chat-composer";
+import { ChatTraceView } from "../components/chat-trace-view";
 import { ConversationTurnToc } from "../components/conversation-turn-toc";
 import { ThreadMessageList, type ThreadMessageListHandle } from "../components/thread-message-list";
 import { ToolApprovalCard } from "../components/tool-approval-card";
@@ -47,6 +47,7 @@ import { useSessionEvents } from "../hooks/use-session-events";
 import { useChatPageViewStore } from "../state/chat-page-view-store";
 import { useChatSearchTargetStore } from "../state/chat-search-target-store";
 import { findActiveRunId, sessionEventsToMessages } from "../utils/session-messages";
+import { selectSessionEventMetadata } from "../utils/session-snapshot";
 import { summarizeSessionUsage } from "../utils/session-usage";
 import { findPendingUserInput } from "../utils/session-user-input";
 import { readSessionWorkingState } from "../utils/session-working-state";
@@ -57,6 +58,11 @@ const CHAT_VIEW_TRANSITION = {
 } as const;
 const CHAT_AUTO_SCROLL_THRESHOLD_PX = 1;
 const EMPTY_SESSION_EVENTS = [] as const;
+const EMPTY_SESSION_EVENT_METADATA: SessionSnapshotEventMetadata = {
+  changedRunIds: new Set(),
+  stableEvents: EMPTY_SESSION_EVENTS,
+  transientByKey: new Map(),
+};
 
 export interface ChatPageProps {
   sessionId: string;
@@ -138,22 +144,22 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const queryClient = useQueryClient();
   const activeView = useChatPageViewStore((state) => state.activeView);
   const snapshotQuery = useQuery(sessionSnapshotQueryOptions(sessionId));
-  const traceSnapshotQuery = useQuery({
-    ...sessionTraceSnapshotQueryOptions(sessionId),
-    enabled: activeView === ChatPageView.TRACE,
-  });
   const snapshot = snapshotQuery.data;
   const isSnapshotReady = snapshot !== undefined;
-  useSessionEvents(sessionId, snapshot?.session.lastSeq ?? 0, true);
+  useSessionEvents(sessionId, snapshot?.session.lastSeq ?? 0, true, false, isSnapshotReady);
   const clearSearchTarget = useChatSearchTargetStore((state) => state.clearTarget);
   const searchTarget = useChatSearchTargetStore((state) =>
     state.target?.sessionId === sessionId ? state.target : null,
   );
   const shouldReduceMotion = useReducedMotion();
   const transition = shouldReduceMotion ? { duration: 0 } : CHAT_VIEW_TRANSITION;
-  const events = snapshot?.events ?? EMPTY_SESSION_EVENTS;
-  const activeEvents = useMemo(() => selectActiveSessionEvents(events), [events]);
-  const messages = useMemo(() => sessionEventsToMessages(events), [events]);
+  const eventMetadata = snapshot
+    ? selectSessionEventMetadata(snapshot)
+    : EMPTY_SESSION_EVENT_METADATA;
+  const events = eventMetadata.stableEvents;
+  const stateEvents = eventMetadata.stableEvents;
+  const activeEvents = useMemo(() => selectActiveSessionEvents(stateEvents), [stateEvents]);
+  const messages = useMemo(() => sessionEventsToMessages(eventMetadata), [eventMetadata]);
   const lastConversationTurnId = messages.findLast(
     (message) => message.type === ChatMessageType.USER,
   )?.id;
@@ -530,7 +536,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   <ChatConversation.ScrollAnchor />
                 </ChatConversation>
               ) : (
-                <AgentTraceView events={traceSnapshotQuery.data?.events ?? events} />
+                <ChatTraceView sessionId={sessionId} />
               )}
             </motion.div>
           </AnimatePresence>

@@ -269,6 +269,9 @@ importers:
       '@pi-harness/tools':
         specifier: workspace:*
         version: link:../../packages/tools
+      diff:
+        specifier: 'catalog:'
+        version: 8.0.4
       es-toolkit:
         specifier: 'catalog:'
         version: 1.50.0

@@ -88,6 +88,19 @@ function getItemMessage(item: ThreadMessageListItem): ChatMessage | undefined {
   return item.kind === "message" ? item.message : item.messages[0];
 }
 
+function estimateItemSize(item: ThreadMessageListItem | undefined): number {
+  const message = item ? getItemMessage(item) : undefined;
+  const contentLength =
+    message && "content" in message
+      ? message.content.length
+      : message && "planMarkdown" in message
+        ? message.planMarkdown.length
+        : message && "code" in message
+          ? message.code.length
+          : 0;
+  return Math.max(180, contentLength);
+}
+
 const SearchTargetMessage = memo(function SearchTargetMessage({
   isLastUserMessage = false,
   message,
@@ -230,16 +243,17 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       return { turnIdByItemIndex, turnItemIndexById };
     }, [items]);
     const getItemKey = useCallback((index: number) => items[index]?.id ?? index, [items]);
+    const estimateSize = useCallback((index: number) => estimateItemSize(items[index]), [items]);
     const virtualizer = useVirtualizer({
       anchorTo: isEditingMessage ? "start" : "end",
       count: isVirtualized ? items.length : 0,
       directDomUpdates: true,
       enabled: isVirtualized,
-      estimateSize: () => 180,
+      estimateSize,
       followOnAppend: true,
       getItemKey,
       getScrollElement: () => scrollContainerRef?.current ?? null,
-      initialOffset: () => items.length * 180 + 80,
+      initialOffset: () => items.reduce((total, item) => total + estimateItemSize(item), 80),
       initialRect: { height: 1, width: 1 },
       overscan: 5,
       paddingEnd: 80,

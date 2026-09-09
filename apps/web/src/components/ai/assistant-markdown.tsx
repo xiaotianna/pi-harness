@@ -1,13 +1,14 @@
-import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
 import {
   StreamMarkdown as MarkdownPrimitive,
   type StreamMarkdownProps,
 } from "@agile-avocation/ui-pro/markdown";
 import { Checkbox, Table } from "@heroui/react";
-import { Children, Fragment, isValidElement, type ReactNode } from "react";
+import { Children, Fragment, isValidElement, type ReactNode, useContext } from "react";
 import type { Components } from "react-markdown";
+import { StreamdownContext, useIsCodeFenceIncomplete } from "streamdown";
 import { cn } from "../../shared/utils/cn";
 import { SearchHighlightedText } from "../ui/search-highlighted-text";
+import { AssistantCodeBlock } from "./assistant-code-block";
 import { AssistantMarkdownLink, isAssistantMarkdownLinkTarget } from "./assistant-markdown-link";
 import { ChartBlock } from "./chart-block";
 import { FlowDiagram } from "./flow-diagram";
@@ -27,7 +28,9 @@ function renderMarkdownText(children: ReactNode): ReactNode {
 const ASSISTANT_MARKDOWN_COMPONENTS = {
   a: AssistantMarkdownLink,
   blockquote: ({ children }) => <blockquote>{renderMarkdownText(children)}</blockquote>,
-  code: ({ children, className, node, ...props }) => {
+  code: function MarkdownCode({ children, className, node, ...props }) {
+    const isIncomplete = useIsCodeFenceIncomplete();
+    const { isAnimating } = useContext(StreamdownContext);
     const isInline =
       !node?.position?.start.line || node.position.start.line === node.position.end.line;
     const code = String(children ?? "").replace(/\n$/, "");
@@ -35,6 +38,9 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
     const skillName = isInline ? readSkillMentionName(code) : null;
 
     if (skillName) return <SkillMention name={skillName} />;
+    if (!isInline && isIncomplete && isAnimating) {
+      return <AssistantCodeBlock code={code} language={language} isStreaming />;
+    }
 
     if (!isInline && language === "chart") {
       const data = parseChartBlock(code);
@@ -70,15 +76,7 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
       );
     }
 
-    return (
-      <CodeBlock>
-        <CodeBlock.Header>
-          <span className="text-xs uppercase text-muted">{language}</span>
-          <CodeBlock.CopyButton code={code} />
-        </CodeBlock.Header>
-        <CodeBlock.Code code={code} language={language} />
-      </CodeBlock>
-    );
+    return <AssistantCodeBlock code={code} language={language} />;
   },
   pre: ({ children }) => <Fragment>{children}</Fragment>,
   table: ({ children }) => (

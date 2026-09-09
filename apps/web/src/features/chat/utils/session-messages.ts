@@ -19,7 +19,8 @@ import {
 import { UpdatePlanToolName, UpdateTodosToolName } from "@pi-harness/agent-runtime/working-state";
 import { isCommandPrefixRule } from "@pi-harness/policy/command-policy";
 import { isPlainObject } from "es-toolkit";
-import type { Session, SessionSnapshot } from "../api/session-api";
+import type { Session, SessionSnapshotEventMetadata } from "../api/session-api";
+import { TERMINAL_RUN_EVENTS } from "../constants/session-events";
 import {
   type ChatAssistantMessage,
   type ChatContextCompactionMessage,
@@ -40,18 +41,15 @@ import {
 } from "./session-file-changes";
 import { findPendingUserInput } from "./session-user-input";
 
-const TERMINAL_RUN_EVENTS = new Set<HarnessEvent["type"]>([
-  HarnessEventType.RUN_ABORTED,
-  HarnessEventType.RUN_COMPLETED,
-  HarnessEventType.RUN_FAILED,
-]);
-
 const INTERACTION_TOOL_NAMES = new Set<string>([
   UpdatePlanToolName,
   UpdateTodosToolName,
   RequestUserInputToolName,
 ]);
-const messagesByEvents = new WeakMap<readonly HarnessEvent[], readonly ChatMessage[]>();
+const messagesByEventState = new WeakMap<
+  readonly HarnessEvent[],
+  WeakMap<ReadonlyMap<string, HarnessEvent>, readonly ChatMessage[]>
+>();
 
 function readContentText(value: unknown): string {
   if (typeof value === "string") return value;
@@ -294,7 +292,7 @@ function readFailureMessage(event: HarnessEvent): string {
     : "Agent 运行失败";
 }
 
-function readToolResult(value: unknown): unknown {
+export function readToolResult(value: unknown): unknown {
   if (!isPlainObject(value)) return value;
   const text = readContentText(value.content);
   return text || value;
@@ -399,11 +397,192 @@ export function findActiveRunId(events: readonly HarnessEvent[]): string | null 
  * 将完成的jsonl数据转为页面渲染的消息
  * 通过遍历，将工具调用的中间状态数据合并为最终状态
  */
-export function sessionEventsToMessages(events: readonly HarnessEvent[]): readonly ChatMessage[] {
-  const sourceEvents = events;
-  const cached = messagesByEvents.get(sourceEvents);
+interface RunMessageProjection {
+  activeRunId: string | null;
+  events: readonly HarnessEvent[];
+  messages: readonly ChatMessage[];
+  streamPrefix: readonly HarnessEvent[];
+  canShowStream: boolean;
+}
+
+const projectionsByFirstEvent = new WeakMap<HarnessEvent, RunMessageProjection>();
+
+interface StableRunEventGroup {
+  events: readonly HarnessEvent[];
+  first: HarnessEvent;
+  runId: string | null;
+}
+
+interface StableSessionProjection {
+  activeGroup: StableRunEventGroup | null;
+  activeRunId: string | null;
+  messages: readonly ChatMessage[];
+  messagesAfterActiveRun: readonly ChatMessage[];
+  messagesBeforeActiveRun: readonly ChatMessage[];
+}
+
+const stableSessionProjections = new WeakMap<readonly HarnessEvent[], StableSessionProjection>();
+
+function appendProjectedMessages(
+  target: ChatMessage[],
+  projection: RunMessageProjection,
+  streamed: readonly ChatMessage[] = [],
+): void {
+  for (const message of projection.messages) {
+    if (message.type !== ChatMessageType.LOADING) target.push(message);
+  }
+  for (const message of streamed) {
+    if (message.type !== ChatMessageType.LOADING) target.push(message);
+  }
+  const loading = projection.messages.find((message) => message.type === ChatMessageType.LOADING);
+  if (loading) target.push(loading);
+}
+
+function readRunMessageProjection(
+  group: StableRunEventGroup,
+  activeRunId: string | null,
+  live: readonly HarnessEvent[],
+): RunMessageProjection {
+  const stable = group.events;
+  const toolUpdates = live.filter((event) => event.type === HarnessEventType.TOOL_UPDATED);
+  const baseEvents = toolUpdates.length
+    ? [...stable, ...toolUpdates].sort((left, right) => left.seq - right.seq)
+    : stable;
+  const cachedProjection = projectionsByFirstEvent.get(group.first);
+  if (
+    cachedProjection &&
+    cachedProjection.activeRunId === activeRunId &&
+    cachedProjection.events.length === baseEvents.length &&
+    baseEvents.every((event, index) => event === cachedProjection.events[index])
+  ) {
+    return cachedProjection;
+  }
+
+  const baseMessages = projectRunMessages(baseEvents, activeRunId);
+  const runStart = stable.find((event) => event.type === HarnessEventType.RUN_STARTED);
+  const assistantStart = stable.findLast(
+    (event) =>
+      event.type === HarnessEventType.MESSAGE_STARTED &&
+      isPlainObject(event.data) &&
+      event.data.role === "assistant",
+  );
+  const projection = {
+    activeRunId,
+    events: baseEvents,
+    messages: baseMessages,
+    streamPrefix: [runStart, assistantStart].filter(
+      (event): event is HarnessEvent => event !== undefined,
+    ),
+    canShowStream:
+      activeRunId !== null &&
+      findPendingUserInput(stable) === null &&
+      !baseMessages.some(
+        (message) =>
+          (message.type === ChatMessageType.TOOL && isToolActive(message.tool)) ||
+          (message.type === ChatMessageType.TOOL_GROUP && message.tools.some(isToolActive)) ||
+          (message.type === ChatMessageType.CONTEXT_COMPACTION && message.isActive),
+      ),
+  };
+  projectionsByFirstEvent.set(group.first, projection);
+  return projection;
+}
+
+function readStableSessionProjection(
+  stableEvents: readonly HarnessEvent[],
+): StableSessionProjection {
+  const cached = stableSessionProjections.get(stableEvents);
   if (cached) return cached;
-  events = selectActiveSessionEvents(events);
+
+  const activeEvents = selectActiveSessionEvents(stableEvents);
+  const activeRunId = findActiveRunId(activeEvents);
+  const groupedEvents = new Map<string, HarnessEvent[]>();
+  for (const event of activeEvents) {
+    if (event.type === HarnessEventType.MESSAGE_BRANCH_STARTED) continue;
+    const key = event.runId ?? event.id;
+    const group = groupedEvents.get(key);
+    if (group) group.push(event);
+    else groupedEvents.set(key, [event]);
+  }
+  const groups = [...groupedEvents.values()].flatMap<StableRunEventGroup>((events) => {
+    const first = events[0];
+    return first ? [{ events, first, runId: first.runId ?? null }] : [];
+  });
+  const activeGroupIndex =
+    activeRunId === null ? -1 : groups.findIndex((group) => group.runId === activeRunId);
+  const messagesBeforeActiveRun: ChatMessage[] = [];
+  const activeMessages: ChatMessage[] = [];
+  const messagesAfterActiveRun: ChatMessage[] = [];
+  groups.forEach((group, index) => {
+    const groupActiveRunId = index === activeGroupIndex ? activeRunId : null;
+    const target =
+      activeGroupIndex < 0 || index < activeGroupIndex
+        ? messagesBeforeActiveRun
+        : index === activeGroupIndex
+          ? activeMessages
+          : messagesAfterActiveRun;
+    appendProjectedMessages(target, readRunMessageProjection(group, groupActiveRunId, []));
+  });
+  const projection = {
+    activeGroup: activeGroupIndex < 0 ? null : (groups[activeGroupIndex] ?? null),
+    activeRunId,
+    messages:
+      activeGroupIndex < 0
+        ? messagesBeforeActiveRun
+        : [...messagesBeforeActiveRun, ...activeMessages, ...messagesAfterActiveRun],
+    messagesAfterActiveRun,
+    messagesBeforeActiveRun,
+  };
+  stableSessionProjections.set(stableEvents, projection);
+  return projection;
+}
+
+export function sessionEventsToMessages({
+  changedRunIds,
+  stableEvents,
+  transientByKey,
+}: SessionSnapshotEventMetadata): readonly ChatMessage[] {
+  const messagesByTransient = messagesByEventState.get(stableEvents);
+  const cached = messagesByTransient?.get(transientByKey);
+  if (cached) return cached;
+
+  const stableProjection = readStableSessionProjection(stableEvents);
+  const activeRunId = stableProjection.activeRunId;
+  const activeGroup = stableProjection.activeGroup;
+  const live: HarnessEvent[] = [];
+  const shouldUpdateActiveRun =
+    activeRunId !== null &&
+    activeGroup !== null &&
+    (changedRunIds.has(activeRunId) || transientByKey.size > 0);
+  if (shouldUpdateActiveRun) {
+    for (const event of transientByKey.values()) if (event.runId === activeRunId) live.push(event);
+    live.sort((left, right) => left.seq - right.seq);
+  }
+  if (!activeGroup || live.length === 0) {
+    const cache = messagesByTransient ?? new WeakMap();
+    cache.set(transientByKey, stableProjection.messages);
+    if (!messagesByTransient) messagesByEventState.set(stableEvents, cache);
+    return stableProjection.messages;
+  }
+
+  const projection = readRunMessageProjection(activeGroup, activeRunId, live);
+  const streamed =
+    projection.canShowStream && live.some((event) => event.type === HarnessEventType.MESSAGE_DELTA)
+      ? projectRunMessages([...projection.streamPrefix, ...live], activeRunId)
+      : [];
+  const messages = [...stableProjection.messagesBeforeActiveRun];
+  appendProjectedMessages(messages, projection, streamed);
+  messages.push(...stableProjection.messagesAfterActiveRun);
+
+  const cache = messagesByTransient ?? new WeakMap();
+  cache.set(transientByKey, messages);
+  if (!messagesByTransient) messagesByEventState.set(stableEvents, cache);
+  return messages;
+}
+
+function projectRunMessages(
+  events: readonly HarnessEvent[],
+  activeRunId: string | null,
+): readonly ChatMessage[] {
   const messages: ChatMessage[] = [];
   const messagesByRunId = new Map<string, ChatMessage[]>();
   const fileChangesByRunId = summarizeSessionFileChangesByRun(events);
@@ -576,10 +755,15 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       if (INTERACTION_TOOL_NAMES.has(event.data.toolName)) continue;
       const existingTool = toolsByCallId.get(event.data.toolCallId);
       if (existingTool) {
+        if (typeof event.data.displayName === "string")
+          existingTool.displayName = event.data.displayName;
         existingTool.input = event.data.arguments;
         existingTool.state = ChatToolState.INPUT_AVAILABLE;
       } else {
         const tool: ChatMessageTool = {
+          ...(typeof event.data.displayName === "string"
+            ? { displayName: event.data.displayName }
+            : {}),
           input: event.data.arguments,
           state: ChatToolState.INPUT_AVAILABLE,
           toolCallId: event.data.toolCallId,
@@ -674,6 +858,8 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
       if (tool) {
         delete tool.activeLabel;
         delete tool.approval;
+        if (event.data.resultTruncated === true)
+          tool.resultSource = { sessionId: event.sessionId, seq: event.seq };
         if (event.type === HarnessEventType.TOOL_FAILED) {
           tool.errorText = readToolError(event.data.result);
           tool.state = ChatToolState.OUTPUT_ERROR;
@@ -788,7 +974,6 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     }
   }
 
-  const activeRunId = findActiveRunId(events);
   const hasActiveTool = messages.some(
     (message) =>
       (message.type === ChatMessageType.TOOL && isToolActive(message.tool)) ||
@@ -909,7 +1094,6 @@ export function sessionEventsToMessages(events: readonly HarnessEvent[]): readon
     }
   }
 
-  messagesByEvents.set(sourceEvents, messages);
   return messages;
 }
 
@@ -927,84 +1111,4 @@ export function sessionToChatThread(session: Session, preview = ""): ChatThread 
     user: { avatar: "", email: "", name: "" },
     workspaceId: session.workspaceId,
   };
-}
-
-export function updateSnapshotWithEvents(
-  snapshot: SessionSnapshot,
-  incoming: readonly HarnessEvent[],
-): SessionSnapshot {
-  const eventsBySeq = new Map(snapshot.events.map((event) => [event.seq, event]));
-  for (const event of incoming) {
-    if (event.sessionId === snapshot.session.id) eventsBySeq.set(event.seq, event);
-  }
-  const events = [...eventsBySeq.values()].sort((left, right) => left.seq - right.seq);
-  const completedThroughSeqByRunId = new Map<string, number>();
-  const latestPlanReviewRequestSeqByRunId = new Map<string, number>();
-  const completedToolCallIds = new Set<string>();
-  const latestToolUpdateSeqByCallId = new Map<string, number>();
-  for (const event of events) {
-    if (
-      (event.type === HarnessEventType.TOOL_COMPLETED ||
-        event.type === HarnessEventType.TOOL_FAILED) &&
-      isPlainObject(event.data) &&
-      typeof event.data.toolCallId === "string"
-    ) {
-      completedToolCallIds.add(event.data.toolCallId);
-    }
-    if (
-      event.type === HarnessEventType.TOOL_UPDATED &&
-      isPlainObject(event.data) &&
-      typeof event.data.toolCallId === "string"
-    ) {
-      latestToolUpdateSeqByCallId.set(event.data.toolCallId, event.seq);
-    }
-    if (
-      event.type === HarnessEventType.INPUT_REQUESTED &&
-      event.runId &&
-      isInputRequestedData(event.data) &&
-      event.data.kind === UserInputRequestKind.PLAN_REVIEW
-    ) {
-      latestPlanReviewRequestSeqByRunId.set(event.runId, event.seq);
-    }
-    if (!event.runId) continue;
-    const isAssistantCompleted =
-      event.type === HarnessEventType.MESSAGE_COMPLETED &&
-      isPlainObject(event.data) &&
-      event.data.role === "assistant";
-    if (isAssistantCompleted || TERMINAL_RUN_EVENTS.has(event.type)) {
-      completedThroughSeqByRunId.set(event.runId, event.seq);
-    }
-  }
-  const retainedEvents = events.filter((event) => {
-    if (
-      event.type === HarnessEventType.TOOL_UPDATED &&
-      isPlainObject(event.data) &&
-      typeof event.data.toolCallId === "string"
-    ) {
-      return (
-        !completedToolCallIds.has(event.data.toolCallId) &&
-        latestToolUpdateSeqByCallId.get(event.data.toolCallId) === event.seq
-      );
-    }
-    if (event.type !== HarnessEventType.MESSAGE_DELTA || !event.runId) return true;
-    if (
-      isPlainObject(event.data) &&
-      event.data.kind === MessageDeltaKind.TOOL_CALL &&
-      event.data.toolName === RequestUserInputToolName
-    ) {
-      return event.seq > (latestPlanReviewRequestSeqByRunId.get(event.runId) ?? 0);
-    }
-    return event.seq > (completedThroughSeqByRunId.get(event.runId) ?? 0);
-  });
-  const lastEvent = retainedEvents.at(-1);
-  return lastEvent
-    ? {
-        events: retainedEvents,
-        session: {
-          ...snapshot.session,
-          lastSeq: Math.max(snapshot.session.lastSeq, lastEvent.seq),
-          updatedAt: Math.max(snapshot.session.updatedAt, lastEvent.timestamp),
-        },
-      }
-    : snapshot;
 }

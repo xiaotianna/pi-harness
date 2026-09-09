@@ -14,7 +14,7 @@ export interface ToolCallProps {
   open: boolean;
   query: string;
   request: string;
-  result: string;
+  result: ReactNode;
   running: boolean;
 }
 

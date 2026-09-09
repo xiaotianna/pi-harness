@@ -6,13 +6,15 @@ import {
   ArrowUpRightFromSquare as OpenInSystem,
   Xmark as X,
 } from "@gravity-ui/icons";
-import { Button, ScrollShadow, Tooltip } from "@heroui/react";
+import { Alert, Button, ScrollShadow, Spinner, Tooltip } from "@heroui/react";
+import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { createPatch } from "diff";
 import { motion, useReducedMotion } from "motion/react";
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { CodeDiff, parseUnifiedDiff } from "../../../components/ai/code-diff";
 import { FileIconRender } from "../../../components/ui/file-icon-render";
+import { sessionFileChangesQueryOptions } from "../api/session-queries";
 import {
   type ChatFileChange,
   type ChatFileChangeStatus,
@@ -128,11 +130,17 @@ export interface WorkspaceInspectorProps {
 }
 
 export const WorkspaceInspector = memo(function WorkspaceInspector({
-  files,
+  files: sourceFiles,
   selectedPath,
   workspaceId,
   onClose,
 }: WorkspaceInspectorProps) {
+  const remoteFile = sourceFiles.find((file) => file.after === undefined);
+  const version = Math.max(0, ...sourceFiles.map((file) => file.eventSeq ?? 0));
+  const contentQuery = useQuery(
+    sessionFileChangesQueryOptions(remoteFile?.sessionId, remoteFile?.runId ?? "", true, version),
+  );
+  const files = contentQuery.data ?? sourceFiles;
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -169,7 +177,17 @@ export const WorkspaceInspector = memo(function WorkspaceInspector({
         </Tooltip>
       </div>
 
-      {files.length === 0 ? (
+      {remoteFile && !contentQuery.data ? (
+        contentQuery.isError ? (
+          <Alert status="danger">
+            <Alert.Content>
+              <Alert.Title>无法加载文件变更，请重新打开面板重试</Alert.Title>
+            </Alert.Content>
+          </Alert>
+        ) : (
+          <Spinner aria-label="正在加载文件变更" />
+        )
+      ) : files.length === 0 ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
           <GitCompareArrows className="size-8 text-muted" />
           <p className="text-sm font-medium">暂无文件变更</p>
@@ -195,8 +213,8 @@ export const WorkspaceInspector = memo(function WorkspaceInspector({
                   style={{ transform: `translateY(${virtualItem.start}px)` }}
                 >
                   <WorkspaceDiffFile
-                    after={file.after}
-                    before={file.before}
+                    after={file.after ?? ""}
+                    before={file.before ?? null}
                     isExpanded={expandedPath === file.path}
                     path={file.path}
                     status={file.status}

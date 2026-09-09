@@ -1,8 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
 import { isPlainObject } from "es-toolkit";
 import { useState } from "react";
 import { ToolCall as ToolCallElement } from "../../../../components/ai/tool-call";
 import { WebSearch, type WebSearchResult } from "../../../../components/ai/web-search";
+import { sessionEventQueryOptions } from "../../api/session-queries";
 import { type ChatMessageTool, ChatToolState } from "../../data/chat";
+import { readToolResult } from "../../utils/session-messages";
 import { ToolIcon } from "./tool-icon";
 
 const TOOL_LABEL_BY_NAME: Readonly<Record<string, string>> = {
@@ -120,6 +123,15 @@ function formatToolValue(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2) ?? "";
 }
 
+function ToolResultPreview({ tool }: { tool: ChatMessageTool }) {
+  const resultQuery = useQuery(sessionEventQueryOptions(tool.resultSource));
+  if (resultQuery.isError) return "无法加载完整结果，请收起后重试";
+  if (tool.resultSource && !resultQuery.data) return "正在加载完整结果…";
+  if (resultQuery.data && isPlainObject(resultQuery.data.data))
+    return formatToolValue(readToolResult(resultQuery.data.data.result));
+  return tool.errorText ?? formatToolValue(tool.output);
+}
+
 function GenericToolCall({ tool }: { tool: ChatMessageTool }) {
   const isAwaitingApproval = tool.state === ChatToolState.REQUIRES_ACTION;
   const isFailed = tool.state === ChatToolState.OUTPUT_ERROR;
@@ -136,8 +148,8 @@ function GenericToolCall({ tool }: { tool: ChatMessageTool }) {
       onOpenChange={setIsOpen}
       open={isOpen}
       query={presentation.query}
-      request={tool.argsText ?? formatToolValue(tool.input)}
-      result={tool.errorText ?? formatToolValue(tool.output)}
+      request={isOpen ? (tool.argsText ?? formatToolValue(tool.input)) : ""}
+      result={isOpen ? <ToolResultPreview tool={tool} /> : ""}
       running={isRunning}
     />
   );

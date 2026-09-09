@@ -5,15 +5,15 @@ import {
   ArrowRotateRight as Reapply,
   ArrowUturnCcwLeft as Undo,
 } from "@gravity-ui/icons";
-import { AlertDialog, Button, Card, toast } from "@heroui/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Alert, AlertDialog, Button, Card, toast } from "@heroui/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPatch } from "diff";
 import { sumBy } from "es-toolkit";
 import { memo, useMemo, useState } from "react";
 import { parseUnifiedDiff } from "../../../components/ai/code-diff";
 import { FileIconRender } from "../../../components/ui/file-icon-render";
 import { reapplySessionRunChanges, revertSessionRunChanges } from "../api/session-api";
-import { sessionQueryKeys } from "../api/session-queries";
+import { sessionFileChangesQueryOptions, sessionQueryKeys } from "../api/session-queries";
 import type { ChatFileChange } from "../data/chat";
 import { useWorkspaceInspectorStore } from "../state/workspace-inspector-store";
 
@@ -36,18 +36,31 @@ export const TurnFileChanges = memo(function TurnFileChanges({
   const [isExpanded, setIsExpanded] = useState(false);
   const closeInspector = useWorkspaceInspectorStore((state) => state.close);
   const openInspector = useWorkspaceInspectorStore((state) => state.open);
-  const summaries = useMemo(
-    () =>
-      files.map((file) => ({
+  const hasRemoteFiles = files.some((file) => file.after === undefined);
+  const version = Math.max(0, ...files.map((file) => file.eventSeq ?? 0));
+  const summaryQuery = useQuery({
+    ...sessionFileChangesQueryOptions(sessionId, turnId, false, version),
+    enabled: hasRemoteFiles && sessionId !== undefined,
+  });
+  const summaries = useMemo(() => {
+    if (hasRemoteFiles)
+      return (summaryQuery.data ?? files).map((file) => ({
         ...file,
-        diff: parseUnifiedDiff(
-          createPatch(file.path, file.before ?? "", file.after, "变更前", "变更后"),
-        ),
-      })),
-    [files],
+        diff: { additions: file.additions, deletions: file.deletions },
+      }));
+    return files.map((file) => ({
+      ...file,
+      diff: parseUnifiedDiff(
+        createPatch(file.path, file.before ?? "", file.after ?? "", "变更前", "变更后"),
+      ),
+    }));
+  }, [files, hasRemoteFiles, summaryQuery.data]);
+  const hasCompleteCounts = summaries.every(
+    (file) => file.diff.additions !== undefined && file.diff.deletions !== undefined,
   );
-  const additions = sumBy(summaries, (file) => file.diff.additions);
-  const deletions = sumBy(summaries, (file) => file.diff.deletions);
+  const countsPlaceholder = summaryQuery.isPending ? "…" : "—";
+  const additions = sumBy(summaries, (file) => file.diff.additions ?? 0);
+  const deletions = sumBy(summaries, (file) => file.diff.deletions ?? 0);
   const visibleSummaries = isExpanded ? summaries : summaries.slice(0, DEFAULT_VISIBLE_FILE_COUNT);
   const hiddenFileCount = summaries.length - visibleSummaries.length;
   const changeMutation = useMutation({
@@ -64,8 +77,17 @@ export const TurnFileChanges = memo(function TurnFileChanges({
     },
   });
 
+  if (hasRemoteFiles && summaryQuery.data?.length === 0) return null;
+
   return (
     <>
+      {summaryQuery.isError ? (
+        <Alert status="danger">
+          <Alert.Content>
+            <Alert.Title>无法加载变更统计</Alert.Title>
+          </Alert.Content>
+        </Alert>
+      ) : null}
       <Card
         className="mt-3 gap-0 overflow-hidden p-0 shadow-none"
         style={{
@@ -76,10 +98,16 @@ export const TurnFileChanges = memo(function TurnFileChanges({
         <Card.Header className="min-h-12 flex-row items-center gap-3 px-3 py-2">
           <GitCompareArrows aria-hidden className="size-5 shrink-0 text-muted" />
           <div className="min-w-0 flex-1">
-            <Card.Title className="text-sm font-medium">更改了 {files.length} 个文件</Card.Title>
+            <Card.Title className="text-sm font-medium">
+              更改了 {summaries.length} 个文件
+            </Card.Title>
             <span className="flex gap-1.5 text-xs tabular-nums">
-              <span className="text-success">+{additions}</span>
-              <span className="text-danger">-{deletions}</span>
+              <span className="text-success">
+                +{hasCompleteCounts ? additions : countsPlaceholder}
+              </span>
+              <span className="text-danger">
+                -{hasCompleteCounts ? deletions : countsPlaceholder}
+              </span>
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -126,8 +154,12 @@ export const TurnFileChanges = memo(function TurnFileChanges({
               >
                 {file.path}
               </span>
-              <span className="shrink-0 tabular-nums text-success">+{file.diff.additions}</span>
-              <span className="shrink-0 tabular-nums text-danger">-{file.diff.deletions}</span>
+              <span className="shrink-0 tabular-nums text-success">
+                +{file.diff.additions ?? countsPlaceholder}
+              </span>
+              <span className="shrink-0 tabular-nums text-danger">
+                -{file.diff.deletions ?? countsPlaceholder}
+              </span>
             </Button>
           ))}
           {summaries.length > DEFAULT_VISIBLE_FILE_COUNT ? (
