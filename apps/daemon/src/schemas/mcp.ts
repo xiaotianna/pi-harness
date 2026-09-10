@@ -1,5 +1,6 @@
 import {
   McpAuthMode,
+  McpAuthRequirement,
   McpConnectionStatus,
   McpIsolationMode,
   McpJsonTransport,
@@ -7,7 +8,14 @@ import {
 } from "@pi-harness/agent-runtime/mcp-contract";
 import { type Static, Type } from "typebox";
 
-export { McpAuthMode, McpConnectionStatus, McpIsolationMode, McpJsonTransport, McpTransport };
+export {
+  McpAuthMode,
+  McpAuthRequirement,
+  McpConnectionStatus,
+  McpIsolationMode,
+  McpJsonTransport,
+  McpTransport,
+};
 
 export type McpServerId = string;
 
@@ -66,7 +74,7 @@ const HttpConfigSchema = Type.Object(
       Type.Literal(McpAuthMode.STATIC),
       Type.Literal(McpAuthMode.OAUTH),
     ]),
-    // 只有显式列出的额外 origin 可用于认证发现等跨源请求。
+    // MCP transport 的额外 origin 必须显式列出；OAuth discovery 使用独立受限 fetch。
     allowedOrigins: Type.Array(Type.String({ minLength: 1, maxLength: 2_048 }), {
       maxItems: 16,
       uniqueItems: true,

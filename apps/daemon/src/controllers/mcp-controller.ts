@@ -4,6 +4,7 @@ import type {
   CreateMcpServerDto,
   ImportMcpServersDto,
   McpJsonDto,
+  McpOAuthCallbackDto,
   McpRevisionDto,
   McpServerParamsDto,
   PutMcpCredentialDto,
@@ -12,6 +13,7 @@ import type {
 } from "../dto/mcp-dto.js";
 import { MCP_ERROR_STATUS, McpError, McpErrorCode } from "../mcp/errors.js";
 import type { McpDiagnosticsService } from "../services/mcp-diagnostics-service.js";
+import type { McpOAuthService } from "../services/mcp-oauth-service.js";
 import type { McpServerService } from "../services/mcp-server-service.js";
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
 
@@ -20,6 +22,7 @@ export class McpController {
     private readonly config: HarnessConfig,
     private readonly servers: McpServerService,
     private readonly diagnostics: McpDiagnosticsService,
+    private readonly oauth: McpOAuthService,
   ) {}
 
   public list = (request: FastifyRequest, reply: FastifyReply) =>
@@ -65,6 +68,45 @@ export class McpController {
     this.respond(request, reply, () =>
       this.servers.deleteCredential(request.params.serverId, request.body.expectedRevision),
     );
+  public startOAuth = (
+    request: FastifyRequest<{ Params: McpServerParamsDto; Body: McpRevisionDto }>,
+    reply: FastifyReply,
+  ) =>
+    this.respond(request, reply, async () => ({
+      authorizationUrl: await this.oauth.start(
+        request.params.serverId,
+        request.body.expectedRevision,
+      ),
+    }));
+  public completeOAuth = async (
+    request: FastifyRequest<{
+      Params: McpServerParamsDto;
+      Querystring: McpOAuthCallbackDto;
+    }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    const { code, error, iss, state } = request.query;
+    if (error !== undefined || code === undefined || state === undefined) {
+      request.log.warn({ code: McpErrorCode.OAUTH_FAILED }, "MCP OAuth callback failed");
+      return this.redirectToOAuthResult(
+        reply,
+        request.params.serverId,
+        false,
+        "OAuth 提供方拒绝、取消或返回了无效结果。",
+      );
+    }
+    try {
+      await this.oauth.complete(request.params.serverId, code, state, iss);
+      return this.redirectToOAuthResult(reply, request.params.serverId, true);
+    } catch (cause: unknown) {
+      const oauthError =
+        cause instanceof McpError
+          ? cause
+          : new McpError(McpErrorCode.OAUTH_FAILED, "MCP OAuth 授权失败，请重新授权");
+      request.log.warn({ code: oauthError.code }, "MCP OAuth callback failed");
+      return this.redirectToOAuthResult(reply, request.params.serverId, false, oauthError.message);
+    }
+  };
   public previewImport = (
     request: FastifyRequest<{ Body: ImportMcpServersDto }>,
     reply: FastifyReply,
@@ -102,6 +144,25 @@ export class McpController {
     } finally {
       reply.raw.off("close", abort);
     }
+  }
+
+  private redirectToOAuthResult(
+    reply: FastifyReply,
+    serverId: string,
+    isSuccessful: boolean,
+    failureMessage?: string,
+  ): FastifyReply {
+    let name = "MCP 服务器";
+    try {
+      name = this.servers.get(serverId).name;
+    } catch {
+      name = "MCP 服务器";
+    }
+    const resultUrl = new URL("/mcp-oauth/result", this.config.webUrl);
+    resultUrl.searchParams.set("name", name);
+    resultUrl.searchParams.set("status", isSuccessful ? "success" : "error");
+    if (failureMessage !== undefined) resultUrl.searchParams.set("message", failureMessage);
+    return reply.redirect(resultUrl.toString());
   }
 
   private async respond<T>(

@@ -32,6 +32,11 @@ export const MCP_TRANSPORT_OPTIONS = [
     description: "兼容仅支持 HTTP+SSE transport 的服务器。",
   },
 ];
+export const MCP_AUTH_OPTIONS = [
+  { id: McpAuthMode.NONE, label: "自动检测" },
+  { id: McpAuthMode.STATIC, label: "Token / API Key" },
+  { id: McpAuthMode.OAUTH, label: "OAuth" },
+];
 export interface McpFormDraft {
   name: string;
   transport: McpConfig["transport"];
@@ -39,7 +44,7 @@ export interface McpFormDraft {
   args: string;
   environment: string;
   timeout: string;
-  hasStaticAuth: boolean;
+  authMode: typeof McpAuthMode.NONE | typeof McpAuthMode.STATIC | typeof McpAuthMode.OAUTH;
   allowPrivateNetwork: boolean;
 }
 export const MCP_JSON_PLACEHOLDER = `{
@@ -94,8 +99,8 @@ export function createMcpFormDraft(
     args: config?.transport === McpTransport.STDIO ? writeLines(config.args) : "",
     environment: writeEnvironment(server?.environment ?? {}),
     timeout: String((config?.requestTimeoutMs ?? 30000) / 1000),
-    hasStaticAuth:
-      config?.transport !== McpTransport.STDIO && config?.authMode === McpAuthMode.STATIC,
+    authMode:
+      config && config.transport !== McpTransport.STDIO ? config.authMode : McpAuthMode.NONE,
     allowPrivateNetwork:
       config?.transport !== McpTransport.STDIO && (config?.allowPrivateNetwork ?? false),
   };
@@ -155,12 +160,7 @@ export function readMcpForm(draft: McpFormDraft, current?: McpServer): McpServer
       ...common,
       transport: draft.transport,
       url: url.href,
-      authMode:
-        old && old.transport !== McpTransport.STDIO && old.authMode === McpAuthMode.OAUTH
-          ? McpAuthMode.OAUTH
-          : draft.hasStaticAuth
-            ? McpAuthMode.STATIC
-            : McpAuthMode.NONE,
+      authMode: draft.authMode,
       allowedOrigins: old && old.transport !== McpTransport.STDIO ? old.allowedOrigins : [],
       allowPrivateNetwork: draft.allowPrivateNetwork,
     },

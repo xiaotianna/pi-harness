@@ -14,11 +14,12 @@ import {
   TextArea,
   TextField,
 } from "@heroui/react";
-import { McpTransport } from "@pi-harness/agent-runtime/mcp-contract";
+import { McpAuthMode, McpTransport } from "@pi-harness/agent-runtime/mcp-contract";
 import { useId, useState } from "react";
 import { importMcpServers, type McpServer, saveMcpServer } from "../api/mcp-api";
 import {
   createMcpFormDraft,
+  MCP_AUTH_OPTIONS,
   MCP_JSON_PLACEHOLDER,
   MCP_TRANSPORT_OPTIONS,
   type McpFormDraft,
@@ -159,18 +160,38 @@ function McpCommonFields({
     <>
       {showNetworkOptions ? (
         <>
-          <Switch
+          <Select
+            fullWidth
+            variant="secondary"
             isDisabled={isSaving}
-            isSelected={draft.hasStaticAuth}
-            onChange={(hasStaticAuth) => onChange({ hasStaticAuth })}
+            value={draft.authMode}
+            onChange={(value) => {
+              if (
+                value === McpAuthMode.NONE ||
+                value === McpAuthMode.STATIC ||
+                value === McpAuthMode.OAUTH
+              ) {
+                onChange({ authMode: value });
+              }
+            }}
           >
-            <Switch.Content className="w-full justify-between">
-              <Label>使用请求头凭据</Label>
-              <Switch.Control>
-                <Switch.Thumb />
-              </Switch.Control>
-            </Switch.Content>
-          </Switch>
+            <Label>鉴权方式</Label>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {MCP_AUTH_OPTIONS.map((option) => (
+                  <ListBox.Item key={option.id} id={option.id} textValue={option.label}>
+                    {option.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
+            <Description>自动检测会在首次连接后提示 OAuth 或 Token/API Key。</Description>
+          </Select>
           <Switch
             isDisabled={isSaving}
             isSelected={draft.allowPrivateNetwork}

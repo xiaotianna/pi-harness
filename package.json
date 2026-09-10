@@ -19,6 +19,7 @@
     "eval:context": "pnpm --filter @pi-harness/evals eval:context",
     "eval:context:live": "pnpm --filter @pi-harness/evals eval:context:live",
     "dev:docker": "docker compose -f docker-compose.dev.yml up -d",
+    "dev:mcp": "npx @modelcontextprotocol/inspector",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "check": "biome check .",

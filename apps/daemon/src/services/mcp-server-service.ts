@@ -9,12 +9,14 @@ import type {
   UpdateMcpServerDto,
 } from "../dto/mcp-dto.js";
 import type { McpConnectionContext } from "../mcp/client-manager.js";
+import type { McpCredential } from "../mcp/credential.js";
 import { McpError, McpErrorCode } from "../mcp/errors.js";
 import { createMcpServerRecord } from "../mcp/utils/create-server-record.js";
 import { normalizeMcpConfig, normalizeMcpName } from "../mcp/utils/server-config.js";
 import { reserveUniqueMcpName } from "../mcp/utils/unique-server-name.js";
 import {
   McpAuthMode,
+  McpAuthRequirement,
   McpIsolationMode,
   McpJsonTransport,
   type McpServerRecord,
@@ -27,6 +29,10 @@ import type { McpServerVo } from "../vo/mcp-vo.js";
 const MAX_MCP_SERVERS = 1_000;
 
 export class McpServerService {
+  private readonly authRequirements = new Map<
+    string,
+    { requirement: McpAuthRequirement; resourceMetadataUrl?: string }
+  >();
   private mutationChain: Promise<void> = Promise.resolve();
   private isMutating = false;
   private isClosed = false;
@@ -165,8 +171,10 @@ export class McpServerService {
       );
       this.repository.revokeTrust(serverId);
       await this.invalidateServer(serverId);
+      this.authRequirements.delete(serverId);
       // 先撤销敏感状态再提交新地址，存储失败时不会把旧 Token 发给新服务。
-      if (!isEqual(current.config, config)) await this.credentials.delete(serverId);
+      const hasConfigChanged = !isEqual(current.config, config);
+      if (hasConfigChanged) await this.credentials.delete(serverId);
       const next = {
         ...current,
         name,
@@ -175,6 +183,17 @@ export class McpServerService {
         revision: current.revision + 1,
         updatedAt: Date.now(),
       };
+      if (!hasConfigChanged) {
+        await this.credentials.modify(serverId, async (credential) =>
+          credential === undefined
+            ? undefined
+            : {
+                ...credential,
+                revision: credential.revision + 1,
+                configRevision: next.revision,
+              },
+        );
+      }
       this.repository.update(next, current.revision);
       return this.toVo(next);
     });
@@ -193,6 +212,7 @@ export class McpServerService {
       this.repository.update(disabled, record.revision);
       await this.invalidateServer(serverId);
       await this.credentials.delete(serverId);
+      this.authRequirements.delete(serverId);
       this.repository.delete(serverId, disabled.revision);
     });
   }
@@ -221,7 +241,8 @@ export class McpServerService {
           (input.material.mode !== McpAuthMode.STATIC ||
             Object.keys(input.material.headers).length > 0)) ||
         (server.config.transport !== McpTransport.STDIO &&
-          (server.config.authMode !== input.material.mode ||
+          ((server.config.authMode !== McpAuthMode.NONE &&
+            server.config.authMode !== input.material.mode) ||
             (input.material.mode === McpAuthMode.STATIC &&
               Object.keys(input.material.environment).length > 0) ||
             (input.material.mode === McpAuthMode.OAUTH &&
@@ -239,6 +260,7 @@ export class McpServerService {
         configRevision: server.revision,
         material: input.material,
       }));
+      this.authRequirements.set(serverId, { requirement: input.material.mode });
       this.repository.revokeTrust(serverId);
       return this.get(serverId);
     });
@@ -250,7 +272,93 @@ export class McpServerService {
       this.repository.revokeTrust(serverId);
       await this.invalidateServer(serverId);
       await this.credentials.delete(serverId);
+      this.authRequirements.delete(serverId);
     });
+  }
+
+  public noteAuthenticationRequired(
+    serverId: string,
+    requirement: typeof McpAuthRequirement.STATIC | typeof McpAuthRequirement.OAUTH,
+    resourceMetadataUrl?: URL,
+  ): void {
+    this.authRequirements.set(serverId, {
+      requirement,
+      ...(resourceMetadataUrl ? { resourceMetadataUrl: resourceMetadataUrl.href } : {}),
+    });
+  }
+
+  public noteAuthenticationSucceeded(context: McpConnectionContext): void {
+    this.authRequirements.set(context.server.id, {
+      requirement: context.credential?.material.mode ?? McpAuthRequirement.NONE,
+    });
+  }
+
+  public getOAuthResourceMetadataUrl(serverId: string): URL | undefined {
+    const value = this.authRequirements.get(serverId)?.resourceMetadataUrl;
+    return value === undefined ? undefined : new URL(value);
+  }
+
+  public async saveOAuthCredential(
+    context: McpConnectionContext,
+    material: Extract<McpCredential["material"], { mode: typeof McpAuthMode.OAUTH }>,
+    identity: string,
+  ): Promise<void> {
+    await this.mutate(async () => {
+      const server = this.requireRevision(context.server.id, context.server.revision);
+      await this.invalidateServer(server.id);
+      await this.credentials.modify(server.id, async (current) => ({
+        serverId: server.id,
+        identity,
+        revision: (current?.revision ?? 0) + 1,
+        configRevision: server.revision,
+        material,
+      }));
+      const saved = this.credentials.read(server.id);
+      if (saved === undefined) {
+        throw new McpError(McpErrorCode.STORAGE_FAILED, "MCP OAuth 凭据保存失败");
+      }
+      context.credential = saved;
+      // OAuth 只能从已启用的当前配置启动；保留用户在本次流程前已授予的连接信任。
+      this.authRequirements.set(server.id, { requirement: McpAuthRequirement.OAUTH });
+    });
+  }
+
+  public async refreshOAuthCredential(
+    context: McpConnectionContext,
+    material: Extract<McpCredential["material"], { mode: typeof McpAuthMode.OAUTH }>,
+  ): Promise<void> {
+    await this.mutate(async () => {
+      const snapshot = context.credential;
+      if (snapshot?.material.mode !== McpAuthMode.OAUTH) {
+        throw new McpError(McpErrorCode.CREDENTIAL_INVALID, "MCP OAuth 授权不可刷新");
+      }
+      this.requireRevision(context.server.id, context.server.revision);
+      await this.credentials.modify(context.server.id, async (current) => {
+        if (
+          current?.identity !== snapshot.identity ||
+          current.revision !== snapshot.revision ||
+          current.configRevision !== context.server.revision
+        ) {
+          throw new McpError(McpErrorCode.CONFIG_CONFLICT, "MCP 授权已变更，请重新连接");
+        }
+        return { ...current, material };
+      });
+      context.credential = { ...snapshot, material };
+      this.authRequirements.set(context.server.id, { requirement: McpAuthRequirement.OAUTH });
+    });
+  }
+
+  public synchronizeOAuthCredential(context: McpConnectionContext): void {
+    const current = this.credentials.read(context.server.id);
+    if (
+      current?.material.mode !== McpAuthMode.OAUTH ||
+      current.identity !== context.credential?.identity ||
+      current.revision !== context.credential.revision ||
+      current.configRevision !== context.server.revision
+    ) {
+      throw new McpError(McpErrorCode.CONFIG_CONFLICT, "MCP 授权已变更，请重新连接");
+    }
+    context.credential = current;
   }
 
   public authorizeConnection(
@@ -278,7 +386,29 @@ export class McpServerService {
         policy.reason,
       );
     }
-    const credential = this.credentials.read(serverId);
+    return this.createConnectionContext(server, ownerId, workspaceRoot);
+  }
+
+  public createOAuthContext(
+    serverId: string,
+    expectedRevision: number,
+    ownerId: string,
+  ): McpConnectionContext {
+    this.assertAvailable();
+    const server = this.requireRevision(serverId, expectedRevision);
+    if (!server.enabled) throw new McpError(McpErrorCode.DISABLED, "MCP 服务已禁用");
+    return this.createConnectionContext(server, ownerId, "");
+  }
+
+  private createConnectionContext(
+    server: McpServerRecord,
+    ownerId: string,
+    workspaceRoot: string,
+  ): McpConnectionContext {
+    const credential = this.credentials.read(server.id);
+    if (credential !== undefined && credential.configRevision !== server.revision) {
+      throw new McpError(McpErrorCode.CREDENTIAL_INVALID, "MCP 凭据与当前配置不匹配");
+    }
     return {
       ownerId,
       workspaceRoot,
@@ -288,13 +418,21 @@ export class McpServerService {
   }
 
   public verifyContext(context: McpConnectionContext): void {
+    this.verifyCurrentContext(context, true);
+  }
+
+  public verifyOAuthContext(context: McpConnectionContext): void {
+    this.verifyCurrentContext(context, false);
+  }
+
+  private verifyCurrentContext(context: McpConnectionContext, requiresTrust: boolean): void {
     this.assertAvailable();
     const current = this.requireServer(context.server.id);
     const credential = this.credentials.read(current.id);
     if (
       !current.enabled ||
       current.revision !== context.server.revision ||
-      !this.repository.isTrusted(current.id, current.revision) ||
+      (requiresTrust && !this.repository.isTrusted(current.id, current.revision)) ||
       credential?.identity !== context.credential?.identity ||
       credential?.revision !== context.credential?.revision
     ) {
@@ -326,9 +464,22 @@ export class McpServerService {
     record: McpServerRecord,
     isTrusted = this.repository.isTrusted(record.id, record.revision),
   ): McpServerVo {
+    const credential = this.credentials.read(record.id);
+    const configuredRequirement =
+      record.config.transport === McpTransport.STDIO
+        ? McpAuthRequirement.STATIC
+        : record.config.authMode;
     return {
       ...record,
-      hasCredential: this.credentials.read(record.id) !== undefined,
+      authRequirement:
+        credential?.material.mode ??
+        (configuredRequirement === McpAuthMode.NONE
+          ? (this.authRequirements.get(record.id)?.requirement ?? McpAuthRequirement.UNKNOWN)
+          : configuredRequirement),
+      ...(credential
+        ? { credentialMode: credential.material.mode, credentialRevision: credential.revision }
+        : {}),
+      hasCredential: credential !== undefined,
       isTrusted,
     };
   }

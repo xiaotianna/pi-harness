@@ -87,7 +87,7 @@ export function useMcpServers() {
     },
     onSuccess: (data, input) => {
       if (data && "serverId" in data) {
-        setResults(new Map([[data.serverId, data]]));
+        setResults((current) => new Map(current).set(data.serverId, data));
         if (input.kind === McpAction.CONNECT || input.kind === McpAction.TEST)
           toast.success(`${input.server.name} 连接测试成功`);
       } else if (data) {

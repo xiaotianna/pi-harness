@@ -966,6 +966,15 @@
 - 原因：复用已有轻量服务器 Query 可以避免输入器建立第二份服务端状态或连接服务器；只展示实际可用配置能让提示与下一轮工具准备范围一致，而保留既有准备和审批链可避免一个展示标签隐式扩大权限。
 - 已提升至：`project-map.md` 与 `docs/架构设计.md`。
 
+### WEB-112
+
+- 状态：`promoted`
+- 范围：MCP 远程鉴权发现与授权状态
+- 规则：远程 MCP 默认使用“自动检测”，不要求用户在添加服务器时预先知道鉴权类型。用户先通过服务器 Switch 启用；首次连接成功后显示无需鉴权，收到 401 时由 daemon 检查 `WWW-Authenticate` challenge，存在 OAuth protected-resource metadata 时才在列表和详情开放“OAuth 授权”，否则显示“需要 Token / API Key”并直达请求头凭据弹窗。Switch 只反映持久化的启用状态，不能用“已启用且已信任”的组合值代替。列表缺少 OAuth credential 时，鉴权说明行只展示状态，“OAuth 授权”占用卡片底部主操作位；授权完成后该位置恢复“测试连接”，并保留当前配置已有的连接信任，未信任配置不会因 OAuth 自动变为可信。OAuth 使用每台服务器唯一的独立小窗口，流程仍在进行时重复点击只聚焦现有窗口，不得重复创建；启动与结果页复用插件 OAuth 的前端 HeroUI 页面并显示 LobeHub MCP Logo。本地 daemon 的动态客户端注册必须显式声明 `token_endpoint_auth_method: none`，以 public client 配合 PKCE 完成授权码交换。前端校验路由参数并主动轮询脱敏凭据状态，只有本次流程导致 daemon 返回的 `credentialRevision` 相对发起时发生变化，才提示授权完成，不得把已有 OAuth credential 误判为本次成功；daemon 只处理 discovery、回调、token、动态客户端信息、刷新和向前端结果页的重定向。
+- 依据：用户明确要求支持动态 OAuth，并指出用户无法预先知道某个 MCP Server 是否需要 Token 或 API Key；随后明确要求 MCP 授权页面复用插件授权的前端页面样式并展示 MCP Logo，并通过列表截图要求把 OAuth 授权移到卡片底部主操作位置；之后指出尚未点击服务商授权时页面就显示授权完成；接着指出点击授权会因缺少连接信任直接失败，并且同一流程可以打开多个窗口；本次进一步明确 OAuth 应先开启服务器再授权，不能让关闭状态先出现可执行的授权入口。
+- 原因：以真实协议 challenge 作为事实来源，可以避免让用户猜配置；复用前端授权表面可以保持插件与 MCP 的视觉和状态反馈一致，daemon 不再拼装页面；本地回调客户端没有可安全保密的 client secret，显式注册 public client 可以避免授权服务器按默认 confidential client 处理；敏感 Token、client secret 与 OAuth token 仍不进入 Web。
+- 已提升至：`project-map.md` 与 `docs/架构设计.md`。
+
 ## 维护规则
 
 - 新规则使用下一个数字 ID。

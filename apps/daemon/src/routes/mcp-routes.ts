@@ -8,6 +8,8 @@ import {
   type ImportMcpServersDto,
   ImportMcpServersDtoSchema,
   McpJsonDtoSchema,
+  type McpOAuthCallbackDto,
+  McpOAuthCallbackDtoSchema,
   type McpRevisionDto,
   McpRevisionDtoSchema,
   type McpServerParamsDto,
@@ -20,19 +22,27 @@ import {
   UpdateMcpServerDtoSchema,
 } from "../dto/mcp-dto.js";
 import type { McpDiagnosticsService } from "../services/mcp-diagnostics-service.js";
+import type { McpOAuthService } from "../services/mcp-oauth-service.js";
 import type { McpServerService } from "../services/mcp-server-service.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
-import { McpDiagnosticsVoSchema, McpServerListVoSchema, McpServerVoSchema } from "../vo/mcp-vo.js";
+import {
+  McpDiagnosticsVoSchema,
+  McpOAuthStartVoSchema,
+  McpServerListVoSchema,
+  McpServerVoSchema,
+} from "../vo/mcp-vo.js";
 
 export async function registerMcpRoutes(
   server: FastifyInstance,
   config: HarnessConfig,
   servers: McpServerService,
   diagnostics: McpDiagnosticsService,
+  oauth: McpOAuthService,
 ): Promise<void> {
-  const controller = new McpController(config, servers, diagnostics);
+  const controller = new McpController(config, servers, diagnostics, oauth);
   const errors = {
     400: ApiErrorVoSchema,
+    401: ApiErrorVoSchema,
     403: ApiErrorVoSchema,
     404: ApiErrorVoSchema,
     409: ApiErrorVoSchema,
@@ -88,6 +98,22 @@ export async function registerMcpRoutes(
     "/api/mcp-servers/:serverId/credentials",
     { schema: { params, body: McpRevisionDtoSchema, response: emptyResponse } },
     controller.deleteCredential,
+  );
+  server.post<{ Params: McpServerParamsDto; Body: McpRevisionDto }>(
+    "/api/mcp-servers/:serverId/authorizations",
+    {
+      schema: {
+        params,
+        body: McpRevisionDtoSchema,
+        response: { 200: McpOAuthStartVoSchema, ...errors },
+      },
+    },
+    controller.startOAuth,
+  );
+  server.get<{ Params: McpServerParamsDto; Querystring: McpOAuthCallbackDto }>(
+    "/api/mcp-servers/:serverId/authorizations/callback",
+    { schema: { params, querystring: McpOAuthCallbackDtoSchema } },
+    controller.completeOAuth,
   );
   server.post<{ Params: McpServerParamsDto; Body: TestMcpConnectionDto }>(
     "/api/mcp-servers/:serverId/tests",

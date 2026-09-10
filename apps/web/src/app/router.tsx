@@ -20,6 +20,7 @@ import { ChatShell } from "../features/chat/components/chat-shell";
 import { BoardPage } from "../pages/board-page";
 import { ChatThreadPage } from "../pages/chat-thread-page";
 import { LoginPage } from "../pages/login-page";
+import { McpOAuthLaunchPage, McpOAuthResultPage } from "../pages/mcp-oauth-page";
 import { NewChatPage } from "../pages/new-chat-page";
 import { SkillOAuthLaunchPage, SkillOAuthResultPage } from "../pages/skill-oauth-page";
 import { queryClient } from "./query-client";
@@ -132,6 +133,40 @@ const skillOAuthResultRoute = createRoute({
   component: SkillOAuthResultRoute,
 });
 
+const mcpOAuthLaunchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/mcp-oauth/$serverId/launch",
+  validateSearch: (search: Record<string, unknown>) => {
+    const rawRevision = search.expectedRevision;
+    const expectedRevision =
+      typeof rawRevision === "number"
+        ? rawRevision
+        : typeof rawRevision === "string" && rawRevision.trim() !== ""
+          ? Number(rawRevision)
+          : Number.NaN;
+    return {
+      expectedRevision:
+        Number.isSafeInteger(expectedRevision) && expectedRevision > 0 ? expectedRevision : null,
+      name:
+        typeof search.name === "string" && search.name.length <= 100 ? search.name : "MCP 服务器",
+    };
+  },
+  component: McpOAuthLaunchRoute,
+});
+
+const mcpOAuthResultRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/mcp-oauth/result",
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...(typeof search.message === "string" && search.message.length <= 500
+      ? { message: search.message }
+      : {}),
+    name: typeof search.name === "string" && search.name.length <= 100 ? search.name : "MCP 服务器",
+    status: search.status === "success" ? ("success" as const) : ("error" as const),
+  }),
+  component: McpOAuthResultRoute,
+});
+
 const chatLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "chat",
@@ -205,11 +240,24 @@ function SkillOAuthResultRoute() {
   return <SkillOAuthResultPage message={message} name={name} status={status} />;
 }
 
+function McpOAuthLaunchRoute() {
+  const { serverId } = mcpOAuthLaunchRoute.useParams();
+  const { expectedRevision, name } = mcpOAuthLaunchRoute.useSearch();
+  return <McpOAuthLaunchPage expectedRevision={expectedRevision} name={name} serverId={serverId} />;
+}
+
+function McpOAuthResultRoute() {
+  const { message, name, status } = mcpOAuthResultRoute.useSearch();
+  return <McpOAuthResultPage message={message} name={name} status={status} />;
+}
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   skillOAuthLaunchRoute,
   skillOAuthResultRoute,
+  mcpOAuthLaunchRoute,
+  mcpOAuthResultRoute,
   chatLayoutRoute.addChildren([newChatRoute, boardRoute, chatThreadRoute, unknownRoute]),
 ]);
 

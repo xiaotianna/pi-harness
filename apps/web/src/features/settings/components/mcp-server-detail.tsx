@@ -1,10 +1,11 @@
 import { ArrowRotateRight, Pencil, Xmark } from "@gravity-ui/icons";
-import { Button, Card, Disclosure, Skeleton, Switch, Tabs } from "@heroui/react";
-import { McpAuthMode, McpTransport } from "@pi-harness/agent-runtime/mcp-contract";
+import { Alert, Button, Card, Disclosure, Skeleton, Switch, Tabs } from "@heroui/react";
+import { McpAuthRequirement, McpTransport } from "@pi-harness/agent-runtime/mcp-contract";
 import type { ReactNode } from "react";
 import { AssistantCodeBlock } from "../../../components/ai/assistant-code-block";
 import { AssistantMarkdown } from "../../../components/ai/assistant-markdown";
 import type { McpServer, McpTestResult } from "../api/mcp-api";
+import { mcpAuthLabel, needsMcpCredential } from "../utils/mcp-auth";
 import { McpServerIcon } from "./mcp-server-icon";
 import { SettingsCatalogDetail } from "./settings-catalog-detail";
 
@@ -83,15 +84,6 @@ function CatalogSkeleton() {
   );
 }
 
-function serverAuthLabel(server: McpServer): string {
-  if (server.config.transport === McpTransport.STDIO)
-    return server.hasCredential ? "已配置环境变量凭据" : "未配置环境变量凭据";
-  if (server.config.authMode === McpAuthMode.NONE) return "无需鉴权";
-  if (server.config.authMode === McpAuthMode.STATIC)
-    return server.hasCredential ? "已配置请求头凭据" : "未配置请求头凭据";
-  return "OAuth 尚未接入";
-}
-
 function ServerOverview({ result, server }: { result: McpTestResult | null; server: McpServer }) {
   const endpoint =
     server.config.transport === McpTransport.STDIO ? server.config.command : server.config.url;
@@ -117,7 +109,7 @@ function ServerOverview({ result, server }: { result: McpTestResult | null; serv
           </div>
           <div>
             <dt className="text-xs text-muted">鉴权</dt>
-            <dd className="mt-1 text-foreground">{serverAuthLabel(server)}</dd>
+            <dd className="mt-1 text-foreground">{mcpAuthLabel(server)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted">信任状态</dt>
@@ -141,7 +133,9 @@ export function McpServerDetail({
   result,
   server,
   onBack,
+  onAuthorize,
   onCancelTest,
+  onCredentials,
   onEdit,
   onEnabledChange,
   onRefresh,
@@ -151,25 +145,33 @@ export function McpServerDetail({
   result: McpTestResult | null;
   server: McpServer;
   onBack: () => void;
+  onAuthorize: () => void;
   onCancelTest: () => void;
+  onCredentials: () => void;
   onEdit: () => void;
   onEnabledChange: (isEnabled: boolean) => void;
   onRefresh: () => void;
 }) {
   const endpoint =
     server.config.transport === McpTransport.STDIO ? server.config.command : server.config.url;
-  const needsCredential =
-    server.config.transport !== McpTransport.STDIO &&
-    server.config.authMode !== McpAuthMode.NONE &&
-    !server.hasCredential;
+  const needsCredential = needsMcpCredential(server);
+  const needsOAuth = !server.hasCredential && server.authRequirement === McpAuthRequirement.OAUTH;
   const canUse = server.enabled && server.isTrusted;
   const resourceCount = (result?.resources.length ?? 0) + (result?.resourceTemplates.length ?? 0);
-  const statusLabel = canUse ? "已启用" : "未启用";
-  const emptyCatalogMessage = !canUse
-    ? "服务器尚未启用"
+  const statusLabel = !server.enabled
+    ? "未启用"
     : needsCredential
-      ? "服务器尚未配置凭据"
-      : "能力目录加载失败";
+      ? "待鉴权"
+      : server.isTrusted
+        ? "已启用"
+        : "待连接";
+  const emptyCatalogMessage = !server.enabled
+    ? "服务器尚未启用"
+    : !server.isTrusted
+      ? "服务器尚未完成连接"
+      : needsCredential
+        ? "服务器尚未配置凭据"
+        : "能力目录加载失败";
   return (
     <SettingsCatalogDetail
       action={
@@ -177,8 +179,8 @@ export function McpServerDetail({
           <span className="text-sm text-muted">{statusLabel}</span>
           <Switch
             aria-label={`${server.name} 启用状态`}
-            isDisabled={isBusy || needsCredential}
-            isSelected={canUse}
+            isDisabled={isBusy}
+            isSelected={server.enabled}
             size="sm"
             onChange={onEnabledChange}
           >
@@ -193,7 +195,7 @@ export function McpServerDetail({
       ariaLabel={`${server.name} MCP 服务器详情`}
       backLabel="返回 MCP 服务器"
       description={endpoint}
-      icon={<McpServerIcon endpoint={endpoint} name={server.name} />}
+      icon={<McpServerIcon endpoint={endpoint} icons={result?.serverInfo.icons} />}
       name={server.name}
       toolbarAction={
         <Button isDisabled={isBusy} size="sm" variant="secondary" onPress={onEdit}>
@@ -205,6 +207,50 @@ export function McpServerDetail({
     >
       <ServerOverview result={result} server={server} />
 
+      {needsCredential ? (
+        <Alert className="mt-4" status="warning">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{mcpAuthLabel(server)}</Alert.Title>
+            <Alert.Description>
+              {needsOAuth
+                ? "服务器声明了 OAuth，授权完成后会自动保存并刷新令牌。"
+                : "服务器未声明 OAuth，请填写它文档提供的请求头名称和值。"}
+            </Alert.Description>
+            <Button
+              size="sm"
+              variant="tertiary"
+              isDisabled={isBusy || (needsOAuth && !server.enabled)}
+              onPress={needsOAuth ? onAuthorize : onCredentials}
+            >
+              {needsOAuth && !server.enabled
+                ? "先启用服务器"
+                : needsOAuth
+                  ? "OAuth 授权"
+                  : "设置凭据"}
+            </Button>
+          </Alert.Content>
+        </Alert>
+      ) : null}
+
+      {server.enabled && !server.isTrusted && !needsCredential ? (
+        <Alert className="mt-4" status="warning">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>需要确认连接</Alert.Title>
+            <Alert.Description>确认后，该服务器才会向会话提供工具。</Alert.Description>
+            <Button
+              size="sm"
+              variant="tertiary"
+              isDisabled={isBusy}
+              onPress={() => onEnabledChange(true)}
+            >
+              连接服务器
+            </Button>
+          </Alert.Content>
+        </Alert>
+      ) : null}
+
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-medium text-foreground">服务器能力</h3>
@@ -213,11 +259,13 @@ export function McpServerDetail({
               ? "正在读取服务器声明的能力目录"
               : result
                 ? `${result.tools.length} 个工具 · ${resourceCount} 个资源 · ${result.prompts.length} 个提示词 · ${result.durationMs} ms`
-                : !canUse
+                : !server.enabled
                   ? "启用服务器后自动读取能力目录"
-                  : needsCredential
-                    ? "配置凭据后自动读取能力目录"
-                    : "能力目录加载失败，可重新加载"}
+                  : !server.isTrusted
+                    ? "连接服务器后自动读取能力目录"
+                    : needsCredential
+                      ? "配置凭据后自动读取能力目录"
+                      : "能力目录加载失败，可重新加载"}
           </p>
         </div>
         <Button

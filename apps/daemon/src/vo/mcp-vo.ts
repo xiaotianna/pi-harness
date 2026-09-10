@@ -1,9 +1,20 @@
 import { type Static, Type } from "typebox";
-import { McpServerRecordSchema } from "../schemas/mcp.js";
+import { McpCredentialSchema } from "../mcp/credential.js";
+import { McpAuthMode, McpAuthRequirement, McpServerRecordSchema } from "../schemas/mcp.js";
 
 export const McpServerVoSchema = Type.Object(
   {
     ...McpServerRecordSchema.properties,
+    authRequirement: Type.Union([
+      Type.Literal(McpAuthRequirement.UNKNOWN),
+      Type.Literal(McpAuthRequirement.NONE),
+      Type.Literal(McpAuthRequirement.STATIC),
+      Type.Literal(McpAuthRequirement.OAUTH),
+    ]),
+    credentialMode: Type.Optional(
+      Type.Union([Type.Literal(McpAuthMode.STATIC), Type.Literal(McpAuthMode.OAUTH)]),
+    ),
+    credentialRevision: Type.Optional(McpCredentialSchema.properties.revision),
     hasCredential: Type.Boolean(),
     isTrusted: Type.Boolean(),
   },
@@ -11,6 +22,12 @@ export const McpServerVoSchema = Type.Object(
 );
 export type McpServerVo = Static<typeof McpServerVoSchema>;
 export const McpServerListVoSchema = Type.Array(McpServerVoSchema);
+
+export const McpOAuthStartVoSchema = Type.Object(
+  { authorizationUrl: Type.String({ minLength: 1, maxLength: 8_192 }) },
+  { additionalProperties: false },
+);
+export type McpOAuthStartVo = Static<typeof McpOAuthStartVoSchema>;
 
 const McpCatalogItemVoSchema = Type.Object(
   {

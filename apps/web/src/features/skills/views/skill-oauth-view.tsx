@@ -1,38 +1,10 @@
 "use client";
 
-import { CircleCheckFill, CircleXmarkFill, Lock } from "@gravity-ui/icons";
-import { Button, Card, ProgressCircle } from "@heroui/react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { CircleCheckFill, CircleXmarkFill } from "@gravity-ui/icons";
+import { Button, ProgressCircle } from "@heroui/react";
+import { useEffect, useRef, useState } from "react";
+import { OAuthStatusCard } from "../../../components/ui/oauth-status-card";
 import { startSkillOAuth } from "../api/skill-api";
-
-function SkillOAuthCard({
-  action,
-  description,
-  icon,
-  title,
-}: {
-  action?: ReactNode;
-  description: string;
-  icon: ReactNode;
-  title: string;
-}) {
-  return (
-    <main className="flex min-h-svh items-center justify-center bg-background px-4 py-10">
-      <Card className="w-full max-w-md">
-        <Card.Header className="items-center gap-3 text-center">
-          {icon}
-          <Card.Title className="text-xl">{title}</Card.Title>
-          <Card.Description className="max-w-sm">{description}</Card.Description>
-        </Card.Header>
-        {action ? <Card.Content className="items-center">{action}</Card.Content> : null}
-        <Card.Footer className="justify-center gap-1.5 text-xs text-muted">
-          <Lock aria-hidden className="size-3.5" />
-          授权凭据仅保存在本机 daemon
-        </Card.Footer>
-      </Card>
-    </main>
-  );
-}
 
 export function SkillOAuthLaunchView({
   collectionId,
@@ -60,7 +32,7 @@ export function SkillOAuthLaunchView({
 
   if (errorMessage !== null) {
     return (
-      <SkillOAuthCard
+      <OAuthStatusCard
         action={
           <Button variant="primary" onPress={() => window.close()}>
             关闭窗口
@@ -74,7 +46,7 @@ export function SkillOAuthLaunchView({
   }
 
   return (
-    <SkillOAuthCard
+    <OAuthStatusCard
       description={`即将前往 ${name} 完成授权，请稍候。`}
       icon={
         <ProgressCircle aria-label="正在打开授权页面" isIndeterminate size="lg">
@@ -105,7 +77,7 @@ export function SkillOAuthResultView({
   }, [title]);
 
   return (
-    <SkillOAuthCard
+    <OAuthStatusCard
       action={
         <Button variant="primary" onPress={() => window.close()}>
           关闭窗口

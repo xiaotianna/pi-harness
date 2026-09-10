@@ -145,6 +145,26 @@ export function createMcpHttpFetch(
   };
 }
 
+/** OAuth 发现目标由受保护资源声明；每个请求仍执行 DNS 固定、私网与响应大小检查。 */
+export function createMcpOAuthFetch(
+  policy: Omit<McpNetworkPolicy, "endpoint" | "allowedOrigins">,
+  verifyContext: () => void,
+): FetchLike {
+  return async (input, init) => {
+    let endpoint: URL;
+    try {
+      endpoint = new URL(new Request(input, init).url);
+    } catch {
+      throw new McpError(McpErrorCode.INVALID_CONFIG, "MCP OAuth 请求地址无效");
+    }
+    return createMcpHttpFetch(
+      { ...policy, endpoint, allowedOrigins: [] },
+      {},
+      verifyContext,
+    )(input, init);
+  };
+}
+
 async function readRequestBody(request: Request, signal: AbortSignal): Promise<Buffer | undefined> {
   if (request.body === null) return undefined;
   const reader = request.body.getReader();

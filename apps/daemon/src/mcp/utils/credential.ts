@@ -62,10 +62,21 @@ export function validateMcpCredential(input: unknown): McpCredential {
       } catch {
         throw new McpError(McpErrorCode.CREDENTIAL_INVALID, "MCP OAuth 凭据来源无效");
       }
-      if (url.protocol !== "https:" || url.username || url.password || url.hash) {
+      const isLoopbackHttp =
+        url.protocol === "http:" &&
+        (url.hostname === "127.0.0.1" ||
+          url.hostname === "localhost" ||
+          url.hostname.endsWith(".localhost") ||
+          url.hostname === "[::1]");
+      if (
+        (url.protocol !== "https:" && !isLoopbackHttp) ||
+        url.username ||
+        url.password ||
+        url.hash
+      ) {
         throw new McpError(
           McpErrorCode.CREDENTIAL_INVALID,
-          "MCP OAuth 凭据须绑定有效的 HTTPS 来源",
+          "MCP OAuth 凭据须绑定 HTTPS 或本机回环来源",
         );
       }
     }

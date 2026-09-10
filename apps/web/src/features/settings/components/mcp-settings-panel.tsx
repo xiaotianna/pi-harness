@@ -9,11 +9,17 @@ import {
   Separator,
   Skeleton,
   Switch,
+  toast,
 } from "@heroui/react";
-import { McpAuthMode, McpTransport } from "@pi-harness/agent-runtime/mcp-contract";
+import {
+  McpAuthMode,
+  McpAuthRequirement,
+  McpTransport,
+} from "@pi-harness/agent-runtime/mcp-contract";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { McpServer } from "../api/mcp-api";
+import { getMcpOAuthLaunchUrl, type McpServer } from "../api/mcp-api";
 import { McpAction, useMcpServers } from "../hooks/use-mcp-servers";
+import { mcpAuthLabel, needsMcpCredential } from "../utils/mcp-auth";
 import { McpCredentialEditor } from "./mcp-credential-editor";
 import { McpServerDetail } from "./mcp-server-detail";
 import { McpServerEditor } from "./mcp-server-editor";
@@ -36,6 +42,8 @@ export function McpSettingsPanel() {
   const [page, setPage] = useState(1);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const detailDiscoveries = useRef(new Set<string>());
+  const oauthPopups = useRef(new Map<string, Window>());
+  const oauthPollers = useRef(new Map<string, number>());
   const { servers, results, pendingActions, run, refresh, cancelTest } = useMcpServers();
   const totalPages = Math.max(1, Math.ceil((servers.data?.length ?? 0) / SERVERS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
@@ -57,6 +65,57 @@ export function McpSettingsPanel() {
   const refreshServers = async () => {
     detailDiscoveries.current.clear();
     await refresh();
+  };
+  useEffect(
+    () => () => {
+      for (const poller of oauthPollers.current.values()) window.clearInterval(poller);
+    },
+    [],
+  );
+  const authorize = (server: McpServer) => {
+    const currentPopup = oauthPopups.current.get(server.id);
+    if (currentPopup && !currentPopup.closed) {
+      currentPopup.focus();
+      return;
+    }
+    oauthPopups.current.delete(server.id);
+    const popup = window.open(
+      getMcpOAuthLaunchUrl(server),
+      `pi-harness-mcp-oauth-${server.id}`,
+      "popup,width=720,height=760",
+    );
+    if (popup === null) {
+      toast.danger("浏览器阻止了 OAuth 授权窗口，请允许弹窗后重试");
+      return;
+    }
+    oauthPopups.current.set(server.id, popup);
+    const currentPoller = oauthPollers.current.get(server.id);
+    if (currentPoller !== undefined) window.clearInterval(currentPoller);
+    let attempts = 0;
+    const poller = window.setInterval(() => {
+      attempts += 1;
+      void servers.refetch().then(({ data }) => {
+        const updated = data?.find((item) => item.id === server.id);
+        const hasNewOAuthCredential =
+          updated?.credentialMode === McpAuthMode.OAUTH &&
+          updated.credentialRevision !== undefined &&
+          (!server.hasCredential ||
+            (server.credentialRevision !== undefined &&
+              updated.credentialRevision !== server.credentialRevision));
+        if (hasNewOAuthCredential) {
+          window.clearInterval(poller);
+          oauthPollers.current.delete(server.id);
+          oauthPopups.current.delete(server.id);
+          detailDiscoveries.current.clear();
+          toast.success(`${server.name} OAuth 授权成功`);
+        } else if (popup.closed || attempts >= 120) {
+          window.clearInterval(poller);
+          oauthPollers.current.delete(server.id);
+          oauthPopups.current.delete(server.id);
+        }
+      });
+    }, 1_000);
+    oauthPollers.current.set(server.id, poller);
   };
   useEffect(() => {
     if (
@@ -88,11 +147,13 @@ export function McpSettingsPanel() {
           result={selectedResult}
           server={selectedServer}
           onBack={() => setSelectedServerId(null)}
+          onAuthorize={() => authorize(selectedServer)}
           onCancelTest={() => {
             detailDiscoveries.current.add(`${selectedServer.id}:${selectedServer.revision}`);
             cancelTest(selectedServer.id);
           }}
           onEdit={() => setDialog({ kind: "edit", server: selectedServer })}
+          onCredentials={() => setDialog({ kind: "credentials", server: selectedServer })}
           onEnabledChange={(isEnabled) => {
             if (!isEnabled) {
               run(selectedServer, McpAction.DISABLE);
@@ -151,7 +212,9 @@ export function McpSettingsPanel() {
           ) : (
             <div className="mt-4 flex flex-col gap-3">
               {visibleServers.map((server) => {
-                const canUse = server.enabled && server.isTrusted;
+                const result = results.get(server.id);
+                const serverIcons =
+                  result?.configRevision === server.revision ? result.serverInfo.icons : undefined;
                 const pendingAction = pendingActions.get(server.id);
                 const isBusy = pendingAction !== undefined;
                 const isConnectionPending =
@@ -168,13 +231,19 @@ export function McpSettingsPanel() {
                   server.config.transport === McpTransport.STDIO
                     ? server.config.command
                     : server.config.url;
-                const needsCredential =
-                  server.config.transport !== McpTransport.STDIO &&
-                  server.config.authMode !== McpAuthMode.NONE &&
-                  !server.hasCredential;
+                const needsCredential = needsMcpCredential(server);
+                const needsOAuth =
+                  !server.hasCredential && server.authRequirement === McpAuthRequirement.OAUTH;
+                const canAuthorize = needsOAuth && server.enabled;
+                const needsConnection = server.enabled && !server.isTrusted && !needsOAuth;
                 const canEditCredential =
                   server.config.transport === McpTransport.STDIO ||
-                  server.config.authMode === McpAuthMode.STATIC;
+                  server.config.authMode !== McpAuthMode.OAUTH;
+                const canManageOAuth =
+                  server.enabled &&
+                  server.config.transport !== McpTransport.STDIO &&
+                  (server.config.authMode === McpAuthMode.OAUTH ||
+                    server.authRequirement === McpAuthRequirement.OAUTH);
                 const openDetails = () => {
                   setSelectedServerId(server.id);
                 };
@@ -195,7 +264,7 @@ export function McpSettingsPanel() {
                         onPress={openDetails}
                       >
                         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-default">
-                          <McpServerIcon endpoint={endpoint} name={server.name} />
+                          <McpServerIcon endpoint={endpoint} icons={serverIcons} />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block break-all text-base font-medium text-foreground">
@@ -207,11 +276,19 @@ export function McpSettingsPanel() {
                         </span>
                       </Button>
                       <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-sm text-muted">{canUse ? "已启用" : "未启用"}</span>
+                        <span className="text-sm text-muted">
+                          {!server.enabled
+                            ? "未启用"
+                            : needsCredential
+                              ? "待鉴权"
+                              : server.isTrusted
+                                ? "已启用"
+                                : "待连接"}
+                        </span>
                         <Switch
                           aria-label={`${server.name} 启用状态`}
-                          isDisabled={isBusy || needsCredential}
-                          isSelected={canUse}
+                          isDisabled={isBusy}
+                          isSelected={server.enabled}
                           size="sm"
                           onChange={(isEnabled) => {
                             if (!isEnabled) {
@@ -235,31 +312,61 @@ export function McpSettingsPanel() {
                     </Card.Header>
                     <Card.Content className="mt-4 flex flex-col gap-4">
                       {needsCredential ? (
-                        <div className="flex items-center gap-2 text-xs text-muted">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                           <Key aria-hidden className="size-3.5 shrink-0" />
-                          <span>
-                            {server.config.transport !== McpTransport.STDIO &&
-                            server.config.authMode === McpAuthMode.OAUTH
-                              ? "OAuth 授权流程尚未开放"
-                              : "请先设置请求头凭据，再连接"}
-                          </span>
+                          <span>{mcpAuthLabel(server)}</span>
+                          {!needsOAuth ? (
+                            <Button
+                              size="sm"
+                              variant="tertiary"
+                              onPress={() => setDialog({ kind: "credentials", server })}
+                            >
+                              设置凭据
+                            </Button>
+                          ) : null}
                         </div>
                       ) : null}
                       <div className="flex items-center justify-between gap-4">
                         <Button
                           size="sm"
-                          variant={isConnectionPending ? "tertiary" : "secondary"}
-                          isDisabled={!isConnectionPending && (!canUse || isBusy)}
-                          onPress={() =>
-                            isConnectionPending ? cancelConnection() : run(server, McpAction.TEST)
+                          variant={
+                            isConnectionPending
+                              ? "tertiary"
+                              : canAuthorize || needsConnection
+                                ? "primary"
+                                : "secondary"
                           }
+                          isDisabled={!isConnectionPending && (isBusy || !server.enabled)}
+                          onPress={() => {
+                            if (isConnectionPending) {
+                              cancelConnection();
+                              return;
+                            }
+                            if (canAuthorize) {
+                              authorize(server);
+                              return;
+                            }
+                            if (needsConnection) {
+                              setDialog({ kind: "confirm", action: McpAction.CONNECT, server });
+                              return;
+                            }
+                            run(server, McpAction.TEST);
+                          }}
                         >
                           {isConnectionPending ? (
                             <Xmark aria-hidden className="size-4" />
-                          ) : (
+                          ) : canAuthorize ? (
+                            <Key aria-hidden className="size-4" />
+                          ) : needsConnection ? null : (
                             <Flask aria-hidden className="size-4" />
                           )}
-                          {isConnectionPending ? pendingConnectionLabel : "测试连接"}
+                          {isConnectionPending
+                            ? pendingConnectionLabel
+                            : canAuthorize
+                              ? "OAuth 授权"
+                              : needsConnection
+                                ? "连接服务器"
+                                : "测试连接"}
                         </Button>
                         <div className="flex items-center gap-2">
                           <Button
@@ -283,6 +390,7 @@ export function McpSettingsPanel() {
                                 onAction={(key) => {
                                   if (key === "credentials")
                                     setDialog({ kind: "credentials", server });
+                                  if (key === "oauth") authorize(server);
                                   if (key === McpAction.REVOKE) run(server, McpAction.REVOKE);
                                   if (key === McpAction.DELETE)
                                     setDialog({
@@ -298,13 +406,21 @@ export function McpSettingsPanel() {
                                     {server.hasCredential ? "替换凭据" : "设置凭据"}
                                   </Dropdown.Item>
                                 ) : null}
+                                {canManageOAuth ? (
+                                  <Dropdown.Item id="oauth" textValue="OAuth 授权">
+                                    <Key aria-hidden className="size-4 text-muted" />
+                                    {server.credentialMode === McpAuthMode.OAUTH
+                                      ? "重新 OAuth 授权"
+                                      : "OAuth 授权"}
+                                  </Dropdown.Item>
+                                ) : null}
                                 {server.isTrusted ? (
                                   <Dropdown.Item id={McpAction.REVOKE} textValue="撤销信任">
                                     <LinkSlash aria-hidden className="size-4 text-muted" />
                                     撤销信任
                                   </Dropdown.Item>
                                 ) : null}
-                                {canEditCredential || server.isTrusted ? (
+                                {canEditCredential || canManageOAuth || server.isTrusted ? (
                                   <Separator className="my-1" />
                                 ) : null}
                                 <Dropdown.Item

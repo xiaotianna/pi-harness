@@ -1,5 +1,6 @@
 import {
   McpAuthMode,
+  McpAuthRequirement,
   McpIsolationMode,
   McpJsonTransport,
   McpTransport,
@@ -91,10 +92,23 @@ const McpServerSchema = Type.Object({
   config: McpConfigSchema,
   enabled: Type.Boolean(),
   revision: Type.Integer({ minimum: 1 }),
+  authRequirement: Type.Union([
+    Type.Literal(McpAuthRequirement.UNKNOWN),
+    Type.Literal(McpAuthRequirement.NONE),
+    Type.Literal(McpAuthRequirement.STATIC),
+    Type.Literal(McpAuthRequirement.OAUTH),
+  ]),
+  credentialMode: Type.Optional(
+    Type.Union([Type.Literal(McpAuthMode.STATIC), Type.Literal(McpAuthMode.OAUTH)]),
+  ),
+  credentialRevision: Type.Optional(Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER })),
   hasCredential: Type.Boolean(),
   isTrusted: Type.Boolean(),
 });
 const McpServersSchema = Type.Array(McpServerSchema);
+const McpOAuthStartSchema = Type.Object({
+  authorizationUrl: Type.String({ format: "uri" }),
+});
 const CatalogItemSchema = Type.Object({
   name: Type.String(),
   title: Type.Optional(Type.String()),
@@ -127,13 +141,24 @@ const McpPromptSchema = Type.Object({
     }),
   ),
 });
+const McpIconSchema = Type.Object({
+  src: Type.String({ minLength: 1, maxLength: 400_000 }),
+  mimeType: Type.Optional(Type.String({ maxLength: 128 })),
+  sizes: Type.Optional(Type.Array(Type.String({ maxLength: 32 }), { maxItems: 16 })),
+  theme: Type.Optional(Type.Union([Type.Literal("light"), Type.Literal("dark")])),
+});
+const McpServerInfoSchema = Type.Object({
+  name: Type.String({ maxLength: 512 }),
+  version: Type.String({ maxLength: 128 }),
+  icons: Type.Optional(Type.Array(McpIconSchema, { maxItems: 16 })),
+});
 const McpTestSchema = Type.Object({
   serverId: Type.String(),
   configRevision: Type.Integer(),
   serverName: Type.String(),
   serverVersion: Type.String(),
   protocolEra: Type.Union([Type.Literal("modern"), Type.Literal("legacy")]),
-  serverInfo: Type.Unknown(),
+  serverInfo: McpServerInfoSchema,
   instructions: Type.Optional(Type.String()),
   capabilities: Type.Unknown(),
   durationMs: Type.Integer(),
@@ -146,6 +171,7 @@ const McpTestSchema = Type.Object({
 export type McpConfig = Static<typeof McpConfigSchema>;
 export type McpJson = Static<typeof McpJsonSchema>;
 export type McpServer = Static<typeof McpServerSchema>;
+export type McpIcon = Static<typeof McpIconSchema>;
 export type McpTestResult = Static<typeof McpTestSchema>;
 export interface McpServerInput {
   name: string;
@@ -169,6 +195,27 @@ function requestMcp(path: string, init?: RequestInit): Promise<Response> {
 }
 const basePath = "/api/mcp-servers";
 const serverPath = (id: string) => `${basePath}/${encodeURIComponent(id)}`;
+
+export function getMcpOAuthLaunchUrl(server: McpServer): string {
+  const query = new URLSearchParams({
+    expectedRevision: String(server.revision),
+    name: server.name,
+  });
+  return `/mcp-oauth/${encodeURIComponent(server.id)}/launch?${query}`;
+}
+
+export async function startMcpOAuth(serverId: string, expectedRevision: number): Promise<string> {
+  const body: unknown = await (
+    await requestMcp(`${serverPath(serverId)}/authorizations`, {
+      method: "POST",
+      body: JSON.stringify({ expectedRevision }),
+    })
+  ).json();
+  if (!Value.Check(McpOAuthStartSchema, body)) {
+    throw new Error("daemon 返回了无效的 OAuth 授权地址");
+  }
+  return body.authorizationUrl;
+}
 
 export async function listMcpServers(signal: AbortSignal): Promise<McpServer[]> {
   const body: unknown = await (await requestMcp(basePath, { signal })).json();

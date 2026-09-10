@@ -40,6 +40,19 @@ export const McpRevisionDtoSchema = Type.Object(
 );
 export type McpRevisionDto = Static<typeof McpRevisionDtoSchema>;
 
+export const McpOAuthCallbackDtoSchema = Type.Object(
+  {
+    code: Type.Optional(Type.String({ minLength: 1, maxLength: 16_384 })),
+    state: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
+    iss: Type.Optional(Type.String({ minLength: 1, maxLength: 2_048 })),
+    error: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
+    error_description: Type.Optional(Type.String({ maxLength: 2_048 })),
+    error_uri: Type.Optional(Type.String({ maxLength: 2_048 })),
+  },
+  { additionalProperties: false },
+);
+export type McpOAuthCallbackDto = Static<typeof McpOAuthCallbackDtoSchema>;
+
 export const PutMcpCredentialDtoSchema = Type.Object(
   {
     ...McpRevisionDtoSchema.properties,

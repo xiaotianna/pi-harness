@@ -92,7 +92,7 @@ export class McpToolService {
               source: `mcp:${server.id}:${server.revision}:${definitionHash}`,
               timeoutMs: server.config.requestTimeoutMs,
               policy: {
-                permission: ToolPermission.EXTERNAL,
+                permission: ToolPermission.USER_APPROVAL,
                 resolveGrant: async (args, approvalSignal) => {
                   await verify(
                     args,

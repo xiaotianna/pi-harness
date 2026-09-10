@@ -114,6 +114,7 @@ export class McpDiagnosticsService {
       try {
         const catalog = await this.discovery.discover(lease, signal, true);
         this.servers.verifyContext(context);
+        this.servers.noteAuthenticationSucceeded(context);
         const durationMs = Math.round(performance.now() - startedAt);
         return {
           catalog,

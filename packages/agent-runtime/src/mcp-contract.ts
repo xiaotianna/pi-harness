@@ -22,6 +22,15 @@ export const McpAuthMode = {
   OAUTH: "oauth",
 } as const;
 
+export const McpAuthRequirement = {
+  UNKNOWN: "unknown",
+  NONE: "none",
+  STATIC: "static",
+  OAUTH: "oauth",
+} as const;
+
+export type McpAuthRequirement = (typeof McpAuthRequirement)[keyof typeof McpAuthRequirement];
+
 export const McpConnectionStatus = {
   DISABLED: "disabled",
   DISCONNECTED: "disconnected",

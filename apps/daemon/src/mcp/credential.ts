@@ -1,7 +1,11 @@
 import { type Static, Type } from "typebox";
 import { McpAuthMode, McpServerIdSchema } from "../schemas/mcp.js";
 
-const SecretSchema = Type.String({ minLength: 1, maxLength: 16_384 });
+const SecretSchema = Type.String({
+  minLength: 1,
+  maxLength: 16_384,
+  pattern: "^[^\\u0000-\\u001f\\u007f]+$",
+});
 const EnvironmentSchema = Type.Record(
   Type.String({ pattern: "^[A-Za-z_][A-Za-z0-9_]{0,127}$" }),
   Type.String({ maxLength: 16_384, pattern: "^[^\\u0000]*$" }),
@@ -29,11 +33,7 @@ const OAuthCredentialSchema = Type.Object(
     resource: Type.String({ minLength: 1, maxLength: 2_048 }),
     clientId: Type.String({ minLength: 1, maxLength: 2_048 }),
     clientSecret: Type.Optional(SecretSchema),
-    accessToken: Type.String({
-      minLength: 1,
-      maxLength: 16_384,
-      pattern: "^[A-Za-z0-9\\-._~+/]+=*$",
-    }),
+    accessToken: SecretSchema,
     refreshToken: Type.Optional(SecretSchema),
     expiresAt: Type.Optional(Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
     scope: Type.Optional(Type.String({ maxLength: 8_192 })),

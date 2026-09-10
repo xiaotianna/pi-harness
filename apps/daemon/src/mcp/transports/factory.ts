@@ -1,4 +1,8 @@
-import { SSEClientTransport, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import {
+  type AuthProvider,
+  SSEClientTransport,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
 import { McpAuthMode, McpTransport } from "../../schemas/mcp.js";
 import type { McpConnectionContext, McpTransportFactory } from "../client-manager.js";
 import { McpError, McpErrorCode } from "../errors.js";
@@ -8,6 +12,7 @@ import { McpStdioTransport } from "./stdio.js";
 
 export function createMcpTransportFactory(
   verifyContext: (context: McpConnectionContext) => void,
+  createAuthProvider: (context: McpConnectionContext) => AuthProvider,
   protectedLocalPorts: readonly number[],
 ): McpTransportFactory {
   return async (context, signal) => {
@@ -27,20 +32,19 @@ export function createMcpTransportFactory(
     const config = context.server.config;
     const material = context.credential?.material;
     let headers: Readonly<Record<string, string>> = {};
-    if (config.authMode !== McpAuthMode.NONE) {
-      if (material === undefined || material.mode !== config.authMode) {
-        throw new McpError(McpErrorCode.CREDENTIAL_INVALID, "请先为 MCP 服务配置认证");
-      }
-      if (material.mode === McpAuthMode.STATIC) headers = material.headers;
-      else {
-        if (
-          material.resource !== config.url ||
-          (material.expiresAt !== undefined && material.expiresAt <= Date.now())
-        ) {
-          throw new McpError(McpErrorCode.CREDENTIAL_INVALID, "MCP 授权已过期或目标资源不匹配");
-        }
-        headers = { Authorization: `Bearer ${material.accessToken}` };
-      }
+    if (config.authMode === McpAuthMode.STATIC && material?.mode !== McpAuthMode.STATIC) {
+      throw new McpError(
+        McpErrorCode.STATIC_CREDENTIAL_REQUIRED,
+        "该 MCP 服务需要 Token 或 API Key，请设置请求头凭据",
+      );
+    }
+    if (config.authMode === McpAuthMode.OAUTH && material?.mode !== McpAuthMode.OAUTH) {
+      throw new McpError(McpErrorCode.OAUTH_REQUIRED, "该 MCP 服务需要 OAuth 授权");
+    }
+    if (material?.mode === McpAuthMode.STATIC) {
+      headers = material.headers;
+    } else if (material?.mode === McpAuthMode.OAUTH && material.resource !== config.url) {
+      throw new McpError(McpErrorCode.CREDENTIAL_INVALID, "MCP OAuth 授权目标不匹配");
     }
     const fetch = createMcpHttpFetch(
       {
@@ -53,9 +57,11 @@ export function createMcpTransportFactory(
       headers,
       () => verifyContext(context),
     );
+    const authProvider = createAuthProvider(context);
     if (config.transport === McpTransport.SSE)
-      return new SSEClientTransport(new URL(config.url), { fetch });
+      return new SSEClientTransport(new URL(config.url), { authProvider, fetch });
     return new StreamableHTTPClientTransport(new URL(config.url), {
+      authProvider,
       fetch,
       reconnectionOptions: {
         initialReconnectionDelay: 1_000,

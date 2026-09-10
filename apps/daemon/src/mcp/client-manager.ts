@@ -87,7 +87,7 @@ export class McpClientManager {
       });
       const controller = new AbortController();
       entry = {
-        context: structuredClone(context),
+        context,
         client,
         controller,
         leases: 0,
@@ -102,7 +102,7 @@ export class McpClientManager {
       };
       this.entries.set(key, entry);
       const capturedEntry = entry;
-      entry.ready = this.connect(entry).catch(async () => {
+      entry.ready = this.connect(entry).catch(async (error: unknown) => {
         controller.abort();
         try {
           await client.close();
@@ -110,6 +110,7 @@ export class McpClientManager {
           // factory 可能在 transport 交给 SDK 前失败，此时 SDK 不会触发 onclose。
           if (this.entries.get(key) === capturedEntry) this.entries.delete(key);
         }
+        if (error instanceof McpError) throw error;
         throw new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 连接失败，请检查配置与服务状态");
       });
       client.onclose = () => {
