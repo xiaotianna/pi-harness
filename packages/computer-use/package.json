@@ -1,0 +1,25 @@
+{
+  "name": "@pi-harness/computer-use",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "debug:client": "tsx scripts/debug.ts client",
+    "debug:tools": "tsx scripts/debug.ts tools",
+    "typecheck": "tsc --noEmit",
+    "native:build": "cargo build --manifest-path native/Cargo.toml --release"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "catalog:",
+    "@pi-harness/policy": "workspace:*",
+    "typebox": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

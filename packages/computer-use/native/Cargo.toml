@@ -1,0 +1,20 @@
+[package]
+name = "pi-computer-use-helper"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+axuielement = "0.9.1"
+base64 = "0.22.1"
+core-graphics = { version = "0.25.0", features = ["elcapitan", "highsierra"] }
+png = "0.17.16"
+screencapturekit = { version = "10.0.3", features = ["macos_14_0"] }
+
+[profile.release]
+lto = "thin"
+strip = true
