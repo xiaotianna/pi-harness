@@ -60,6 +60,8 @@ import {
   type RunInteractionData,
   type RunStartedData,
   type SessionId,
+  type ToolCompletedData,
+  type ToolStartedData,
 } from "./harness-event.js";
 import type { HumanInputRequester } from "./human-input.js";
 import {
@@ -131,6 +133,7 @@ interface ActiveRun extends AgentEventAdapterContext {
   mode: RunMode;
   planRetryPrompt: string | null;
   preparationAbortController: AbortController;
+  preparationFailures: PreparedExternalTools["failures"];
   runId: RunId;
   startMessageIndex: number;
   streamFn: StreamFn;
@@ -869,6 +872,45 @@ export class RunCoordinator {
     if (draft === null) return;
 
     await this.emit(draft, activeRun.runId);
+    if (
+      event.type === "message_end" &&
+      event.message.role === "user" &&
+      activeRun.preparationFailures.length > 0
+    ) {
+      const failures = activeRun.preparationFailures;
+      activeRun.preparationFailures = [];
+      for (const failure of failures) {
+        const toolCallId = randomUUID();
+        await this.emit(
+          {
+            data: {
+              arguments: {},
+              displayName: failure.displayName,
+              source: failure.source,
+              toolCallId,
+              toolName: "mcp_connect",
+            } satisfies ToolStartedData,
+            type: HarnessEventType.TOOL_STARTED,
+          },
+          activeRun.runId,
+        );
+        await this.emit(
+          {
+            data: {
+              isError: true,
+              result: {
+                content: [{ text: failure.message, type: "text" }],
+                details: { source: failure.source },
+              },
+              toolCallId,
+              toolName: "mcp_connect",
+            } satisfies ToolCompletedData,
+            type: HarnessEventType.TOOL_FAILED,
+          },
+          activeRun.runId,
+        );
+      }
+    }
     if (event.type === "tool_execution_end") {
       const fileChanges = this.pendingFileChanges.get(event.toolCallId);
       if (fileChanges !== undefined) {
@@ -960,6 +1002,7 @@ export class RunCoordinator {
       isPlanApproved: false,
       planRetryPrompt: null,
       preparationAbortController,
+      preparationFailures: [],
       ...runStartedData,
       runId: input.runId,
       startMessageIndex: this.agent.state.messages.length,
@@ -981,6 +1024,7 @@ export class RunCoordinator {
           this.workspaceRoot,
           preparationAbortController.signal,
         );
+        activeRun.preparationFailures = externalTools?.failures ?? [];
         preparationAbortController.signal.throwIfAborted();
         this.toolRegistry.replaceExternal(externalTools?.registrations ?? []);
         this.agent.state.tools = this.toolRegistry.tools;

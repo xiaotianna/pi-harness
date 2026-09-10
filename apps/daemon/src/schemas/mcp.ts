@@ -2,13 +2,16 @@ import {
   McpAuthMode,
   McpConnectionStatus,
   McpIsolationMode,
+  McpJsonTransport,
   McpTransport,
 } from "@pi-harness/agent-runtime/mcp-contract";
 import { type Static, Type } from "typebox";
 
-export { McpAuthMode, McpConnectionStatus, McpIsolationMode, McpTransport };
+export { McpAuthMode, McpConnectionStatus, McpIsolationMode, McpJsonTransport, McpTransport };
 
 export type McpServerId = string;
+
+export const MCP_SERVER_NAME_MAX_LENGTH = 100;
 
 export const McpServerIdSchema = Type.String({
   pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
@@ -16,7 +19,7 @@ export const McpServerIdSchema = Type.String({
 
 export const McpServerNameSchema = Type.String({
   minLength: 1,
-  maxLength: 100,
+  maxLength: MCP_SERVER_NAME_MAX_LENGTH,
   pattern: "^[^\\u0000-\\u001f\\u007f]+$",
 });
 

@@ -63,7 +63,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
         }),
       ],
     ),
-    (error) => server.log.warn({ code: error.code }, "MCP connection lifecycle failed"),
+    (error) => server.log.warn({ code: error.code }, "MCP client lifecycle warning"),
     (context) => mcpServers.verifyContext(context),
   );
   const mcpServers = new McpServerService(database.mcpServers, mcpCredentials, (id) =>

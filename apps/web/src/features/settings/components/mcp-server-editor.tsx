@@ -24,6 +24,7 @@ import {
   type McpFormDraft,
   readMcpForm,
   readMcpJson,
+  writeMcpJson,
 } from "../utils/mcp-form";
 
 const McpEditorMode = {
@@ -32,15 +33,13 @@ const McpEditorMode = {
 } as const;
 type McpEditorMode = (typeof McpEditorMode)[keyof typeof McpEditorMode];
 
-function McpFormFields({
+function McpConnectionFields({
   draft,
   isSaving,
-  server,
   onChange,
 }: {
   draft: McpFormDraft;
   isSaving: boolean;
-  server?: McpServer;
   onChange: (value: Partial<McpFormDraft>) => void;
 }) {
   return (
@@ -53,8 +52,9 @@ function McpFormFields({
         value={draft.name}
         onChange={(name) => onChange({ name })}
       >
-        <Label>名称</Label>
-        <Input autoFocus maxLength={100} placeholder="例如：文档服务" />
+        <Label>服务器 ID</Label>
+        <Input autoFocus maxLength={100} placeholder="例如：docs" />
+        <Description>对应 mcpServers 对象中的 key。</Description>
         <FieldError />
       </TextField>
       <Select
@@ -82,6 +82,9 @@ function McpFormFields({
             ))}
           </ListBox>
         </Select.Popover>
+        <Description>
+          {MCP_TRANSPORT_OPTIONS.find((option) => option.id === draft.transport)?.description}
+        </Description>
       </Select>
       <TextField
         fullWidth
@@ -91,14 +94,10 @@ function McpFormFields({
         value={draft.endpoint}
         onChange={(endpoint) => onChange({ endpoint })}
       >
-        <Label>{draft.transport === McpTransport.STDIO ? "可执行命令" : "服务器地址"}</Label>
+        <Label>{draft.transport === McpTransport.STDIO ? "命令" : "服务器地址"}</Label>
         <Input
           maxLength={4096}
-          placeholder={
-            draft.transport === McpTransport.STDIO
-              ? "/usr/local/bin/mcp-server"
-              : "https://example.com/mcp"
-          }
+          placeholder={draft.transport === McpTransport.STDIO ? "npx" : "https://example.com/mcp"}
         />
         <FieldError />
       </TextField>
@@ -111,17 +110,54 @@ function McpFormFields({
             value={draft.args}
             onChange={(args) => onChange({ args })}
           >
-            <Label>命令参数（JSON 数组）</Label>
-            <TextArea rows={3} maxLength={65536} />
-            <Description>
-              直接执行命令，不经过 Shell；在对话中使用时，工作目录为当前会话目录。
-            </Description>
+            <Label>命令参数</Label>
+            <TextArea
+              rows={3}
+              maxLength={65536}
+              placeholder={"-y\n@modelcontextprotocol/server-everything"}
+            />
+            <Description>每行一个参数。</Description>
           </TextField>
-          <p className="text-sm text-muted">
-            本地服务器以你的系统账户权限运行，当前未提供操作系统沙箱。保存不会启动命令，连接前需确认信任。
-          </p>
+          <TextField
+            fullWidth
+            variant="secondary"
+            isDisabled={isSaving}
+            value={draft.environment}
+            onChange={(environment) => onChange({ environment })}
+          >
+            <Label>环境变量</Label>
+            <TextArea
+              autoComplete="off"
+              spellCheck={false}
+              rows={3}
+              maxLength={65536}
+              placeholder="DEBUG=1"
+            />
+            <Description>每行一个 KEY=VALUE。</Description>
+          </TextField>
         </>
-      ) : (
+      ) : null}
+    </>
+  );
+}
+
+function McpCommonFields({
+  draft,
+  isJsonMode,
+  isSaving,
+  server,
+  onChange,
+}: {
+  draft: McpFormDraft;
+  isJsonMode: boolean;
+  isSaving: boolean;
+  server?: McpServer;
+  onChange: (value: Partial<McpFormDraft>) => void;
+}) {
+  const showNetworkOptions = isJsonMode || draft.transport !== McpTransport.STDIO;
+  return (
+    <>
+      {showNetworkOptions ? (
         <>
           <Switch
             isDisabled={isSaving}
@@ -148,7 +184,7 @@ function McpFormFields({
             </Switch.Content>
           </Switch>
         </>
-      )}
+      ) : null}
       <TextField
         fullWidth
         variant="secondary"
@@ -182,7 +218,7 @@ export function McpServerEditor({
   const formId = useId();
   const [draft, setDraft] = useState(() => createMcpFormDraft(server));
   const [mode, setMode] = useState<McpEditorMode>(McpEditorMode.FORM);
-  const [json, setJson] = useState("");
+  const [json, setJson] = useState(() => (server ? writeMcpJson(createMcpFormDraft(server)) : ""));
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const update = (value: Partial<typeof draft>) =>
@@ -192,8 +228,15 @@ export function McpServerEditor({
     setError(null);
     setIsSaving(true);
     try {
-      if (!server && mode === McpEditorMode.JSON) {
-        await importMcpServers(readMcpJson(json));
+      if (mode === McpEditorMode.JSON) {
+        const inputs = readMcpJson(json, draft, server);
+        const [input] = inputs;
+        if (server) {
+          if (!input || inputs.length !== 1) throw new Error("编辑时 JSON 只能包含一个服务器");
+          await saveMcpServer(input, server);
+        } else {
+          await importMcpServers(inputs);
+        }
       } else {
         await saveMcpServer(readMcpForm(draft, server), server);
       }
@@ -205,6 +248,34 @@ export function McpServerEditor({
       setIsSaving(false);
     }
   };
+  const selectMode = (key: React.Key) => {
+    if (key !== McpEditorMode.FORM && key !== McpEditorMode.JSON) return;
+    setError(null);
+    if (key === McpEditorMode.JSON) {
+      try {
+        readMcpForm(draft, server);
+        setJson(writeMcpJson(draft));
+      } catch {
+        // 未完成的表单继续保留在原状态，JSON 使用空白示例等待粘贴。
+        setJson("");
+      }
+      setMode(key);
+      return;
+    }
+    if (json.trim()) {
+      try {
+        const inputs = readMcpJson(json, draft, server);
+        const [input] = inputs;
+        if (!input || inputs.length !== 1)
+          throw new Error("JSON 包含多个服务器，无法切换为单服务器表单");
+        setDraft(createMcpFormDraft(input));
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "JSON 配置无法转换为表单");
+        return;
+      }
+    }
+    setMode(key);
+  };
   return (
     <Modal.Backdrop
       isOpen
@@ -212,12 +283,12 @@ export function McpServerEditor({
       onOpenChange={(open) => !open && !isSaving && onClose()}
     >
       <Modal.Container scroll="inside">
-        <Modal.Dialog className={server ? "sm:max-w-md" : "sm:max-w-lg"}>
+        <Modal.Dialog className="sm:max-w-lg">
           <Modal.CloseTrigger aria-label="关闭 MCP 配置" isDisabled={isSaving} />
           <Modal.Header>
             <Modal.Heading>{server ? "编辑 MCP 服务器" : "添加 MCP 服务器"}</Modal.Heading>
           </Modal.Header>
-          <Modal.Body>
+          <Modal.Body className="scrollbar-none">
             <Form
               id={formId}
               aria-label="MCP 服务器配置"
@@ -227,65 +298,54 @@ export function McpServerEditor({
                 void save();
               }}
             >
-              {server ? (
-                <McpFormFields
-                  draft={draft}
-                  isSaving={isSaving}
-                  server={server}
-                  onChange={update}
-                />
-              ) : (
-                <Tabs
-                  selectedKey={mode}
-                  variant="primary"
-                  onSelectionChange={(key) => {
-                    if (key === McpEditorMode.FORM || key === McpEditorMode.JSON) {
-                      setError(null);
-                      setMode(key);
-                    }
-                  }}
-                >
-                  <Tabs.ListContainer>
-                    <Tabs.List aria-label="MCP 配置方式">
-                      <Tabs.Tab id={McpEditorMode.FORM}>
-                        表单配置
-                        <Tabs.Indicator />
-                      </Tabs.Tab>
-                      <Tabs.Tab id={McpEditorMode.JSON}>
-                        JSON 配置
-                        <Tabs.Indicator />
-                      </Tabs.Tab>
-                    </Tabs.List>
-                  </Tabs.ListContainer>
-                  <Tabs.Panel className="px-0 pb-0" id={McpEditorMode.FORM}>
-                    <div className="flex flex-col gap-4">
-                      <McpFormFields draft={draft} isSaving={isSaving} onChange={update} />
-                    </div>
-                  </Tabs.Panel>
-                  <Tabs.Panel className="px-0 pb-0" id={McpEditorMode.JSON}>
-                    <TextField
-                      fullWidth
-                      variant="secondary"
-                      isRequired
-                      isDisabled={isSaving}
-                      value={json}
-                      onChange={setJson}
-                    >
-                      <Label>mcp.json</Label>
-                      <TextArea
-                        className="font-mono text-xs"
-                        rows={14}
-                        maxLength={262144}
-                        placeholder={MCP_JSON_PLACEHOLDER}
-                      />
-                      <Description>
-                        使用 mcpServers 对象，可一次添加多个服务器。凭据需在保存后单独设置。
-                      </Description>
-                      <FieldError />
-                    </TextField>
-                  </Tabs.Panel>
-                </Tabs>
-              )}
+              <Tabs selectedKey={mode} variant="primary" onSelectionChange={selectMode}>
+                <Tabs.ListContainer>
+                  <Tabs.List aria-label="MCP 配置方式">
+                    <Tabs.Tab id={McpEditorMode.FORM}>
+                      表单配置
+                      <Tabs.Indicator />
+                    </Tabs.Tab>
+                    <Tabs.Tab id={McpEditorMode.JSON}>
+                      JSON 配置
+                      <Tabs.Indicator />
+                    </Tabs.Tab>
+                  </Tabs.List>
+                </Tabs.ListContainer>
+                <Tabs.Panel className="px-0 pb-0" id={McpEditorMode.FORM}>
+                  <div className="flex flex-col gap-4">
+                    <McpConnectionFields draft={draft} isSaving={isSaving} onChange={update} />
+                  </div>
+                </Tabs.Panel>
+                <Tabs.Panel className="px-0 pb-0" id={McpEditorMode.JSON}>
+                  <TextField
+                    fullWidth
+                    variant="secondary"
+                    isRequired
+                    isDisabled={isSaving}
+                    value={json}
+                    onChange={setJson}
+                  >
+                    <Label>mcp.json</Label>
+                    <TextArea
+                      className="font-mono text-xs"
+                      rows={12}
+                      maxLength={262144}
+                      placeholder={MCP_JSON_PLACEHOLDER}
+                    />
+                    <Description>
+                      JSON 会解析后与下方通用设置合并；添加时可包含多个服务器。
+                    </Description>
+                    <FieldError />
+                  </TextField>
+                </Tabs.Panel>
+              </Tabs>
+              <McpCommonFields
+                draft={draft}
+                isJsonMode={mode === McpEditorMode.JSON}
+                isSaving={isSaving}
+                {...(server ? { server } : {})}
+                onChange={update}
+              />
               {error ? (
                 <Alert status="danger">
                   <Alert.Content>

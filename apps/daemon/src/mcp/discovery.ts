@@ -1,5 +1,6 @@
 import type {
   Client,
+  Implementation,
   Prompt,
   Resource,
   ResourceTemplateType,
@@ -19,6 +20,8 @@ export interface McpCatalog {
   protocolEra: "modern" | "legacy";
   serverName: string;
   serverVersion: string;
+  serverInfo: Implementation;
+  instructions?: string;
   capabilities: ServerCapabilities;
   tools: readonly Tool[];
   resources: readonly Resource[];
@@ -83,12 +86,16 @@ export class McpDiscovery {
     const protocolEra = lease.client.getProtocolEra();
     if (protocolEra === undefined)
       throw new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 协议协商尚未完成");
+    const serverInfo = server ?? { name: "", version: "" };
+    const instructions = lease.client.getInstructions();
     const catalog: McpCatalog = {
       generation,
       discoveredAt: Date.now(),
       protocolEra,
-      serverName: server?.name ?? "",
-      serverVersion: server?.version ?? "",
+      serverName: serverInfo.name,
+      serverVersion: serverInfo.version,
+      serverInfo,
+      ...(instructions ? { instructions } : {}),
       capabilities,
       tools: tools.value.tools,
       resources: resources.value.resources,

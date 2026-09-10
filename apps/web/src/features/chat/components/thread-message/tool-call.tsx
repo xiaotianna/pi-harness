@@ -62,6 +62,13 @@ function toolPresentation(tool: ChatMessageTool) {
         failed: "网页读取失败",
         query: typeof input.url === "string" ? input.url : tool.toolName,
       };
+    case "mcp_connect":
+      return {
+        active: "正在连接 MCP",
+        done: "已连接 MCP",
+        failed: "MCP 连接失败",
+        query: tool.displayName ?? "MCP",
+      };
     default:
       return {
         active: "正在使用工具",

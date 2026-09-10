@@ -1,6 +1,7 @@
 import { type Static, Type } from "typebox";
 import { McpCredentialMaterialSchema } from "../mcp/credential.js";
 import {
+  McpJsonTransport,
   McpServerConfigSchema,
   McpServerIdSchema,
   McpServerNameSchema,
@@ -59,7 +60,7 @@ export type TestMcpConnectionDto = Static<typeof TestMcpConnectionDtoSchema>;
 const McpJsonServerSchema = Type.Union([
   Type.Object(
     {
-      type: Type.Optional(Type.Literal(McpTransport.STDIO)),
+      type: Type.Optional(Type.Literal(McpJsonTransport.STDIO)),
       command: Type.String({ minLength: 1, maxLength: 4_096 }),
       args: Type.Optional(
         Type.Array(Type.String({ maxLength: 8_192, pattern: "^[^\\u0000]*$" }), {
@@ -72,8 +73,9 @@ const McpJsonServerSchema = Type.Union([
   Type.Object(
     {
       type: Type.Union([
+        Type.Literal(McpJsonTransport.HTTP),
         Type.Literal(McpTransport.STREAMABLE_HTTP),
-        Type.Literal(McpTransport.SSE),
+        Type.Literal(McpJsonTransport.SSE),
       ]),
       url: Type.String({ minLength: 1, maxLength: 2_048 }),
     },

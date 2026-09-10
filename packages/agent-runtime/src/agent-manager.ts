@@ -47,7 +47,14 @@ export interface RestoreAgentInput {
 export type StartSessionRunInput = RestoreAgentInput &
   Omit<StartRunInput, "contexts" | "systemPrompt">;
 
+export interface ExternalToolPreparationFailure {
+  displayName: string;
+  message: string;
+  source: string;
+}
+
 export interface PreparedExternalTools {
+  failures: readonly ExternalToolPreparationFailure[];
   registrations: readonly ToolRegistration[];
   release(): void;
 }

@@ -56,7 +56,10 @@ export function normalizeMcpConfig(input: unknown): McpServerConfig {
 export function normalizeMcpName(value: string): string {
   const name = value.trim();
   if (!Value.Check(McpServerNameSchema, name)) {
-    throw new McpError(McpErrorCode.INVALID_CONFIG, "MCP 名称须为 1–100 个字符且不含控制字符");
+    throw new McpError(
+      McpErrorCode.INVALID_CONFIG,
+      "MCP 服务器 ID 须为 1–100 个字符且不含控制字符",
+    );
   }
   return name;
 }

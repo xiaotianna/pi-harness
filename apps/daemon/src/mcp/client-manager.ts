@@ -7,7 +7,7 @@ import { maintainMcpListSubscription } from "./list-subscription.js";
 
 const MAX_CLIENT_INSTANCES = 32;
 const IDLE_TIMEOUT_MS = 60_000;
-const CONNECT_TIMEOUT_MS = 15_000;
+const CONNECT_TIMEOUT_MS = 30_000;
 
 export interface McpConnectionContext {
   ownerId: string;
@@ -118,9 +118,8 @@ export class McpClientManager {
         if (capturedEntry.idleTimer !== undefined) clearTimeout(capturedEntry.idleTimer);
       };
       client.onerror = () => {
-        void this.closeEntry(key, capturedEntry).catch(() => {
-          this.onCloseError(new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 异常连接清理失败"));
-        });
+        // SDK 的 onerror 也用于报告非致命协议异常；连接关闭由 onclose 统一回收。
+        this.onCloseError(new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 协议出现非致命错误"));
       };
     }
     if (entry.idleTimer !== undefined) {

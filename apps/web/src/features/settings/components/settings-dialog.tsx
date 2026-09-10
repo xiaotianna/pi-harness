@@ -8,7 +8,6 @@ import {
   Folder,
   Display as Monitor,
   Moon,
-  PlugConnection,
   Sliders as Settings2,
   ShoppingBag as Store,
   Sun,
@@ -26,6 +25,7 @@ import {
   ToggleButtonGroup,
   toast,
 } from "@heroui/react";
+import { MCP } from "@lobehub/icons";
 import {
   OutputDetail,
   ReasoningSummary,
@@ -74,6 +74,10 @@ export type ArchivedConversationsState =
       }[];
     };
 
+function McpNavigationIcon({ className }: SVGProps<SVGSVGElement>) {
+  return <MCP aria-hidden className={className} size={16} />;
+}
+
 const SETTINGS_SECTIONS = [
   {
     id: "general",
@@ -103,7 +107,7 @@ const SETTINGS_SECTIONS = [
     id: "mcp",
     label: "MCP 服务器",
     description: "连接外部 MCP 服务器并管理全局授权。",
-    icon: PlugConnection,
+    icon: McpNavigationIcon,
   },
   {
     id: "skills",

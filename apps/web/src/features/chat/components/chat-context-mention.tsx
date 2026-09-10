@@ -1,9 +1,10 @@
 import { File, FolderOpen, Picture as ImageIcon } from "@gravity-ui/icons";
+import { MCP } from "@lobehub/icons";
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 import { FileIconRender } from "../../../components/ui/file-icon-render";
 import { ChatComposerTokenKind } from "./chat-composer-editor";
 
-const CONTEXT_MENTION_PATTERN = /\[\[(file|folder|image):([^|\]]+)\|([^\]]+)\]\]/g;
+const CONTEXT_MENTION_PATTERN = /\[\[(file|folder|image|mcp):([^|\]]+)\|([^\]]+)\]\]/g;
 
 interface ContextMentionChildProps {
   children?: ReactNode;
@@ -12,17 +13,21 @@ interface ContextMentionChildProps {
 
 function ContextMention({ kind, label }: { kind: string; label: string }) {
   const colorClassName =
-    kind === ChatComposerTokenKind.IMAGE
-      ? "text-[var(--chat-token-image)]"
-      : kind === ChatComposerTokenKind.FOLDER
-        ? "text-[var(--chat-token-folder)]"
-        : "text-[var(--chat-token-file)]";
+    kind === ChatComposerTokenKind.MCP
+      ? "text-[var(--chat-token-mcp)]"
+      : kind === ChatComposerTokenKind.IMAGE
+        ? "text-[var(--chat-token-image)]"
+        : kind === ChatComposerTokenKind.FOLDER
+          ? "text-[var(--chat-token-folder)]"
+          : "text-[var(--chat-token-file)]";
 
   return (
     <span
       className={`inline-flex h-[1lh] items-baseline gap-1 align-baseline font-medium leading-[inherit] ${colorClassName}`}
     >
-      {kind === ChatComposerTokenKind.FOLDER ? (
+      {kind === ChatComposerTokenKind.MCP ? (
+        <MCP aria-hidden className="size-[1em] shrink-0 self-center" />
+      ) : kind === ChatComposerTokenKind.FOLDER ? (
         <FolderOpen aria-hidden className="size-[1em] shrink-0 self-center" />
       ) : kind === ChatComposerTokenKind.IMAGE ? (
         <ImageIcon aria-hidden className="size-[1em] shrink-0 self-center" />

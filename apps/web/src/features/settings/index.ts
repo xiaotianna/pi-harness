@@ -1,4 +1,6 @@
 export { appSettingsQueryKeys } from "./api/app-settings-queries";
+export type { McpServer } from "./api/mcp-api";
+export { mcpServersQueryOptions } from "./api/mcp-queries";
 export { ApprovalPolicySelect } from "./components/approval-policy-select";
 export {
   type ArchivedConversationsState,

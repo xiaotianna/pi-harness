@@ -3,10 +3,10 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestMcpConnectionDto } from "../dto/mcp-dto.js";
-import type { McpClientManager } from "../mcp/client-manager.js";
-import type { McpDiscovery } from "../mcp/discovery.js";
+import type { McpClientManager, McpConnectionContext } from "../mcp/client-manager.js";
+import type { McpCatalog, McpDiscovery } from "../mcp/discovery.js";
 import { McpError, McpErrorCode } from "../mcp/errors.js";
-import { redactMcpText } from "../mcp/utils/credential-redaction.js";
+import { redactMcpText, redactMcpValue } from "../mcp/utils/credential-redaction.js";
 import type { McpDiagnosticsVo } from "../vo/mcp-vo.js";
 import type { McpServerService } from "./mcp-server-service.js";
 
@@ -22,6 +22,80 @@ export class McpDiagnosticsService {
     input: TestMcpConnectionDto,
     signal: AbortSignal,
   ): Promise<McpDiagnosticsVo> {
+    const { catalog, context, durationMs } = await this.inspect(serverId, input, signal);
+    const redact = (text: string) => redactMcpText(text, context.credential);
+    const redactValue = (value: unknown) => redactMcpValue(value, context.credential);
+    return {
+      serverId,
+      configRevision: context.server.revision,
+      protocolEra: catalog.protocolEra,
+      serverName: redact(catalog.serverName).slice(0, 512),
+      serverVersion: redact(catalog.serverVersion).slice(0, 128),
+      serverInfo: redactValue(catalog.serverInfo),
+      ...(catalog.instructions
+        ? { instructions: redact(catalog.instructions).slice(0, 65_536) }
+        : {}),
+      capabilities: redactValue(catalog.capabilities),
+      durationMs,
+      discoveredAt: catalog.discoveredAt,
+      tools: catalog.tools.map((tool) => ({
+        name: redact(tool.name).slice(0, 512),
+        ...(typeof tool.title === "string" ? { title: redact(tool.title).slice(0, 512) } : {}),
+        description: redact(tool.description ?? "").slice(0, 4096),
+        inputSchema: redactValue(tool.inputSchema),
+        ...(tool.outputSchema === undefined
+          ? {}
+          : { outputSchema: redactValue(tool.outputSchema) }),
+        raw: redactValue(tool),
+      })),
+      resources: catalog.resources.map((resource) => ({
+        name: redact(resource.name).slice(0, 512),
+        ...(typeof resource.title === "string"
+          ? { title: redact(resource.title).slice(0, 512) }
+          : {}),
+        description: redact(resource.description ?? "").slice(0, 4096),
+        uri: redact(resource.uri).slice(0, 8192),
+        ...(typeof resource.mimeType === "string"
+          ? { mimeType: redact(resource.mimeType).slice(0, 512) }
+          : {}),
+        ...(typeof resource.size === "number" ? { size: resource.size } : {}),
+        raw: redactValue(resource),
+      })),
+      resourceTemplates: catalog.resourceTemplates.map((template) => ({
+        name: redact(template.name).slice(0, 512),
+        ...(typeof template.title === "string"
+          ? { title: redact(template.title).slice(0, 512) }
+          : {}),
+        description: redact(template.description ?? "").slice(0, 4096),
+        uriTemplate: redact(template.uriTemplate).slice(0, 8192),
+        ...(typeof template.mimeType === "string"
+          ? { mimeType: redact(template.mimeType).slice(0, 512) }
+          : {}),
+        raw: redactValue(template),
+      })),
+      prompts: catalog.prompts.map((prompt) => ({
+        name: redact(prompt.name).slice(0, 512),
+        ...(typeof prompt.title === "string" ? { title: redact(prompt.title).slice(0, 512) } : {}),
+        description: redact(prompt.description ?? "").slice(0, 4096),
+        arguments: (prompt.arguments ?? []).map((argument) => ({
+          name: redact(argument.name).slice(0, 512),
+          description: redact(argument.description ?? "").slice(0, 4096),
+          required: argument.required ?? false,
+        })),
+        raw: redactValue(prompt),
+      })),
+    };
+  }
+
+  private async inspect(
+    serverId: string,
+    input: TestMcpConnectionDto,
+    signal: AbortSignal,
+  ): Promise<{
+    catalog: McpCatalog;
+    context: McpConnectionContext;
+    durationMs: number;
+  }> {
     const startedAt = performance.now();
     signal.throwIfAborted();
     const ownerId = `diagnostics:${randomUUID()}`;
@@ -40,25 +114,11 @@ export class McpDiagnosticsService {
       try {
         const catalog = await this.discovery.discover(lease, signal, true);
         this.servers.verifyContext(context);
-        const redact = (text: string) => redactMcpText(text, context.credential);
+        const durationMs = Math.round(performance.now() - startedAt);
         return {
-          serverId,
-          configRevision: context.server.revision,
-          protocolEra: catalog.protocolEra,
-          serverName: redact(catalog.serverName).slice(0, 512),
-          serverVersion: redact(catalog.serverVersion).slice(0, 128),
-          durationMs: Math.round(performance.now() - startedAt),
-          discoveredAt: catalog.discoveredAt,
-          tools: catalog.tools.map((tool) => ({
-            name: redact(tool.name).slice(0, 512),
-            description: redact(tool.description ?? "").slice(0, 4096),
-          })),
-          prompts: catalog.prompts.map((prompt) => ({
-            name: redact(prompt.name).slice(0, 512),
-            description: redact(prompt.description ?? "").slice(0, 4096),
-          })),
-          resourceCount: catalog.resources.length,
-          resourceTemplateCount: catalog.resourceTemplates.length,
+          catalog,
+          context,
+          durationMs,
         };
       } finally {
         lease.release();

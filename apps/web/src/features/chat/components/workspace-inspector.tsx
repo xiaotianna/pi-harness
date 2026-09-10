@@ -185,7 +185,9 @@ export const WorkspaceInspector = memo(function WorkspaceInspector({
             </Alert.Content>
           </Alert>
         ) : (
-          <Spinner aria-label="正在加载文件变更" />
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <Spinner aria-label="正在加载文件变更" />
+          </div>
         )
       ) : files.length === 0 ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">

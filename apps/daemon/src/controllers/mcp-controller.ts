@@ -83,22 +83,26 @@ export class McpController {
     request: FastifyRequest<{ Params: McpServerParamsDto; Body: TestMcpConnectionDto }>,
     reply: FastifyReply,
   ) =>
-    this.respond(request, reply, async () => {
-      const controller = new AbortController();
-      const abort = () => {
-        if (!reply.raw.writableEnded) controller.abort();
-      };
-      reply.raw.once("close", abort);
-      try {
-        return await this.diagnostics.test(
-          request.params.serverId,
-          request.body,
-          AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
-        );
-      } finally {
-        reply.raw.off("close", abort);
-      }
-    });
+    this.respond(request, reply, () =>
+      this.withDiagnosticSignal(reply, (signal) =>
+        this.diagnostics.test(request.params.serverId, request.body, signal),
+      ),
+    );
+  private async withDiagnosticSignal<T>(
+    reply: FastifyReply,
+    operation: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController();
+    const abort = () => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    reply.raw.once("close", abort);
+    try {
+      return await operation(AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]));
+    } finally {
+      reply.raw.off("close", abort);
+    }
+  }
 
   private async respond<T>(
     request: FastifyRequest,

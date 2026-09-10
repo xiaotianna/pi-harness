@@ -12,15 +12,19 @@ import type { McpConnectionContext } from "../mcp/client-manager.js";
 import { McpError, McpErrorCode } from "../mcp/errors.js";
 import { createMcpServerRecord } from "../mcp/utils/create-server-record.js";
 import { normalizeMcpConfig, normalizeMcpName } from "../mcp/utils/server-config.js";
+import { reserveUniqueMcpName } from "../mcp/utils/unique-server-name.js";
 import {
   McpAuthMode,
   McpIsolationMode,
+  McpJsonTransport,
   type McpServerRecord,
   McpTransport,
 } from "../schemas/mcp.js";
 import type { McpCredentialStore } from "../storage/mcp-credential-store.js";
 import type { McpServerRepository } from "../storage/mcp-server-repository.js";
 import type { McpServerVo } from "../vo/mcp-vo.js";
+
+const MAX_MCP_SERVERS = 1_000;
 
 export class McpServerService {
   private mutationChain: Promise<void> = Promise.resolve();
@@ -34,7 +38,10 @@ export class McpServerService {
   ) {}
 
   public list(): readonly McpServerVo[] {
-    return this.repository.list().map((record) => this.toVo(record));
+    const trustedServerIds = new Set(this.repository.listTrustedServerIds());
+    return this.repository
+      .list()
+      .map((record) => this.toVo(record, trustedServerIds.has(record.id)));
   }
 
   public get(serverId: string): McpServerVo {
@@ -43,25 +50,40 @@ export class McpServerService {
 
   public create(input: CreateMcpServerDto): Promise<McpServerVo> {
     return this.mutate(async () => {
-      if (this.repository.list().length >= 256) {
+      const servers = this.repository.list();
+      if (servers.length >= MAX_MCP_SERVERS) {
         throw new McpError(McpErrorCode.LIMIT_EXCEEDED, "MCP 服务数量达到上限");
       }
-      const record = createMcpServerRecord(input);
+      const name = reserveUniqueMcpName(input.name, new Set(servers.map((server) => server.name)));
+      const record = createMcpServerRecord({ ...input, name });
       this.repository.create(record);
       return this.toVo(record);
     });
   }
 
   public previewImport(input: ImportMcpServersDto): McpJsonDto {
-    return this.toMcpJson(this.normalizeImport(input));
+    const names = new Set(this.repository.list().map((server) => server.name));
+    return this.toMcpJson(
+      this.normalizeImport(input).map((server) => ({
+        ...server,
+        name: reserveUniqueMcpName(server.name, names),
+      })),
+    );
   }
 
   public importServers(input: ImportMcpServersDto): Promise<readonly McpServerVo[]> {
     return this.mutate(async () => {
       const normalized = this.normalizeImport(input);
-      if (this.repository.list().length + normalized.length > 256)
+      const servers = this.repository.list();
+      if (servers.length + normalized.length > MAX_MCP_SERVERS)
         throw new McpError(McpErrorCode.LIMIT_EXCEEDED, "MCP 服务数量达到上限");
-      const records = normalized.map(createMcpServerRecord);
+      const names = new Set(servers.map((server) => server.name));
+      const records = normalized.map((server) =>
+        createMcpServerRecord({
+          ...server,
+          name: reserveUniqueMcpName(server.name, names),
+        }),
+      );
       this.repository.createMany(records);
       return records.map((record) => this.toVo(record));
     });
@@ -92,7 +114,8 @@ export class McpServerService {
               compatibility: { roots: false, sampling: false, logging: false },
             }
           : {
-              transport: server.type,
+              transport:
+                server.type === McpJsonTransport.HTTP ? McpTransport.STREAMABLE_HTTP : server.type,
               url: server.url,
               authMode: McpAuthMode.NONE,
               allowedOrigins: [],
@@ -110,8 +133,18 @@ export class McpServerService {
         servers.map(({ name, config }) => [
           name,
           config.transport === McpTransport.STDIO
-            ? { command: config.command, args: config.args }
-            : { type: config.transport, url: config.url },
+            ? {
+                type: McpJsonTransport.STDIO,
+                command: config.command,
+                args: config.args,
+              }
+            : {
+                type:
+                  config.transport === McpTransport.STREAMABLE_HTTP
+                    ? McpJsonTransport.HTTP
+                    : config.transport,
+                url: config.url,
+              },
         ]),
       ),
     };
@@ -121,7 +154,15 @@ export class McpServerService {
     return this.mutate(async () => {
       const current = this.requireRevision(serverId, input.expectedRevision);
       const config = normalizeMcpConfig(input.config);
-      const name = normalizeMcpName(input.name);
+      const name = reserveUniqueMcpName(
+        input.name,
+        new Set(
+          this.repository
+            .list()
+            .filter((server) => server.id !== serverId)
+            .map((server) => server.name),
+        ),
+      );
       this.repository.revokeTrust(serverId);
       await this.invalidateServer(serverId);
       // 先撤销敏感状态再提交新地址，存储失败时不会把旧 Token 发给新服务。
@@ -281,11 +322,14 @@ export class McpServerService {
     return server;
   }
 
-  private toVo(record: McpServerRecord): McpServerVo {
+  private toVo(
+    record: McpServerRecord,
+    isTrusted = this.repository.isTrusted(record.id, record.revision),
+  ): McpServerVo {
     return {
       ...record,
       hasCredential: this.credentials.read(record.id) !== undefined,
-      isTrusted: this.repository.isTrusted(record.id, record.revision),
+      isTrusted,
     };
   }
 

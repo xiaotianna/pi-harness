@@ -9,6 +9,7 @@ import {
   Terminal,
   Wrench,
 } from "@gravity-ui/icons";
+import { MCP } from "@lobehub/icons";
 import type { ComponentType, SVGProps } from "react";
 
 type ToolIconComponent = ComponentType<SVGProps<SVGSVGElement>>;
@@ -58,6 +59,9 @@ function resolveToolIcon(toolName: string): ToolIconComponent {
 }
 
 export function ToolIcon({ className, toolName }: { className?: string; toolName: string }) {
+  if (toolName.trim().toLowerCase().startsWith("mcp_")) {
+    return <MCP aria-hidden className={className} />;
+  }
   const Icon = resolveToolIcon(toolName);
   return <Icon aria-hidden className={className} />;
 }

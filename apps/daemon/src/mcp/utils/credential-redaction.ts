@@ -19,3 +19,14 @@ export function redactMcpText(text: string, credential?: McpCredential): string 
   for (const secret of secrets) result = result.replaceAll(secret, "[REDACTED]");
   return result;
 }
+
+export function redactMcpValue(value: unknown, credential?: McpCredential): unknown {
+  if (typeof value === "string") return redactMcpText(value, credential);
+  if (Array.isArray(value)) return value.map((item) => redactMcpValue(item, credential));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, redactMcpValue(item, credential)]),
+    );
+  }
+  return value;
+}

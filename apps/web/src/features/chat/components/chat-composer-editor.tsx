@@ -2,6 +2,7 @@
 
 import { File, FolderOpen, Picture as ImageIcon, ListCheck } from "@gravity-ui/icons";
 import { Header, ListBox, ListLayout, Surface, Virtualizer } from "@heroui/react";
+import { MCP } from "@lobehub/icons";
 import { type Editor, type JSONContent, mergeAttributes, Node } from "@tiptap/core";
 import {
   EditorContent,
@@ -31,6 +32,7 @@ export const ChatComposerTokenKind = {
   FILE: "file",
   FOLDER: "folder",
   IMAGE: "image",
+  MCP: "mcp",
   PLAN: "plan",
   SKILL: "skill",
 } as const;
@@ -79,7 +81,7 @@ interface SuggestionMenuState {
   trigger: "/" | "@";
 }
 
-const TOKEN_PATTERN = /\[\[(file|folder|image|plan|skill):([^|\]]+)\|([^\]]+)\]\]/g;
+const TOKEN_PATTERN = /\[\[(file|folder|image|mcp|plan|skill):([^|\]]+)\|([^\]]+)\]\]/g;
 const SUGGESTION_MENU_GAP = 8;
 const SUGGESTION_MENU_HORIZONTAL_PADDING = 12;
 const SUGGESTION_MENU_MAX_HEIGHT = 336;
@@ -117,6 +119,10 @@ const TOKEN_VISUAL_STRATEGIES = {
     icon: ImageIcon,
     selectedClassName: "bg-[var(--chat-token-image-soft)]",
   },
+  [ChatComposerTokenKind.MCP]: {
+    colorClassName: "text-[var(--chat-token-mcp)]",
+    selectedClassName: "bg-[var(--chat-token-mcp-soft)]",
+  },
   [ChatComposerTokenKind.SKILL]: {
     colorClassName: "text-[var(--chat-token-skill)]",
     selectedClassName: "bg-[var(--chat-token-skill-soft)]",
@@ -126,6 +132,7 @@ const TOKEN_VISUAL_STRATEGIES = {
 const tokenGroups = [
   { kind: ChatComposerTokenKind.PLAN, label: "指令" },
   { kind: ChatComposerTokenKind.SKILL, label: "Skills" },
+  { kind: ChatComposerTokenKind.MCP, label: "MCP" },
   { kind: ChatComposerTokenKind.IMAGE, label: "图片" },
   { kind: ChatComposerTokenKind.FILE, label: "文件" },
   { kind: ChatComposerTokenKind.FOLDER, label: "文件夹" },
@@ -147,6 +154,9 @@ const ComposerTokensContext = createContext<readonly ChatComposerToken[]>([]);
 
 function TokenVisualIcon({ className, token }: { className: string; token: ChatComposerToken }) {
   const tokens = useContext(ComposerTokensContext);
+  if (token.kind === ChatComposerTokenKind.MCP) {
+    return <MCP aria-hidden className={className} />;
+  }
   if (token.kind === ChatComposerTokenKind.SKILL) {
     const icon = tokens.find((item) => item.kind === token.kind && item.id === token.id)?.icon;
     return <SkillIcon className={className} icon={icon ?? token.icon ?? null} />;
@@ -694,7 +704,7 @@ export const ChatComposerEditor = forwardRef<ChatComposerEditorHandle, ChatCompo
                       aria-label={
                         suggestionMenu.trigger === "@"
                           ? "添加图片、文件或文件夹上下文"
-                          : "插入指令或 Skill"
+                          : "插入指令、Skill 或 MCP"
                       }
                       className="min-h-0 overflow-y-auto"
                       items={groupedSuggestionItems}

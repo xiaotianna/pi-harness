@@ -30,7 +30,9 @@ import {
   toast,
   useMediaQuery,
 } from "@heroui/react";
+import { MCP } from "@lobehub/icons";
 import type { HarnessEvent } from "@pi-harness/agent-runtime/harness-event";
+import { McpTransport } from "@pi-harness/agent-runtime/mcp-contract";
 import {
   DEFAULT_THINKING_LEVEL,
   resolveThinkingLevel,
@@ -57,7 +59,7 @@ import {
   THINKING_LEVEL_OPTIONS,
   useModelSettingsStore,
 } from "../../models";
-import { ApprovalPolicySelect, useAppSettings } from "../../settings";
+import { ApprovalPolicySelect, mcpServersQueryOptions, useAppSettings } from "../../settings";
 import { SkillIcon, skillListQueryOptions } from "../../skills";
 import { workspaceContextItemsQueryOptions } from "../api/workspace-queries";
 import type { ChatWorkspace } from "../data/chat";
@@ -264,9 +266,9 @@ export function ChatComposer({
     return [planToken, skillToken, initialPrompt].filter(Boolean).join(" ");
   }, [initialPrompt, initialSkillLabel, initialSkillName, modeProp]);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const [expandedMobileAddMenuSection, setExpandedMobileAddMenuSection] = useState<"skills" | null>(
-    null,
-  );
+  const [expandedMobileAddMenuSection, setExpandedMobileAddMenuSection] = useState<
+    "mcp" | "skills" | null
+  >(null);
   const [isMobileAddMenuOpen, setIsMobileAddMenuOpen] = useState(false);
   const [isAttachmentDrawerExpanded, setIsAttachmentDrawerExpanded] = useState(true);
   const [internalStatus, setInternalStatus] = useState<ChatStatus>("ready");
@@ -312,12 +314,29 @@ export function ChatComposer({
         })),
     [skillsQuery.data],
   );
+  const mcpServersQuery = useQuery(mcpServersQueryOptions());
+  const mcpOptions = useMemo(
+    () =>
+      (mcpServersQuery.data ?? [])
+        .filter((server) => server.enabled && server.isTrusted)
+        .toSorted((left, right) => left.name.localeCompare(right.name))
+        .map((server) => ({
+          description:
+            server.config.transport === McpTransport.STDIO
+              ? server.config.command
+              : server.config.url,
+          id: server.id,
+          label: server.name,
+        })),
+    [mcpServersQuery.data],
+  );
   const slashMenuItems = useMemo(
     () => [
       { ...PLAN_MODE_TOKEN, label: "Plan 模式" },
       ...skillOptions.map((option) => ({ ...option, kind: ChatComposerTokenKind.SKILL })),
+      ...mcpOptions.map((option) => ({ ...option, kind: ChatComposerTokenKind.MCP })),
     ],
-    [skillOptions],
+    [mcpOptions, skillOptions],
   );
   const attachmentsRef = useRef<PendingAttachment[]>([]);
   const attachmentDrawerId = useId();
@@ -877,6 +896,65 @@ export function ChatComposer({
                           </Disclosure.Body>
                         </Disclosure.Content>
                       </Disclosure>
+                      <Disclosure
+                        isExpanded={expandedMobileAddMenuSection === "mcp"}
+                        onExpandedChange={(isExpanded) =>
+                          setExpandedMobileAddMenuSection(isExpanded ? "mcp" : null)
+                        }
+                      >
+                        <Disclosure.Heading>
+                          <Disclosure.Trigger className="flex min-h-9 w-full items-center gap-3 rounded-2xl px-2.5 py-1.5 text-sm hover:bg-default">
+                            <MCP aria-hidden className="size-4 text-muted" />
+                            <Label>MCP</Label>
+                            <Disclosure.Indicator />
+                          </Disclosure.Trigger>
+                        </Disclosure.Heading>
+                        <Disclosure.Content>
+                          <Disclosure.Body style={{ padding: 0 }}>
+                            <ListBox
+                              aria-label="MCP"
+                              className="px-1"
+                              selectionMode="none"
+                              onAction={(key) => {
+                                handleInsertToken(ChatComposerTokenKind.MCP, mcpOptions, key);
+                                closeMobileAddMenu();
+                              }}
+                            >
+                              {mcpServersQuery.isPending ? (
+                                <ListBox.Item id="mcp-loading" isDisabled>
+                                  <Label>正在加载 MCP...</Label>
+                                </ListBox.Item>
+                              ) : mcpServersQuery.isError ? (
+                                <ListBox.Item id="mcp-error" isDisabled>
+                                  <Label>MCP 加载失败</Label>
+                                </ListBox.Item>
+                              ) : mcpOptions.length === 0 ? (
+                                <ListBox.Item id="mcp-empty" isDisabled>
+                                  <Label>暂无可用 MCP</Label>
+                                </ListBox.Item>
+                              ) : (
+                                mcpOptions.map((option) => (
+                                  <ListBox.Item
+                                    key={option.id}
+                                    id={option.id}
+                                    textValue={option.label}
+                                  >
+                                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                                      <MCP aria-hidden className="size-4 shrink-0 text-muted" />
+                                      <div className="flex min-w-0 flex-1 flex-col">
+                                        <Label>{option.label}</Label>
+                                        <Description className="max-w-72 truncate">
+                                          {option.description}
+                                        </Description>
+                                      </div>
+                                    </div>
+                                  </ListBox.Item>
+                                ))
+                              )}
+                            </ListBox>
+                          </Disclosure.Body>
+                        </Disclosure.Content>
+                      </Disclosure>
                     </ScrollShadow>
                   </Popover.Dialog>
                 </Popover.Content>
@@ -952,6 +1030,53 @@ export function ChatComposer({
                                   <span className="shrink-0 text-sm text-muted">
                                     {option.scopeLabel}
                                   </span>
+                                </div>
+                              </Dropdown.Item>
+                            ))
+                          )}
+                        </Dropdown.Menu>
+                      </Dropdown.Popover>
+                    </Dropdown.SubmenuTrigger>
+                    <Dropdown.SubmenuTrigger>
+                      <Dropdown.Item id="mcp" textValue="MCP">
+                        <MCP aria-hidden className="size-4 text-muted" />
+                        <Label>MCP</Label>
+                        <Dropdown.SubmenuIndicator />
+                      </Dropdown.Item>
+                      <Dropdown.Popover className="min-w-40" placement="right bottom">
+                        <Dropdown.Menu
+                          aria-label="MCP"
+                          onAction={(key) =>
+                            handleInsertToken(ChatComposerTokenKind.MCP, mcpOptions, key)
+                          }
+                        >
+                          {mcpServersQuery.isPending ? (
+                            <Dropdown.Item id="mcp-loading" isDisabled>
+                              <Label>正在加载 MCP...</Label>
+                            </Dropdown.Item>
+                          ) : mcpServersQuery.isError ? (
+                            <Dropdown.Item id="mcp-error" isDisabled>
+                              <Label>MCP 加载失败</Label>
+                            </Dropdown.Item>
+                          ) : mcpOptions.length === 0 ? (
+                            <Dropdown.Item id="mcp-empty" isDisabled>
+                              <Label>暂无可用 MCP</Label>
+                            </Dropdown.Item>
+                          ) : (
+                            mcpOptions.map((option) => (
+                              <Dropdown.Item
+                                key={option.id}
+                                id={option.id}
+                                textValue={option.label}
+                              >
+                                <div className="flex min-w-0 flex-1 items-center gap-3">
+                                  <MCP aria-hidden className="size-4 shrink-0 text-muted" />
+                                  <div className="flex min-w-0 flex-1 flex-col">
+                                    <Label>{option.label}</Label>
+                                    <Description className="max-w-72 truncate">
+                                      {option.description}
+                                    </Description>
+                                  </div>
                                 </div>
                               </Dropdown.Item>
                             ))

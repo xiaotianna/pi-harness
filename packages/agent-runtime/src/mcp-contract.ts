@@ -5,6 +5,12 @@ export const McpTransport = {
   SSE: "sse",
 } as const;
 
+export const McpJsonTransport = {
+  STDIO: "stdio",
+  HTTP: "http",
+  SSE: "sse",
+} as const;
+
 export const McpIsolationMode = {
   ISOLATED: "isolated",
   TRUSTED: "trusted",

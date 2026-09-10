@@ -47,6 +47,15 @@ export class McpStdioTransport implements Transport {
     private readonly dispose: () => Promise<void>,
   ) {}
 
+  /** SDK 通过这两个访问器识别 stdio，并在版本探测超时后回退到 initialize。 */
+  public get stderr(): ChildProcessWithoutNullStreams["stderr"] | null {
+    return this.child?.stderr ?? null;
+  }
+
+  public get pid(): number | null {
+    return this.child?.pid ?? null;
+  }
+
   public async start(): Promise<void> {
     if (this.isStarted || this.isClosed) {
       throw new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 进程不可重复启动");

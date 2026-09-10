@@ -70,6 +70,7 @@ export async function resolveMcpNetworkTarget(
       const kind = classifyNetworkAddress(address);
       return (
         kind !== NetworkAddressKind.PUBLIC &&
+        !(family === 0 && kind === NetworkAddressKind.PROXY_FAKE) &&
         !(
           kind === NetworkAddressKind.PRIVATE &&
           policy.allowPrivateNetwork &&

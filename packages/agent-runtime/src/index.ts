@@ -21,6 +21,7 @@ export {
 } from "@pi-harness/tools";
 export {
   AgentManager,
+  type ExternalToolPreparationFailure,
   type PreparedExternalTools,
   type PrepareExternalTools,
   type RestoreAgentInput,

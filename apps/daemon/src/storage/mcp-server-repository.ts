@@ -12,6 +12,7 @@ export interface McpServerRepository {
   update(record: McpServerRecord, expectedRevision: number): void;
   delete(serverId: McpServerId, expectedRevision: number): void;
   isTrusted(serverId: McpServerId, revision: number): boolean;
+  listTrustedServerIds(): readonly McpServerId[];
   trust(serverId: McpServerId, expectedRevision: number, approvedAt: number): void;
   revokeTrust(serverId: McpServerId): void;
 }
@@ -116,6 +117,18 @@ export class SqliteMcpServerRepository implements McpServerRepository {
         )
         .get(serverId, revision) !== undefined
     );
+  }
+
+  public listTrustedServerIds(): readonly McpServerId[] {
+    return this.database
+      .prepare(
+        `SELECT trust.server_id
+         FROM mcp_server_trust trust
+         JOIN mcp_servers servers ON servers.id = trust.server_id
+         WHERE servers.revision = trust.revision`,
+      )
+      .all()
+      .map((row) => String(row.server_id));
   }
 
   public trust(serverId: McpServerId, expectedRevision: number, approvedAt: number): void {
