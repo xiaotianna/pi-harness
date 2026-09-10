@@ -104,16 +104,16 @@ const SETTINGS_SECTIONS = [
     icon: Store,
   },
   {
-    id: "mcp",
-    label: "MCP 服务器",
-    description: "连接外部 MCP 服务器并管理全局授权。",
-    icon: McpNavigationIcon,
-  },
-  {
     id: "skills",
     label: "技能",
     description: "管理技能及其可用状态。",
     icon: Blocks,
+  },
+  {
+    id: "mcp",
+    label: "MCP 服务器",
+    description: "连接外部 MCP 服务器并管理全局授权。",
+    icon: McpNavigationIcon,
   },
   {
     id: "archived",

@@ -95,7 +95,14 @@ export interface SessionSnapshot {
   /** Client-only incremental state. The daemon response never includes this field. */
   eventMetadata?: SessionSnapshotEventMetadata;
   events: readonly HarnessEvent[];
+  /** Client-only messages shown until the daemon persists the submitted user messages. */
+  optimisticUserInputs?: readonly OptimisticSessionUserInput[];
   session: Session;
+}
+export interface OptimisticSessionUserInput {
+  id: string;
+  input: RunUserInput;
+  timestamp: number;
 }
 export type SessionSearchResult = Static<typeof SessionSearchResultSchema>;
 export type RunAccepted = Static<typeof RunAcceptedSchema>;

@@ -5,7 +5,9 @@ import {
   MessageDeltaKind,
 } from "@pi-harness/agent-runtime/harness-event";
 import {
+  isHarnessUserMessage,
   RequestUserInputToolName,
+  type RunUserInput,
   UserInputRequestKind,
 } from "@pi-harness/agent-runtime/user-input";
 import { isPlainObject } from "es-toolkit";
@@ -160,15 +162,50 @@ export function updateSnapshotWithEvents(
       : [...current.stableEvents, ...appendedStable];
   const eventMetadata = { changedRunIds, stableEvents, transientByKey };
   const last = accepted.at(-1);
+  const persistedUserMessageCount = accepted.filter(
+    (event) =>
+      event.type === HarnessEventType.MESSAGE_COMPLETED && isHarnessUserMessage(event.data),
+  ).length;
+  const optimisticUserInputs = snapshot.optimisticUserInputs?.slice(persistedUserMessageCount);
   return {
     eventMetadata,
     // Keep the public event array stable during token-only batches. Transient events live in
     // eventMetadata and are materialized only for consumers that explicitly need them.
     events: stableEvents,
+    ...(optimisticUserInputs?.length ? { optimisticUserInputs } : {}),
     session: {
       ...snapshot.session,
       lastSeq: last?.seq ?? snapshot.session.lastSeq,
       updatedAt: Math.max(snapshot.session.updatedAt, last?.timestamp ?? 0),
     },
   };
+}
+
+export function stageOptimisticUserInput(
+  snapshot: SessionSnapshot,
+  input: RunUserInput,
+): SessionSnapshot {
+  return {
+    ...snapshot,
+    optimisticUserInputs: [
+      ...(snapshot.optimisticUserInputs ?? []),
+      {
+        id: `optimistic-user-${crypto.randomUUID()}`,
+        input,
+        timestamp: Date.now(),
+      },
+    ],
+  };
+}
+
+export function clearOptimisticUserInput(
+  snapshot: SessionSnapshot,
+  input: RunUserInput,
+): SessionSnapshot {
+  const optimisticUserInputs = snapshot.optimisticUserInputs?.filter(
+    (item) => item.input !== input,
+  );
+  if (optimisticUserInputs?.length === snapshot.optimisticUserInputs?.length) return snapshot;
+  const { optimisticUserInputs: _, ...rest } = snapshot;
+  return optimisticUserInputs?.length ? { ...rest, optimisticUserInputs } : rest;
 }

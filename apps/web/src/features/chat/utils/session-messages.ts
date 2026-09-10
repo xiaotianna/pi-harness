@@ -19,7 +19,11 @@ import {
 import { UpdatePlanToolName, UpdateTodosToolName } from "@pi-harness/agent-runtime/working-state";
 import { isCommandPrefixRule } from "@pi-harness/policy/command-policy";
 import { isPlainObject } from "es-toolkit";
-import type { Session, SessionSnapshotEventMetadata } from "../api/session-api";
+import type {
+  OptimisticSessionUserInput,
+  Session,
+  SessionSnapshotEventMetadata,
+} from "../api/session-api";
 import { TERMINAL_RUN_EVENTS } from "../constants/session-events";
 import {
   type ChatAssistantMessage,
@@ -577,6 +581,29 @@ export function sessionEventsToMessages({
   cache.set(transientByKey, messages);
   if (!messagesByTransient) messagesByEventState.set(stableEvents, cache);
   return messages;
+}
+
+export function optimisticUserInputToMessage({
+  id,
+  input,
+  timestamp,
+}: OptimisticSessionUserInput): ChatMessage {
+  const attachments = input.attachments.map((attachment) => ({
+    mimeType: attachment.mimeType,
+    name: attachment.name,
+    size: attachment.size,
+    ...(attachment.mimeType.startsWith("image/")
+      ? { src: `data:${attachment.mimeType};base64,${attachment.data}` }
+      : {}),
+  }));
+  return {
+    ...(attachments.length === 0 ? {} : { attachments }),
+    content: input.prompt,
+    id,
+    ...(input.mode === undefined ? {} : { mode: input.mode }),
+    timestamp,
+    type: ChatMessageType.USER,
+  };
 }
 
 function projectRunMessages(

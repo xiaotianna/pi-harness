@@ -8,11 +8,17 @@ import {
   type ChatComposerSubmitInput,
 } from "@/features/chat/components/chat-composer";
 import { authSessionQueryOptions } from "../../auth";
-import { createSession, type Session, startSessionRun } from "../api/session-api";
+import {
+  createSession,
+  type Session,
+  type SessionSnapshot,
+  startSessionRun,
+} from "../api/session-api";
 import { sessionQueryKeys } from "../api/session-queries";
 import { workspaceListQueryOptions } from "../api/workspace-queries";
 import { useAddWorkspace } from "../hooks/use-add-workspace";
 import { useNewChatStore } from "../state/new-chat-store";
+import { clearOptimisticUserInput, stageOptimisticUserInput } from "../utils/session-snapshot";
 
 export function NewChatPage() {
   const router = useRouter();
@@ -38,9 +44,22 @@ export function NewChatPage() {
         { ...session, isRunning: true },
         ...(current ?? []).filter((item) => item.id !== session.id),
       ]);
+      queryClient.setQueryData<SessionSnapshot>(
+        sessionQueryKeys.detail(session.id),
+        stageOptimisticUserInput({ events: [], session }, input),
+      );
       const run = startSessionRun(session.id, input);
       router.history.push(`/${session.id}`);
-      const accepted = await run;
+      let accepted: Awaited<typeof run>;
+      try {
+        accepted = await run;
+      } catch (error: unknown) {
+        queryClient.setQueryData<SessionSnapshot>(
+          sessionQueryKeys.detail(session.id),
+          (snapshot) => (snapshot ? clearOptimisticUserInput(snapshot, input) : snapshot),
+        );
+        throw error;
+      }
       queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (current) =>
         current?.map((item) =>
           item.id === session.id ? { ...item, title: accepted.title } : item,

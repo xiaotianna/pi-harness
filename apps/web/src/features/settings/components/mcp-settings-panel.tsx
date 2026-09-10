@@ -1,14 +1,14 @@
-import { Flask, Key, LinkSlash, Plus, TrashBin, Xmark } from "@gravity-ui/icons";
+import { Flask, Key, LinkSlash, Pencil, Plus, TrashBin, Xmark } from "@gravity-ui/icons";
 import {
   Alert,
   AlertDialog,
   Button,
-  Card,
   Dropdown,
   Pagination,
   Separator,
   Skeleton,
   Switch,
+  Tooltip,
   toast,
 } from "@heroui/react";
 import {
@@ -19,11 +19,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getMcpOAuthLaunchUrl, type McpServer } from "../api/mcp-api";
 import { McpAction, useMcpServers } from "../hooks/use-mcp-servers";
-import { mcpAuthLabel, needsMcpCredential } from "../utils/mcp-auth";
+import { needsMcpCredential } from "../utils/mcp-auth";
 import { McpCredentialEditor } from "./mcp-credential-editor";
 import { McpServerDetail } from "./mcp-server-detail";
 import { McpServerEditor } from "./mcp-server-editor";
 import { McpServerIcon } from "./mcp-server-icon";
+import { SettingsCatalogItem } from "./settings-catalog-item";
 import { SettingsPanelHeader } from "./settings-panel-header";
 
 const SERVERS_PER_PAGE = 25;
@@ -192,191 +193,172 @@ export function McpSettingsPanel() {
             </Alert>
           ) : null}
           {servers.isPending ? (
-            <div aria-busy="true" className="mt-4 flex flex-col gap-3" role="status">
+            <div aria-busy="true" className="mt-4 flex flex-col gap-1" role="status">
               <span className="sr-only">正在加载 MCP 服务器</span>
-              {["first", "second"].map((item) => (
-                <Card key={item} variant="secondary">
-                  <Card.Header className="flex-row items-center gap-4">
-                    <Skeleton aria-hidden className="size-10 shrink-0 rounded-xl" />
-                    <div className="min-w-0 flex-1">
-                      <Skeleton aria-hidden className="h-5 w-28 rounded-full" />
-                      <Skeleton aria-hidden className="mt-2 h-4 w-48 rounded-full" />
-                    </div>
-                    <Skeleton aria-hidden className="h-6 w-14 rounded-full" />
-                  </Card.Header>
-                </Card>
+              {["first", "second", "third"].map((item) => (
+                <div className="flex min-h-16 items-center gap-3 px-3 py-2" key={item}>
+                  <Skeleton aria-hidden className="size-10 shrink-0 rounded-xl" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton aria-hidden className="h-5 w-32 rounded-lg" />
+                    <Skeleton aria-hidden className="h-4 w-full rounded-lg" />
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Skeleton aria-hidden className="h-6 w-10 rounded-full" />
+                    <Skeleton aria-hidden className="size-8 rounded-xl" />
+                    <Skeleton aria-hidden className="h-8 w-14 rounded-xl" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : servers.data?.length === 0 ? (
             <p className="py-12 text-center text-sm text-muted">暂无 MCP 服务器，添加后即可连接</p>
           ) : (
-            <div className="mt-4 flex flex-col gap-3">
-              {visibleServers.map((server) => {
-                const result = results.get(server.id);
-                const serverIcons =
-                  result?.configRevision === server.revision ? result.serverInfo.icons : undefined;
-                const pendingAction = pendingActions.get(server.id);
-                const isBusy = pendingAction !== undefined;
-                const isConnectionPending =
-                  pendingAction === McpAction.DISCOVER ||
-                  pendingAction === McpAction.TEST ||
-                  pendingAction === McpAction.CONNECT;
-                const pendingConnectionLabel =
-                  pendingAction === McpAction.DISCOVER
-                    ? "取消加载"
-                    : pendingAction === McpAction.CONNECT
-                      ? "取消连接"
-                      : "取消测试";
-                const endpoint =
-                  server.config.transport === McpTransport.STDIO
-                    ? server.config.command
-                    : server.config.url;
-                const needsCredential = needsMcpCredential(server);
-                const needsOAuth =
-                  !server.hasCredential && server.authRequirement === McpAuthRequirement.OAUTH;
-                const canAuthorize = needsOAuth && server.enabled;
-                const needsConnection = server.enabled && !server.isTrusted && !needsOAuth;
-                const canEditCredential =
-                  server.config.transport === McpTransport.STDIO ||
-                  server.config.authMode !== McpAuthMode.OAUTH;
-                const canManageOAuth =
-                  server.enabled &&
-                  server.config.transport !== McpTransport.STDIO &&
-                  (server.config.authMode === McpAuthMode.OAUTH ||
-                    server.authRequirement === McpAuthRequirement.OAUTH);
-                const openDetails = () => {
-                  setSelectedServerId(server.id);
-                };
-                const cancelConnection = () => {
-                  cancelTest(server.id);
-                };
-                return (
-                  <Card
-                    key={server.id}
-                    aria-label={server.name}
-                    className="hover:bg-default"
-                    variant="secondary"
-                  >
-                    <Card.Header className="flex-row items-center gap-4">
-                      <Button
-                        className="h-auto min-w-0 flex-1 justify-start gap-4 p-0 text-start hover:bg-transparent data-[hovered]:bg-transparent data-[pressed]:bg-transparent"
-                        variant="ghost"
-                        onPress={openDetails}
-                      >
-                        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-default">
-                          <McpServerIcon endpoint={endpoint} icons={serverIcons} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block break-all text-base font-medium text-foreground">
-                            {server.name}
+            <div className="mt-4">
+              <ul aria-label="MCP 服务器列表" className="flex flex-col gap-1">
+                {visibleServers.map((server) => {
+                  const result = results.get(server.id);
+                  const serverIcons =
+                    result?.configRevision === server.revision
+                      ? result.serverInfo.icons
+                      : undefined;
+                  const pendingAction = pendingActions.get(server.id);
+                  const isBusy = pendingAction !== undefined;
+                  const isConnectionPending =
+                    pendingAction === McpAction.DISCOVER ||
+                    pendingAction === McpAction.TEST ||
+                    pendingAction === McpAction.CONNECT;
+                  const pendingConnectionLabel =
+                    pendingAction === McpAction.DISCOVER
+                      ? "取消加载"
+                      : pendingAction === McpAction.CONNECT
+                        ? "取消连接"
+                        : "取消测试";
+                  const endpoint =
+                    server.config.transport === McpTransport.STDIO
+                      ? server.config.command
+                      : server.config.url;
+                  const needsCredential = needsMcpCredential(server);
+                  const needsOAuth =
+                    !server.hasCredential && server.authRequirement === McpAuthRequirement.OAUTH;
+                  const needsConnection = server.enabled && !server.isTrusted && !needsOAuth;
+                  const canEditCredential =
+                    server.config.transport === McpTransport.STDIO ||
+                    server.config.authMode !== McpAuthMode.OAUTH;
+                  const canManageOAuth =
+                    server.enabled &&
+                    server.config.transport !== McpTransport.STDIO &&
+                    (server.config.authMode === McpAuthMode.OAUTH ||
+                      server.authRequirement === McpAuthRequirement.OAUTH);
+                  const mainAction = isConnectionPending
+                    ? "cancel"
+                    : needsOAuth
+                      ? "oauth"
+                      : needsCredential
+                        ? "credentials"
+                        : needsConnection
+                          ? "connect"
+                          : "test";
+                  const mainActionLabel =
+                    mainAction === "cancel"
+                      ? pendingConnectionLabel
+                      : mainAction === "oauth"
+                        ? "OAuth 授权"
+                        : mainAction === "credentials"
+                          ? "设置凭据"
+                          : mainAction === "connect"
+                            ? "连接服务器"
+                            : "测试连接";
+                  return (
+                    <SettingsCatalogItem
+                      action={
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="hidden text-sm text-muted @xl/settings:inline">
+                            {!server.enabled
+                              ? "未启用"
+                              : needsCredential
+                                ? "待鉴权"
+                                : server.isTrusted
+                                  ? "已启用"
+                                  : "待连接"}
                           </span>
-                          <span className="mt-1 block break-all text-sm text-muted">
-                            {endpoint}
-                          </span>
-                        </span>
-                      </Button>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-sm text-muted">
-                          {!server.enabled
-                            ? "未启用"
-                            : needsCredential
-                              ? "待鉴权"
-                              : server.isTrusted
-                                ? "已启用"
-                                : "待连接"}
-                        </span>
-                        <Switch
-                          aria-label={`${server.name} 启用状态`}
-                          isDisabled={isBusy}
-                          isSelected={server.enabled}
-                          size="sm"
-                          onChange={(isEnabled) => {
-                            if (!isEnabled) {
-                              run(server, McpAction.DISABLE);
-                              return;
-                            }
-                            if (server.isTrusted) {
-                              run(server, McpAction.ENABLE);
-                              return;
-                            }
-                            setDialog({ kind: "confirm", action: McpAction.CONNECT, server });
-                          }}
-                        >
-                          <Switch.Content>
-                            <Switch.Control>
-                              <Switch.Thumb />
-                            </Switch.Control>
-                          </Switch.Content>
-                        </Switch>
-                      </div>
-                    </Card.Header>
-                    <Card.Content className="mt-4 flex flex-col gap-4">
-                      {needsCredential ? (
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                          <Key aria-hidden className="size-3.5 shrink-0" />
-                          <span>{mcpAuthLabel(server)}</span>
-                          {!needsOAuth ? (
-                            <Button
-                              size="sm"
-                              variant="tertiary"
-                              onPress={() => setDialog({ kind: "credentials", server })}
-                            >
-                              设置凭据
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      <div className="flex items-center justify-between gap-4">
-                        <Button
-                          size="sm"
-                          variant={
-                            isConnectionPending
-                              ? "tertiary"
-                              : canAuthorize || needsConnection
-                                ? "primary"
-                                : "secondary"
-                          }
-                          isDisabled={!isConnectionPending && (isBusy || !server.enabled)}
-                          onPress={() => {
-                            if (isConnectionPending) {
-                              cancelConnection();
-                              return;
-                            }
-                            if (canAuthorize) {
-                              authorize(server);
-                              return;
-                            }
-                            if (needsConnection) {
-                              setDialog({ kind: "confirm", action: McpAction.CONNECT, server });
-                              return;
-                            }
-                            run(server, McpAction.TEST);
-                          }}
-                        >
-                          {isConnectionPending ? (
-                            <Xmark aria-hidden className="size-4" />
-                          ) : canAuthorize ? (
-                            <Key aria-hidden className="size-4" />
-                          ) : needsConnection ? null : (
-                            <Flask aria-hidden className="size-4" />
-                          )}
-                          {isConnectionPending
-                            ? pendingConnectionLabel
-                            : canAuthorize
-                              ? "OAuth 授权"
-                              : needsConnection
-                                ? "连接服务器"
-                                : "测试连接"}
-                        </Button>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="tertiary"
+                          <Switch
+                            aria-label={`${server.name} 启用状态`}
                             isDisabled={isBusy}
-                            onPress={() => setDialog({ kind: "edit", server })}
+                            isSelected={server.enabled}
+                            size="sm"
+                            onChange={(isEnabled) => {
+                              if (!isEnabled) {
+                                run(server, McpAction.DISABLE);
+                                return;
+                              }
+                              if (server.isTrusted) {
+                                run(server, McpAction.ENABLE);
+                                return;
+                              }
+                              setDialog({
+                                kind: "confirm",
+                                action: McpAction.CONNECT,
+                                server,
+                              });
+                            }}
                           >
-                            编辑
-                          </Button>
+                            <Switch.Content>
+                              <Switch.Control>
+                                <Switch.Thumb />
+                              </Switch.Control>
+                            </Switch.Content>
+                          </Switch>
+                          <Tooltip delay={0} isDisabled={mainAction !== "test"}>
+                            <Button
+                              aria-label={mainActionLabel}
+                              isIconOnly={mainAction === "test"}
+                              size="sm"
+                              variant={
+                                mainAction === "cancel"
+                                  ? "tertiary"
+                                  : mainAction === "oauth" || mainAction === "connect"
+                                    ? "primary"
+                                    : "secondary"
+                              }
+                              isDisabled={
+                                mainAction !== "cancel" &&
+                                (isBusy || (mainAction !== "credentials" && !server.enabled))
+                              }
+                              onPress={() => {
+                                if (mainAction === "cancel") {
+                                  cancelTest(server.id);
+                                  return;
+                                }
+                                if (mainAction === "oauth") {
+                                  authorize(server);
+                                  return;
+                                }
+                                if (mainAction === "credentials") {
+                                  setDialog({ kind: "credentials", server });
+                                  return;
+                                }
+                                if (mainAction === "connect") {
+                                  setDialog({
+                                    kind: "confirm",
+                                    action: McpAction.CONNECT,
+                                    server,
+                                  });
+                                  return;
+                                }
+                                run(server, McpAction.TEST);
+                              }}
+                            >
+                              {mainAction === "cancel" ? (
+                                <Xmark aria-hidden className="size-4" />
+                              ) : mainAction === "oauth" || mainAction === "credentials" ? (
+                                <Key aria-hidden className="size-4" />
+                              ) : mainAction === "test" ? (
+                                <Flask aria-hidden className="size-4" />
+                              ) : null}
+                              {mainAction === "test" ? null : mainActionLabel}
+                            </Button>
+                            <Tooltip.Content>测试连接</Tooltip.Content>
+                          </Tooltip>
                           <Dropdown>
                             <Button isDisabled={isBusy} size="sm" variant="tertiary">
                               更多
@@ -388,6 +370,8 @@ export function McpSettingsPanel() {
                               <Dropdown.Menu
                                 aria-label={`${server.name}操作`}
                                 onAction={(key) => {
+                                  if (key === "edit") setDialog({ kind: "edit", server });
+                                  if (key === "test") run(server, McpAction.TEST);
                                   if (key === "credentials")
                                     setDialog({ kind: "credentials", server });
                                   if (key === "oauth") authorize(server);
@@ -400,6 +384,16 @@ export function McpSettingsPanel() {
                                     });
                                 }}
                               >
+                                <Dropdown.Item id="edit" textValue="编辑服务器">
+                                  <Pencil aria-hidden className="size-4 text-muted" />
+                                  编辑服务器
+                                </Dropdown.Item>
+                                {mainAction !== "test" && server.enabled ? (
+                                  <Dropdown.Item id="test" textValue="测试连接">
+                                    <Flask aria-hidden className="size-4 text-muted" />
+                                    测试连接
+                                  </Dropdown.Item>
+                                ) : null}
                                 {canEditCredential ? (
                                   <Dropdown.Item id="credentials" textValue="设置凭据">
                                     <Key aria-hidden className="size-4 text-muted" />
@@ -420,9 +414,7 @@ export function McpSettingsPanel() {
                                     撤销信任
                                   </Dropdown.Item>
                                 ) : null}
-                                {canEditCredential || canManageOAuth || server.isTrusted ? (
-                                  <Separator className="my-1" />
-                                ) : null}
+                                <Separator className="my-1" />
                                 <Dropdown.Item
                                   className="text-danger"
                                   id={McpAction.DELETE}
@@ -435,11 +427,21 @@ export function McpSettingsPanel() {
                             </Dropdown.Popover>
                           </Dropdown>
                         </div>
-                      </div>
-                    </Card.Content>
-                  </Card>
-                );
-              })}
+                      }
+                      ariaLabel={`查看 ${server.name} 详情`}
+                      icon={<McpServerIcon endpoint={endpoint} icons={serverIcons} />}
+                      key={server.id}
+                      name={server.name}
+                      secondary={
+                        <span className="min-w-0 flex-1 truncate" title={endpoint}>
+                          {endpoint}
+                        </span>
+                      }
+                      onPress={() => setSelectedServerId(server.id)}
+                    />
+                  );
+                })}
+              </ul>
               {(servers.data?.length ?? 0) > SERVERS_PER_PAGE ? (
                 <Pagination aria-label="MCP 服务器分页" className="mt-1" size="sm">
                   <Pagination.Summary>

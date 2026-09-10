@@ -42,12 +42,20 @@ import { ToolApprovalCard } from "../components/tool-approval-card";
 import { UserInputCard } from "../components/user-input-card";
 import { WorkingStatePanel } from "../components/working-state-panel";
 import { ChatPageView } from "../constants/chat-page-view";
-import { ChatMessageType } from "../data/chat";
+import { type ChatMessage, ChatMessageType } from "../data/chat";
 import { useSessionEvents } from "../hooks/use-session-events";
 import { useChatPageViewStore } from "../state/chat-page-view-store";
 import { useChatSearchTargetStore } from "../state/chat-search-target-store";
-import { findActiveRunId, sessionEventsToMessages } from "../utils/session-messages";
-import { selectSessionEventMetadata } from "../utils/session-snapshot";
+import {
+  findActiveRunId,
+  optimisticUserInputToMessage,
+  sessionEventsToMessages,
+} from "../utils/session-messages";
+import {
+  clearOptimisticUserInput,
+  selectSessionEventMetadata,
+  stageOptimisticUserInput,
+} from "../utils/session-snapshot";
 import { summarizeSessionUsage } from "../utils/session-usage";
 import { findPendingUserInput } from "../utils/session-user-input";
 import { readSessionWorkingState } from "../utils/session-working-state";
@@ -159,7 +167,28 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const events = eventMetadata.stableEvents;
   const stateEvents = eventMetadata.stableEvents;
   const activeEvents = useMemo(() => selectActiveSessionEvents(stateEvents), [stateEvents]);
-  const messages = useMemo(() => sessionEventsToMessages(eventMetadata), [eventMetadata]);
+  const projectedMessages = useMemo(() => sessionEventsToMessages(eventMetadata), [eventMetadata]);
+  const messages = useMemo(() => {
+    if (!snapshot?.optimisticUserInputs?.length) return projectedMessages;
+    const optimisticMessages = snapshot.optimisticUserInputs.map(optimisticUserInputToMessage);
+    const loadingIndex = projectedMessages.findLastIndex(
+      (message) => message.type === ChatMessageType.LOADING,
+    );
+    if (loadingIndex >= 0) {
+      return [
+        ...projectedMessages.slice(0, loadingIndex),
+        ...optimisticMessages,
+        ...projectedMessages.slice(loadingIndex),
+      ];
+    }
+    const latestOptimisticInput = snapshot.optimisticUserInputs.at(-1);
+    const loadingMessage = {
+      id: `loading-${latestOptimisticInput?.id ?? sessionId}`,
+      label: "正在处理…",
+      type: ChatMessageType.LOADING,
+    } satisfies ChatMessage;
+    return [...projectedMessages, ...optimisticMessages, loadingMessage];
+  }, [projectedMessages, sessionId, snapshot?.optimisticUserInputs]);
   const lastConversationTurnId = messages.findLast(
     (message) => message.type === ChatMessageType.USER,
   )?.id;
@@ -270,11 +299,17 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const startMutation = useMutation({
     mutationFn: ({ input, sessionId }: { input: RunUserInput; sessionId: string }) =>
       startSessionRun(sessionId, input),
-    onError: () => {
+    onError: (_error, { input, sessionId }) => {
+      queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (snapshot) =>
+        snapshot ? clearOptimisticUserInput(snapshot, input) : snapshot,
+      );
       void queryClient.invalidateQueries({ queryKey: sessionQueryKeys.list() });
     },
-    onMutate: ({ sessionId }) => {
+    onMutate: ({ input, sessionId }) => {
       setAcceptedRun(null);
+      queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (snapshot) =>
+        snapshot ? stageOptimisticUserInput(snapshot, input) : snapshot,
+      );
       queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
         sessions?.map((session) =>
           session.id === sessionId ? { ...session, isRunning: true } : session,
@@ -320,6 +355,16 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const steerMutation = useMutation({
     mutationFn: ({ input, runId }: { input: RunUserInput; runId: string }) =>
       steerSessionRun(sessionId, runId, input),
+    onError: (_error, { input }) => {
+      queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (snapshot) =>
+        snapshot ? clearOptimisticUserInput(snapshot, input) : snapshot,
+      );
+    },
+    onMutate: ({ input }) => {
+      queryClient.setQueryData<SessionSnapshot>(sessionQueryKeys.detail(sessionId), (snapshot) =>
+        snapshot ? stageOptimisticUserInput(snapshot, input) : snapshot,
+      );
+    },
   });
   const updateQueuedInputMutation = useMutation({
     mutationFn: ({
@@ -430,7 +475,8 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const status =
     (startMutation.isPending && startMutation.variables.sessionId === sessionId) ||
     (retryMutation.isPending && retryMutation.variables.sessionId === sessionId) ||
-    (activeRunId && eventActiveRunId === null)
+    (activeRunId && eventActiveRunId === null) ||
+    (snapshot?.optimisticUserInputs?.length && eventActiveRunId === null)
       ? "submitted"
       : eventActiveRunId === null
         ? "ready"
