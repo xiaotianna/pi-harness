@@ -64,6 +64,9 @@ const SkillConnectionStatusSchema = Type.Object({
   collectionId: Type.String({ minLength: 1 }),
   isConnected: Type.Boolean(),
 });
+const SkillOAuthStartSchema = Type.Object({
+  authorizationUrl: Type.String({ format: "uri" }),
+});
 
 export type Skill = Static<typeof SkillSchema>;
 export type SkillCollection = Static<typeof SkillCollectionSchema>;
@@ -120,8 +123,20 @@ export async function getSkillConnectionStatus(
   return body;
 }
 
-export function getSkillOAuthLaunchUrl(collectionId: string): string {
-  return `/api/skill-connections/${encodeURIComponent(collectionId)}/oauth/launch`;
+export function getSkillOAuthLaunchUrl(collectionId: string, name: string): string {
+  return `/skill-oauth/${encodeURIComponent(collectionId)}/launch?name=${encodeURIComponent(name)}`;
+}
+
+export async function startSkillOAuth(collectionId: string): Promise<string> {
+  const body = (await (
+    await apiRequest(`/api/skill-connections/${encodeURIComponent(collectionId)}/oauth`, {
+      method: "POST",
+    })
+  ).json()) as unknown;
+  if (!Value.Check(SkillOAuthStartSchema, body)) {
+    throw new Error("daemon 返回了无效的 OAuth 授权地址");
+  }
+  return body.authorizationUrl;
 }
 
 export async function disconnectSkill(collectionId: string): Promise<void> {

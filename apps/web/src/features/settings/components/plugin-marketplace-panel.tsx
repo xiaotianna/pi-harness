@@ -188,7 +188,7 @@ function PluginConnectionPanel({ plugin }: { plugin: SkillCollection }) {
             return;
           }
           const authorizationWindow = window.open(
-            getSkillOAuthLaunchUrl(plugin.id),
+            getSkillOAuthLaunchUrl(plugin.id, plugin.name),
             "_blank",
             "popup,width=720,height=760",
           );

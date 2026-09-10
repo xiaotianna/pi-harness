@@ -111,12 +111,6 @@ export async function registerSkillConnectionRoutes(
     controller.startOAuth,
   );
 
-  server.get<{ Params: SkillConnectionParamsDto }>(
-    "/api/skill-connections/:collectionId/oauth/launch",
-    { schema: { params: SkillConnectionParamsDtoSchema } },
-    controller.launchOAuth,
-  );
-
   server.get<{ Params: SkillConnectionParamsDto; Querystring: SkillOAuthCallbackDto }>(
     "/api/skill-connections/:collectionId/oauth/callback",
     {

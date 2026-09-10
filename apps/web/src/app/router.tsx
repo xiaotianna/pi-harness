@@ -21,6 +21,7 @@ import { BoardPage } from "../pages/board-page";
 import { ChatThreadPage } from "../pages/chat-thread-page";
 import { LoginPage } from "../pages/login-page";
 import { NewChatPage } from "../pages/new-chat-page";
+import { SkillOAuthLaunchPage, SkillOAuthResultPage } from "../pages/skill-oauth-page";
 import { queryClient } from "./query-client";
 
 function RootLayout() {
@@ -29,10 +30,7 @@ function RootLayout() {
 
 function AppErrorRoute() {
   return (
-    <main
-      className="flex min-h-svh items-center justify-center px-6 py-10"
-      role="alert"
-    >
+    <main className="flex min-h-svh items-center justify-center px-6 py-10" role="alert">
       <EmptyState className="max-w-md" size="lg">
         <EmptyState.Media variant="icon">
           <CircleExclamation aria-hidden className="text-danger" />
@@ -40,8 +38,7 @@ function AppErrorRoute() {
         <EmptyState.Header>
           <EmptyState.Title>页面加载失败</EmptyState.Title>
           <EmptyState.Description>
-            页面暂时无法加载，请重试。若问题持续出现，请确认本地 daemon
-            正在运行。
+            页面暂时无法加载，请重试。若问题持续出现，请确认本地 daemon 正在运行。
           </EmptyState.Description>
         </EmptyState.Header>
         <EmptyState.Content>
@@ -49,10 +46,7 @@ function AppErrorRoute() {
             <Button variant="primary" onPress={() => window.location.reload()}>
               重试
             </Button>
-            <Button
-              variant="tertiary"
-              onPress={() => window.location.assign("/")}
-            >
+            <Button variant="tertiary" onPress={() => window.location.assign("/")}>
               返回首页
             </Button>
           </div>
@@ -87,8 +81,7 @@ const indexRoute = createRoute({
   path: "/",
   beforeLoad: async () => {
     const authSession = await fetchCurrentAuthSession();
-    if (!authSession.authenticated)
-      throw redirect({ replace: true, to: "/login" });
+    if (!authSession.authenticated) throw redirect({ replace: true, to: "/login" });
     const sessions = await queryClient.fetchQuery(sessionListQueryOptions());
     const session = sessions[0];
     if (!session) throw redirect({ replace: true, to: "/new" });
@@ -115,6 +108,28 @@ const loginRoute = createRoute({
     }
   },
   component: LoginRoute,
+});
+
+const skillOAuthLaunchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/skill-oauth/$collectionId/launch",
+  validateSearch: (search: Record<string, unknown>) => ({
+    name: typeof search.name === "string" && search.name.length <= 80 ? search.name : "插件",
+  }),
+  component: SkillOAuthLaunchRoute,
+});
+
+const skillOAuthResultRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/skill-oauth/result",
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...(typeof search.message === "string" && search.message.length <= 500
+      ? { message: search.message }
+      : {}),
+    name: typeof search.name === "string" && search.name.length <= 80 ? search.name : "插件",
+    status: search.status === "success" ? ("success" as const) : ("error" as const),
+  }),
+  component: SkillOAuthResultRoute,
 });
 
 const chatLayoutRoute = createRoute({
@@ -179,9 +194,22 @@ function LoginRoute() {
   return <LoginPage authError={search.authError} />;
 }
 
+function SkillOAuthLaunchRoute() {
+  const { collectionId } = skillOAuthLaunchRoute.useParams();
+  const { name } = skillOAuthLaunchRoute.useSearch();
+  return <SkillOAuthLaunchPage collectionId={collectionId} name={name} />;
+}
+
+function SkillOAuthResultRoute() {
+  const { message, name, status } = skillOAuthResultRoute.useSearch();
+  return <SkillOAuthResultPage message={message} name={name} status={status} />;
+}
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  skillOAuthLaunchRoute,
+  skillOAuthResultRoute,
   chatLayoutRoute.addChildren([newChatRoute, boardRoute, chatThreadRoute, unknownRoute]),
 ]);
 
