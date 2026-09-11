@@ -6,6 +6,9 @@
 @source "./**/*.{ts,tsx}";
 
 :root {
+  --scrollbar-color: auto;
+  --scrollbar-gutter: auto;
+  --scrollbar-width: auto;
   --tooltip-close-delay: 0ms;
 }
 
@@ -95,48 +98,66 @@
   --tw-ring-offset-shadow: 0 0 #0000;
 }
 
-.session-scrollbar {
-  --scrollbar-gutter: stable;
-  scrollbar-gutter: stable;
+* {
+  scrollbar-gutter: var(--scrollbar-gutter);
 }
 
-.overlay-scrollbar {
-  --scrollbar-gutter: auto;
-  overflow-y: overlay;
-  scrollbar-gutter: auto;
+html[data-overlay-scrollbars] * {
+  scrollbar-width: none;
 }
 
-.session-scrollbars,
-.session-scrollbars * {
-  --scrollbar-color: color-mix(in oklab, var(--muted) 18%, transparent) transparent;
-  --scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-color);
-  scrollbar-width: var(--scrollbar-width);
+html[data-overlay-scrollbars] *::-webkit-scrollbar {
+  display: none;
 }
 
-.session-scrollbars::-webkit-scrollbar,
-.session-scrollbars *::-webkit-scrollbar {
-  width: 10px;
+.overlay-scrollbars__track {
+  position: fixed;
+  z-index: 2147483646;
+  pointer-events: none;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.overlay-scrollbars__track[data-active="true"][data-visible="true"] {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.overlay-scrollbars__track--horizontal {
   height: 10px;
 }
 
-.session-scrollbars::-webkit-scrollbar-track,
-.session-scrollbars *::-webkit-scrollbar-track {
-  background: transparent;
+.overlay-scrollbars__track--vertical {
+  width: 10px;
 }
 
-.session-scrollbars::-webkit-scrollbar-thumb,
-.session-scrollbars *::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
+.overlay-scrollbars__thumb {
+  position: absolute;
   border-radius: 9999px;
-  background: color-mix(in oklab, var(--muted) 18%, transparent);
-  background-clip: content-box;
+  background: color-mix(in oklab, var(--muted) 28%, transparent);
 }
 
-.session-scrollbars::-webkit-scrollbar-thumb:hover,
-.session-scrollbars *::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklab, var(--muted) 30%, transparent);
-  background-clip: content-box;
+.overlay-scrollbars__track--horizontal .overlay-scrollbars__thumb {
+  bottom: 2px;
+  left: 0;
+  height: 5px;
+}
+
+.overlay-scrollbars__track--vertical .overlay-scrollbars__thumb {
+  top: 0;
+  right: 2px;
+  width: 5px;
+}
+
+.overlay-scrollbars__track:is(:hover, :active) .overlay-scrollbars__thumb {
+  background: color-mix(in oklab, var(--muted) 42%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-scrollbars__track {
+    transition: none;
+  }
 }
 
 :is([data-slot="agent-plan"], [data-slot="todo-list"]) > .scroll-shadow {

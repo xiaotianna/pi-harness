@@ -36,6 +36,7 @@
 |---|---|---|
 | 应用外壳与响应式导航 | `AppLayout`、`Navbar`、`Sidebar` | `features/chat/components/chat-shell.tsx`、`chat-navbar.tsx`、`chat-sidebar.tsx` |
 | 会话视口 | `ChatConversation` 复合组件 | `features/chat/views/chat-page.tsx` |
+| 全局滚动条 | 根级 `OverlayScrollbars` 隐藏占位的原生滚动条，通过固定浮层统一提供可拖动的细圆角滑块；只在滚动或靠近边缘时显示，不参与布局，明确隐藏滚动条的组件保留隐藏行为 | `components/ui/overlay-scrollbars.tsx`、`styles.css` |
 | 用户与助手消息 | `ChatMessage`、`ChatAttachment`、`AssistantMarkdown`、`CodeBlock`、`ChatSource`；Markdown 表格与任务项映射为 HeroUI `Table`、`Checkbox`，图表、公式、HeroUI Flow 和 Mermaid fenced block 映射为独立 AI 展示组件 | `components/ai/assistant-markdown.tsx`、`components/ai/chart-block.tsx`、`components/ai/formula-block.tsx`、`components/ai/flow-diagram.tsx`、`components/ai/mermaid-block.tsx`、`features/chat/components/thread-message/` |
 | Markdown 链接 | HTTP(S) 使用 HeroUI `Link`；本地绝对或相对文件、目录路径使用带 Tooltip 的 `AssistantMarkdownLink`，href 必须是真实且可独立解析。目录链接使用 `local-directory` title 明确类型，旧消息缺少标记时按已知文件名/后缀保守识别，文件使用 `FileIconRender`，目录使用 Gravity UI `FolderOpen`；两者共用相同图标占位，目录图标按实际轮廓做光学缩放。点击由会话 feature 请求 daemon 交给操作系统打开 | `components/ai/assistant-markdown-link.tsx`、`features/chat/components/thread-message-list.tsx` |
 | 本地文件打开 | 设置页右侧先展示按内容收缩的 ghost 应用选择器，再使用与相邻设置控件等宽的 HeroUI `Select` 选择“每次询问”或默认应用；应用选择器始终展示 24px 图标和应用名称，使用 HeroUI 按钮自身的 hover 与键盘聚焦反馈，不替换文案，窄屏按相同顺序换行，也不添加下拉指示、独立操作或额外表面。询问流程使用不超过 420px 的紧凑 HeroUI `Modal`，标题下以 secondary `Surface` 展示文件摘要，再单独展示 `Checkbox`；不使用重复装饰图标和系统选择器说明，由 daemon 调用系统应用选择器 | `features/settings/components/settings-dialog.tsx`、`features/chat/components/file-open-dialog.tsx` |

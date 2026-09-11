@@ -88,6 +88,7 @@ description: PI Harness 前端工程规范，约束 apps/web 的架构边界、�
 ## 样式、布局与响应式
 
 - 保持现有 4px/8px 间距节奏与语义化 surface、foreground、muted、accent、danger 等 token。
+- 全局滚动区域隐藏占位的原生滚动条，由应用根级浮层统一绘制可拖动的细圆角滑块，并保持 `scrollbar-gutter: auto`；浮层只在滚动或靠近边缘时显示，不参与布局，明确隐藏滚动条的组件继续隐藏。
 - 显式设置 flex 或 grid 子项对齐，不依赖图标、文字或不同元素的偶然 baseline。
 - 避免重复 wrapper、边框、背景和阴影；父容器已经提供间距时，不在子项重复叠加。
 - 需要用阴影提示滚动溢出的列表统一使用 HeroUI `ScrollShadow` 的内置阴影样式，不手写或叠加 `shadow-*`、渐变遮罩或 `box-shadow`。
