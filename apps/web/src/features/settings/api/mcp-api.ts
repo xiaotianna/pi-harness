@@ -1,7 +1,6 @@
 import {
   McpAuthMode,
   McpAuthRequirement,
-  McpIsolationMode,
   McpJsonTransport,
   McpTransport,
 } from "@pi-harness/agent-runtime/mcp-contract";
@@ -23,10 +22,6 @@ export const McpConfigSchema = Type.Union([
     transport: Type.Literal(McpTransport.STDIO),
     command: Type.String({ minLength: 1 }),
     args: Type.Array(Type.String()),
-    isolation: Type.Union([
-      Type.Literal(McpIsolationMode.ISOLATED),
-      Type.Literal(McpIsolationMode.TRUSTED),
-    ]),
   }),
   Type.Object({
     ...common,

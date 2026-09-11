@@ -820,6 +820,12 @@ export class SessionService {
   ): void {
     this.getRequiredSession(sessionId);
     this.interactions.resolveApproval(sessionId, runId, approvalId, decision, (request) => {
+      if (decision === ApprovalDecision.APPROVED_SESSION && request.allowSession === false) {
+        throw new SessionServiceError(
+          SessionErrorCode.APPROVAL_INVALID,
+          "当前关键操作只能允许一次",
+        );
+      }
       if (decision !== ApprovalDecision.APPROVED_SIMILAR) return;
       if (request.commandPrefix === undefined) {
         throw new SessionServiceError(

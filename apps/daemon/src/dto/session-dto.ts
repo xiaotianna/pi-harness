@@ -81,6 +81,7 @@ export type SessionInputParamsDto = Static<typeof SessionInputParamsDtoSchema>;
 export const ResolveApprovalDtoSchema = Type.Object({
   decision: Type.Union([
     Type.Literal(ApprovalDecision.APPROVED),
+    Type.Literal(ApprovalDecision.APPROVED_SESSION),
     Type.Literal(ApprovalDecision.APPROVED_SIMILAR),
     Type.Literal(ApprovalDecision.REJECTED),
   ]),

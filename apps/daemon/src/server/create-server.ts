@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import cors from "@fastify/cors";
 import { AgentManager } from "@pi-harness/agent-runtime";
-import { readSandboxPolicy } from "@pi-harness/policy";
 import { AVAILABLE_PLUGINS, resolveRegisteredPluginSkills } from "@pi-harness/tools";
 import Fastify from "fastify";
 import { type HarnessConfig, loadHarnessConfig } from "../config/index.js";
@@ -48,7 +47,6 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   });
   const database = openHarnessDatabase(config.databasePath);
   const allowedCommandPrefixes = AllowedCommandPrefixStore.open(config.allowedCommandPrefixesPath);
-  const appSettings = new AppSettingsService(database.appSettings, config.globalRoot);
   const fileOpen = new FileOpenService(database.appSettings);
   const credentials = await FileCredentialStore.open(config.credentialsPath);
   const skillCredentials = await SkillCredentialStore.open(config.skillCredentialsPath);
@@ -62,18 +60,24 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
       return Number(url.port || (url.protocol === "https:" ? 443 : 80));
     }),
   ];
+  const protectedPaths = [config.globalRoot];
   let mcpOAuth: McpOAuthService;
   const mcpClients = new McpClientManager(
     createMcpTransportFactory(
       (context) => mcpServers.verifyContext(context),
       (context) => mcpOAuth.createAuthProvider(context),
       protectedLocalPorts,
+      config.globalRoot,
+      protectedPaths,
     ),
     (error) => server.log.warn({ code: error.code }, "MCP client lifecycle warning"),
     (context) => mcpServers.verifyContext(context),
   );
   const mcpServers = new McpServerService(database.mcpServers, mcpCredentials, (id) =>
     mcpClients.invalidateServer(id),
+  );
+  const appSettings = new AppSettingsService(database.appSettings, config.globalRoot, () =>
+    mcpClients.invalidateAll(),
   );
   mcpOAuth = new McpOAuthService(config, mcpServers, protectedLocalPorts);
   const mcpDiagnostics = new McpDiagnosticsService(mcpServers, mcpClients, new McpDiscovery());
@@ -91,7 +95,6 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   const sessionEvents = new SessionEventService(database.sessions, eventStore, broker);
   await sessionEvents.recoverInterruptedRuns();
   const interactions = new HumanInteractionService();
-  const protectedPaths = [config.globalRoot];
   const getRegisteredGlobalSkills = () =>
     resolveRegisteredPluginSkills(
       database.appSettings.getInstalledSkillCollectionIds(),
@@ -115,7 +118,6 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     getRegisteredGlobalSkills,
     (directory) => !database.appSettings.getDisabledSkillDirectories().includes(directory),
     () => allowedCommandPrefixes.getAll(),
-    async () => (await readSandboxPolicy(config.globalRoot)).profile,
     () => sandboxCredentials,
     mcpTools.prepare,
   );

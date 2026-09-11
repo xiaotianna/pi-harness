@@ -1,6 +1,6 @@
 import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { CommandPrefixRule } from "@pi-harness/policy";
+import type { CommandPrefixRule, SandboxCredential } from "@pi-harness/policy";
 import {
   createWorkspaceToolRegistry,
   type PlanUpdatedData,
@@ -82,6 +82,7 @@ export class AgentManager {
     private readonly getRegisteredGlobalSkills: () => readonly SkillDefinition[] = () => [],
     private readonly isSkillEnabled: (directory: string) => boolean = () => true,
     private readonly getAllowedCommandPrefixes: () => readonly CommandPrefixRule[] = () => [],
+    private readonly getSandboxCredentials: () => readonly SandboxCredential[],
     private readonly prepareExternalTools?: PrepareExternalTools,
   ) {}
 
@@ -195,11 +196,24 @@ export class AgentManager {
     const toolRegistry = createWorkspaceToolRegistry(
       {
         getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
+        getSandboxCredentials: this.getSandboxCredentials,
         globalRoot: this.globalRoot,
         isSkillEnabled: this.isSkillEnabled,
         onPlanUpdated: (data) => {
           if (runtime === null) throw new Error("Session Runtime 尚未就绪");
           return runtime.updatePlan(data);
+        },
+        onNetworkAccessRequested: (request, signal) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.requestNetworkAccess(request, signal);
+        },
+        onCommandFileChangesDetected: (data) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          runtime.recordCommandFileChanges(data);
+        },
+        onHostExecutionRequested: (request, signal) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.requestHostExecution(request, signal);
         },
         onContextCheckpointRestored: (steps) => {
           if (runtime === null) throw new Error("Session Runtime 尚未就绪");

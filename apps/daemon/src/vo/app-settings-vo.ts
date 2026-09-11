@@ -6,6 +6,8 @@ import {
   FileOpenModeDtoSchema,
   OutputDetailDtoSchema,
   ReasoningSummaryDtoSchema,
+  SandboxAllowedDomainsDtoSchema,
+  SandboxProfileDtoSchema,
 } from "../dto/app-settings-dto.js";
 
 export const FileOpenApplicationVoSchema = Type.Object({
@@ -24,6 +26,9 @@ export const AppSettingsVoSchema = Type.Object({
   fileOpenMode: FileOpenModeDtoSchema,
   outputDetail: OutputDetailDtoSchema,
   reasoningSummary: ReasoningSummaryDtoSchema,
+  sandboxAllowedDomains: SandboxAllowedDomainsDtoSchema,
+  sandboxDeniedDomains: SandboxAllowedDomainsDtoSchema,
+  sandboxProfile: SandboxProfileDtoSchema,
 });
 
 export type AppSettingsVo = Static<typeof AppSettingsVoSchema>;

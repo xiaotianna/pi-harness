@@ -11,11 +11,6 @@ export const McpJsonTransport = {
   SSE: "sse",
 } as const;
 
-export const McpIsolationMode = {
-  ISOLATED: "isolated",
-  TRUSTED: "trusted",
-} as const;
-
 export const McpAuthMode = {
   NONE: "none",
   STATIC: "static",

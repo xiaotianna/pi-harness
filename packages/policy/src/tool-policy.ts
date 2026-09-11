@@ -4,6 +4,7 @@ import { ApprovalPolicy, type ApprovalPolicy as ApprovalPolicyValue } from "./ap
 import {
   type CommandPrefixRule,
   isCommandAllowedByPrefixes,
+  isCriticalDestructiveCommand,
   readApplicableCommandPrefix,
 } from "./command-policy.js";
 import { resolveWorkspacePath } from "./path-policy.js";
@@ -19,20 +20,29 @@ export type ToolPolicyDecision = (typeof ToolPolicyDecision)[keyof typeof ToolPo
 
 // 工具权限
 export const ToolPermission = {
-  EXTERNAL: "external",
   SKILL_ACTIVATION: "skill_activation",
   READ_ONLY: "read_only", // 只读工具，自动放行
   WORKSPACE_WRITE: "workspace_write", // 修改 workspace 内文件的工具，需要用户审批
   SHELL: "shell", // 执行 Shell 命令的工具，需要用户审批
+  USER_APPROVAL: "user_approval",
 } as const;
+
+interface ToolApprovalGrant {
+  allowSession?: boolean;
+  fingerprint: string;
+  risk: string;
+  summary: string;
+  target: string;
+}
 
 export type ToolPolicy =
   | {
-      permission: typeof ToolPermission.EXTERNAL;
+      allowInFullAccess?: boolean;
+      permission: typeof ToolPermission.USER_APPROVAL;
       resolveGrant: (
         args: unknown,
         signal?: AbortSignal,
-      ) => Promise<{ fingerprint: string; target: string; summary: string; risk: string }>;
+      ) => ToolApprovalGrant | Promise<ToolApprovalGrant>;
     }
   | {
       permission: typeof ToolPermission.SKILL_ACTIVATION;
@@ -61,6 +71,7 @@ export type ToolPolicyResult =
       risk: string;
       summary: string;
       target: string;
+      allowSession?: boolean;
       commandPrefix?: CommandPrefixRule;
     };
 
@@ -147,12 +158,16 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
   }
 
   switch (input.policy.permission) {
-    case ToolPermission.EXTERNAL:
-      // 本地 full_access 不代表对外部账号的写入授权。
-      return {
-        ...(await input.policy.resolveGrant(input.arguments, input.signal)),
-        decision: ToolPolicyDecision.ASK,
-      };
+    case ToolPermission.USER_APPROVAL: {
+      const grant = await input.policy.resolveGrant(input.arguments, input.signal);
+      if (
+        input.policy.allowInFullAccess === true &&
+        input.approvalPolicy === ApprovalPolicy.FULL_ACCESS
+      ) {
+        return { decision: ToolPolicyDecision.ALLOW, fingerprint: grant.fingerprint };
+      }
+      return { ...grant, decision: ToolPolicyDecision.ASK };
+    }
     case ToolPermission.SKILL_ACTIVATION: {
       const grant = await input.policy.resolveGrant(input.arguments);
       if (grant === null) return { decision: ToolPolicyDecision.ALLOW };
@@ -209,6 +224,16 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
         return { decision: ToolPolicyDecision.DENY, reason: "命令工具缺少有效命令" };
       }
       const { fingerprint } = await resolveWorkspaceTarget(input, ".", false);
+      if (isCriticalDestructiveCommand(command, input.workspaceRoot)) {
+        return {
+          allowSession: false,
+          decision: ToolPolicyDecision.ASK,
+          fingerprint,
+          risk: "该命令会递归删除工作区或仓库根目录；即使启用 full_access 也必须逐次确认。",
+          summary: command,
+          target: ".",
+        };
+      }
       if (input.approvalPolicy === ApprovalPolicy.FULL_ACCESS) {
         return { decision: ToolPolicyDecision.ALLOW, fingerprint };
       }
@@ -226,7 +251,7 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
         ...(commandPrefix === null ? {} : { commandPrefix }),
         decision: ToolPolicyDecision.ASK,
         fingerprint,
-        risk: "Shell 命令以当前用户权限运行，可能修改文件、启动子进程或访问 workspace 外部资源。",
+        risk: "Shell 命令在沙箱中运行，可能修改工作区文件、启动子进程，并访问沙箱策略允许的网络地址。",
         summary: command,
         target: ".",
       };

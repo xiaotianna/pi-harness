@@ -1,4 +1,4 @@
-import { UserInputRequestKind } from "@pi-harness/agent-runtime";
+import { ApprovalRequestKind, UserInputRequestKind } from "@pi-harness/agent-runtime";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { type Static, Type } from "typebox";
 
@@ -89,10 +89,18 @@ export type QueuedRunInputVo = Static<typeof QueuedRunInputVoSchema>;
 
 export const PendingToolApprovalVoSchema = Type.Object({
   approvalId: Type.String({ format: "uuid" }),
+  allowSession: Type.Optional(Type.Boolean()),
+  kind: Type.Optional(
+    Type.Union([
+      Type.Literal(ApprovalRequestKind.TOOL),
+      Type.Literal(ApprovalRequestKind.HOST_EXECUTION),
+    ]),
+  ),
   commandPrefix: Type.Optional(
     Type.Array(Type.String({ maxLength: 256, minLength: 1 }), { maxItems: 16, minItems: 1 }),
   ),
   expiresAt: Type.Integer({ minimum: 0 }),
+  preview: Type.Optional(Type.String({ maxLength: 65_536, minLength: 1 })),
   risk: Type.String({ minLength: 1 }),
   runId: Type.String({ format: "uuid" }),
   sessionId: Type.String({ format: "uuid" }),

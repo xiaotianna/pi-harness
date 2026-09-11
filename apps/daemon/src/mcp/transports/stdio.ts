@@ -1,10 +1,13 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   type JSONRPCMessage,
   serializeMessage,
   type Transport,
 } from "@modelcontextprotocol/client";
+import {
+  type SandboxedProcess,
+  type SandboxProcessInput,
+  spawnSandboxedProcess,
+} from "@pi-harness/sandbox";
 import { McpError, McpErrorCode } from "../errors.js";
 import { McpStdioMessageBuffer } from "../utils/stdio-message-buffer.js";
 
@@ -14,14 +17,14 @@ const MAX_STDERR_BYTES = 1024 * 1024;
 const MAX_BYTES_PER_SECOND = 16 * 1024 * 1024;
 const MAX_MESSAGES_PER_SECOND = 1_024;
 const WRITE_TIMEOUT_MS = 15_000;
-const TERMINATE_GRACE_MS = 500;
-const KILL_TIMEOUT_MS = 1_500;
 
 export interface McpProcessLaunch {
+  commandId: string;
   command: string;
   args: readonly string[];
   cwd: string;
   environment: Readonly<Record<string, string>>;
+  credentials: Readonly<Record<string, string>>;
 }
 
 /** 使用 SDK 的协议解析器；Host 独立控制环境、进程组和有界 I/O。 */
@@ -30,7 +33,7 @@ export class McpStdioTransport implements Transport {
   public onerror?: (error: Error) => void;
   public onmessage?: (message: JSONRPCMessage) => void;
 
-  private child: ChildProcessWithoutNullStreams | undefined;
+  private sandboxedProcess: SandboxedProcess | undefined;
   private readonly buffer = new McpStdioMessageBuffer(MAX_MESSAGE_BYTES);
   private closing: Promise<void> | undefined;
   private isStarted = false;
@@ -43,37 +46,50 @@ export class McpStdioTransport implements Transport {
 
   public constructor(
     private readonly launch: McpProcessLaunch,
+    private readonly sandbox: Omit<
+      SandboxProcessInput,
+      "args" | "command" | "commandId" | "credentials" | "environment"
+    >,
     private readonly verifyBeforeSpawn: () => void,
-    private readonly dispose: () => Promise<void>,
   ) {}
 
   /** SDK 通过这两个访问器识别 stdio，并在版本探测超时后回退到 initialize。 */
-  public get stderr(): ChildProcessWithoutNullStreams["stderr"] | null {
-    return this.child?.stderr ?? null;
+  public get stderr(): SandboxedProcess["process"]["stderr"] | null {
+    return this.sandboxedProcess?.process.stderr ?? null;
   }
 
   public get pid(): number | null {
-    return this.child?.pid ?? null;
+    return this.sandboxedProcess?.process.pid ?? null;
   }
 
   public async start(): Promise<void> {
     if (this.isStarted || this.isClosed) {
       throw new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 进程不可重复启动");
     }
-    // Windows 需要 Job Object 才能保证进程树回收，未实现前拒绝启动。
-    if (process.platform === "win32") {
-      throw new McpError(McpErrorCode.CAPABILITY_UNAVAILABLE, "当前平台尚不支持受控 MCP 本地进程");
-    }
     this.verifyBeforeSpawn();
     this.isStarted = true;
-    const child = spawn(this.launch.command, [...this.launch.args], {
-      cwd: this.launch.cwd,
-      env: { ...this.launch.environment },
-      shell: false,
-      detached: true,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    this.child = child;
+    let sandboxedProcess: SandboxedProcess;
+    try {
+      sandboxedProcess = await spawnSandboxedProcess({
+        ...this.sandbox,
+        args: this.launch.args,
+        command: this.launch.command,
+        commandId: this.launch.commandId,
+        credentials: Object.entries(this.launch.credentials).map(([name, value]) => ({
+          name,
+          value,
+        })),
+        environment: this.launch.environment,
+      });
+    } catch {
+      this.isClosed = true;
+      throw new McpError(
+        McpErrorCode.CAPABILITY_UNAVAILABLE,
+        "无法在沙箱中启动 MCP 进程，请检查平台能力与沙箱配置",
+      );
+    }
+    this.sandboxedProcess = sandboxedProcess;
+    const child = sandboxedProcess.process;
     child.stdout.on("data", (chunk: Buffer) => this.receive(chunk));
     child.stderr.on("data", (chunk: Buffer) => {
       // stderr 可能含服务器凭据或文件内容，只统计大小，不输出原文。
@@ -90,21 +106,10 @@ export class McpStdioTransport implements Transport {
         this.onerror?.(new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 进程回收失败")),
       );
     });
-    await new Promise<void>((resolve, reject) => {
-      child.once("spawn", resolve);
-      child.once("error", () => {
-        const error = new McpError(
-          McpErrorCode.CONNECTION_FAILED,
-          "无法启动 MCP 进程，请检查命令与执行权限",
-        );
-        reject(error);
-        this.fail(error.code, error.message);
-      });
-    });
   }
 
   public async send(message: JSONRPCMessage): Promise<void> {
-    const child = this.child;
+    const child = this.sandboxedProcess?.process;
     if (child === undefined || this.isClosed)
       throw new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 进程未连接");
     const serialized = serializeMessage(message);
@@ -134,51 +139,20 @@ export class McpStdioTransport implements Transport {
     if (this.closing !== undefined) return this.closing;
     this.isClosed = true;
     this.closing = Promise.resolve().then(async () => {
-      const child = this.child;
+      const sandboxedProcess = this.sandboxedProcess;
+      const child = sandboxedProcess?.process;
       try {
-        if (child?.pid !== undefined) {
-          this.signalGroup(child.pid, "SIGTERM");
-          await delay(TERMINATE_GRACE_MS);
-          this.signalGroup(child.pid, "SIGKILL");
-          if (child.exitCode === null && child.signalCode === null) {
-            const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-            const timeout = new AbortController();
-            try {
-              await Promise.race([
-                exited,
-                delay(KILL_TIMEOUT_MS, undefined, { signal: timeout.signal }).then(() => {
-                  throw new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 进程未在期限内退出");
-                }),
-              ]);
-            } finally {
-              timeout.abort();
-            }
-          }
-        }
+        await sandboxedProcess?.close();
       } finally {
         child?.stdin.destroy();
         child?.stdout.destroy();
         child?.stderr.destroy();
-        this.child = undefined;
+        this.sandboxedProcess = undefined;
         this.buffer.clear();
-        try {
-          await this.dispose();
-        } finally {
-          this.onclose?.();
-        }
+        this.onclose?.();
       }
     });
     return this.closing;
-  }
-
-  private signalGroup(pid: number, signal: NodeJS.Signals): void {
-    try {
-      process.kill(-pid, signal);
-    } catch (error: unknown) {
-      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
-        throw new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 进程组终止失败");
-      }
-    }
   }
 
   private receive(chunk: Buffer): void {

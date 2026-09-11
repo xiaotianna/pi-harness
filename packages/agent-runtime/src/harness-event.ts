@@ -14,6 +14,7 @@ export type RunId = string;
 // 工具审批结果
 export const ApprovalDecision = {
   APPROVED: "approved", // 用户批准
+  APPROVED_SESSION: "approved_session", // 当前 Session 内批准同一目标
   APPROVED_SIMILAR: "approved_similar", // 用户批准并保存类似命令规则
   REJECTED: "rejected", // 用户拒绝
   EXPIRED: "expired", // 审批超时
@@ -23,14 +24,29 @@ export type ApprovalDecision = (typeof ApprovalDecision)[keyof typeof ApprovalDe
 // 用户回复包含批准一次、批准类似命令和拒绝；超时只由 Runtime 产生。
 export type ApprovalResponseDecision =
   | typeof ApprovalDecision.APPROVED
+  | typeof ApprovalDecision.APPROVED_SESSION
   | typeof ApprovalDecision.APPROVED_SIMILAR
   | typeof ApprovalDecision.REJECTED;
 
 export function isApprovalGranted(
   decision: unknown,
-): decision is typeof ApprovalDecision.APPROVED | typeof ApprovalDecision.APPROVED_SIMILAR {
-  return decision === ApprovalDecision.APPROVED || decision === ApprovalDecision.APPROVED_SIMILAR;
+): decision is
+  | typeof ApprovalDecision.APPROVED
+  | typeof ApprovalDecision.APPROVED_SESSION
+  | typeof ApprovalDecision.APPROVED_SIMILAR {
+  return (
+    decision === ApprovalDecision.APPROVED ||
+    decision === ApprovalDecision.APPROVED_SESSION ||
+    decision === ApprovalDecision.APPROVED_SIMILAR
+  );
 }
+
+export const ApprovalRequestKind = {
+  HOST_EXECUTION: "host_execution",
+  TOOL: "tool",
+} as const;
+
+export type ApprovalRequestKind = (typeof ApprovalRequestKind)[keyof typeof ApprovalRequestKind];
 
 export const RunFileChangeOperation = {
   REAPPLY: "reapply_run_changes",
@@ -584,10 +600,16 @@ export interface ToolCompletedData {
 export interface ApprovalRequestedData {
   // 本次审批唯一id
   approvalId: string;
+  // 审批用途；旧事件缺失时按普通工具审批处理。
+  kind?: ApprovalRequestKind;
+  // false 时只能逐次批准，用于仓库根目录递归删除等关键操作。
+  allowSession?: boolean;
   // 审批过期时间
   expiresAt: number;
   // 风险说明，例如命令可能修改本地文件（packages/policy/src/tool-policy.ts中声明提示信息）
   risk: string;
+  // 审批原因或被阻止的原始信息。
+  preview?: string;
   // 本次操作的简要描述，供审批界面展示
   summary: string;
   // 操作目标，例如文件路径或命令目标

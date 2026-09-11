@@ -17,7 +17,6 @@ import { reserveUniqueMcpName } from "../mcp/utils/unique-server-name.js";
 import {
   McpAuthMode,
   McpAuthRequirement,
-  McpIsolationMode,
   McpJsonTransport,
   type McpServerRecord,
   McpTransport,
@@ -115,7 +114,6 @@ export class McpServerService {
               transport: McpTransport.STDIO,
               command: server.command,
               args: server.args ?? [],
-              isolation: McpIsolationMode.TRUSTED,
               requestTimeoutMs: 30_000,
               compatibility: { roots: false, sampling: false, logging: false },
             }
@@ -365,7 +363,6 @@ export class McpServerService {
     serverId: string,
     ownerId: string,
     workspaceRoot: string,
-    isIsolationAvailable: boolean,
   ): McpConnectionContext {
     this.assertAvailable();
     const server = this.requireServer(serverId);
@@ -373,10 +370,6 @@ export class McpServerService {
       enabled: server.enabled,
       configurationRevision: server.revision,
       isConfigurationTrusted: this.repository.isTrusted(serverId, server.revision),
-      requiresIsolation:
-        server.config.transport === McpTransport.STDIO &&
-        server.config.isolation === McpIsolationMode.ISOLATED,
-      isIsolationAvailable,
     });
     if (policy.decision !== ToolPolicyDecision.ALLOW) {
       throw new McpError(

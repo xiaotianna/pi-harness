@@ -10,6 +10,7 @@ import {
   type StoredOAuthClientInformation,
   type StoredOAuthTokens,
 } from "@modelcontextprotocol/client";
+import { readSandboxPolicy } from "@pi-harness/policy";
 import type { HarnessConfig } from "../config/index.js";
 import type { McpConnectionContext } from "../mcp/client-manager.js";
 import { McpError, McpErrorCode } from "../mcp/errors.js";
@@ -301,6 +302,7 @@ export class McpOAuthService {
         timeoutMs: config.requestTimeoutMs,
       },
       verifyContext,
+      async (signal) => (await readSandboxPolicy(this.config.globalRoot, signal)).network,
     );
   }
 

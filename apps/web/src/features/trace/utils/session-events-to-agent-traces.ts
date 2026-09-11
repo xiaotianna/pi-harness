@@ -492,11 +492,13 @@ function createTrace(
       const preview =
         decision === ApprovalDecision.APPROVED_SIMILAR
           ? "用户已允许类似命令"
-          : decision === ApprovalDecision.APPROVED
-            ? "用户已批准"
-            : decision === ApprovalDecision.REJECTED
-              ? "用户已拒绝"
-              : "审批已超时";
+          : decision === ApprovalDecision.APPROVED_SESSION
+            ? "用户已允许本次会话"
+            : decision === ApprovalDecision.APPROVED
+              ? "用户已批准"
+              : decision === ApprovalDecision.REJECTED
+                ? "用户已拒绝"
+                : "审批已超时";
       records.push({
         durationMs: eventDuration(pending.event, event),
         ...(isExpired ? { errorCode: "APPROVAL_EXPIRED" } : {}),

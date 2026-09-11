@@ -2,20 +2,12 @@ import {
   McpAuthMode,
   McpAuthRequirement,
   McpConnectionStatus,
-  McpIsolationMode,
   McpJsonTransport,
   McpTransport,
 } from "@pi-harness/agent-runtime/mcp-contract";
 import { type Static, Type } from "typebox";
 
-export {
-  McpAuthMode,
-  McpAuthRequirement,
-  McpConnectionStatus,
-  McpIsolationMode,
-  McpJsonTransport,
-  McpTransport,
-};
+export { McpAuthMode, McpAuthRequirement, McpConnectionStatus, McpJsonTransport, McpTransport };
 
 export type McpServerId = string;
 
@@ -53,10 +45,6 @@ const StdioConfigSchema = Type.Object(
     args: Type.Array(Type.String({ maxLength: 8_192, pattern: "^[^\\u0000]*$" }), {
       maxItems: 128,
     }),
-    isolation: Type.Union([
-      Type.Literal(McpIsolationMode.ISOLATED),
-      Type.Literal(McpIsolationMode.TRUSTED),
-    ]),
   },
   { additionalProperties: false },
 );

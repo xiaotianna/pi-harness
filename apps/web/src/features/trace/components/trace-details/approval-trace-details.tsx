@@ -28,6 +28,7 @@ function readTimestamp(value: unknown): number | null {
 
 function decisionLabel(decision: string | null): string {
   if (decision === ApprovalDecision.APPROVED) return "Approved";
+  if (decision === ApprovalDecision.APPROVED_SESSION) return "Approved for session";
   if (decision === ApprovalDecision.APPROVED_SIMILAR) return "Approved similar";
   if (decision === ApprovalDecision.REJECTED) return "Rejected";
   if (decision === ApprovalDecision.EXPIRED) return "Expired";
@@ -37,6 +38,9 @@ function decisionLabel(decision: string | null): string {
 function decisionDescription(decision: string | null): string {
   if (decision === ApprovalDecision.APPROVED) {
     return "审批已通过；工具仍需通过执行前校验，实际执行结果以对应 Tool 轨迹为准。";
+  }
+  if (decision === ApprovalDecision.APPROVED_SESSION) {
+    return "用户已允许当前 Session 内相同目标，目标变化后会重新审批。";
   }
   if (decision === ApprovalDecision.APPROVED_SIMILAR) {
     return "审批已通过并保存命令前缀规则；工具仍需通过执行前校验。";

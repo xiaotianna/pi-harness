@@ -4,7 +4,7 @@ import {
 } from "@pi-harness/agent-runtime/model-response-preferences";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
-import { ApprovalPolicy } from "@pi-harness/policy";
+import { ApprovalPolicy, SandboxProfile } from "@pi-harness/policy";
 import { type Static, Type } from "typebox";
 import { FileOpenMode } from "../schemas/file-open.js";
 
@@ -51,6 +51,19 @@ export const ReasoningSummaryDtoSchema = Type.Union([
   Type.Literal(ReasoningSummary.DETAILED),
 ]);
 
+export const SandboxAllowedDomainsDtoSchema = Type.Array(
+  Type.String({
+    maxLength: 260,
+    minLength: 1,
+  }),
+  { maxItems: 100, uniqueItems: true },
+);
+
+export const SandboxProfileDtoSchema = Type.Union([
+  Type.Literal(SandboxProfile.READ_ONLY),
+  Type.Literal(SandboxProfile.WORKSPACE_WRITE),
+]);
+
 export const UpdateAppSettingsDtoSchema = Type.Object(
   {
     approvalPolicy: Type.Optional(ApprovalPolicyDtoSchema),
@@ -59,6 +72,9 @@ export const UpdateAppSettingsDtoSchema = Type.Object(
     fileOpenMode: Type.Optional(FileOpenModeDtoSchema),
     outputDetail: Type.Optional(OutputDetailDtoSchema),
     reasoningSummary: Type.Optional(ReasoningSummaryDtoSchema),
+    sandboxAllowedDomains: Type.Optional(SandboxAllowedDomainsDtoSchema),
+    sandboxDeniedDomains: Type.Optional(SandboxAllowedDomainsDtoSchema),
+    sandboxProfile: Type.Optional(SandboxProfileDtoSchema),
   },
   { minProperties: 1 },
 );

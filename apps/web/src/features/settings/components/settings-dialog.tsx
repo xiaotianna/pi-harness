@@ -9,6 +9,7 @@ import {
   Display as Monitor,
   Moon,
   Sliders as Settings2,
+  Shield,
   ShoppingBag as Store,
   Sun,
 } from "@gravity-ui/icons";
@@ -43,6 +44,7 @@ import { McpSettingsPanel } from "./mcp-settings-panel";
 import { MemorySettingsPanel } from "./memory-settings-panel";
 import { ModelSettingsPanel } from "./model-settings-panel";
 import { PluginMarketplacePanel } from "./plugin-marketplace-panel";
+import { SandboxSettingsPanel } from "./sandbox-settings-panel";
 import { SettingsPanelHeader } from "./settings-panel-header";
 import { SettingsRow } from "./settings-row";
 import {
@@ -84,6 +86,12 @@ const SETTINGS_SECTIONS = [
     label: "通用设置",
     description: "管理 PI Harness 的界面与基础偏好。",
     icon: Settings2,
+  },
+  {
+    id: "sandbox",
+    label: "沙箱",
+    description: "管理本地命令与 MCP 的文件和网络隔离。",
+    icon: Shield,
   },
   {
     id: "models",
@@ -629,6 +637,8 @@ export function SettingsDialog({
               >
                 {activeSectionId === "general" ? (
                   <GeneralSettingsPanel />
+                ) : activeSectionId === "sandbox" ? (
+                  <SandboxSettingsPanel />
                 ) : activeSectionId === "models" ? (
                   <ModelSettingsPanel />
                 ) : activeSectionId === "memory" ? (

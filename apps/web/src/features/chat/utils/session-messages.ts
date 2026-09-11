@@ -1,6 +1,7 @@
 import { isInternalAgentMessage } from "@pi-harness/agent-runtime/agent-message";
 import {
   ApprovalDecision,
+  ApprovalRequestKind,
   type HarnessEvent,
   HarnessEventType,
   isApprovalGranted,
@@ -318,6 +319,8 @@ function readToolActiveLabel(value: unknown): string | null {
       return "正在扫描文件状态";
     case "running":
       return "正在执行命令";
+    case "awaiting_approval":
+      return "等待提升权限";
     case "collecting_changes":
       return "正在统计文件变化";
     case "searching":
@@ -834,13 +837,21 @@ function projectRunMessages(
     ) {
       const tool = toolsByCallId.get(event.data.toolCallId);
       if (tool) {
-        const preview = readApprovalPreview(tool);
+        const preview =
+          typeof event.data.preview === "string" && event.data.preview
+            ? event.data.preview
+            : readApprovalPreview(tool);
+        const kind =
+          event.data.kind === ApprovalRequestKind.HOST_EXECUTION
+            ? ApprovalRequestKind.HOST_EXECUTION
+            : undefined;
         tool.approval = {
           approvalId: event.data.approvalId,
           ...(event.data.allowSession === false ? { allowSession: false } : {}),
           ...(isCommandPrefixRule(event.data.commandPrefix)
             ? { commandPrefix: event.data.commandPrefix }
             : {}),
+          ...(kind === undefined ? {} : { kind }),
           ...(preview === null ? {} : { preview }),
           risk: event.data.risk,
           runId: event.runId,

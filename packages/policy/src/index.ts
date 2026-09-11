@@ -7,6 +7,7 @@ export {
   type CommandPrefixRule,
   isCommandAllowedByPrefixes,
   isCommandPrefixRule,
+  isCriticalDestructiveCommand,
   isPersistableCommandPrefixRule,
   readApplicableCommandPrefix,
 } from "./command-policy.js";
@@ -21,6 +22,15 @@ export {
   type PathPolicyErrorCode,
 } from "./path-policy-error.js";
 export {
+  readSandboxPolicy,
+  type SandboxCredential,
+  writeSandboxPolicy,
+} from "./sandbox-policy.js";
+export {
+  SandboxProfile,
+  type SandboxProfile as SandboxProfileValue,
+} from "./sandbox-profile.js";
+export {
   type EvaluateToolCallInput,
   evaluateToolCall,
   ToolPermission,
@@ -31,6 +41,6 @@ export {
   type ToolWriteTarget,
 } from "./tool-policy.js";
 export { classifyNetworkAddress, NetworkAddressKind } from "./utils/network-address.js";
-export { isPathWithin } from "./utils/path.js";
+export { canonicalizePath, isPathWithin } from "./utils/path.js";
 
 export { matchesSkillTool } from "./utils/skill-tools.js";

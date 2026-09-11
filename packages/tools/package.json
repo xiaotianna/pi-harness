@@ -16,6 +16,7 @@
     "@earendil-works/pi-agent-core": "catalog:",
     "@napi-rs/canvas": "catalog:",
     "@pi-harness/policy": "workspace:*",
+    "@pi-harness/sandbox": "workspace:*",
     "diff": "catalog:",
     "es-toolkit": "catalog:",
     "execa": "catalog:",

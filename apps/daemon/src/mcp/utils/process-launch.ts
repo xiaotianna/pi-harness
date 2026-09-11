@@ -1,8 +1,7 @@
 import { constants } from "node:fs";
-import { access, mkdtemp, realpath, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access, realpath, stat } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
-import { McpAuthMode, McpIsolationMode, McpTransport } from "../../schemas/mcp.js";
+import { McpAuthMode, McpTransport } from "../../schemas/mcp.js";
 import type { McpConnectionContext } from "../client-manager.js";
 import { McpError, McpErrorCode } from "../errors.js";
 import type { McpProcessLaunch } from "../transports/stdio.js";
@@ -20,15 +19,11 @@ const MCP_EXECUTABLE_DIRECTORIES = [
 export async function prepareMcpProcessLaunch(
   context: McpConnectionContext,
   signal: AbortSignal,
-): Promise<{ launch: McpProcessLaunch; dispose(): Promise<void> }> {
+): Promise<McpProcessLaunch> {
   signal.throwIfAborted();
   const config = context.server.config;
-  if (config.transport !== McpTransport.STDIO || config.isolation !== McpIsolationMode.TRUSTED) {
-    throw new McpError(
-      McpErrorCode.CAPABILITY_UNAVAILABLE,
-      "尚未配置可用的 MCP 隔离执行器，无法启动本地服务",
-    );
-  }
+  if (config.transport !== McpTransport.STDIO)
+    throw new McpError(McpErrorCode.INVALID_CONFIG, "MCP 本地进程配置无效");
   const credential =
     context.credential === undefined ? undefined : validateMcpCredential(context.credential);
   if (credential !== undefined && credential.material.mode !== McpAuthMode.STATIC) {
@@ -71,29 +66,16 @@ export async function prepareMcpProcessLaunch(
   if (command === undefined)
     throw new McpError(McpErrorCode.INVALID_CONFIG, "MCP 启动程序不存在或不可执行，请使用绝对路径");
   signal.throwIfAborted();
-  const temporaryHome = await mkdtemp(join(tmpdir(), "pi-harness-mcp-"));
-  const dispose = async () => {
-    await rm(temporaryHome, { recursive: true, force: true });
-  };
-  if (signal.aborted) {
-    await dispose();
-    signal.throwIfAborted();
-  }
   return {
-    launch: {
-      command,
-      args: [...config.args],
-      cwd,
-      environment: {
-        PATH: MCP_EXECUTABLE_DIRECTORIES.join(delimiter),
-        HOME: temporaryHome,
-        TMPDIR: temporaryHome,
-        LANG: "en_US.UTF-8",
-        ...(credential?.material.mode === McpAuthMode.STATIC
-          ? credential.material.environment
-          : {}),
-      },
+    commandId: `mcp:${context.server.id}:${context.ownerId}`,
+    command,
+    args: [...config.args],
+    cwd,
+    environment: {
+      PATH: MCP_EXECUTABLE_DIRECTORIES.join(delimiter),
+      LANG: "en_US.UTF-8",
     },
-    dispose,
+    credentials:
+      credential?.material.mode === McpAuthMode.STATIC ? credential.material.environment : {},
   };
 }

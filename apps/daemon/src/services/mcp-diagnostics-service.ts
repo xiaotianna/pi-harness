@@ -106,7 +106,6 @@ export class McpDiagnosticsService {
         serverId,
         ownerId,
         await realpath(directory),
-        false,
       );
       if (context.server.revision !== input.expectedRevision)
         throw new McpError(McpErrorCode.CONFIG_CONFLICT, "MCP 配置已变更，请刷新后重试");

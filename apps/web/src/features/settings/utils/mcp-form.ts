@@ -1,6 +1,5 @@
 import {
   McpAuthMode,
-  McpIsolationMode,
   McpJsonTransport,
   McpTransport,
 } from "@pi-harness/agent-runtime/mcp-contract";
@@ -131,10 +130,6 @@ export function readMcpForm(draft: McpFormDraft, current?: McpServer): McpServer
         transport: draft.transport,
         command: endpoint,
         args,
-        isolation:
-          current?.config.transport === McpTransport.STDIO
-            ? current.config.isolation
-            : McpIsolationMode.TRUSTED,
       },
       ...(Object.keys(environment).length > 0 ? { environment } : {}),
     };

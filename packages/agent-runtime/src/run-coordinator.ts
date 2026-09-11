@@ -23,6 +23,7 @@ import {
 } from "@pi-harness/policy";
 import {
   attachSuccessfulTodoEvidence,
+  type FileChangeDetails,
   type PlanUpdatedData,
   type RequestUserInputData,
   readFileChangeDetails,
@@ -41,6 +42,8 @@ import { type AgentEventAdapterContext, adaptAgentEvent } from "./event-adapter.
 import {
   ApprovalDecision,
   type ApprovalRequestedData,
+  ApprovalRequestKind,
+  type ApprovalRequestKind as ApprovalRequestKindValue,
   type ApprovalResolvedData,
   type ContextCheckpointRecord,
   type ContextCheckpointRestoredData,
@@ -218,6 +221,8 @@ export class RunCoordinator {
   private queueMutationTail: Promise<void> = Promise.resolve();
   private pendingWorkingStateReset = false;
   private readonly successfulToolCallIds = new Set<string>();
+  private readonly sessionApprovedFingerprints = new Set<string>();
+  private readonly sessionApprovedNetworkTargets = new Set<string>();
   private readonly unsubscribe: () => void;
 
   public constructor(
@@ -670,10 +675,15 @@ export class RunCoordinator {
       toolCallFingerprint,
     );
     if (blockReason !== null) return { block: true, reason: blockReason };
+    if (this.sessionApprovedFingerprints.has(toolCallFingerprint)) {
+      this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+      return undefined;
+    }
 
     const approvalId = randomUUID();
     const request = {
       approvalId,
+      ...(policy.allowSession === undefined ? {} : { allowSession: policy.allowSession }),
       ...(policy.commandPrefix === undefined ? {} : { commandPrefix: policy.commandPrefix }),
       risk: policy.risk,
       runId: activeRun.runId,
@@ -701,6 +711,7 @@ export class RunCoordinator {
         {
           data: {
             approvalId,
+            ...(request.allowSession === undefined ? {} : { allowSession: request.allowSession }),
             ...(request.commandPrefix === undefined
               ? {}
               : { commandPrefix: request.commandPrefix }),
@@ -784,16 +795,22 @@ export class RunCoordinator {
           workspaceRoot: this.workspaceRoot,
         });
         const isUnchangedOneTimeApproval =
-          decision === ApprovalDecision.APPROVED &&
+          (decision === ApprovalDecision.APPROVED ||
+            decision === ApprovalDecision.APPROVED_SESSION) &&
           currentPolicy.decision === ToolPolicyDecision.ASK &&
           currentPolicy.fingerprint === policy.fingerprint &&
           currentPolicy.summary === policy.summary &&
           currentPolicy.target === policy.target;
+        const isValidSessionApproval =
+          decision !== ApprovalDecision.APPROVED_SESSION ||
+          (policy.allowSession !== false &&
+            currentPolicy.decision === ToolPolicyDecision.ASK &&
+            currentPolicy.allowSession !== false);
         const isStoredSimilarApproval =
           decision === ApprovalDecision.APPROVED_SIMILAR &&
           currentPolicy.decision === ToolPolicyDecision.ALLOW &&
           currentPolicy.fingerprint === policy.fingerprint;
-        if (!isUnchangedOneTimeApproval && !isStoredSimilarApproval) {
+        if ((!isUnchangedOneTimeApproval && !isStoredSimilarApproval) || !isValidSessionApproval) {
           return {
             block: true,
             reason: "审批期间工具目标已变化，请重新读取后再修改",
@@ -807,6 +824,9 @@ export class RunCoordinator {
           return { block: true, reason: currentBlockReason };
         }
         this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+        if (decision === ApprovalDecision.APPROVED_SESSION) {
+          this.sessionApprovedFingerprints.add(toolCallFingerprint);
+        }
         return undefined;
       }
       return {
@@ -816,6 +836,155 @@ export class RunCoordinator {
     } catch (error: unknown) {
       approval.cancel();
       throw error;
+    }
+  }
+
+  public async requestNetworkAccess(
+    input: { host: string; port?: number; toolCallId: string },
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const target = `${input.host}:${input.port ?? "*"}`;
+    if (this.sessionApprovedNetworkTargets.has(target)) return true;
+    const decision = await this.requestToolExecutionApproval(
+      {
+        allowSession: true,
+        risk: "这是该域名或 IP 的首次访问；允许后，本次命令可向该目标发送工作区数据。",
+        summary: `访问 ${target}`,
+        target,
+        toolCallId: input.toolCallId,
+      },
+      signal,
+    );
+    if (decision === ApprovalDecision.APPROVED_SESSION) {
+      this.sessionApprovedNetworkTargets.add(target);
+    }
+    return isApprovalGranted(decision);
+  }
+
+  public async requestHostExecution(
+    input: {
+      command: string;
+      changedFileCount: number;
+      reason: string;
+      toolCallId: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const changedFilesRisk =
+      input.changedFileCount === 0
+        ? ""
+        : ` 沙箱内的首次执行已修改 ${input.changedFileCount} 个可追踪文件，重跑可能重复产生副作用。`;
+    const decision = await this.requestToolExecutionApproval(
+      {
+        allowSession: false,
+        kind: ApprovalRequestKind.HOST_EXECUTION,
+        preview: input.reason,
+        risk: `提升后，原命令将不受文件系统和网络沙箱限制，并以 daemon 当前用户权限在宿主机执行。${changedFilesRisk}`,
+        summary: input.command,
+        target: "宿主机（当前用户权限）",
+        toolCallId: input.toolCallId,
+      },
+      signal,
+    );
+    if (decision === ApprovalDecision.EXPIRED) {
+      throw new Error("HOST_EXECUTION_APPROVAL_EXPIRED: 宿主机执行审批已超时");
+    }
+    return isApprovalGranted(decision);
+  }
+
+  public recordCommandFileChanges(input: {
+    changes: readonly FileChangeDetails[];
+    toolCallId: string;
+  }): void {
+    if (input.changes.length === 0) return;
+    this.pendingFileChanges.set(
+      input.toolCallId,
+      input.changes.map((fileChange) => ({
+        ...fileChange,
+        toolCallId: input.toolCallId,
+        toolName: "run_command",
+      })),
+    );
+  }
+
+  private async requestToolExecutionApproval(
+    input: {
+      allowSession: boolean;
+      kind?: ApprovalRequestKindValue;
+      preview?: string;
+      risk: string;
+      summary: string;
+      target: string;
+      toolCallId: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<ApprovalDecision> {
+    const activeRun = this.activeRun;
+    if (activeRun === null) return ApprovalDecision.REJECTED;
+    const approvalId = randomUUID();
+    const request = {
+      approvalId,
+      allowSession: input.allowSession,
+      ...(input.kind === undefined ? {} : { kind: input.kind }),
+      ...(input.preview === undefined ? {} : { preview: input.preview }),
+      risk: input.risk,
+      runId: activeRun.runId,
+      sessionId: this.sessionId,
+      summary: input.summary,
+      target: input.target,
+      toolCallId: input.toolCallId,
+      toolName: "run_command",
+    };
+    const approval = this.requestToolApproval(request, signal);
+    try {
+      await this.emit(
+        {
+          data: {
+            approvalId,
+            allowSession: input.allowSession,
+            expiresAt: approval.expiresAt,
+            ...(input.kind === undefined ? {} : { kind: input.kind }),
+            ...(input.preview === undefined ? {} : { preview: input.preview }),
+            risk: input.risk,
+            summary: input.summary,
+            target: input.target,
+            toolCallId: input.toolCallId,
+            toolName: "run_command",
+          } satisfies ApprovalRequestedData,
+          type: HarnessEventType.APPROVAL_REQUESTED,
+        },
+        activeRun.runId,
+      );
+      await this.emit(
+        {
+          data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+          type: HarnessEventType.RUN_AWAITING_INPUT,
+        },
+        activeRun.runId,
+      );
+      const decision = await approval.result;
+      await this.emit(
+        {
+          data: {
+            approvalId,
+            decision,
+            toolCallId: input.toolCallId,
+            toolName: "run_command",
+          } satisfies ApprovalResolvedData,
+          type: HarnessEventType.APPROVAL_RESOLVED,
+        },
+        activeRun.runId,
+      );
+      await this.emit(
+        {
+          data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+          type: HarnessEventType.RUN_RESUMED,
+        },
+        activeRun.runId,
+      );
+      return decision;
+    } finally {
+      approval.cancel();
     }
   }
 

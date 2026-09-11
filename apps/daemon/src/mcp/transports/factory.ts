@@ -3,6 +3,7 @@ import {
   SSEClientTransport,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
+import { readSandboxPolicy, SandboxProfile } from "@pi-harness/policy";
 import { McpAuthMode, McpTransport } from "../../schemas/mcp.js";
 import type { McpConnectionContext, McpTransportFactory } from "../client-manager.js";
 import { McpError, McpErrorCode } from "../errors.js";
@@ -14,19 +15,30 @@ export function createMcpTransportFactory(
   verifyContext: (context: McpConnectionContext) => void,
   createAuthProvider: (context: McpConnectionContext) => AuthProvider,
   protectedLocalPorts: readonly number[],
+  globalRoot: string,
+  protectedPaths: readonly string[],
 ): McpTransportFactory {
   return async (context, signal) => {
     signal.throwIfAborted();
     verifyContext(context);
     if (context.server.config.transport === McpTransport.STDIO) {
-      const { launch, dispose } = await prepareMcpProcessLaunch(context, signal);
+      const launch = await prepareMcpProcessLaunch(context, signal);
+      const sandboxPolicy = await readSandboxPolicy(globalRoot, signal);
       return new McpStdioTransport(
         launch,
+        {
+          allowedDomains: sandboxPolicy.network.allowedDomains,
+          deniedDomains: sandboxPolicy.network.deniedDomains,
+          isWorkspaceWritable: sandboxPolicy.profile === SandboxProfile.WORKSPACE_WRITE,
+          protectedPaths,
+          readPaths: [launch.command],
+          signal,
+          workspaceRoot: context.workspaceRoot,
+        },
         () => {
           signal.throwIfAborted();
           verifyContext(context);
         },
-        dispose,
       );
     }
     const config = context.server.config;
@@ -56,6 +68,7 @@ export function createMcpTransportFactory(
       },
       headers,
       () => verifyContext(context),
+      async (requestSignal) => (await readSandboxPolicy(globalRoot, requestSignal)).network,
     );
     const authProvider = createAuthProvider(context);
     if (config.transport === McpTransport.SSE)

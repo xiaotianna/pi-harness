@@ -5,6 +5,7 @@ import {
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
 import { ApprovalPolicy } from "@pi-harness/policy/approval-policy";
+import { SandboxProfile } from "@pi-harness/policy/sandbox-profile";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
@@ -43,6 +44,19 @@ const ReasoningSummarySchema = Type.Union([
   Type.Literal(ReasoningSummary.DETAILED),
 ]);
 
+const SandboxAllowedDomainsSchema = Type.Array(
+  Type.String({
+    maxLength: 260,
+    minLength: 1,
+  }),
+  { maxItems: 100, uniqueItems: true },
+);
+
+const SandboxProfileSchema = Type.Union([
+  Type.Literal(SandboxProfile.READ_ONLY),
+  Type.Literal(SandboxProfile.WORKSPACE_WRITE),
+]);
+
 const AppSettingsSchema = Type.Object({
   approvalPolicy: ApprovalPolicySchema,
   busySubmitBehavior: Type.Union([
@@ -63,6 +77,9 @@ const AppSettingsSchema = Type.Object({
   fileOpenMode: Type.Union([Type.Literal(FileOpenMode.ALWAYS), Type.Literal(FileOpenMode.ASK)]),
   outputDetail: OutputDetailSchema,
   reasoningSummary: ReasoningSummarySchema,
+  sandboxAllowedDomains: SandboxAllowedDomainsSchema,
+  sandboxDeniedDomains: SandboxAllowedDomainsSchema,
+  sandboxProfile: SandboxProfileSchema,
 });
 
 const UpdateAppSettingsSchema = Type.Object({
@@ -76,6 +93,9 @@ const UpdateAppSettingsSchema = Type.Object({
   ),
   outputDetail: Type.Optional(OutputDetailSchema),
   reasoningSummary: Type.Optional(ReasoningSummarySchema),
+  sandboxAllowedDomains: Type.Optional(SandboxAllowedDomainsSchema),
+  sandboxDeniedDomains: Type.Optional(SandboxAllowedDomainsSchema),
+  sandboxProfile: Type.Optional(SandboxProfileSchema),
 });
 
 export type AppSettings = Static<typeof AppSettingsSchema>;

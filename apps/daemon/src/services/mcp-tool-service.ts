@@ -41,12 +41,7 @@ export class McpToolService {
         let lease: McpClientLease | undefined;
         const registrationStart = registrations.length;
         try {
-          const context = this.servers.authorizeConnection(
-            server.id,
-            sessionId,
-            workspaceRoot,
-            false,
-          );
+          const context = this.servers.authorizeConnection(server.id, sessionId, workspaceRoot);
           const acquiredLease = await this.clients.acquire(context, signal);
           lease = acquiredLease;
           const catalog = await this.discovery.discover(acquiredLease, signal, true);

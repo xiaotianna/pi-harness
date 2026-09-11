@@ -163,6 +163,10 @@ export class McpClientManager {
     await Promise.all(entries.map(([key, entry]) => this.closeEntry(key, entry)));
   }
 
+  public async invalidateAll(): Promise<void> {
+    await Promise.all([...this.entries].map(([key, entry]) => this.closeEntry(key, entry)));
+  }
+
   public async close(): Promise<void> {
     this.isClosed = true;
     await Promise.all([...this.entries].map(([key, entry]) => this.closeEntry(key, entry)));

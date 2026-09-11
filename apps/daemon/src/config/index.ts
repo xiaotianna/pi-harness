@@ -55,6 +55,7 @@ export interface HarnessConfig {
   port: number;
   webSearchUrl: string;
   sessionsPath: string;
+  sandboxCredentialsPath: string;
   skillCredentialsPath: string;
   skillGatewayUrl: string;
   skillOAuthClients: Readonly<Record<string, SkillOAuthClientConfig>>;
@@ -165,6 +166,7 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
     githubOAuth: resolveGitHubOAuth(env, port),
     host: env.PI_HARNESS_HOST ?? DEFAULT_HOST,
     logLevel: env.PI_HARNESS_LOG_LEVEL ?? "info",
+    sandboxCredentialsPath: join(globalRoot, "sandbox-credentials.json"),
     port,
     webSearchUrl: parseLoopbackUrl(
       "PI_HARNESS_WEB_SEARCH_URL",

@@ -146,12 +146,20 @@ function toListItem({
 export class SkillRegistry {
   private readonly pendingGrants = new Map<string, string>();
   private readonly grants = new Map<string, SkillDetails & { fingerprint: string }>();
+  private readonly loadedDirectories = new Set<string>();
 
   public constructor(private readonly context: SkillRegistryContext) {}
 
   public clearGrants(): void {
     this.grants.clear();
     this.pendingGrants.clear();
+    this.loadedDirectories.clear();
+  }
+
+  public getLoadedDirectories(): readonly string[] {
+    return [...this.loadedDirectories].filter(
+      (directory) => this.context.isSkillEnabled?.(directory) !== false,
+    );
   }
 
   public fingerprint(skill: LoadedSkill): string {
@@ -237,6 +245,7 @@ export class SkillRegistry {
     const skill = await this.getRecord(name, scope, true, signal);
     signal?.throwIfAborted();
     const details = toDetails(skill);
+    if (skill.directory !== null) this.loadedDirectories.add(skill.directory);
     if (resource === undefined || resource === "SKILL.md") {
       return { ...details, content: skill.instructions, resource: "SKILL.md" };
     }

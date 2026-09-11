@@ -110,7 +110,7 @@ React Web（配置、资源/模板选择、授权、调用展示）
 | `packages/policy/src` | 服务器启动/连接和外部工具权限策略 |
 | `packages/agent-runtime/src` | Run 前工具准备、快照、上下文与事件适配 |
 | `apps/web/src/features/mcp` | 管理、资源和模板浏览等业务能力 |
-| `packages/sandbox` | 实际引入隔离执行器时创建；不先建空包 |
+| `packages/sandbox` | stdio MCP 的 SRT 执行边界，以及 HTTP/SSE/OAuth 的网络目标约束 |
 
 SDK 类型和连接对象只在 daemon 内使用。tools 定义实际需要的执行契约，daemon 注入实现；runtime 通过现有工具链调用，不反向导入 daemon。使用者需要稳定的跨模块类型时由实际所有者公开最小接口，不建立无边界的 protocol/shared package。
 
@@ -270,7 +270,7 @@ OAuth 入口只在服务器已启用后开放；用户点击后即明确允许�
 | MCP-007 | MCP Credential Store 与凭据引用 | MCP-005 | 已完成 | 独立 Credential Store 已实现；串行修改、权限/符号链接/损坏拒绝、失败后重试及内存磁盘一致性探测通过 |
 | MCP-008 | 服务器启动/连接 Policy 与信任记录 | MCP-005 | 已完成 | Policy 与 service 实现禁用/信任/隔离检查；变更及凭据替换撤销信任；22 项生命周期联合探测通过 |
 | MCP-009 | Client 生命周期、隔离键、限额与关闭管理 | MCP-006, MCP-007, MCP-008 | 已完成 | 32 实例上限、60 秒空闲释放；22 项探测覆盖租约复用/Session 隔离、管理连接定向回收、全局撤销、迟到连接中止和幂等关闭；类型检查通过 |
-| MCP-010 | stdio transport 与受控进程执行 | MCP-009 | 已完成 | 14 项真实子进程探测通过：环境隔离、严格 stdout、消息/stderr 限额、启动失败、父子进程组回收；当前仅 trusted/POSIX，OS 沙箱仍由 036 验收 |
+| MCP-010 | stdio transport 与受控进程执行 | MCP-009 | 已完成 | stdio 统一通过独立 SRT worker 启动并转发 JSON-RPC；保留消息/stderr 限额、启动失败和进程组回收，不再提供 trusted 直启模式 |
 | MCP-011 | 网络安全边界与受限请求实现 | MCP-008 | 已完成 | 共享地址分类、DNS 固定、私网显式授权、受保护端口、跳转检查、跨源凭据剥离、有界 fetch；42 项网络/协议探测通过；OAuth 业务在 025 使用该边界 |
 | MCP-012 | Streamable HTTP transport | MCP-009, MCP-011 | 已完成 | SDK HTTP + 受限 fetch；JSON/SSE、请求中止、响应限额、独立订阅超时；42 项本地联合探测通过，第三方服务验收仍属 042 |
 | MCP-013 | 新旧版本协商与 HTTP+SSE 兼容 | MCP-010, MCP-012 | 已完成 | 2026-07-28、三个 2025 版本和 HTTP+SSE 2024-11-05 在有界 fixture 验证通过；使用 SDK 自动协商，不改写版本号 |
@@ -311,7 +311,7 @@ OAuth 入口只在服务器已启用后开放；用户点击后即明确允许�
 | ID | 任务及交付物 | 依赖 | 状态 | 完成证据 / 验收要求 |
 |---|---|---|---|---|
 | MCP-035 | 资源/元数据安全与上下文来源隔离 | MCP-021, MCP-030, MCP-031 | 待开始 | 恶意 instructions/URI/图标/结果无法提升权限或伪造内部事件 |
-| MCP-036 | 本机 MCP 隔离执行器与平台支持矩阵 | MCP-010, MCP-011, MCP-023 | 待开始 | workspace 挂载、凭据目录保护、程序身份及启动范围复查、进程树、网络/资源限制；不支持的平台明确失败 |
+| MCP-036 | 本机 MCP 隔离执行器与平台支持矩阵 | MCP-010, MCP-011, MCP-023 | 进行中 | stdio 已接入 SRT 的 workspace、凭据、网络与进程树边界；HTTP/SSE/OAuth 接入统一联网规则；Windows 长驻进程回收及资源上限矩阵待验收 |
 | MCP-037 | MCP 设置管理 UI | MCP-015, MCP-024, MCP-026 | 进行中 | 已有全局设置入口、新增弹窗表单/JSON Tab、标准 `mcpServers` 原子导入、编辑、静态凭据、连接、撤销信任和删除；远程鉴权默认自动检测，401 后区分 OAuth 与 Token/API Key，OAuth 使用独立窗口并轮询脱敏状态；列表以尾部 Switch 启停并分页展示，不加载能力目录，点击进入详情后才查看完整能力；工具权限与完整浏览器验收待补 |
 | MCP-038 | 会话工具范围、调用结果与审批 UI | MCP-022, MCP-023, MCP-037 | 进行中 | 复用会话 Tool/审批卡，新增服务器/工具显示名、结果未知提示；单服务器连接或目录发现失败通过 `tool.started → tool.failed` 展示并继续 Run，MCP 状态统一使用 LobeHub MCP 图标；完整账号来源及登录后浏览器验收待补 |
 | MCP-039 | Resources、Prompts 与 Completion UI | MCP-029, MCP-030, MCP-037 | 待开始 | 浏览、填写、预览、明确应用及移除、异步失败和取消 |
@@ -374,7 +374,7 @@ OAuth 入口只在服务器已启用后开放；用户点击后即明确允许�
 - MCP 列表不展示能力摘要，也不在打开列表时连接服务器；列表每页渲染 25 台。进入详情后才加载工具、资源、提示词与服务端元数据的完整目录，避免大量服务器同时连接或把全部 Schema 装入列表响应和浏览器内存。
 - 已完成：MCP-004 至 MCP-015 的 SDK、存储、连接策略、生命周期、传输、目录和管理 API 基础。
 - 当前代码已把 MCP 工具加入 Agent；设置入口为「MCP 服务器」。实际 Agent Loop + 模拟 MCP 服务验证通过；登录后已验证全局入口与添加表单，完整管理流程和第三方服务尚未验收，不能声称完整生产交付。
-- 受控 stdio 当前支持 POSIX trusted 模式；isolated 模式与 Windows 明确失败。程序身份的持久授权复查及完整 OS 隔离仍由 036 完成。
+- stdio 当前在 POSIX 上统一使用 SRT 隔离，不再接受 trusted 直启配置；Windows 长驻进程回收未验收时明确失败。程序身份的持久授权复查和资源上限矩阵仍由 036 完成。
 - schema 当前保留原始约束，只接受同步校验可安全处理的正则、文档内引用和限定复杂度；动态递归/复杂正则明确报不兼容，不能把这个阶段结果等同于最终 Provider 兼容。
 - 后续顺序：工具级选择与授权 → 多模态/审计/恢复 → OAuth 真实服务矩阵与完整协议 UI → 第三方服务和生产验收。
 - 工作区依赖检查发现 pi-ai 已是 0.85.1，而 Agent Core 仍引用 0.82.1 类型；已将 Core 对齐到 0.85.1，保留现有 pi-ai 升级。tools 类型检查排除 Skill references 模板，未给运行包添加示例项目依赖。

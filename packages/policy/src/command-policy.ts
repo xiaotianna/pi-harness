@@ -77,6 +77,28 @@ function parseSimpleCommand(command: string): readonly string[] | null {
   return parts;
 }
 
+const DESTRUCTIVE_COMMANDS = new Set(["rm", "rmdir", "del", "erase", "rd", "remove-item"]);
+
+/** 关键删除即使在 full_access 下也必须逐次审批；复杂 Shell 删除默认按危险处理。 */
+export function isCriticalDestructiveCommand(command: string, workspaceRoot: string): boolean {
+  const normalizedRoot = workspaceRoot.replaceAll("\\", "/").replace(/\/$/u, "");
+  if (/\bgit\s+clean\b[^\r\n;&|]*(?:\s-f|\s--force)/iu.test(command)) return true;
+  if (/\bfind\s+(?:\.|\.\/|\/)[^\r\n;&|]*\s-delete\b/iu.test(command)) return true;
+  if (!/(?:^|[;&|\r\n])\s*(?:sudo\s+)?(?:rm|rmdir|del|erase|rd|remove-item)\b/iu.test(command)) {
+    return false;
+  }
+  const lower = command.toLocaleLowerCase().replaceAll("\\", "/");
+  const hasRecursiveFlag = /(?:^|\s)(?:-[a-z]*r[a-z]*|--recursive|\/s)(?:\s|$)/iu.test(lower);
+  const targetsRoot =
+    /(?:^|\s)(?:\.{1,2}|\.\/|\.\/\*|\.\*|\*|\/)\/?(?:\s|$)/u.test(lower) ||
+    lower.includes(normalizedRoot.toLocaleLowerCase());
+  const first = lower.trim().split(/\s+/u)[0]?.split("/").at(-1) ?? "";
+  return (
+    (hasRecursiveFlag && targetsRoot) ||
+    (!parseSimpleCommand(command) && DESTRUCTIVE_COMMANDS.has(first))
+  );
+}
+
 export function isCommandPrefixRule(value: unknown): value is CommandPrefixRule {
   return (
     Array.isArray(value) &&

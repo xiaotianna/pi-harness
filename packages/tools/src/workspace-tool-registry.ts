@@ -111,7 +111,7 @@ export function createWorkspaceToolRegistry(
       policy: { permission: ToolPermission.SHELL },
       source: BUILT_IN_SOURCE,
       timeoutMs: RUN_COMMAND_TIMEOUT_MS,
-      tool: createRunCommandTool(context),
+      tool: createRunCommandTool(context, () => skillRegistry.getLoadedDirectories()),
     },
   ];
   const builtInSkills: ToolRegistration[] = [

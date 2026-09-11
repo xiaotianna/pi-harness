@@ -4,8 +4,6 @@ export interface ExternalConnectionPolicyInput {
   enabled: boolean;
   configurationRevision: number;
   isConfigurationTrusted: boolean;
-  requiresIsolation: boolean;
-  isIsolationAvailable: boolean;
 }
 
 export type ExternalConnectionPolicyResult =
@@ -21,9 +19,6 @@ export function evaluateExternalConnection(
   }
   if (!Number.isSafeInteger(input.configurationRevision) || input.configurationRevision < 1) {
     return { decision: ToolPolicyDecision.DENY, reason: "MCP 配置版本无效" };
-  }
-  if (input.requiresIsolation && !input.isIsolationAvailable) {
-    return { decision: ToolPolicyDecision.DENY, reason: "当前环境不支持配置要求的 MCP 进程隔离" };
   }
   if (!input.isConfigurationTrusted) {
     return { decision: ToolPolicyDecision.ASK, reason: "请先确认当前 MCP 服务的连接或启动配置" };

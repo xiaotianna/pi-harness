@@ -1,3 +1,4 @@
+import { isPlainObject } from "es-toolkit";
 import { Value } from "typebox/value";
 import {
   type McpServerConfig,
@@ -30,10 +31,16 @@ function normalizeEndpoint(value: string): URL {
 }
 
 export function normalizeMcpConfig(input: unknown): McpServerConfig {
-  if (!Value.Check(McpServerConfigSchema, input)) {
+  const candidate =
+    isPlainObject(input) &&
+    input.transport === McpTransport.STDIO &&
+    (input.isolation === "isolated" || input.isolation === "trusted")
+      ? Object.fromEntries(Object.entries(input).filter(([name]) => name !== "isolation"))
+      : input;
+  if (!Value.Check(McpServerConfigSchema, candidate)) {
     throw new McpError(McpErrorCode.INVALID_CONFIG, "MCP 配置结构无效");
   }
-  const config = structuredClone(input);
+  const config = structuredClone(candidate);
   if (config.transport === McpTransport.STDIO) {
     if (!config.command.trim()) {
       throw new McpError(McpErrorCode.INVALID_CONFIG, "MCP 启动命令不能为空");

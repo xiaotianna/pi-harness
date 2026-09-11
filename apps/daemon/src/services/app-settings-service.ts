@@ -3,7 +3,12 @@ import type {
   ReasoningSummary,
 } from "@pi-harness/agent-runtime/model-response-preferences";
 import type { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
-import type { ApprovalPolicyValue } from "@pi-harness/policy";
+import {
+  type ApprovalPolicyValue,
+  readSandboxPolicy,
+  type SandboxProfileValue,
+  writeSandboxPolicy,
+} from "@pi-harness/policy";
 import type { UpdateAppSettingsDto } from "../dto/app-settings-dto.js";
 import type { FileOpenMode } from "../schemas/file-open.js";
 import type {
@@ -20,13 +25,21 @@ export interface AppSettings {
   fileOpenMode: FileOpenMode;
   outputDetail: OutputDetail;
   reasoningSummary: ReasoningSummary;
+  sandboxAllowedDomains: string[];
+  sandboxDeniedDomains: string[];
+  sandboxProfile: SandboxProfileValue;
 }
 
 export class AppSettingsService {
-  public constructor(private readonly settings: AppSettingRepository) {}
+  public constructor(
+    private readonly settings: AppSettingRepository,
+    private readonly globalRoot: string,
+    private readonly onSandboxPolicyChanged: () => Promise<void>,
+  ) {}
 
-  public get(): AppSettings {
+  public async get(): Promise<AppSettings> {
     const fileOpenApplication = this.settings.getFileOpenApplication();
+    const sandboxPolicy = await readSandboxPolicy(this.globalRoot);
     return {
       approvalPolicy: this.settings.getApprovalPolicy(),
       busySubmitBehavior: this.settings.getBusySubmitBehavior(),
@@ -37,10 +50,13 @@ export class AppSettingsService {
       fileOpenMode: this.settings.getFileOpenMode(),
       outputDetail: this.settings.getOutputDetail(),
       reasoningSummary: this.settings.getReasoningSummary(),
+      sandboxAllowedDomains: sandboxPolicy.network.allowedDomains,
+      sandboxDeniedDomains: sandboxPolicy.network.deniedDomains,
+      sandboxProfile: sandboxPolicy.profile,
     };
   }
 
-  public update(input: UpdateAppSettingsDto): AppSettings {
+  public async update(input: UpdateAppSettingsDto): Promise<AppSettings> {
     const updatedAt = Date.now();
     if (input.approvalPolicy !== undefined) {
       this.settings.setApprovalPolicy(input.approvalPolicy, updatedAt);
@@ -59,6 +75,21 @@ export class AppSettingsService {
     }
     if (input.reasoningSummary !== undefined) {
       this.settings.setReasoningSummary(input.reasoningSummary, updatedAt);
+    }
+    if (
+      input.sandboxAllowedDomains !== undefined ||
+      input.sandboxDeniedDomains !== undefined ||
+      input.sandboxProfile !== undefined
+    ) {
+      const current = await readSandboxPolicy(this.globalRoot);
+      await writeSandboxPolicy(this.globalRoot, {
+        network: {
+          allowedDomains: input.sandboxAllowedDomains ?? current.network.allowedDomains,
+          deniedDomains: input.sandboxDeniedDomains ?? current.network.deniedDomains,
+        },
+        profile: input.sandboxProfile ?? current.profile,
+      });
+      await this.onSandboxPolicyChanged();
     }
     return this.get();
   }

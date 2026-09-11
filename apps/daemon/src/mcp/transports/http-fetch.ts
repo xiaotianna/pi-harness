@@ -2,12 +2,14 @@ import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
 import type { LookupFunction } from "node:net";
 import type { FetchLike } from "@modelcontextprotocol/client";
-import { McpError, McpErrorCode } from "../errors.js";
 import {
-  type McpNetworkPolicy,
-  resolveMcpNetworkTarget,
-  validateMcpNetworkUrl,
-} from "../utils/network-target.js";
+  resolveSandboxNetworkTarget,
+  SandboxNetworkError,
+  SandboxNetworkErrorCode,
+  type SandboxNetworkPolicy,
+  validateSandboxNetworkUrl,
+} from "@pi-harness/sandbox";
+import { McpError, McpErrorCode } from "../errors.js";
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -18,11 +20,17 @@ const HEADERS_TIMEOUT_MS = 15_000;
 const MAX_BYTES_PER_SECOND = 16 * 1024 * 1024;
 let totalActiveRequests = 0;
 
+type McpNetworkPolicy = Omit<SandboxNetworkPolicy, "allowedDomains" | "deniedDomains">;
+type ReadSandboxNetworkPolicy = (
+  signal: AbortSignal,
+) => Promise<Pick<SandboxNetworkPolicy, "allowedDomains" | "deniedDomains">>;
+
 /** 每次连接固定校验后的 IP，禁用代理与自动重定向；认证头仅在目标 origin 上装配。 */
 export function createMcpHttpFetch(
   policy: McpNetworkPolicy,
   credentialHeaders: Readonly<Record<string, string>>,
   verifyContext: () => void,
+  readSandboxNetworkPolicy: ReadSandboxNetworkPolicy,
 ): FetchLike {
   let activeRequests = 0;
   return async (input, init) => {
@@ -52,6 +60,7 @@ export function createMcpHttpFetch(
     deadline = setTimeout(() => controller.abort(), policy.timeoutMs);
     deadline.unref();
     try {
+      const sandboxPolicy = { ...policy, ...(await readSandboxNetworkPolicy(signal)) };
       if (!["GET", "HEAD", "POST", "DELETE"].includes(request.method))
         throw new McpError(McpErrorCode.INVALID_CONFIG, "MCP HTTP 方法不受支持");
       const body = await readRequestBody(request, signal);
@@ -69,11 +78,11 @@ export function createMcpHttpFetch(
           throw new McpError(McpErrorCode.INVALID_CONFIG, "MCP 请求包含受保护的 HTTP 头");
       }
       headers.set("accept-encoding", "identity");
-      let url = validateMcpNetworkUrl(request.url, policy);
+      let url = validateSandboxNetworkUrl(request.url, sandboxPolicy);
       for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
         signal.throwIfAborted();
         verifyContext();
-        const resolved = await resolveMcpNetworkTarget(url, policy, signal);
+        const resolved = await resolveSandboxNetworkTarget(url, sandboxPolicy, signal);
         const outgoing = new Headers(headers);
         if (url.origin === policy.endpoint.origin) {
           for (const [name, value] of Object.entries(credentialHeaders)) outgoing.set(name, value);
@@ -97,7 +106,7 @@ export function createMcpHttpFetch(
               "MCP 重定向被拒绝，无法安全重发请求",
             );
           }
-          url = validateMcpNetworkUrl(new URL(response.headers.location, url), policy);
+          url = validateSandboxNetworkUrl(new URL(response.headers.location, url), sandboxPolicy);
           continue;
         }
         const responseHeaders = new Headers();
@@ -140,6 +149,16 @@ export function createMcpHttpFetch(
       controller.abort();
       release();
       if (error instanceof McpError) throw error;
+      if (error instanceof SandboxNetworkError) {
+        throw new McpError(
+          error.code === SandboxNetworkErrorCode.INVALID_URL
+            ? McpErrorCode.INVALID_CONFIG
+            : error.code === SandboxNetworkErrorCode.TARGET_NOT_ALLOWED
+              ? McpErrorCode.TRUST_REQUIRED
+              : McpErrorCode.CONNECTION_FAILED,
+          error.message,
+        );
+      }
       throw new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 网络请求失败或已取消");
     }
   };
@@ -149,6 +168,7 @@ export function createMcpHttpFetch(
 export function createMcpOAuthFetch(
   policy: Omit<McpNetworkPolicy, "endpoint" | "allowedOrigins">,
   verifyContext: () => void,
+  readSandboxNetworkPolicy: ReadSandboxNetworkPolicy,
 ): FetchLike {
   return async (input, init) => {
     let endpoint: URL;
@@ -161,6 +181,7 @@ export function createMcpOAuthFetch(
       { ...policy, endpoint, allowedOrigins: [] },
       {},
       verifyContext,
+      readSandboxNetworkPolicy,
     )(input, init);
   };
 }

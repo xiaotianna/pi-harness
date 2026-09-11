@@ -20,6 +20,7 @@
 |---|---|---|
 | daemon/服务端数据 | TanStack Query | Provider 列表、连接状态 |
 | 全局审批策略 | TanStack Query 读写 daemon `app_settings` | 设置页与消息输入器共享权限模式 |
+| 沙箱 Profile 与网络规则 | TanStack Query 读写 daemon 设置 API，daemon 原子保存 `sandbox-policy.json` | 独立“沙箱”设置菜单维护 `run_command` 与 MCP 的 `read_only | workspace_write`、allow/deny 域名/IP/端口规则；内置文件工具仍使用自身 Policy；空 allow 表示允许所有未被拒绝目标，非空 allow 下的未知 host:port 在 Tool 审批卡交互授权 |
 | 繁忙发送偏好 | TanStack Query 读写 daemon `app_settings` | 运行中 Enter 使用排队或插话，Cmd/Ctrl+Enter 临时反转 |
 | 文件打开偏好 | TanStack Query 读写 daemon `app_settings`；应用选择弹窗开关使用 Zustand | daemon 私有保存应用路径，Web 只读取打开模式、应用名称与可选图标 |
 | 跨组件纯 UI 状态 | Zustand | 当前页面视图、会话模型切换的短暂 UI 状态 |
@@ -42,7 +43,7 @@
 | 本地文件打开 | 设置页右侧先展示按内容收缩的 ghost 应用选择器，再使用与相邻设置控件等宽的 HeroUI `Select` 选择“每次询问”或默认应用；应用选择器始终展示 24px 图标和应用名称，使用 HeroUI 按钮自身的 hover 与键盘聚焦反馈，不替换文案，窄屏按相同顺序换行，也不添加下拉指示、独立操作或额外表面。询问流程使用不超过 420px 的紧凑 HeroUI `Modal`，标题下以 secondary `Surface` 展示文件摘要，再单独展示 `Checkbox`；不使用重复装饰图标和系统选择器说明，由 daemon 调用系统应用选择器 | `features/settings/components/settings-dialog.tsx`、`features/chat/components/file-open-dialog.tsx` |
 | 文件图标 | 统一使用 `FileIconRender`，由可排序的文件名/扩展名策略选择本地 Iconify VSCode 图标，未匹配时由调用方传入原有 Gravity 文件图标兜底 | `components/ui/file-icon-render.tsx` |
 | Tool 调用与分组 | assistant-ui Element `ToolCall`；分组使用紧凑列表 | `components/ai/tool-call.tsx`、`features/chat/components/thread-message/` |
-| Tool 审批 | 底部审批卡使用 HeroUI `ButtonGroup` 组合“允许一次”和 `Dropdown`；只有 daemon 提供已校验的 argv 前缀时显示“允许类似命令”，菜单只显示操作名称，Web 只提交决策 | `features/chat/components/tool-approval-card.tsx`、`packages/policy/src/command-policy.ts` |
+| Tool 审批 | 底部审批卡使用 HeroUI `ButtonGroup` 组合“允许一次”和 `Dropdown`；普通操作可选“本次会话允许”，只有 daemon 提供已校验的 argv 前缀时显示“允许类似命令”；关键递归删除只允许逐次批准。`run_command` 被 SRT 明确阻止后，复用同一卡片展示原始原因、宿主权限风险与“在宿主机重试”单次操作，不提供会话或类似命令授权。菜单只显示操作名称，Web 只提交决策 | `features/chat/components/tool-approval-card.tsx`、`packages/policy/src/command-policy.ts` |
 | 消息操作 | `ChatMessageActions` | `features/chat/components/message-actions.tsx` |
 | 消息输入 | `PromptInput` 加 `ChatComposerEditor`；“+”菜单在同一级提供 Skills 与 MCP 子菜单，MCP 只列出已启用且已信任的全局服务器并插入墨绿色提示标签，Skill 标签使用紫色 | `features/chat/components/chat-composer.tsx`、`chat-composer-editor.tsx`、`chat-context-mention.tsx` |
 | Run 运行反馈 | 用户消息乐观写入后同一帧在会话消息列表末尾追加主题 accent 蓝色的 HeroUI Pro `TextShimmer` “正在处理…”，`run.started` 到达后由真实活动 Run 投影接管，Run 终态后隐藏 | `features/chat/views/chat-page.tsx`、`features/chat/utils/session-messages.ts`、`features/chat/components/thread-message/loading-thread-message.tsx` |
@@ -70,6 +71,7 @@
 | 折叠详情 | HeroUI `Disclosure`；带阴影提示的滚动正文使用 `ScrollShadow` | `components/ai/reasoning-panel.tsx` |
 | 设置面板标题 | 复用 `SettingsPanelHeader` | `features/settings/components/settings-panel-header.tsx` |
 | 设置项行 | 复用 `SettingsRow` | `features/settings/components/settings-row.tsx` |
+| 沙箱设置 | 独立设置菜单复用 `SettingsPanelHeader` 与普通 `SettingsRow` 节奏；文件访问只描述并控制本地命令与 MCP，内置文件工具继续使用自身 Policy；Profile 使用行级 `Select`，联网规则使用两个带可见 Label 的多行 `TextField`，桌面并排、窄屏纵向，并在尾部统一保存；允许访问字段留空表示允许所有未被拒绝目标，联网规则保存成功或失败都使用 Toast 反馈 | `features/settings/components/sandbox-settings-panel.tsx` |
 | Provider 品牌 | 复用 `ModelProviderIcon`，按 Provider ID 映射直接 SVG | `features/models/components/model-provider-icon.tsx` |
 | 插件与子 Skill 图标 | Skill 优先使用 `manifest.yaml` 声明的本地 SVG，未声明时由 daemon 回退插件 Logo，插件也无 Logo 时由 Web 回退通用 Skill 图标 | `packages/tools/src/plugins/load-plugin.ts`、`features/settings/components/plugin-marketplace-panel.tsx` |
 | AI 过程展示 | 思考、图片和任务使用 assistant-ui Elements；Web Search 开始时显示带真实查询的 Shimmer 状态，取得结果后按 assistant-ui Sources Runtime 形态在消息内容区全宽展示 HeroUI Pro `ChatSource`，来源自然换行且每项保留 Hover Preview；Web Fetch 复用 Tool Call，并区分连接、读取和正文提取阶段；MCP 工具及 Run 准备期间的单服务器连接失败复用 Tool Call 状态，使用 `@lobehub/icons` 的 `MCP` 图标；多工具组外层占满消息宽度，摘要展示实际工具名称，组内普通 Tool Call 仍保持紧凑宽度 | `components/ai/`、`features/chat/components/thread-message/` |

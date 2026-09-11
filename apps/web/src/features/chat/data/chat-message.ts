@@ -1,4 +1,7 @@
-import type { ApprovalResponseDecision } from "@pi-harness/agent-runtime/harness-event";
+import type {
+  ApprovalRequestKind,
+  ApprovalResponseDecision,
+} from "@pi-harness/agent-runtime/harness-event";
 import type { RunMode } from "@pi-harness/agent-runtime/user-input";
 
 export const ChatMessageType = {
@@ -67,7 +70,9 @@ export type ChatMessageTool = {
   activeLabel?: string;
   approval?: {
     approvalId: string;
+    allowSession?: boolean;
     commandPrefix?: readonly string[];
+    kind?: ApprovalRequestKind;
     preview?: string;
     risk: string;
     runId: string;

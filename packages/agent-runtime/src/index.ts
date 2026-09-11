@@ -32,6 +32,8 @@ export {
   ApprovalDecision,
   type ApprovalDecision as ApprovalDecisionValue,
   type ApprovalRequestedData,
+  ApprovalRequestKind,
+  type ApprovalRequestKind as ApprovalRequestKindValue,
   type ApprovalResolvedData,
   type ApprovalResponseDecision,
   type ContextCheckpoint,
