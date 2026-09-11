@@ -18,6 +18,7 @@
   "dependencies": {
     "@modelcontextprotocol/client": "catalog:",
     "@fastify/cors": "catalog:",
+    "@fastify/static": "catalog:",
     "@pi-harness/agent-runtime": "workspace:*",
     "@pi-harness/policy": "workspace:*",
     "@pi-harness/providers": "workspace:*",
@@ -26,12 +27,12 @@
     "es-toolkit": "catalog:",
     "fastify": "catalog:",
     "pino": "catalog:",
+    "tsx": "catalog:",
     "typebox": "catalog:",
     "diff": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "tsx": "catalog:",
     "typescript": "catalog:"
   }
 }

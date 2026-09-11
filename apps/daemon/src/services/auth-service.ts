@@ -9,6 +9,7 @@ const GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
 const GITHUB_API_VERSION = "2026-03-10";
 const GITHUB_REQUEST_TIMEOUT_MS = 10_000;
+const DESKTOP_LOGIN_TIMEOUT_MS = 10 * 60 * 1_000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 
 const GitHubTokenResponseSchema = Type.Object({
@@ -48,6 +49,17 @@ export interface CreatedAuthSession {
   user: AuthUser;
 }
 
+export interface DesktopOAuthAuthorizationRequest extends OAuthAuthorizationRequest {
+  result: Promise<CreatedAuthSession>;
+}
+
+interface PendingDesktopLogin {
+  codeVerifier: string;
+  reject: (reason: unknown) => void;
+  resolve: (session: CreatedAuthSession) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 export type AuthSessionResponse =
   | { authenticated: false }
   | { authenticated: true; user: AuthUser };
@@ -73,6 +85,8 @@ async function readJson(response: Response): Promise<unknown> {
  * SQLite 细节由 AuthSessionRepository 封装。
  */
 export class AuthService {
+  private readonly pendingDesktopLogins = new Map<string, PendingDesktopLogin>();
+
   public constructor(
     private readonly githubConfig: GitHubOAuthConfig,
     private readonly sessions: AuthSessionRepository,
@@ -93,6 +107,58 @@ export class AuthService {
     authorizationUrl.searchParams.set("prompt", "select_account");
 
     return { authorizationUrl: authorizationUrl.toString(), codeVerifier, state };
+  }
+
+  public createDesktopGitHubAuthorizationRequest(): DesktopOAuthAuthorizationRequest {
+    const authorization = this.createGitHubAuthorizationRequest();
+    let resolve!: (session: CreatedAuthSession) => void;
+    let reject!: (reason: unknown) => void;
+    const result = new Promise<CreatedAuthSession>((resolveResult, rejectResult) => {
+      resolve = resolveResult;
+      reject = rejectResult;
+    });
+    const timeout = setTimeout(() => {
+      if (!this.pendingDesktopLogins.delete(authorization.state)) return;
+      reject(new GitHubOAuthError("GitHub desktop authorization timed out"));
+    }, DESKTOP_LOGIN_TIMEOUT_MS);
+
+    this.pendingDesktopLogins.set(authorization.state, {
+      codeVerifier: authorization.codeVerifier,
+      reject,
+      resolve,
+      timeout,
+    });
+    return { ...authorization, result };
+  }
+
+  public hasPendingDesktopLogin(state: string): boolean {
+    return this.pendingDesktopLogins.has(state);
+  }
+
+  public async completeDesktopGitHubLogin(code: string, state: string): Promise<boolean> {
+    const pending = this.pendingDesktopLogins.get(state);
+    if (!pending) return false;
+
+    try {
+      const session = await this.completeGitHubLogin(code, pending.codeVerifier);
+      pending.resolve(session);
+      return true;
+    } catch (error: unknown) {
+      pending.reject(error);
+      throw error;
+    } finally {
+      clearTimeout(pending.timeout);
+      this.pendingDesktopLogins.delete(state);
+    }
+  }
+
+  public cancelDesktopGitHubLogin(state: string, error?: Error): boolean {
+    const pending = this.pendingDesktopLogins.get(state);
+    if (!pending) return false;
+    clearTimeout(pending.timeout);
+    this.pendingDesktopLogins.delete(state);
+    if (error) pending.reject(error);
+    return true;
   }
 
   public async completeGitHubLogin(

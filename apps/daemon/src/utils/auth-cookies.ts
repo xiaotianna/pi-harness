@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 const AUTH_SESSION_COOKIE = "pi_harness_session";
+const DESKTOP_AUTH_COOKIE = "pi_harness_desktop";
 const GITHUB_OAUTH_COOKIE = "pi_harness_github_oauth";
 const GITHUB_CALLBACK_PATH = "/api/auth/github/callback";
 const OAUTH_COOKIE_MAX_AGE_SECONDS = 10 * 60;
@@ -109,4 +110,16 @@ export function readSessionCookie(header: string | undefined): string | null {
 
 export function clearSessionCookie(isSecure: boolean): string {
   return clearCookie(AUTH_SESSION_COOKIE, "/", isSecure);
+}
+
+export function createDesktopAuthCookie(token: string): string {
+  return serializeCookie(DESKTOP_AUTH_COOKIE, token, {
+    maxAgeSeconds: SESSION_MAX_AGE_SECONDS,
+    path: "/",
+    secure: false,
+  });
+}
+
+export function readDesktopAuthCookie(header: string | undefined): string | null {
+  return parseCookie(header, DESKTOP_AUTH_COOKIE);
 }

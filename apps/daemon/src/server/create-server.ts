@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import cors from "@fastify/cors";
+import fastifyStatic from "@fastify/static";
 import { AgentManager } from "@pi-harness/agent-runtime";
 import { AVAILABLE_PLUGINS, resolveRegisteredPluginSkills } from "@pi-harness/tools";
 import Fastify from "fastify";
@@ -10,6 +11,7 @@ import { McpDiscovery } from "../mcp/discovery.js";
 import { createMcpTransportFactory } from "../mcp/transports/factory.js";
 import { registerAppSettingsRoutes } from "../routes/app-settings-routes.js";
 import { registerAuthRoutes } from "../routes/auth-routes.js";
+import { registerDesktopRoutes } from "../routes/desktop-routes.js";
 import { registerHealthRoutes } from "../routes/health-routes.js";
 import { registerMcpRoutes } from "../routes/mcp-routes.js";
 import { registerProviderRoutes } from "../routes/provider-routes.js";
@@ -36,6 +38,7 @@ import { FileCredentialStore } from "../storage/provider-credential-store.js";
 import { loadSandboxCredentials } from "../storage/sandbox-credential-store.js";
 import { SessionEventStore } from "../storage/session-event-store.js";
 import { SkillCredentialStore } from "../storage/skill-credential-store.js";
+import { isDesktopRequestAllowed } from "../utils/request-security.js";
 
 const LOCAL_WEB_ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
 
@@ -172,6 +175,12 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
         message: "The request host is not allowed",
       });
     }
+    if (request.url.startsWith("/api/") && !isDesktopRequestAllowed(config, request)) {
+      return reply.status(401).send({
+        code: "DESKTOP_AUTH_REQUIRED",
+        message: "Desktop authorization is required",
+      });
+    }
   });
 
   await server.register(cors, {
@@ -197,7 +206,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     database.close();
   });
 
-  await registerAuthRoutes(server, config, database.authSessions);
+  await registerAuthRoutes(server, config, database.authSessions, fileOpen);
   await registerAppSettingsRoutes(server, config, appSettings, fileOpen);
   await registerHealthRoutes(server);
   await registerMcpRoutes(server, config, mcpServers, mcpDiagnostics, mcpOAuth);
@@ -205,6 +214,21 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   await registerSessionRoutes(server, config, sessions, broker);
   await registerSkillConnectionRoutes(server, config, skillConnections, skillGatewayToken);
   await registerWorkspaceRoutes(server, config, workspaces);
+
+  if (config.webDistPath !== null) {
+    await registerDesktopRoutes(server, config);
+    await server.register(fastifyStatic, { root: config.webDistPath });
+    server.setNotFoundHandler((request, reply) => {
+      if (
+        request.method === "GET" &&
+        !request.url.startsWith("/api/") &&
+        request.headers.accept?.includes("text/html")
+      ) {
+        return reply.sendFile("index.html");
+      }
+      return reply.status(404).send({ code: "NOT_FOUND", message: "Route not found" });
+    });
+  }
 
   return server;
 }

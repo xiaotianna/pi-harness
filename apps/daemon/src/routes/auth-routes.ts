@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import type { HarnessConfig } from "../config/index.js";
 import { AuthController } from "../controllers/auth-controller.js";
 import { type GitHubCallbackDto, GitHubCallbackDtoSchema } from "../dto/auth-dto.js";
+import type { FileOpenService } from "../services/file-open-service.js";
 import type { AuthSessionRepository } from "../storage/database.js";
 import { ApiErrorVoSchema, AuthSessionVoSchema } from "../vo/auth-vo.js";
 
@@ -11,10 +12,26 @@ export async function registerAuthRoutes(
   server: FastifyInstance,
   config: HarnessConfig,
   sessions: AuthSessionRepository,
+  fileOpen: FileOpenService,
 ): Promise<void> {
-  const controller = new AuthController(config, sessions);
+  const controller = new AuthController(config, sessions, fileOpen);
 
   server.get("/api/auth/github", controller.startGitHubLogin);
+
+  server.post(
+    "/api/auth/github/desktop",
+    {
+      schema: {
+        response: {
+          204: Type.Null(),
+          400: ApiErrorVoSchema,
+          403: ApiErrorVoSchema,
+          503: ApiErrorVoSchema,
+        },
+      },
+    },
+    controller.startDesktopGitHubLogin,
+  );
 
   server.get<{ Querystring: GitHubCallbackDto }>(
     "/api/auth/github/callback",

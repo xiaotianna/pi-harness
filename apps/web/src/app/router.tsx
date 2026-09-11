@@ -99,9 +99,19 @@ const loginRoute = createRoute({
   path: "/login",
   validateSearch: (search: Record<string, unknown>) => {
     const authError = search.authError;
-    return isAuthErrorCode(authError) ? { authError } : {};
+    const desktopAuthResult =
+      search.desktopAuth === "success"
+        ? ("success" as const)
+        : search.desktopAuth === "error"
+          ? ("error" as const)
+          : undefined;
+    return {
+      ...(isAuthErrorCode(authError) ? { authError } : {}),
+      ...(desktopAuthResult ? { desktopAuthResult } : {}),
+    };
   },
-  beforeLoad: async () => {
+  beforeLoad: async ({ search }) => {
+    if (search.desktopAuthResult) return;
     const session = await fetchCurrentAuthSession();
 
     if (session.authenticated) {
@@ -226,7 +236,7 @@ function ChatThreadRoute() {
 
 function LoginRoute() {
   const search = loginRoute.useSearch();
-  return <LoginPage authError={search.authError} />;
+  return <LoginPage authError={search.authError} desktopAuthResult={search.desktopAuthResult} />;
 }
 
 function SkillOAuthLaunchRoute() {

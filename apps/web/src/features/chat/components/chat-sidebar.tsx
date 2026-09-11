@@ -65,6 +65,10 @@ export const ChatSidebar = memo(function ChatSidebar({
   threads,
   workspaces,
 }: ChatSidebarProps) {
+  const hasMacDesktopTitlebar =
+    typeof window !== "undefined" &&
+    "__TAURI_INTERNALS__" in window &&
+    /Mac/.test(navigator.platform);
   const contentProps = {
     basePath,
     disableNavigation,
@@ -88,6 +92,9 @@ export const ChatSidebar = memo(function ChatSidebar({
   return (
     <>
       <Sidebar className="shadow-none!">
+        {hasMacDesktopTitlebar ? (
+          <div aria-hidden className="h-7 shrink-0" data-tauri-drag-region />
+        ) : null}
         <SidebarContents {...contentProps} />
         <Sidebar.Rail aria-label="切换侧边栏" />
       </Sidebar>

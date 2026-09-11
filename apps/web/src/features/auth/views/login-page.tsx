@@ -1,7 +1,8 @@
 "use client";
 
 import { Alert, Avatar, Button, Card } from "@heroui/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { startDesktopGitHubLogin } from "../api/auth-api";
 import { type AuthErrorCode, getAuthErrorMessage } from "../constants/auth-errors";
 
 function GitHubMark() {
@@ -19,16 +20,58 @@ function GitHubMark() {
 
 export interface LoginPageProps {
   authError?: AuthErrorCode | undefined;
+  desktopAuthResult?: "error" | "success" | undefined;
 }
 
-export function LoginPage({ authError }: LoginPageProps) {
+export function LoginPage({ authError, desktopAuthResult }: LoginPageProps) {
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const requestController = useRef<AbortController | null>(null);
   const errorMessage = getAuthErrorMessage(authError);
+  const isDesktopShell = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+  useEffect(() => () => requestController.current?.abort(), []);
 
   const startGitHubLogin = () => {
     setIsRedirecting(true);
-    window.location.assign("/api/auth/github");
+    setRequestError(null);
+    if (!isDesktopShell) {
+      window.location.assign("/api/auth/github");
+      return;
+    }
+
+    const controller = new AbortController();
+    requestController.current = controller;
+    void startDesktopGitHubLogin(controller.signal)
+      .then(() => window.location.assign("/"))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setIsRedirecting(false);
+        setRequestError(error instanceof Error ? error.message : "GitHub 授权未完成，请重试");
+      });
   };
+
+  if (desktopAuthResult) {
+    const isSuccess = desktopAuthResult === "success";
+    return (
+      <main className="flex min-h-svh items-center justify-center px-4">
+        <Card className="w-full max-w-sm">
+          <Card.Header className="items-center gap-2 text-center">
+            <Avatar>
+              <Avatar.Image alt="PI Harness" src="/images/blue-avatar.jpg" />
+              <Avatar.Fallback>PI</Avatar.Fallback>
+            </Avatar>
+            <Card.Title className="text-lg">{isSuccess ? "授权完成" : "授权失败"}</Card.Title>
+            <Card.Description>
+              {isSuccess
+                ? "可以关闭此页面并返回 PI Harness"
+                : (errorMessage ?? "请返回 PI Harness 后重试")}
+            </Card.Description>
+          </Card.Header>
+        </Card>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-svh items-center justify-center px-4">
@@ -45,14 +88,18 @@ export function LoginPage({ authError }: LoginPageProps) {
         <Card.Content>
           <Button fullWidth isPending={isRedirecting} variant="outline" onPress={startGitHubLogin}>
             <GitHubMark />
-            {isRedirecting ? "正在前往 GitHub…" : "使用 GitHub 登录"}
+            {isRedirecting
+              ? isDesktopShell
+                ? "等待浏览器授权…"
+                : "正在前往 GitHub…"
+              : "使用 GitHub 登录"}
           </Button>
 
-          {errorMessage ? (
+          {requestError || errorMessage ? (
             <Alert className="mt-3 bg-danger-soft" role="alert" status="danger">
               <Alert.Indicator />
               <Alert.Content>
-                <Alert.Title>{errorMessage}</Alert.Title>
+                <Alert.Title>{requestError ?? errorMessage}</Alert.Title>
               </Alert.Content>
             </Alert>
           ) : null}

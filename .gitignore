@@ -16,3 +16,7 @@ coverage/
 .idea/
 .vscode/
 packages/computer-use/native/target
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen/schemas
+apps/desktop/src-tauri/binaries/pi-harness-node-*
+apps/desktop/src-tauri/resources/daemon/

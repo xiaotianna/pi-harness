@@ -13,7 +13,7 @@ PI Harness 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 
 - Web 仅负责页面呈现和用户交互；文件系统、Shell、模型凭据、Agent 状态与持久化只能存在于 daemon。
 - daemon 默认只监听 `127.0.0.1`，不得默认绑定 `0.0.0.0`。
 - Web 与 daemon 通过 HTTP API 和 SSE 通信。普通操作使用 HTTP，Agent 增量事件使用 SSE。
-- 不直接使用 `pi-coding-agent`，不引入 Commander、TUI、Electron 或 Tauri。
+- 不直接使用 `pi-coding-agent`，不引入 Commander、TUI 或 Electron；桌面端仅允许 Tauri 作为现有 Web 与 daemon 的薄壳。
 - Agent Loop 使用 `@earendil-works/pi-agent-core` 的 `Agent`，模型与 Provider 使用 `@earendil-works/pi-ai`。
 - 不将 Pi 原始事件直接暴露给 Web；必须转换为项目自己的 `HarnessEvent` 协议。
 - 初始阶段不实现云端服务、多 Agent、MCP、Skill 市场、完整 IDE 或内嵌终端；该限制描述初始范围，不代表后续已明确纳入的能力。

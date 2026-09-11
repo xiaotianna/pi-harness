@@ -1,5 +1,6 @@
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
+import { apiRequest } from "../../../api/request";
 
 const AuthSessionResponseSchema = Type.Union([
   Type.Object({ authenticated: Type.Literal(false) }),
@@ -38,6 +39,10 @@ export async function getAuthSession(): Promise<AuthSessionResponse> {
     throw new Error("daemon 返回了无效的登录会话响应");
   }
   return body;
+}
+
+export async function startDesktopGitHubLogin(signal: AbortSignal): Promise<void> {
+  await apiRequest("/api/auth/github/desktop", { method: "POST", signal });
 }
 
 export async function logout(): Promise<void> {

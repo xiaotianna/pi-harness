@@ -29,7 +29,7 @@ export const ChatNavbar = memo(function ChatNavbar({ activePage, onSearch }: Cha
 
   return (
     <Navbar maxWidth="full">
-      <Navbar.Header>
+      <Navbar.Header data-tauri-drag-region>
         <AppLayout.MenuToggle aria-label="打开导航" tooltip="打开导航" />
         <Sidebar.Trigger aria-label="切换侧边栏" />
         <div className="flex min-w-0 items-center gap-3">

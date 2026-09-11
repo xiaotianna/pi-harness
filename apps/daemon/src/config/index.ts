@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 
@@ -10,6 +10,7 @@ const DEFAULT_WEB_URL = "http://127.0.0.1:5173";
 
 const EnvironmentSchema = Type.Object({
   PI_HARNESS_DATABASE_PATH: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_DESKTOP_TOKEN: Type.Optional(Type.String({ minLength: 32, maxLength: 256 })),
   PI_HARNESS_GITHUB_CALLBACK_URL: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_GITHUB_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_GITHUB_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
@@ -28,6 +29,7 @@ const EnvironmentSchema = Type.Object({
   PI_HARNESS_SKILL_VERCEL_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_SKILL_VERCEL_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_WEB_SEARCH_URL: Type.Optional(Type.String({ minLength: 1 })),
+  PI_HARNESS_WEB_DIST_PATH: Type.Optional(Type.String({ minLength: 1 })),
   PI_HARNESS_WEB_URL: Type.Optional(Type.String({ minLength: 1 })),
 });
 
@@ -48,12 +50,14 @@ export interface HarnessConfig {
   allowedCommandPrefixesPath: string;
   credentialsPath: string;
   databasePath: string;
+  desktopToken: string | null;
   globalRoot: string;
   githubOAuth: GitHubOAuthConfig | null;
   host: string;
   logLevel: string;
   port: number;
   webSearchUrl: string;
+  webDistPath: string | null;
   sessionsPath: string;
   sandboxCredentialsPath: string;
   skillCredentialsPath: string;
@@ -151,6 +155,14 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
 
   const env = input as HarnessEnvironment;
   const port = parsePort(env.PI_HARNESS_PORT);
+  if (
+    (env.PI_HARNESS_DESKTOP_TOKEN === undefined) !==
+    (env.PI_HARNESS_WEB_DIST_PATH === undefined)
+  ) {
+    throw new Error(
+      "PI_HARNESS_DESKTOP_TOKEN and PI_HARNESS_WEB_DIST_PATH must be configured together",
+    );
+  }
   const skillGatewayUrl = parseLoopbackUrl(
     "PI_HARNESS_SKILL_GATEWAY_URL",
     env.PI_HARNESS_SKILL_GATEWAY_URL ?? `http://127.0.0.1:${port}`,
@@ -162,6 +174,7 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
     allowedCommandPrefixesPath: join(globalRoot, "allowed-command-prefixes.json"),
     credentialsPath: join(globalRoot, "credentials.json"),
     databasePath,
+    desktopToken: env.PI_HARNESS_DESKTOP_TOKEN ?? null,
     globalRoot,
     githubOAuth: resolveGitHubOAuth(env, port),
     host: env.PI_HARNESS_HOST ?? DEFAULT_HOST,
@@ -172,6 +185,8 @@ export function loadHarnessConfig(input: NodeJS.ProcessEnv = process.env): Harne
       "PI_HARNESS_WEB_SEARCH_URL",
       env.PI_HARNESS_WEB_SEARCH_URL ?? DEFAULT_WEB_SEARCH_URL,
     ),
+    webDistPath:
+      env.PI_HARNESS_WEB_DIST_PATH === undefined ? null : resolve(env.PI_HARNESS_WEB_DIST_PATH),
     sessionsPath: join(globalRoot, "sessions"),
     skillCredentialsPath: join(globalRoot, "skill-credentials.json"),
     skillGatewayUrl,
