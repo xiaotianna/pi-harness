@@ -354,8 +354,11 @@ async function resolveOpenablePath(path: string, workspaceRoot: string): Promise
   try {
     return await realpath(target);
   } catch (error: unknown) {
-    if (!requestedPath.startsWith("project/")) throw error;
-    return realpath(resolve(workspaceRoot, requestedPath.slice("project/".length)));
+    const legacyPrefix = ["project/", "/workspace/"].find((prefix) =>
+      requestedPath.startsWith(prefix),
+    );
+    if (!legacyPrefix) throw error;
+    return realpath(resolve(workspaceRoot, requestedPath.slice(legacyPrefix.length)));
   }
 }
 

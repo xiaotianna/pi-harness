@@ -2,7 +2,7 @@ import type { WorkspaceAgentContext } from "../context/workspace-agent-context.j
 import type { RunContextData } from "../harness-event.js";
 import { AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION } from "./auto-follow-up-prompt.js";
 import { CONTEXT_CONTINUITY_SYSTEM_INSTRUCTION } from "./context-continuity-prompt.js";
-import { RICH_CONTENT_SYSTEM_INSTRUCTION } from "./rich-content-prompt.js";
+import { buildRichContentSystemInstruction } from "./rich-content-prompt.js";
 import { buildWorkspaceContextPrompts } from "./workspace-context-prompt.js";
 
 const BASE_SYSTEM_PROMPT = `You are PI Harness, a local-first coding agent operating in the user's current workspace.
@@ -18,7 +18,10 @@ After that, adapt the timing, content, and level of detail of progress updates t
 Use the commentary phase for progress updates and the final_answer phase only for the completed result. Lead with the outcome and match the level of detail to the situation and the user's request.`;
 
 /** 分开记录稳定 Prompt 与每次 Run 重新发现的 workspace 上下文。 */
-export function buildSystemPrompts(context: WorkspaceAgentContext): {
+export function buildSystemPrompts(
+  context: WorkspaceAgentContext,
+  workspaceRoot: string,
+): {
   contexts: RunContextData[];
   systemPrompt: string;
 } {
@@ -26,7 +29,7 @@ export function buildSystemPrompts(context: WorkspaceAgentContext): {
     contexts: buildWorkspaceContextPrompts(context),
     systemPrompt: [
       BASE_SYSTEM_PROMPT,
-      RICH_CONTENT_SYSTEM_INSTRUCTION,
+      buildRichContentSystemInstruction(workspaceRoot),
       AUTO_FOLLOW_UP_SYSTEM_INSTRUCTION,
       CONTEXT_CONTINUITY_SYSTEM_INSTRUCTION,
     ].join("\n"),

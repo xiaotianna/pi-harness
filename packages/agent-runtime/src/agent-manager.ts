@@ -101,7 +101,7 @@ export class AgentManager {
       isSkillEnabled: this.isSkillEnabled,
       workspaceRoot: input.workspaceRoot,
     });
-    const prompts = buildSystemPrompts(workspaceContext);
+    const prompts = buildSystemPrompts(workspaceContext, input.workspaceRoot);
     const preparedInput = {
       ...input,
       ...prompts,
