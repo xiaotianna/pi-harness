@@ -1,4 +1,5 @@
 import { toast } from "@heroui/react";
+import { McpCatalogStatus } from "@pi-harness/agent-runtime/mcp-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -9,8 +10,9 @@ import {
   setMcpEnabled,
   testMcpServer,
   trustMcpServer,
+  updateMcpTool,
 } from "../api/mcp-api";
-import { mcpQueryKeys, mcpServersQueryOptions } from "../api/mcp-queries";
+import { mcpCatalogQueryOptions, mcpQueryKeys, mcpServersQueryOptions } from "../api/mcp-queries";
 
 export const McpAction = {
   CONNECT: "connect",
@@ -34,12 +36,25 @@ interface ToggleContext {
   previousServer?: McpServer;
 }
 
-export function useMcpServers() {
+export function useMcpServers(selectedServerId: string | null) {
   const [results, setResults] = useState<ReadonlyMap<string, McpTestResult>>(new Map());
   const [pendingActions, setPendingActions] = useState<ReadonlyMap<string, Action>>(new Map());
   const controllers = useRef(new Map<string, AbortController>());
   const client = useQueryClient();
   const servers = useQuery(mcpServersQueryOptions());
+  const selectedServer = servers.data?.find((server) => server.id === selectedServerId);
+  const catalog = useQuery({
+    ...mcpCatalogQueryOptions(selectedServerId ?? ""),
+    refetchInterval: selectedServer?.catalogStatus === McpCatalogStatus.LOADING ? 1_000 : false,
+  });
+  useEffect(() => {
+    if (
+      selectedServer?.catalogUpdatedAt !== undefined &&
+      catalog.data?.discoveredAt !== selectedServer.catalogUpdatedAt
+    ) {
+      void catalog.refetch();
+    }
+  }, [catalog.data?.discoveredAt, catalog.refetch, selectedServer?.catalogUpdatedAt]);
   useEffect(
     () => () => {
       for (const controller of controllers.current.values()) controller.abort();
@@ -88,6 +103,7 @@ export function useMcpServers() {
     onSuccess: (data, input) => {
       if (data && "serverId" in data) {
         setResults((current) => new Map(current).set(data.serverId, data));
+        client.setQueryData(mcpQueryKeys.catalog(data.serverId), data);
         if (input.kind === McpAction.CONNECT || input.kind === McpAction.TEST)
           toast.success(`${input.server.name} 连接测试成功`);
       } else if (data) {
@@ -118,11 +134,61 @@ export function useMcpServers() {
       });
       if (
         input.kind === McpAction.CONNECT ||
+        input.kind === McpAction.DISCOVER ||
+        input.kind === McpAction.TEST ||
         input.kind === McpAction.DELETE ||
         input.kind === McpAction.REVOKE
       ) {
         await client.invalidateQueries({ queryKey: mcpQueryKeys.all });
       }
+    },
+  });
+  const toolAction = useMutation({
+    mutationFn: ({
+      enabled,
+      server,
+      tool,
+      trustedReadOnly,
+    }: {
+      enabled: boolean;
+      server: McpServer;
+      tool: McpTestResult["tools"][number];
+      trustedReadOnly: boolean;
+    }) => updateMcpTool(server, tool, enabled, trustedReadOnly),
+    onError: (error: Error) => toast.danger(error.message),
+    onSuccess: (_data, input) => {
+      setResults((current) => {
+        const result = current.get(input.server.id);
+        if (!result) return current;
+        return new Map(current).set(input.server.id, {
+          ...result,
+          tools: result.tools.map((tool) =>
+            tool.name === input.tool.name
+              ? {
+                  ...tool,
+                  enabled: input.enabled,
+                  trustedReadOnly: input.trustedReadOnly,
+                }
+              : tool,
+          ),
+        });
+      });
+      client.setQueryData<McpTestResult | null>(mcpQueryKeys.catalog(input.server.id), (result) =>
+        result
+          ? {
+              ...result,
+              tools: result.tools.map((tool) =>
+                tool.name === input.tool.name
+                  ? {
+                      ...tool,
+                      enabled: input.enabled,
+                      trustedReadOnly: input.trustedReadOnly,
+                    }
+                  : tool,
+              ),
+            }
+          : result,
+      );
     },
   });
   const run = (server: McpServer, kind: Action, onSuccess?: () => void) => {
@@ -146,10 +212,18 @@ export function useMcpServers() {
   };
   return {
     servers,
+    catalog,
     results,
     pendingActions,
     run,
     refresh,
+    saveTool: (
+      server: McpServer,
+      tool: McpTestResult["tools"][number],
+      enabled: boolean,
+      trustedReadOnly: boolean,
+    ) => toolAction.mutate({ server, tool, enabled, trustedReadOnly }),
+    isSavingTool: toolAction.isPending,
     cancelTest: (serverId: string) => controllers.current.get(serverId)?.abort(),
   };
 }

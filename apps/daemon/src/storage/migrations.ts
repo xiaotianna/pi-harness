@@ -283,4 +283,15 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     // 全局配置、启用状态、信任及凭据保持原值，只移除旧的项目启用关系。
     sql: `DROP TABLE workspace_mcp_servers;`,
   },
+  {
+    version: "016-mcp-catalogs.sql",
+    sql: `
+      CREATE TABLE mcp_catalogs (
+        server_id TEXT PRIMARY KEY REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        config_revision INTEGER NOT NULL CHECK (config_revision > 0),
+        catalog_json TEXT NOT NULL CHECK (json_valid(catalog_json)),
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+    `,
+  },
 ];

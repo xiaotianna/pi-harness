@@ -10,7 +10,6 @@ import type {
 import type { McpClientLease } from "./client-manager.js";
 import { McpError, McpErrorCode } from "./errors.js";
 
-const CATALOG_TTL_MS = 30_000;
 const MAX_CATALOG_BYTES = 2 * 1024 * 1024;
 const MAX_CATALOG_ITEMS = 512;
 
@@ -41,12 +40,7 @@ export class McpDiscovery {
     signal.throwIfAborted();
     lease.signal.throwIfAborted();
     const cached = this.catalogs.get(lease.client);
-    if (
-      !shouldRefresh &&
-      cached !== undefined &&
-      cached.generation === lease.catalogGeneration &&
-      Date.now() - cached.discoveredAt < CATALOG_TTL_MS
-    ) {
+    if (!shouldRefresh && cached !== undefined && cached.generation === lease.catalogGeneration) {
       return structuredClone(cached);
     }
     const generation = lease.catalogGeneration;

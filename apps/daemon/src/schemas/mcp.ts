@@ -1,13 +1,21 @@
 import {
   McpAuthMode,
   McpAuthRequirement,
+  McpCatalogStatus,
   McpConnectionStatus,
   McpJsonTransport,
   McpTransport,
 } from "@pi-harness/agent-runtime/mcp-contract";
 import { type Static, Type } from "typebox";
 
-export { McpAuthMode, McpAuthRequirement, McpConnectionStatus, McpJsonTransport, McpTransport };
+export {
+  McpAuthMode,
+  McpAuthRequirement,
+  McpCatalogStatus,
+  McpConnectionStatus,
+  McpJsonTransport,
+  McpTransport,
+};
 
 export type McpServerId = string;
 

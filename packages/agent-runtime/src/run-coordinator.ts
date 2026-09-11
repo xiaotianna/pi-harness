@@ -782,6 +782,7 @@ export class RunCoordinator {
     const commandPrefix = aiApproval === null ? policy.commandPrefix : aiApproval.commandPrefix;
     const request = {
       approvalId,
+      ...(policy.allowSimilar === undefined ? {} : { allowSimilar: policy.allowSimilar }),
       ...(policy.allowSession === undefined ? {} : { allowSession: policy.allowSession }),
       ...(commandPrefix === undefined || commandPrefix === null ? {} : { commandPrefix }),
       risk: policy.risk,
@@ -810,6 +811,7 @@ export class RunCoordinator {
         {
           data: {
             approvalId,
+            ...(request.allowSimilar === undefined ? {} : { allowSimilar: request.allowSimilar }),
             ...(request.allowSession === undefined ? {} : { allowSession: request.allowSession }),
             ...(request.commandPrefix === undefined
               ? {}
@@ -878,6 +880,13 @@ export class RunCoordinator {
 
       // 决定是否执行工具，返回 undefined，表示不阻止工具，继续执行。
       if (isApprovalGranted(decision)) {
+        if (
+          decision === ApprovalDecision.APPROVED_SIMILAR &&
+          registration?.policy.permission === ToolPermission.USER_APPROVAL &&
+          registration.policy.storeGrant !== undefined
+        ) {
+          await registration.policy.storeGrant(context.args, signal);
+        }
         const currentPolicy = await evaluateToolCall({
           approvalPolicy: activeRun.approvalPolicy,
           allowedCommandPrefixes: this.getAllowedCommandPrefixes(),

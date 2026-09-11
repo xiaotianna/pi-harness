@@ -10,6 +10,7 @@ import type {
   PutMcpCredentialDto,
   TestMcpConnectionDto,
   UpdateMcpServerDto,
+  UpdateMcpToolDto,
 } from "../dto/mcp-dto.js";
 import { MCP_ERROR_STATUS, McpError, McpErrorCode } from "../mcp/errors.js";
 import type { McpDiagnosticsService } from "../services/mcp-diagnostics-service.js";
@@ -29,6 +30,10 @@ export class McpController {
     this.respond(request, reply, () => this.servers.list());
   public get = (request: FastifyRequest<{ Params: McpServerParamsDto }>, reply: FastifyReply) =>
     this.respond(request, reply, () => this.servers.get(request.params.serverId));
+  public getCatalog = (
+    request: FastifyRequest<{ Params: McpServerParamsDto }>,
+    reply: FastifyReply,
+  ) => this.respond(request, reply, () => this.diagnostics.get(request.params.serverId));
   public create = (request: FastifyRequest<{ Body: CreateMcpServerDto }>, reply: FastifyReply) =>
     this.respond(request, reply, () => this.servers.create(request.body));
   public update = (
@@ -96,7 +101,17 @@ export class McpController {
       );
     }
     try {
-      await this.oauth.complete(request.params.serverId, code, state, iss);
+      const server = await this.oauth.complete(request.params.serverId, code, state, iss);
+      if (server.enabled && server.isTrusted) {
+        void this.diagnostics
+          .test(server.id, { expectedRevision: server.revision }, AbortSignal.timeout(30_000))
+          .catch((error: unknown) => {
+            request.log.warn(
+              { err: error, serverId: server.id },
+              "MCP OAuth catalog refresh failed",
+            );
+          });
+      }
       return this.redirectToOAuthResult(reply, request.params.serverId, true);
     } catch (cause: unknown) {
       const oauthError =
@@ -129,6 +144,13 @@ export class McpController {
       this.withDiagnosticSignal(reply, (signal) =>
         this.diagnostics.test(request.params.serverId, request.body, signal),
       ),
+    );
+  public updateTool = (
+    request: FastifyRequest<{ Params: McpServerParamsDto; Body: UpdateMcpToolDto }>,
+    reply: FastifyReply,
+  ) =>
+    this.respond(request, reply, () =>
+      this.servers.updateToolSetting(request.params.serverId, request.body),
     );
   private async withDiagnosticSignal<T>(
     reply: FastifyReply,

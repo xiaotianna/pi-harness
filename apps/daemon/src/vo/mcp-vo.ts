@@ -1,6 +1,11 @@
 import { type Static, Type } from "typebox";
 import { McpCredentialSchema } from "../mcp/credential.js";
-import { McpAuthMode, McpAuthRequirement, McpServerRecordSchema } from "../schemas/mcp.js";
+import {
+  McpAuthMode,
+  McpAuthRequirement,
+  McpCatalogStatus,
+  McpServerRecordSchema,
+} from "../schemas/mcp.js";
 
 export const McpServerVoSchema = Type.Object(
   {
@@ -17,6 +22,14 @@ export const McpServerVoSchema = Type.Object(
     credentialRevision: Type.Optional(McpCredentialSchema.properties.revision),
     hasCredential: Type.Boolean(),
     isTrusted: Type.Boolean(),
+    catalogStatus: Type.Union([
+      Type.Literal(McpCatalogStatus.IDLE),
+      Type.Literal(McpCatalogStatus.LOADING),
+      Type.Literal(McpCatalogStatus.READY),
+      Type.Literal(McpCatalogStatus.ERROR),
+    ]),
+    catalogUpdatedAt: Type.Optional(Type.Integer({ minimum: 0 })),
+    catalogError: Type.Optional(Type.String({ maxLength: 4_096 })),
   },
   { additionalProperties: false },
 );
@@ -42,8 +55,11 @@ const McpCatalogItemVoSchema = Type.Object(
 const McpToolVoSchema = Type.Object(
   {
     ...McpCatalogItemVoSchema.properties,
+    definitionFingerprint: Type.String({ minLength: 1, maxLength: 512 }),
+    enabled: Type.Boolean(),
     inputSchema: Type.Unknown(),
     outputSchema: Type.Optional(Type.Unknown()),
+    trustedReadOnly: Type.Boolean(),
   },
   { additionalProperties: false },
 );
@@ -104,3 +120,4 @@ export const McpDiagnosticsVoSchema = Type.Object(
   { additionalProperties: false },
 );
 export type McpDiagnosticsVo = Static<typeof McpDiagnosticsVoSchema>;
+export const McpCatalogVoSchema = Type.Union([McpDiagnosticsVoSchema, Type.Null()]);

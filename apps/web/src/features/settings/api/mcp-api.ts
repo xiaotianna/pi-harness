@@ -1,6 +1,7 @@
 import {
   McpAuthMode,
   McpAuthRequirement,
+  McpCatalogStatus,
   McpJsonTransport,
   McpTransport,
 } from "@pi-harness/agent-runtime/mcp-contract";
@@ -99,6 +100,14 @@ const McpServerSchema = Type.Object({
   credentialRevision: Type.Optional(Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER })),
   hasCredential: Type.Boolean(),
   isTrusted: Type.Boolean(),
+  catalogStatus: Type.Union([
+    Type.Literal(McpCatalogStatus.IDLE),
+    Type.Literal(McpCatalogStatus.LOADING),
+    Type.Literal(McpCatalogStatus.READY),
+    Type.Literal(McpCatalogStatus.ERROR),
+  ]),
+  catalogUpdatedAt: Type.Optional(Type.Integer({ minimum: 0 })),
+  catalogError: Type.Optional(Type.String()),
 });
 const McpServersSchema = Type.Array(McpServerSchema);
 const McpOAuthStartSchema = Type.Object({
@@ -112,8 +121,11 @@ const CatalogItemSchema = Type.Object({
 });
 const McpToolSchema = Type.Object({
   ...CatalogItemSchema.properties,
+  definitionFingerprint: Type.String(),
+  enabled: Type.Boolean(),
   inputSchema: Type.Unknown(),
   outputSchema: Type.Optional(Type.Unknown()),
+  trustedReadOnly: Type.Boolean(),
 });
 const McpResourceSchema = Type.Object({
   ...CatalogItemSchema.properties,
@@ -305,4 +317,35 @@ export async function testMcpServer(
   ).json();
   if (!Value.Check(McpTestSchema, body)) throw new Error("MCP 连接测试响应格式无效");
   return body;
+}
+
+export async function getMcpCatalog(
+  serverId: string,
+  signal: AbortSignal,
+): Promise<McpTestResult | null> {
+  const body: unknown = await (
+    await requestMcp(`${serverPath(serverId)}/catalog`, { signal })
+  ).json();
+  if (body !== null && !Value.Check(McpTestSchema, body)) {
+    throw new Error("MCP 能力目录格式无效");
+  }
+  return body;
+}
+
+export async function updateMcpTool(
+  server: McpServer,
+  tool: McpTestResult["tools"][number],
+  enabled: boolean,
+  trustedReadOnly: boolean,
+): Promise<void> {
+  await requestMcp(`${serverPath(server.id)}/tools`, {
+    method: "PUT",
+    body: JSON.stringify({
+      expectedRevision: server.revision,
+      toolName: tool.name,
+      definitionFingerprint: tool.definitionFingerprint,
+      enabled,
+      trustedReadOnly,
+    }),
+  });
 }

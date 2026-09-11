@@ -7,6 +7,7 @@ import type {
   McpJsonDto,
   PutMcpCredentialDto,
   UpdateMcpServerDto,
+  UpdateMcpToolDto,
 } from "../dto/mcp-dto.js";
 import type { McpConnectionContext } from "../mcp/client-manager.js";
 import type { McpCredential } from "../mcp/credential.js";
@@ -17,13 +18,14 @@ import { reserveUniqueMcpName } from "../mcp/utils/unique-server-name.js";
 import {
   McpAuthMode,
   McpAuthRequirement,
+  McpCatalogStatus,
   McpJsonTransport,
   type McpServerRecord,
   McpTransport,
 } from "../schemas/mcp.js";
 import type { McpCredentialStore } from "../storage/mcp-credential-store.js";
 import type { McpServerRepository } from "../storage/mcp-server-repository.js";
-import type { McpServerVo } from "../vo/mcp-vo.js";
+import type { McpDiagnosticsVo, McpServerVo } from "../vo/mcp-vo.js";
 
 const MAX_MCP_SERVERS = 1_000;
 
@@ -31,6 +33,10 @@ export class McpServerService {
   private readonly authRequirements = new Map<
     string,
     { requirement: McpAuthRequirement; resourceMetadataUrl?: string }
+  >();
+  private readonly catalogRefreshes = new Map<
+    string,
+    { status: typeof McpCatalogStatus.LOADING | typeof McpCatalogStatus.ERROR; message?: string }
   >();
   private mutationChain: Promise<void> = Promise.resolve();
   private isMutating = false;
@@ -51,6 +57,68 @@ export class McpServerService {
 
   public get(serverId: string): McpServerVo {
     return this.toVo(this.requireServer(serverId));
+  }
+
+  public getToolSetting(serverId: string, toolName: string, definitionFingerprint: string) {
+    this.requireServer(serverId);
+    return this.repository.getToolSetting(serverId, toolName, definitionFingerprint);
+  }
+
+  public getCatalog(serverId: string): McpDiagnosticsVo | null {
+    const server = this.requireServer(serverId);
+    const catalog = this.repository.findCatalog(server.id, server.revision);
+    if (catalog === null) return null;
+    return {
+      ...catalog,
+      tools: catalog.tools.map((tool) => ({
+        ...tool,
+        ...this.repository.getToolSetting(server.id, tool.name, tool.definitionFingerprint),
+      })),
+    };
+  }
+
+  public beginCatalogRefresh(serverId: string, expectedRevision: number): void {
+    this.requireRevision(serverId, expectedRevision);
+    this.catalogRefreshes.set(serverId, { status: McpCatalogStatus.LOADING });
+  }
+
+  public saveCatalog(catalog: McpDiagnosticsVo): void {
+    this.requireRevision(catalog.serverId, catalog.configRevision);
+    this.repository.saveCatalog(catalog);
+    this.catalogRefreshes.delete(catalog.serverId);
+  }
+
+  public failCatalogRefresh(serverId: string, expectedRevision: number, message: string): void {
+    if (this.repository.find(serverId)?.revision !== expectedRevision) return;
+    this.catalogRefreshes.set(serverId, { status: McpCatalogStatus.ERROR, message });
+  }
+
+  public cancelCatalogRefresh(serverId: string, expectedRevision: number): void {
+    if (this.repository.find(serverId)?.revision === expectedRevision) {
+      this.catalogRefreshes.delete(serverId);
+    }
+  }
+
+  public updateToolSetting(serverId: string, input: UpdateMcpToolDto): void {
+    this.requireRevision(serverId, input.expectedRevision);
+    this.repository.setToolSetting(
+      serverId,
+      input.toolName,
+      input.definitionFingerprint,
+      input.enabled,
+      input.trustedReadOnly,
+      Date.now(),
+    );
+  }
+
+  public isToolGrantActive(
+    input: Parameters<McpServerRepository["isToolGrantActive"]>[0],
+  ): boolean {
+    return this.repository.isToolGrantActive(input);
+  }
+
+  public grantTool(input: Parameters<McpServerRepository["grantTool"]>[0]): void {
+    this.repository.grantTool(input);
   }
 
   public create(input: CreateMcpServerDto): Promise<McpServerVo> {
@@ -250,6 +318,7 @@ export class McpServerService {
       }
       this.repository.revokeTrust(serverId);
       await this.invalidateServer(serverId);
+      this.repository.deleteCatalog(serverId);
       await this.credentials.modify(serverId, async (current) => ({
         serverId,
         // 显式替换代表一个新授权身份；OAuth 自动刷新须使用保留 identity 的专用流程。
@@ -269,6 +338,7 @@ export class McpServerService {
       this.requireRevision(serverId, expectedRevision);
       this.repository.revokeTrust(serverId);
       await this.invalidateServer(serverId);
+      this.repository.deleteCatalog(serverId);
       await this.credentials.delete(serverId);
       this.authRequirements.delete(serverId);
     });
@@ -304,6 +374,7 @@ export class McpServerService {
     await this.mutate(async () => {
       const server = this.requireRevision(context.server.id, context.server.revision);
       await this.invalidateServer(server.id);
+      this.repository.deleteCatalog(server.id);
       await this.credentials.modify(server.id, async (current) => ({
         serverId: server.id,
         identity,
@@ -458,6 +529,8 @@ export class McpServerService {
     isTrusted = this.repository.isTrusted(record.id, record.revision),
   ): McpServerVo {
     const credential = this.credentials.read(record.id);
+    const catalogUpdatedAt = this.repository.findCatalogUpdatedAt(record.id, record.revision);
+    const catalogRefresh = this.catalogRefreshes.get(record.id);
     const configuredRequirement =
       record.config.transport === McpTransport.STDIO
         ? McpAuthRequirement.STATIC
@@ -474,6 +547,11 @@ export class McpServerService {
         : {}),
       hasCredential: credential !== undefined,
       isTrusted,
+      catalogStatus:
+        catalogRefresh?.status ??
+        (catalogUpdatedAt === null ? McpCatalogStatus.IDLE : McpCatalogStatus.READY),
+      ...(catalogUpdatedAt === null ? {} : { catalogUpdatedAt }),
+      ...(catalogRefresh?.message === undefined ? {} : { catalogError: catalogRefresh.message }),
     };
   }
 

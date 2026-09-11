@@ -20,12 +20,15 @@ import {
   TestMcpConnectionDtoSchema,
   type UpdateMcpServerDto,
   UpdateMcpServerDtoSchema,
+  type UpdateMcpToolDto,
+  UpdateMcpToolDtoSchema,
 } from "../dto/mcp-dto.js";
 import type { McpDiagnosticsService } from "../services/mcp-diagnostics-service.js";
 import type { McpOAuthService } from "../services/mcp-oauth-service.js";
 import type { McpServerService } from "../services/mcp-server-service.js";
 import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
+  McpCatalogVoSchema,
   McpDiagnosticsVoSchema,
   McpOAuthStartVoSchema,
   McpServerListVoSchema,
@@ -68,6 +71,11 @@ export async function registerMcpRoutes(
     "/api/mcp-servers/:serverId",
     { schema: { params, response: recordResponse } },
     controller.get,
+  );
+  server.get<{ Params: McpServerParamsDto }>(
+    "/api/mcp-servers/:serverId/catalog",
+    { schema: { params, response: { 200: McpCatalogVoSchema, ...errors } } },
+    controller.getCatalog,
   );
   server.put<{ Params: McpServerParamsDto; Body: UpdateMcpServerDto }>(
     "/api/mcp-servers/:serverId",
@@ -125,6 +133,11 @@ export async function registerMcpRoutes(
       },
     },
     controller.test,
+  );
+  server.put<{ Params: McpServerParamsDto; Body: UpdateMcpToolDto }>(
+    "/api/mcp-servers/:serverId/tools",
+    { schema: { params, body: UpdateMcpToolDtoSchema, response: emptyResponse } },
+    controller.updateTool,
   );
   server.post<{ Body: ImportMcpServersDto }>(
     "/api/mcp-servers/import/preview",

@@ -6,7 +6,6 @@ import { McpError, McpErrorCode } from "./errors.js";
 import { maintainMcpListSubscription } from "./list-subscription.js";
 
 const MAX_CLIENT_INSTANCES = 32;
-const IDLE_TIMEOUT_MS = 60_000;
 const CONNECT_TIMEOUT_MS = 30_000;
 
 export interface McpConnectionContext {
@@ -42,7 +41,6 @@ interface ClientEntry {
     | typeof McpConnectionStatus.CONNECTING
     | typeof McpConnectionStatus.READY
     | typeof McpConnectionStatus.CLOSING;
-  idleTimer?: ReturnType<typeof setTimeout>;
 }
 
 /** 连接与请求分开取消；一个 Session 释放租约不会关闭其他 Session 的 Client。 */
@@ -79,7 +77,12 @@ export class McpClientManager {
     }
     if (entry === undefined) {
       if (this.entries.size >= MAX_CLIENT_INSTANCES) {
-        throw new McpError(McpErrorCode.LIMIT_EXCEEDED, "MCP 连接数量达到上限，请关闭空闲连接");
+        const idleEntry = [...this.entries].find(
+          ([, candidate]) => candidate.leases === 0 && candidate.closing === undefined,
+        );
+        if (idleEntry === undefined)
+          throw new McpError(McpErrorCode.LIMIT_EXCEEDED, "MCP 活动连接数量达到上限");
+        await this.closeEntry(idleEntry[0], idleEntry[1]);
       }
       let generation = 0;
       const client = createMcpClient(() => {
@@ -116,16 +119,11 @@ export class McpClientManager {
       client.onclose = () => {
         controller.abort();
         if (this.entries.get(key) === capturedEntry) this.entries.delete(key);
-        if (capturedEntry.idleTimer !== undefined) clearTimeout(capturedEntry.idleTimer);
       };
       client.onerror = () => {
         // SDK 的 onerror 也用于报告非致命协议异常；连接关闭由 onclose 统一回收。
         this.onCloseError(new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 协议出现非致命错误"));
       };
-    }
-    if (entry.idleTimer !== undefined) {
-      clearTimeout(entry.idleTimer);
-      delete entry.idleTimer;
     }
     entry.leases += 1;
     try {
@@ -212,19 +210,12 @@ export class McpClientManager {
       });
       return;
     }
-    entry.idleTimer = setTimeout(() => {
-      void this.closeEntry(key, entry).catch(() => {
-        this.onCloseError(new McpError(McpErrorCode.CONNECTION_FAILED, "关闭空闲 MCP 连接失败"));
-      });
-    }, IDLE_TIMEOUT_MS);
-    entry.idleTimer.unref();
   }
 
   private closeEntry(key: string, entry: ClientEntry): Promise<void> {
     if (entry.closing !== undefined) return entry.closing;
     entry.controller.abort();
     entry.status = McpConnectionStatus.CLOSING;
-    if (entry.idleTimer !== undefined) clearTimeout(entry.idleTimer);
     entry.closing = (async () => {
       try {
         await entry.client.close();

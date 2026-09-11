@@ -825,9 +825,10 @@ export class SessionService {
       }
       if (decision !== ApprovalDecision.APPROVED_SIMILAR) return;
       if (request.commandPrefix === undefined) {
+        if (request.allowSimilar === true) return;
         throw new SessionServiceError(
           SessionErrorCode.APPROVAL_INVALID,
-          "当前命令不能保存为类似命令规则",
+          "当前操作不能保存为持久授权",
         );
       }
       this.allowedCommandPrefixes.add(request.commandPrefix);

@@ -38,3 +38,12 @@ export const McpConnectionStatus = {
 } as const;
 
 export type McpConnectionStatus = (typeof McpConnectionStatus)[keyof typeof McpConnectionStatus];
+
+export const McpCatalogStatus = {
+  IDLE: "idle",
+  LOADING: "loading",
+  READY: "ready",
+  ERROR: "error",
+} as const;
+
+export type McpCatalogStatus = (typeof McpCatalogStatus)[keyof typeof McpCatalogStatus];

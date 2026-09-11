@@ -79,7 +79,7 @@ export function ToolApprovalCard({
         >
           拒绝
         </Button>
-        {approval.commandPrefix ? (
+        {approval.commandPrefix || approval.allowSimilar ? (
           <ButtonGroup isDisabled={pendingDecision !== null} size="sm" variant="primary">
             <Button
               isPending={isApprovalPending}
@@ -113,8 +113,11 @@ export function ToolApprovalCard({
                   <Dropdown.Item id={ApprovalDecision.APPROVED} textValue="允许一次">
                     <Label>允许一次</Label>
                   </Dropdown.Item>
-                  <Dropdown.Item id={ApprovalDecision.APPROVED_SIMILAR} textValue="允许类似命令">
-                    <Label>允许类似命令</Label>
+                  <Dropdown.Item
+                    id={ApprovalDecision.APPROVED_SIMILAR}
+                    textValue={approval.commandPrefix ? "允许类似命令" : "始终允许此操作"}
+                  >
+                    <Label>{approval.commandPrefix ? "允许类似命令" : "始终允许此操作"}</Label>
                   </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown.Popover>

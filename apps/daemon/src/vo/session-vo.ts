@@ -90,6 +90,7 @@ export type QueuedRunInputVo = Static<typeof QueuedRunInputVoSchema>;
 export const PendingToolApprovalVoSchema = Type.Object({
   approvalId: Type.String({ format: "uuid" }),
   allowSession: Type.Optional(Type.Boolean()),
+  allowSimilar: Type.Optional(Type.Boolean()),
   kind: Type.Optional(
     Type.Union([
       Type.Literal(ApprovalRequestKind.TOOL),

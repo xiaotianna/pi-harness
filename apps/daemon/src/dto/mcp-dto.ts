@@ -70,6 +70,18 @@ export const TestMcpConnectionDtoSchema = Type.Object(
 );
 export type TestMcpConnectionDto = Static<typeof TestMcpConnectionDtoSchema>;
 
+export const UpdateMcpToolDtoSchema = Type.Object(
+  {
+    ...McpRevisionDtoSchema.properties,
+    toolName: Type.String({ minLength: 1, maxLength: 512 }),
+    definitionFingerprint: Type.String({ minLength: 1, maxLength: 512 }),
+    enabled: Type.Boolean(),
+    trustedReadOnly: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+export type UpdateMcpToolDto = Static<typeof UpdateMcpToolDtoSchema>;
+
 const McpJsonServerSchema = Type.Union([
   Type.Object(
     {

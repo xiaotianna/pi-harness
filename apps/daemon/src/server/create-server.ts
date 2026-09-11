@@ -84,6 +84,10 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   );
   mcpOAuth = new McpOAuthService(config, mcpServers, protectedLocalPorts);
   const mcpDiagnostics = new McpDiagnosticsService(mcpServers, mcpClients, new McpDiscovery());
+  const mcpWarmupController = new AbortController();
+  const mcpWarmup = mcpDiagnostics.refreshAll(mcpWarmupController.signal, (serverId, error) => {
+    server.log.warn({ err: error, serverId }, "MCP catalog warmup failed");
+  });
   const sandboxCredentials = await loadSandboxCredentials(config.sandboxCredentialsPath);
   const skillConnections = new SkillConnectionService(
     skillCredentials,
@@ -103,12 +107,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
       database.appSettings.getInstalledSkillCollectionIds(),
       database.appSettings.getDisabledSkillCollectionSkillIds(),
     );
-  const mcpTools = new McpToolService(
-    mcpServers,
-    mcpClients,
-    new McpDiscovery(),
-    database.sessions,
-  );
+  const mcpTools = new McpToolService(mcpServers, mcpClients, database.sessions);
   const agents = new AgentManager(
     sessionEvents.handle,
     interactions.requestApproval,
@@ -196,6 +195,8 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   });
 
   server.addHook("onClose", async () => {
+    mcpWarmupController.abort();
+    await mcpWarmup;
     fileOpen.close();
     workspaces.close();
     await sessions.close();

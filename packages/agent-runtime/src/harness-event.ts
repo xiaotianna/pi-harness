@@ -604,6 +604,8 @@ export interface ApprovalRequestedData {
   kind?: ApprovalRequestKind;
   // false 时只能逐次批准，用于仓库根目录递归删除等关键操作。
   allowSession?: boolean;
+  // true 时可把当前工具与参数的授权持久化。
+  allowSimilar?: boolean;
   // 审批过期时间
   expiresAt: number;
   // 风险说明，例如命令可能修改本地文件（packages/policy/src/tool-policy.ts中声明提示信息）

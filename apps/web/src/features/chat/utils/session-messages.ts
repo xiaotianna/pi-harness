@@ -848,6 +848,7 @@ function projectRunMessages(
         tool.approval = {
           approvalId: event.data.approvalId,
           ...(event.data.allowSession === false ? { allowSession: false } : {}),
+          ...(event.data.allowSimilar === true ? { allowSimilar: true } : {}),
           ...(isCommandPrefixRule(event.data.commandPrefix)
             ? { commandPrefix: event.data.commandPrefix }
             : {}),

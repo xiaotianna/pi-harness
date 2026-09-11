@@ -70,6 +70,7 @@ export type ChatMessageTool = {
   activeLabel?: string;
   approval?: {
     approvalId: string;
+    allowSimilar?: boolean;
     allowSession?: boolean;
     commandPrefix?: readonly string[];
     kind?: ApprovalRequestKind;

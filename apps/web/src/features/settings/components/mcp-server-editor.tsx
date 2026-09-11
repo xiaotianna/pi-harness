@@ -234,7 +234,7 @@ export function McpServerEditor({
 }: {
   server?: McpServer;
   onClose: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: (servers: readonly McpServer[]) => Promise<void>;
 }) {
   const formId = useId();
   const [draft, setDraft] = useState(() => createMcpFormDraft(server));
@@ -249,20 +249,20 @@ export function McpServerEditor({
     setError(null);
     setIsSaving(true);
     try {
+      let saved: readonly McpServer[];
       if (mode === McpEditorMode.JSON) {
         const inputs = readMcpJson(json, draft, server);
         const [input] = inputs;
         if (server) {
           if (!input || inputs.length !== 1) throw new Error("编辑时 JSON 只能包含一个服务器");
-          await saveMcpServer(input, server);
+          saved = [await saveMcpServer(input, server)];
         } else {
-          await importMcpServers(inputs);
+          saved = await importMcpServers(inputs);
         }
       } else {
-        await saveMcpServer(readMcpForm(draft, server), server);
+        saved = [await saveMcpServer(readMcpForm(draft, server), server)];
       }
-      await onSaved();
-      onClose();
+      await onSaved(saved);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "保存 MCP 配置失败");
     } finally {

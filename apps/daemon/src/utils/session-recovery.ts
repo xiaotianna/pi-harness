@@ -25,7 +25,8 @@ function readApprovalRequest(event: HarnessEvent): ApprovalRequestedData | null 
     typeof event.data.target !== "string" ||
     typeof event.data.toolCallId !== "string" ||
     typeof event.data.toolName !== "string" ||
-    (event.data.commandPrefix !== undefined && !isCommandPrefixRule(event.data.commandPrefix))
+    (event.data.commandPrefix !== undefined && !isCommandPrefixRule(event.data.commandPrefix)) ||
+    (event.data.allowSimilar !== undefined && typeof event.data.allowSimilar !== "boolean")
   ) {
     return null;
   }

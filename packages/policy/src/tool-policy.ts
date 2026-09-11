@@ -28,8 +28,10 @@ export const ToolPermission = {
 } as const;
 
 interface ToolApprovalGrant {
+  allowSimilar?: boolean;
   allowSession?: boolean;
   fingerprint: string;
+  isGranted?: boolean;
   risk: string;
   summary: string;
   target: string;
@@ -43,6 +45,7 @@ export type ToolPolicy =
         args: unknown,
         signal?: AbortSignal,
       ) => ToolApprovalGrant | Promise<ToolApprovalGrant>;
+      storeGrant?: (args: unknown, signal?: AbortSignal) => void | Promise<void>;
     }
   | {
       permission: typeof ToolPermission.SKILL_ACTIVATION;
@@ -72,6 +75,7 @@ export type ToolPolicyResult =
       summary: string;
       target: string;
       allowSession?: boolean;
+      allowSimilar?: boolean;
       commandPrefix?: CommandPrefixRule;
       allowAiApproval?: boolean;
     };
@@ -161,13 +165,17 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
   switch (input.policy.permission) {
     case ToolPermission.USER_APPROVAL: {
       const grant = await input.policy.resolveGrant(input.arguments, input.signal);
+      if (grant.isGranted === true) {
+        return { decision: ToolPolicyDecision.ALLOW, fingerprint: grant.fingerprint };
+      }
       if (
         input.policy.allowInFullAccess === true &&
         input.approvalPolicy === ApprovalPolicy.FULL_ACCESS
       ) {
         return { decision: ToolPolicyDecision.ALLOW, fingerprint: grant.fingerprint };
       }
-      return { ...grant, decision: ToolPolicyDecision.ASK };
+      const { isGranted: _isGranted, ...approval } = grant;
+      return { ...approval, decision: ToolPolicyDecision.ASK };
     }
     case ToolPermission.SKILL_ACTIVATION: {
       const grant = await input.policy.resolveGrant(input.arguments);

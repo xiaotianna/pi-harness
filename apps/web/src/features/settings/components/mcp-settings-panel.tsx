@@ -1,4 +1,13 @@
-import { Flask, Key, LinkSlash, Pencil, Plus, TrashBin, Xmark } from "@gravity-ui/icons";
+import {
+  ArrowRotateRight,
+  Flask,
+  Key,
+  LinkSlash,
+  Pencil,
+  Plus,
+  TrashBin,
+  Xmark,
+} from "@gravity-ui/icons";
 import {
   Alert,
   AlertDialog,
@@ -7,6 +16,7 @@ import {
   Pagination,
   Separator,
   Skeleton,
+  Spinner,
   Switch,
   Tooltip,
   toast,
@@ -14,6 +24,7 @@ import {
 import {
   McpAuthMode,
   McpAuthRequirement,
+  McpCatalogStatus,
   McpTransport,
 } from "@pi-harness/agent-runtime/mcp-contract";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -42,10 +53,19 @@ export function McpSettingsPanel() {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [page, setPage] = useState(1);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
-  const detailDiscoveries = useRef(new Set<string>());
   const oauthPopups = useRef(new Map<string, Window>());
   const oauthPollers = useRef(new Map<string, number>());
-  const { servers, results, pendingActions, run, refresh, cancelTest } = useMcpServers();
+  const {
+    servers,
+    catalog,
+    results,
+    pendingActions,
+    run,
+    refresh,
+    cancelTest,
+    isSavingTool,
+    saveTool,
+  } = useMcpServers(selectedServerId);
   const totalPages = Math.max(1, Math.ceil((servers.data?.length ?? 0) / SERVERS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
   const visibleServers = useMemo(
@@ -61,10 +81,11 @@ export function McpSettingsPanel() {
   const selectedResult = selectedServer
     ? results.get(selectedServer.id)?.configRevision === selectedServer.revision
       ? (results.get(selectedServer.id) ?? null)
-      : null
+      : catalog.data?.configRevision === selectedServer.revision
+        ? catalog.data
+        : null
     : null;
   const refreshServers = async () => {
-    detailDiscoveries.current.clear();
     await refresh();
   };
   useEffect(
@@ -107,7 +128,6 @@ export function McpSettingsPanel() {
           window.clearInterval(poller);
           oauthPollers.current.delete(server.id);
           oauthPopups.current.delete(server.id);
-          detailDiscoveries.current.clear();
           toast.success(`${server.name} OAuth 授权成功`);
         } else if (popup.closed || attempts >= 120) {
           window.clearInterval(poller);
@@ -118,20 +138,6 @@ export function McpSettingsPanel() {
     }, 1_000);
     oauthPollers.current.set(server.id, poller);
   };
-  useEffect(() => {
-    if (
-      !selectedServer ||
-      selectedResult ||
-      selectedPendingAction !== undefined ||
-      !selectedServer.enabled ||
-      !selectedServer.isTrusted
-    )
-      return;
-    const discoveryKey = `${selectedServer.id}:${selectedServer.revision}`;
-    if (detailDiscoveries.current.has(discoveryKey)) return;
-    detailDiscoveries.current.add(discoveryKey);
-    run(selectedServer, McpAction.DISCOVER);
-  }, [run, selectedPendingAction, selectedResult, selectedServer]);
   const dialogPendingAction =
     dialog?.kind === "confirm" ? pendingActions.get(dialog.server.id) : undefined;
   const isDialogPending = dialog?.kind === "confirm" && dialogPendingAction === dialog.action;
@@ -140,17 +146,20 @@ export function McpSettingsPanel() {
       {selectedServer ? (
         <McpServerDetail
           isBusy={selectedPendingAction !== undefined}
+          isSavingTool={isSavingTool}
           isLoading={
             selectedPendingAction === McpAction.DISCOVER ||
             selectedPendingAction === McpAction.TEST ||
-            selectedPendingAction === McpAction.CONNECT
+            selectedPendingAction === McpAction.CONNECT ||
+            selectedServer.catalogStatus === McpCatalogStatus.LOADING ||
+            catalog.isPending
           }
+          isLoadingCancelable={selectedPendingAction !== undefined}
           result={selectedResult}
           server={selectedServer}
           onBack={() => setSelectedServerId(null)}
           onAuthorize={() => authorize(selectedServer)}
           onCancelTest={() => {
-            detailDiscoveries.current.add(`${selectedServer.id}:${selectedServer.revision}`);
             cancelTest(selectedServer.id);
           }}
           onEdit={() => setDialog({ kind: "edit", server: selectedServer })}
@@ -167,12 +176,15 @@ export function McpSettingsPanel() {
             setDialog({ kind: "confirm", action: McpAction.CONNECT, server: selectedServer });
           }}
           onRefresh={() => run(selectedServer, McpAction.DISCOVER)}
+          onToolChange={(tool, enabled, trustedReadOnly) =>
+            saveTool(selectedServer, tool, enabled, trustedReadOnly)
+          }
         />
       ) : (
         <section className="w-full min-w-0 max-w-[720px]" aria-label="MCP 服务器">
           <SettingsPanelHeader
             title="MCP 服务器"
-            description="全局管理外部工具，所有项目共用。连接后从下一轮对话生效，每次工具调用仍需批准。"
+            description="全局管理外部工具，所有项目共用。能力目录保存在本地，连接按 Session 复用，工具可单独启用和授权。"
             action={
               <Button size="sm" variant="secondary" onPress={() => setDialog({ kind: "create" })}>
                 <Plus aria-hidden className="size-4" />
@@ -222,17 +234,12 @@ export function McpSettingsPanel() {
                       ? result.serverInfo.icons
                       : undefined;
                   const pendingAction = pendingActions.get(server.id);
-                  const isBusy = pendingAction !== undefined;
+                  const isCatalogLoading = server.catalogStatus === McpCatalogStatus.LOADING;
+                  const isBusy = pendingAction !== undefined || isCatalogLoading;
                   const isConnectionPending =
                     pendingAction === McpAction.DISCOVER ||
                     pendingAction === McpAction.TEST ||
                     pendingAction === McpAction.CONNECT;
-                  const pendingConnectionLabel =
-                    pendingAction === McpAction.DISCOVER
-                      ? "取消加载"
-                      : pendingAction === McpAction.CONNECT
-                        ? "取消连接"
-                        : "取消测试";
                   const endpoint =
                     server.config.transport === McpTransport.STDIO
                       ? server.config.command
@@ -249,37 +256,119 @@ export function McpSettingsPanel() {
                     server.config.transport !== McpTransport.STDIO &&
                     (server.config.authMode === McpAuthMode.OAUTH ||
                       server.authRequirement === McpAuthRequirement.OAUTH);
-                  const mainAction = isConnectionPending
-                    ? "cancel"
-                    : needsOAuth
-                      ? "oauth"
-                      : needsCredential
-                        ? "credentials"
-                        : needsConnection
-                          ? "connect"
-                          : "test";
+                  const mainAction =
+                    isCatalogLoading && !isConnectionPending
+                      ? "loading"
+                      : isConnectionPending
+                        ? "cancel"
+                        : needsOAuth
+                          ? "oauth"
+                          : needsCredential
+                            ? "credentials"
+                            : needsConnection
+                              ? "connect"
+                              : "test";
                   const mainActionLabel =
-                    mainAction === "cancel"
-                      ? pendingConnectionLabel
-                      : mainAction === "oauth"
-                        ? "OAuth 授权"
-                        : mainAction === "credentials"
-                          ? "设置凭据"
-                          : mainAction === "connect"
-                            ? "连接服务器"
-                            : "测试连接";
+                    mainAction === "loading"
+                      ? "连接中"
+                      : mainAction === "cancel"
+                        ? "取消连接"
+                        : mainAction === "oauth"
+                          ? "OAuth 授权"
+                          : mainAction === "credentials"
+                            ? "设置凭据"
+                            : mainAction === "connect"
+                              ? "连接服务器"
+                              : "测试连接";
                   return (
                     <SettingsCatalogItem
                       action={
                         <div className="flex shrink-0 items-center gap-2">
+                          <Tooltip
+                            delay={0}
+                            isDisabled={mainAction !== "test" && mainAction !== "cancel"}
+                          >
+                            <Button
+                              aria-label={mainActionLabel}
+                              {...(mainAction === "cancel" ? { className: "group" } : {})}
+                              isIconOnly={mainAction === "test" || mainAction === "cancel"}
+                              isPending={mainAction === "loading"}
+                              size="sm"
+                              variant={
+                                mainAction === "cancel"
+                                  ? "tertiary"
+                                  : mainAction === "oauth" || mainAction === "connect"
+                                    ? "primary"
+                                    : "secondary"
+                              }
+                              isDisabled={
+                                mainAction === "loading" ||
+                                (mainAction !== "cancel" &&
+                                  (isBusy || (mainAction !== "credentials" && !server.enabled)))
+                              }
+                              onPress={() => {
+                                if (mainAction === "loading") return;
+                                if (mainAction === "cancel") {
+                                  cancelTest(server.id);
+                                  return;
+                                }
+                                if (mainAction === "oauth") {
+                                  authorize(server);
+                                  return;
+                                }
+                                if (mainAction === "credentials") {
+                                  setDialog({ kind: "credentials", server });
+                                  return;
+                                }
+                                if (mainAction === "connect") {
+                                  setDialog({
+                                    kind: "confirm",
+                                    action: McpAction.CONNECT,
+                                    server,
+                                  });
+                                  return;
+                                }
+                                run(server, McpAction.TEST);
+                              }}
+                            >
+                              {mainAction === "cancel" ? (
+                                <>
+                                  <Spinner
+                                    aria-hidden
+                                    className="text-muted group-hover:hidden group-focus-visible:hidden group-data-[focus-visible]:hidden group-data-[hovered]:hidden"
+                                    color="current"
+                                    size="sm"
+                                  />
+                                  <Xmark
+                                    aria-hidden
+                                    className="hidden size-4 group-hover:block group-focus-visible:block group-data-[focus-visible]:block group-data-[hovered]:block"
+                                  />
+                                </>
+                              ) : mainAction === "oauth" || mainAction === "credentials" ? (
+                                <Key aria-hidden className="size-4" />
+                              ) : mainAction === "test" ? (
+                                <Flask aria-hidden className="size-4" />
+                              ) : null}
+                              {mainAction === "test" || mainAction === "cancel"
+                                ? null
+                                : mainActionLabel}
+                            </Button>
+                            <Tooltip.Content>
+                              {mainAction === "cancel" ? mainActionLabel : "测试连接"}
+                            </Tooltip.Content>
+                          </Tooltip>
                           <span className="hidden text-sm text-muted @xl/settings:inline">
                             {!server.enabled
                               ? "未启用"
                               : needsCredential
                                 ? "待鉴权"
-                                : server.isTrusted
-                                  ? "已启用"
-                                  : "待连接"}
+                                : isCatalogLoading
+                                  ? "连接中"
+                                  : server.catalogStatus === McpCatalogStatus.ERROR
+                                    ? "加载失败"
+                                    : server.isTrusted
+                                      ? "已启用"
+                                      : "待连接"}
                           </span>
                           <Switch
                             aria-label={`${server.name} 启用状态`}
@@ -308,57 +397,6 @@ export function McpSettingsPanel() {
                               </Switch.Control>
                             </Switch.Content>
                           </Switch>
-                          <Tooltip delay={0} isDisabled={mainAction !== "test"}>
-                            <Button
-                              aria-label={mainActionLabel}
-                              isIconOnly={mainAction === "test"}
-                              size="sm"
-                              variant={
-                                mainAction === "cancel"
-                                  ? "tertiary"
-                                  : mainAction === "oauth" || mainAction === "connect"
-                                    ? "primary"
-                                    : "secondary"
-                              }
-                              isDisabled={
-                                mainAction !== "cancel" &&
-                                (isBusy || (mainAction !== "credentials" && !server.enabled))
-                              }
-                              onPress={() => {
-                                if (mainAction === "cancel") {
-                                  cancelTest(server.id);
-                                  return;
-                                }
-                                if (mainAction === "oauth") {
-                                  authorize(server);
-                                  return;
-                                }
-                                if (mainAction === "credentials") {
-                                  setDialog({ kind: "credentials", server });
-                                  return;
-                                }
-                                if (mainAction === "connect") {
-                                  setDialog({
-                                    kind: "confirm",
-                                    action: McpAction.CONNECT,
-                                    server,
-                                  });
-                                  return;
-                                }
-                                run(server, McpAction.TEST);
-                              }}
-                            >
-                              {mainAction === "cancel" ? (
-                                <Xmark aria-hidden className="size-4" />
-                              ) : mainAction === "oauth" || mainAction === "credentials" ? (
-                                <Key aria-hidden className="size-4" />
-                              ) : mainAction === "test" ? (
-                                <Flask aria-hidden className="size-4" />
-                              ) : null}
-                              {mainAction === "test" ? null : mainActionLabel}
-                            </Button>
-                            <Tooltip.Content>测试连接</Tooltip.Content>
-                          </Tooltip>
                           <Dropdown>
                             <Button isDisabled={isBusy} size="sm" variant="tertiary">
                               更多
@@ -371,6 +409,7 @@ export function McpSettingsPanel() {
                                 aria-label={`${server.name}操作`}
                                 onAction={(key) => {
                                   if (key === "edit") setDialog({ kind: "edit", server });
+                                  if (key === McpAction.DISCOVER) run(server, McpAction.DISCOVER);
                                   if (key === "test") run(server, McpAction.TEST);
                                   if (key === "credentials")
                                     setDialog({ kind: "credentials", server });
@@ -387,6 +426,16 @@ export function McpSettingsPanel() {
                                 <Dropdown.Item id="edit" textValue="编辑服务器">
                                   <Pencil aria-hidden className="size-4 text-muted" />
                                   编辑服务器
+                                </Dropdown.Item>
+                                <Dropdown.Item
+                                  id={McpAction.DISCOVER}
+                                  isDisabled={
+                                    !server.enabled || !server.isTrusted || needsCredential
+                                  }
+                                  textValue="刷新状态"
+                                >
+                                  <ArrowRotateRight aria-hidden className="size-4 text-muted" />
+                                  刷新状态
                                 </Dropdown.Item>
                                 {mainAction !== "test" && server.enabled ? (
                                   <Dropdown.Item id="test" textValue="测试连接">
@@ -477,7 +526,20 @@ export function McpSettingsPanel() {
         <McpServerEditor
           {...(dialog.kind === "edit" ? { server: dialog.server } : {})}
           onClose={() => setDialog(null)}
-          onSaved={refreshServers}
+          onSaved={async (savedServers) => {
+            await refreshServers();
+            const [savedServer] = savedServers;
+            if (dialog.kind === "create" && savedServers.length === 1 && savedServer) {
+              setSelectedServerId(savedServer.id);
+              setDialog({
+                kind: "confirm",
+                action: McpAction.CONNECT,
+                server: savedServer,
+              });
+              return;
+            }
+            setDialog(null);
+          }}
         />
       ) : null}
       {dialog?.kind === "credentials" ? (

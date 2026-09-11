@@ -1,6 +1,10 @@
 import { ArrowRotateRight, Pencil, Xmark } from "@gravity-ui/icons";
-import { Alert, Button, Card, Disclosure, Skeleton, Switch, Tabs } from "@heroui/react";
-import { McpAuthRequirement, McpTransport } from "@pi-harness/agent-runtime/mcp-contract";
+import { Alert, Button, Card, Disclosure, Label, Skeleton, Switch, Tabs } from "@heroui/react";
+import {
+  McpAuthRequirement,
+  McpCatalogStatus,
+  McpTransport,
+} from "@pi-harness/agent-runtime/mcp-contract";
 import type { ReactNode } from "react";
 import { AssistantCodeBlock } from "../../../components/ai/assistant-code-block";
 import { AssistantMarkdown } from "../../../components/ai/assistant-markdown";
@@ -28,26 +32,35 @@ function JsonDefinition({ label, value }: { label: string; value: unknown }) {
 
 function CatalogItem({
   children,
+  controls,
   description,
   name,
 }: {
   children: ReactNode;
+  controls?: ReactNode;
   description: string;
   name: string;
 }) {
   return (
     <li>
       <Disclosure>
-        <Disclosure.Heading>
-          <Disclosure.Trigger className="flex min-h-16 w-full items-center gap-3 px-3 py-2 text-start">
+        <Disclosure.Heading {...(controls ? { className: "relative" } : {})}>
+          <Disclosure.Trigger
+            className={`relative flex min-h-16 w-full items-center gap-3 px-3 py-2 pr-10 text-start ${controls ? "sm:pr-60" : ""}`}
+          >
             <div className="min-w-0 flex-1">
               <p className="break-all text-sm font-medium text-foreground">{name}</p>
               <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
                 {description || "未提供描述"}
               </p>
             </div>
-            <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
+            <Disclosure.Indicator className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           </Disclosure.Trigger>
+          {controls ? (
+            <div className="flex flex-wrap items-center gap-4 px-3 pb-3 sm:absolute sm:right-10 sm:top-1/2 sm:-translate-y-1/2 sm:p-0">
+              {controls}
+            </div>
+          ) : null}
         </Disclosure.Heading>
         <Disclosure.Content>
           <Disclosure.Body className="space-y-4 px-3 pb-4 pt-1">{children}</Disclosure.Body>
@@ -130,6 +143,8 @@ function ServerOverview({ result, server }: { result: McpTestResult | null; serv
 export function McpServerDetail({
   isBusy,
   isLoading,
+  isLoadingCancelable,
+  isSavingTool,
   result,
   server,
   onBack,
@@ -139,9 +154,12 @@ export function McpServerDetail({
   onEdit,
   onEnabledChange,
   onRefresh,
+  onToolChange,
 }: {
   isBusy: boolean;
   isLoading: boolean;
+  isLoadingCancelable: boolean;
+  isSavingTool: boolean;
   result: McpTestResult | null;
   server: McpServer;
   onBack: () => void;
@@ -151,6 +169,11 @@ export function McpServerDetail({
   onEdit: () => void;
   onEnabledChange: (isEnabled: boolean) => void;
   onRefresh: () => void;
+  onToolChange: (
+    tool: McpTestResult["tools"][number],
+    enabled: boolean,
+    trustedReadOnly: boolean,
+  ) => void;
 }) {
   const endpoint =
     server.config.transport === McpTransport.STDIO ? server.config.command : server.config.url;
@@ -162,9 +185,13 @@ export function McpServerDetail({
     ? "未启用"
     : needsCredential
       ? "待鉴权"
-      : server.isTrusted
-        ? "已启用"
-        : "待连接";
+      : isLoading
+        ? "连接中"
+        : server.catalogStatus === McpCatalogStatus.ERROR
+          ? "加载失败"
+          : server.isTrusted
+            ? "已启用"
+            : "待连接";
   const emptyCatalogMessage = !server.enabled
     ? "服务器尚未启用"
     : !server.isTrusted
@@ -257,29 +284,32 @@ export function McpServerDetail({
           <p className="mt-1 text-sm text-muted">
             {isLoading
               ? "正在读取服务器声明的能力目录"
-              : result
-                ? `${result.tools.length} 个工具 · ${resourceCount} 个资源 · ${result.prompts.length} 个提示词 · ${result.durationMs} ms`
-                : !server.enabled
-                  ? "启用服务器后自动读取能力目录"
-                  : !server.isTrusted
-                    ? "连接服务器后自动读取能力目录"
-                    : needsCredential
-                      ? "配置凭据后自动读取能力目录"
-                      : "能力目录加载失败，可重新加载"}
+              : server.catalogError
+                ? `${server.catalogError}${result ? "；当前显示上次缓存" : ""}`
+                : result
+                  ? `${result.tools.length} 个工具 · ${resourceCount} 个资源 · ${result.prompts.length} 个提示词 · ${result.durationMs} ms`
+                  : !server.enabled
+                    ? "启用服务器后会自动刷新能力目录"
+                    : !server.isTrusted
+                      ? "连接服务器后会自动刷新能力目录"
+                      : needsCredential
+                        ? "配置凭据后会自动刷新能力目录"
+                        : "能力目录会在启动、重新启用和手动刷新时保存到本地"}
           </p>
         </div>
         <Button
-          isDisabled={!isLoading && (!canUse || isBusy)}
+          isDisabled={(isLoading && !isLoadingCancelable) || (!isLoading && (!canUse || isBusy))}
+          isPending={isLoading && !isLoadingCancelable}
           size="sm"
           variant={isLoading ? "tertiary" : "secondary"}
-          onPress={isLoading ? onCancelTest : onRefresh}
+          onPress={isLoading && isLoadingCancelable ? onCancelTest : onRefresh}
         >
           {isLoading ? (
             <Xmark aria-hidden className="size-4" />
           ) : (
             <ArrowRotateRight aria-hidden className="size-4" />
           )}
-          {isLoading ? "取消加载" : "重新加载"}
+          {isLoading ? (isLoadingCancelable ? "取消刷新" : "连接中") : "刷新状态"}
         </Button>
       </div>
 
@@ -313,6 +343,40 @@ export function McpServerDetail({
               <ul className="flex flex-col gap-1">
                 {result.tools.map((tool) => (
                   <CatalogItem
+                    controls={
+                      <>
+                        <Switch
+                          aria-label={`${tool.name} 启用状态`}
+                          isDisabled={isSavingTool}
+                          isSelected={tool.enabled}
+                          size="sm"
+                          onChange={(enabled) => onToolChange(tool, enabled, tool.trustedReadOnly)}
+                        >
+                          <Switch.Content className="gap-2">
+                            <Label className="text-xs font-normal text-muted">启用</Label>
+                            <Switch.Control>
+                              <Switch.Thumb />
+                            </Switch.Control>
+                          </Switch.Content>
+                        </Switch>
+                        <Switch
+                          aria-label={`${tool.name} 可信只读状态`}
+                          isDisabled={isSavingTool || !tool.enabled}
+                          isSelected={tool.trustedReadOnly}
+                          size="sm"
+                          onChange={(trustedReadOnly) =>
+                            onToolChange(tool, tool.enabled, trustedReadOnly)
+                          }
+                        >
+                          <Switch.Content className="gap-2">
+                            <Label className="text-xs font-normal text-muted">只读免审批</Label>
+                            <Switch.Control>
+                              <Switch.Thumb />
+                            </Switch.Control>
+                          </Switch.Content>
+                        </Switch>
+                      </>
+                    }
                     description={tool.description}
                     key={tool.name}
                     name={tool.title ? `${tool.title} · ${tool.name}` : tool.name}

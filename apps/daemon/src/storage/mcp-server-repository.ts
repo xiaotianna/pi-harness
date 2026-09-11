@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { Value } from "typebox/value";
 import { McpError, McpErrorCode } from "../mcp/errors.js";
 import { mapMcpServerRecord } from "../mcp/utils/server-record.js";
 import { type McpServerId, type McpServerRecord, McpServerRecordSchema } from "../schemas/mcp.js";
+import { type McpDiagnosticsVo, McpDiagnosticsVoSchema } from "../vo/mcp-vo.js";
 
 export interface McpServerRepository {
   create(record: McpServerRecord): void;
@@ -15,6 +17,46 @@ export interface McpServerRepository {
   listTrustedServerIds(): readonly McpServerId[];
   trust(serverId: McpServerId, expectedRevision: number, approvedAt: number): void;
   revokeTrust(serverId: McpServerId): void;
+  getToolSetting(
+    serverId: McpServerId,
+    toolName: string,
+    definitionFingerprint: string,
+  ): {
+    enabled: boolean;
+    trustedReadOnly: boolean;
+  };
+  setToolSetting(
+    serverId: McpServerId,
+    toolName: string,
+    definitionFingerprint: string,
+    enabled: boolean,
+    trustedReadOnly: boolean,
+    updatedAt: number,
+  ): void;
+  isToolGrantActive(input: {
+    argumentsFingerprint: string;
+    configRevision: number;
+    definitionFingerprint: string;
+    identity: string;
+    now: number;
+    serverId: McpServerId;
+    toolName: string;
+    workspaceId: string;
+  }): boolean;
+  grantTool(input: {
+    argumentsFingerprint: string;
+    configRevision: number;
+    createdAt: number;
+    definitionFingerprint: string;
+    identity: string;
+    serverId: McpServerId;
+    toolName: string;
+    workspaceId: string;
+  }): void;
+  findCatalog(serverId: McpServerId, configRevision: number): McpDiagnosticsVo | null;
+  findCatalogUpdatedAt(serverId: McpServerId, configRevision: number): number | null;
+  saveCatalog(catalog: McpDiagnosticsVo): void;
+  deleteCatalog(serverId: McpServerId): void;
 }
 
 export class SqliteMcpServerRepository implements McpServerRepository {
@@ -147,5 +189,170 @@ export class SqliteMcpServerRepository implements McpServerRepository {
 
   public revokeTrust(serverId: McpServerId): void {
     this.database.prepare("DELETE FROM mcp_server_trust WHERE server_id = ?").run(serverId);
+    this.database.prepare("DELETE FROM mcp_grants WHERE server_id = ?").run(serverId);
+  }
+
+  public getToolSetting(
+    serverId: McpServerId,
+    toolName: string,
+    definitionFingerprint: string,
+  ): { enabled: boolean; trustedReadOnly: boolean } {
+    const row = this.database
+      .prepare(
+        `SELECT enabled, trusted_read_only, definition_fingerprint
+         FROM mcp_tool_settings WHERE server_id = ? AND tool_name = ?`,
+      )
+      .get(serverId, toolName);
+    if (row === undefined) return { enabled: true, trustedReadOnly: false };
+    return {
+      enabled: row.enabled === 1,
+      trustedReadOnly:
+        row.trusted_read_only === 1 && row.definition_fingerprint === definitionFingerprint,
+    };
+  }
+
+  public setToolSetting(
+    serverId: McpServerId,
+    toolName: string,
+    definitionFingerprint: string,
+    enabled: boolean,
+    trustedReadOnly: boolean,
+    updatedAt: number,
+  ): void {
+    this.database
+      .prepare(
+        `INSERT INTO mcp_tool_settings
+           (server_id, tool_name, enabled, trusted_read_only, definition_fingerprint, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(server_id, tool_name) DO UPDATE SET
+           enabled = excluded.enabled,
+           trusted_read_only = excluded.trusted_read_only,
+           definition_fingerprint = excluded.definition_fingerprint,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        serverId,
+        toolName,
+        Number(enabled),
+        Number(trustedReadOnly),
+        definitionFingerprint,
+        updatedAt,
+      );
+    this.database
+      .prepare("DELETE FROM mcp_grants WHERE server_id = ? AND tool_name = ?")
+      .run(serverId, toolName);
+  }
+
+  public isToolGrantActive(input: {
+    argumentsFingerprint: string;
+    configRevision: number;
+    definitionFingerprint: string;
+    identity: string;
+    now: number;
+    serverId: McpServerId;
+    toolName: string;
+    workspaceId: string;
+  }): boolean {
+    return (
+      this.database
+        .prepare(
+          `SELECT 1 FROM mcp_grants
+           WHERE server_id = ? AND workspace_id = ? AND identity = ? AND tool_name = ?
+             AND definition_fingerprint = ? AND arguments_fingerprint = ?
+             AND config_revision = ? AND (expires_at IS NULL OR expires_at > ?)
+           LIMIT 1`,
+        )
+        .get(
+          input.serverId,
+          input.workspaceId,
+          input.identity,
+          input.toolName,
+          input.definitionFingerprint,
+          input.argumentsFingerprint,
+          input.configRevision,
+          input.now,
+        ) !== undefined
+    );
+  }
+
+  public grantTool(input: {
+    argumentsFingerprint: string;
+    configRevision: number;
+    createdAt: number;
+    definitionFingerprint: string;
+    identity: string;
+    serverId: McpServerId;
+    toolName: string;
+    workspaceId: string;
+  }): void {
+    if (this.isToolGrantActive({ ...input, now: input.createdAt })) return;
+    this.database
+      .prepare(
+        `INSERT INTO mcp_grants
+           (id, server_id, workspace_id, identity, tool_name, definition_fingerprint,
+            arguments_fingerprint, config_revision, expires_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+      )
+      .run(
+        randomUUID(),
+        input.serverId,
+        input.workspaceId,
+        input.identity,
+        input.toolName,
+        input.definitionFingerprint,
+        input.argumentsFingerprint,
+        input.configRevision,
+        input.createdAt,
+      );
+  }
+
+  public findCatalog(serverId: McpServerId, configRevision: number): McpDiagnosticsVo | null {
+    const row = this.database
+      .prepare("SELECT catalog_json FROM mcp_catalogs WHERE server_id = ? AND config_revision = ?")
+      .get(serverId, configRevision);
+    if (row === undefined) return null;
+    try {
+      const catalog: unknown = JSON.parse(String(row.catalog_json));
+      if (Value.Check(McpDiagnosticsVoSchema, catalog)) return catalog;
+    } catch {
+      // Fall through to the stable storage error below.
+    }
+    throw new McpError(McpErrorCode.STORAGE_FAILED, "MCP 能力目录缓存已损坏，请刷新状态");
+  }
+
+  public findCatalogUpdatedAt(serverId: McpServerId, configRevision: number): number | null {
+    const row = this.database
+      .prepare("SELECT updated_at FROM mcp_catalogs WHERE server_id = ? AND config_revision = ?")
+      .get(serverId, configRevision);
+    return row === undefined ? null : Number(row.updated_at);
+  }
+
+  public saveCatalog(catalog: McpDiagnosticsVo): void {
+    if (!Value.Check(McpDiagnosticsVoSchema, catalog)) {
+      throw new McpError(McpErrorCode.INVALID_CONFIG, "MCP 能力目录格式无效");
+    }
+    const { changes } = this.database
+      .prepare(
+        `INSERT INTO mcp_catalogs (server_id, config_revision, catalog_json, updated_at)
+         SELECT id, ?, ?, ? FROM mcp_servers WHERE id = ? AND revision = ?
+         ON CONFLICT(server_id) DO UPDATE SET
+           config_revision = excluded.config_revision,
+           catalog_json = excluded.catalog_json,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        catalog.configRevision,
+        JSON.stringify(catalog),
+        catalog.discoveredAt,
+        catalog.serverId,
+        catalog.configRevision,
+      );
+    if (changes !== 1) {
+      throw new McpError(McpErrorCode.CONFIG_CONFLICT, "MCP 配置已变更，请刷新后重试");
+    }
+  }
+
+  public deleteCatalog(serverId: McpServerId): void {
+    this.database.prepare("DELETE FROM mcp_catalogs WHERE server_id = ?").run(serverId);
   }
 }
