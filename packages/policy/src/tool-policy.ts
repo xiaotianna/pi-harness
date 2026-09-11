@@ -73,6 +73,7 @@ export type ToolPolicyResult =
       target: string;
       allowSession?: boolean;
       commandPrefix?: CommandPrefixRule;
+      allowAiApproval?: boolean;
     };
 
 export interface EvaluateToolCallInput {
@@ -226,6 +227,7 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
       const { fingerprint } = await resolveWorkspaceTarget(input, ".", false);
       if (isCriticalDestructiveCommand(command, input.workspaceRoot)) {
         return {
+          allowAiApproval: false,
           allowSession: false,
           decision: ToolPolicyDecision.ASK,
           fingerprint,
@@ -248,6 +250,7 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
         readArgument(input.arguments, "prefixRule"),
       );
       return {
+        allowSession: false,
         ...(commandPrefix === null ? {} : { commandPrefix }),
         decision: ToolPolicyDecision.ASK,
         fingerprint,

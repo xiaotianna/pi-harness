@@ -16,6 +16,7 @@ import {
   type Model,
 } from "@earendil-works/pi-ai";
 import {
+  ApprovalPolicy,
   type ApprovalPolicyValue,
   evaluateToolCall,
   ToolPermission,
@@ -77,6 +78,11 @@ import {
   PLAN_MODE_RETRY_PROMPT,
   PLAN_MODE_REVISION_RETRY_PROMPT,
 } from "./prompts/plan-mode-prompt.js";
+import {
+  buildToolApprovalPrompt,
+  parseToolApprovalResponse,
+  TOOL_APPROVAL_SYSTEM_PROMPT,
+} from "./prompts/tool-approval-prompt.js";
 import { type ThinkingLevel, ThinkingLevel as ThinkingLevels } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
 import {
@@ -149,6 +155,8 @@ interface PendingFollowUp {
 }
 
 const MAX_PLAN_MODE_RETRY_COUNT = 8;
+const TOOL_APPROVAL_MAX_TOKENS = 64;
+const TOOL_APPROVAL_TIMEOUT_MS = 20_000;
 
 interface PlanModeRetryMessage {
   content: string;
@@ -605,6 +613,48 @@ export class RunCoordinator {
     return { matches, query: input.query.trim() };
   }
 
+  private async requestAiToolApproval(
+    input: { risk: string; summary: string; target: string; toolName: string },
+    signal?: AbortSignal,
+  ): Promise<{ commandPrefix: readonly string[] | null; isAllowed: boolean }> {
+    const activeRun = this.activeRun;
+    if (activeRun === null) return { commandPrefix: null, isAllowed: false };
+    const timeoutSignal = AbortSignal.timeout(TOOL_APPROVAL_TIMEOUT_MS);
+    const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    try {
+      const stream = await activeRun.streamFn(
+        this.agent.state.model,
+        {
+          messages: [
+            {
+              content: buildToolApprovalPrompt(input),
+              role: "user",
+              timestamp: Date.now(),
+            },
+          ],
+          systemPrompt: TOOL_APPROVAL_SYSTEM_PROMPT,
+        },
+        {
+          maxRetries: 0,
+          maxTokens: TOOL_APPROVAL_MAX_TOKENS,
+          signal: requestSignal,
+          timeoutMs: TOOL_APPROVAL_TIMEOUT_MS,
+        },
+      );
+      const response = await stream.result();
+      if (response.stopReason === "aborted" || response.stopReason === "error") {
+        return { commandPrefix: null, isAllowed: false };
+      }
+      return parseToolApprovalResponse(
+        response.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+        input.summary,
+      );
+    } catch {
+      signal?.throwIfAborted();
+      return { commandPrefix: null, isAllowed: false };
+    }
+  }
+
   // 工具调用前
   private async handleBeforeToolCall(
     context: BeforeToolCallContext,
@@ -680,11 +730,60 @@ export class RunCoordinator {
       return undefined;
     }
 
+    const aiApproval =
+      activeRun.approvalPolicy === ApprovalPolicy.AUTO_APPROVE &&
+      registration?.policy.permission === ToolPermission.SHELL &&
+      policy.allowAiApproval !== false
+        ? await this.requestAiToolApproval(
+            {
+              risk: policy.risk,
+              summary: policy.summary,
+              target: policy.target,
+              toolName: context.toolCall.name,
+            },
+            signal,
+          )
+        : null;
+    if (aiApproval?.isAllowed === true) {
+      const currentPolicy = await evaluateToolCall({
+        approvalPolicy: activeRun.approvalPolicy,
+        allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
+        isSkillToolPreapproved:
+          (await this.skillRegistry?.isToolPreapproved(
+            context.toolCall.name,
+            context.args,
+            signal,
+          )) ?? false,
+        ...(signal ? { signal } : {}),
+        arguments: context.args,
+        policy: registration?.policy,
+        protectedPaths: this.protectedPaths,
+        workspaceRoot: this.workspaceRoot,
+      });
+      if (
+        currentPolicy.decision !== ToolPolicyDecision.ASK ||
+        currentPolicy.allowAiApproval === false ||
+        currentPolicy.fingerprint !== policy.fingerprint ||
+        currentPolicy.summary !== policy.summary ||
+        currentPolicy.target !== policy.target
+      ) {
+        return { block: true, reason: "AI 审批期间工具目标已变化，请重新读取后再执行" };
+      }
+      const currentBlockReason = this.executionGuard.getBlockReason(
+        context.toolCall.id,
+        toolCallFingerprint,
+      );
+      if (currentBlockReason !== null) return { block: true, reason: currentBlockReason };
+      this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+      return undefined;
+    }
+
     const approvalId = randomUUID();
+    const commandPrefix = aiApproval === null ? policy.commandPrefix : aiApproval.commandPrefix;
     const request = {
       approvalId,
       ...(policy.allowSession === undefined ? {} : { allowSession: policy.allowSession }),
-      ...(policy.commandPrefix === undefined ? {} : { commandPrefix: policy.commandPrefix }),
+      ...(commandPrefix === undefined || commandPrefix === null ? {} : { commandPrefix }),
       risk: policy.risk,
       runId: activeRun.runId,
       sessionId: this.sessionId,

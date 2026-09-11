@@ -30,7 +30,7 @@ const APPROVAL_POLICY_OPTIONS = [
     value: ApprovalPolicy.REQUEST_APPROVAL,
   },
   {
-    description: "工作区文件修改自动批准，执行命令仍会询问",
+    description: "自动批准文件修改，命令由独立 AI 复核后决定是否询问",
     icon: ShieldCheck,
     label: "帮我批准",
     value: ApprovalPolicy.AUTO_APPROVE,

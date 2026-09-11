@@ -140,7 +140,15 @@ export function readApplicableCommandPrefix(
   command: string,
   value: unknown,
 ): CommandPrefixRule | null {
-  if (!isPersistableCommandPrefixRule(value)) return null;
+  let candidate = value;
+  if (typeof candidate === "string") {
+    try {
+      candidate = JSON.parse(candidate) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!isPersistableCommandPrefixRule(candidate)) return null;
   const parts = parseSimpleCommand(command);
-  return parts !== null && startsWithPrefix(parts, value) ? [...value] : null;
+  return parts !== null && startsWithPrefix(parts, candidate) ? [...candidate] : null;
 }

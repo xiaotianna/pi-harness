@@ -108,9 +108,6 @@ export function ToolApprovalCard({
                     if (key === ApprovalDecision.APPROVED_SIMILAR) {
                       resolveApproval(ApprovalDecision.APPROVED_SIMILAR);
                     }
-                    if (key === ApprovalDecision.APPROVED_SESSION) {
-                      resolveApproval(ApprovalDecision.APPROVED_SESSION);
-                    }
                   }}
                 >
                   <Dropdown.Item id={ApprovalDecision.APPROVED} textValue="允许一次">
@@ -118,9 +115,6 @@ export function ToolApprovalCard({
                   </Dropdown.Item>
                   <Dropdown.Item id={ApprovalDecision.APPROVED_SIMILAR} textValue="允许类似命令">
                     <Label>允许类似命令</Label>
-                  </Dropdown.Item>
-                  <Dropdown.Item id={ApprovalDecision.APPROVED_SESSION} textValue="本次会话允许">
-                    <Label>本次会话允许</Label>
                   </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown.Popover>
