@@ -21,15 +21,15 @@ export const ChatViewToggle = memo(function ChatViewToggle() {
     >
       <Tabs.ListContainer>
         <Tabs.List aria-label="切换会话视图" className="p-0.5">
-          <Tabs.Tab className="h-7 px-3 text-xs" id={ChatPageView.CONVERSATION}>
+          <Tabs.Tab className="h-7 px-2 text-xs sm:px-3" id={ChatPageView.CONVERSATION}>
             对话
             <Tabs.Indicator />
           </Tabs.Tab>
-          <Tabs.Tab className="h-7 px-3 text-xs" id={ChatPageView.TRACE}>
+          <Tabs.Tab className="h-7 px-2 text-xs sm:px-3" id={ChatPageView.TRACE}>
             轨迹
             <Tabs.Indicator />
           </Tabs.Tab>
-          <Tabs.Tab className="h-7 px-3 text-xs" id={ChatPageView.FILES}>
+          <Tabs.Tab className="h-7 px-2 text-xs sm:px-3" id={ChatPageView.FILES}>
             文件
             <Tabs.Indicator />
           </Tabs.Tab>

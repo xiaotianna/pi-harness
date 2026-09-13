@@ -33,7 +33,7 @@ export const ChatNavbar = memo(function ChatNavbar({ activePage, onSearch }: Cha
         <AppLayout.MenuToggle aria-label="打开导航" tooltip="打开导航" />
         <Sidebar.Trigger aria-label="切换侧边栏" />
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex min-w-0 flex-col">
+          <div className={`min-w-0 flex-col ${isThread ? "hidden sm:flex" : "flex"}`}>
             <h1 className="truncate text-sm font-semibold text-foreground sm:text-base">{title}</h1>
             {subtitle ? <span className="truncate text-xs text-muted">{subtitle}</span> : null}
           </div>

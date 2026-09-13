@@ -10,12 +10,12 @@ import {
 import { isPathWithin, resolveWorkspacePath } from "@pi-harness/policy";
 import {
   hasIgnoredWorkspaceDirectory,
-  MAX_FILE_BYTES,
   readTextFile,
   type SkillDefinition,
   SkillRegistry,
   SkillScope,
   type SkillScope as SkillScopeValue,
+  TextFileReadError,
   WORKSPACE_FILE_PATTERNS,
   type WritableSkillScope,
 } from "@pi-harness/tools";
@@ -418,10 +418,14 @@ export class WorkspaceService {
       };
     } catch (error: unknown) {
       if (signal?.aborted) throw error;
-      throw new WorkspaceServiceError(
-        WorkspaceErrorCode.INVALID,
-        `文件不存在、不是可预览的 UTF-8 文本或超过 ${MAX_FILE_BYTES} 字节限制`,
-      );
+      if (error instanceof WorkspaceServiceError) throw error;
+      if (error instanceof TextFileReadError) {
+        throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, error.message);
+      }
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "文件不存在");
+      }
+      throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "无法预览此文件");
     }
   }
 

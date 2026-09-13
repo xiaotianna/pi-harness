@@ -39,6 +39,7 @@ export {
   MAX_FILE_BYTES,
   readFileChangeDetails,
   readTextFile,
+  TextFileReadError,
 } from "./utils/file.js";
 export { createToolFingerprint } from "./utils/tool-fingerprint.js";
 export {

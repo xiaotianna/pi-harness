@@ -8,6 +8,13 @@ import { detectImageMimeType, expectedImageMimeType, isPdfBuffer } from "./media
 
 export const MAX_FILE_BYTES = 1024 * 1024;
 
+export class TextFileReadError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "TextFileReadError";
+  }
+}
+
 export interface FileChangeDetails {
   after: string;
   before: string | null;
@@ -23,10 +30,10 @@ export interface TextFilePage {
 
 async function assertTextFileFormat(path: string, signal?: AbortSignal): Promise<void> {
   if (resolveDocumentFileType(path, "") !== null || path.toLowerCase().endsWith(".pdf")) {
-    throw new Error("read_file 仅支持 UTF-8 文本；PDF 或 Office 文档请使用 read_document");
+    throw new TextFileReadError("PDF 或 Office 文档无法作为 UTF-8 文本读取");
   }
   if (expectedImageMimeType(path) !== null) {
-    throw new Error("read_file 仅支持 UTF-8 文本；图片请使用 view_image");
+    throw new TextFileReadError("图片无法作为 UTF-8 文本读取");
   }
 
   const handle = await open(path, "r");
@@ -35,18 +42,18 @@ async function assertTextFileFormat(path: string, signal?: AbortSignal): Promise
     const { bytesRead } = await handle.read(prefix, 0, prefix.length, 0);
     const content = prefix.subarray(0, bytesRead);
     if (detectImageMimeType(content) !== null) {
-      throw new Error("read_file 仅支持 UTF-8 文本；图片请使用 view_image");
+      throw new TextFileReadError("图片无法作为 UTF-8 文本读取");
     }
     if (isPdfBuffer(content)) {
-      throw new Error("read_file 仅支持 UTF-8 文本；PDF 文档请使用 read_document");
+      throw new TextFileReadError("PDF 文档无法作为 UTF-8 文本读取");
     }
-    if (content.includes(0)) throw new Error("read_file 不支持二进制文件");
+    if (content.includes(0)) throw new TextFileReadError("二进制文件无法作为 UTF-8 文本读取");
     try {
       new TextDecoder("utf-8", { fatal: true }).decode(content, {
         stream: bytesRead === prefix.length,
       });
     } catch {
-      throw new Error("read_file 仅支持有效的 UTF-8 文本文件");
+      throw new TextFileReadError("文件不是有效的 UTF-8 文本");
     }
     signal?.throwIfAborted();
   } finally {
@@ -73,19 +80,31 @@ export function readFileChangeDetails(value: unknown): readonly FileChangeDetail
 }
 
 export async function readTextFile(path: string, signal?: AbortSignal): Promise<string> {
-  await assertTextFileFormat(path, signal);
-  const metadata = await stat(path);
-  if (!metadata.isFile() || metadata.size > MAX_FILE_BYTES) {
-    throw new Error(`文件不存在、不是普通文件或超过 ${MAX_FILE_BYTES} 字节限制`);
+  const metadata = await stat(path).catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      throw new TextFileReadError("文件不存在");
+    }
+    throw error;
+  });
+  if (!metadata.isFile()) {
+    throw new TextFileReadError("所选路径不是普通文件");
   }
+  if (metadata.size > MAX_FILE_BYTES) {
+    throw new TextFileReadError(
+      `文件大小为 ${metadata.size} 字节，超过 ${MAX_FILE_BYTES} 字节（1 MiB）的预览上限`,
+    );
+  }
+  await assertTextFileFormat(path, signal);
   const content = await readFile(path, signal === undefined ? undefined : { signal });
   if (content.byteLength > MAX_FILE_BYTES) {
-    throw new Error(`文件内容超过 ${MAX_FILE_BYTES} 字节限制`);
+    throw new TextFileReadError(
+      `文件大小为 ${content.byteLength} 字节，超过 ${MAX_FILE_BYTES} 字节（1 MiB）的预览上限`,
+    );
   }
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(content);
   } catch {
-    throw new Error("文件不是有效的 UTF-8 文本");
+    throw new TextFileReadError("文件不是有效的 UTF-8 文本");
   }
 }
 
