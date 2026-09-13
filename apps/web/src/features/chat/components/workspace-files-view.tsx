@@ -2,7 +2,14 @@
 
 import { CodeBlock } from "@agile-avocation/ui-pro/code-block";
 import { EmptyState } from "@agile-avocation/ui-pro/empty-state";
-import { ArrowLeft, ChevronRight, FileQuestion, FileXmark, FolderOpen } from "@gravity-ui/icons";
+import {
+  ArrowLeft,
+  ArrowUpRightFromSquare,
+  ChevronRight,
+  FileQuestion,
+  FileXmark,
+  FolderOpen,
+} from "@gravity-ui/icons";
 import { Alert, Button, ScrollShadow, Skeleton, Tooltip, useMediaQuery } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import folderIcon from "@iconify-icons/vscode-icons/default-folder";
@@ -17,6 +24,7 @@ import { resolveCodeLanguage } from "../../../components/ai/code-diff";
 import { FileIconRender } from "../../../components/ui/file-icon-render";
 import type { WorkspaceFileList } from "../api/workspace-api";
 import { workspaceFileQueryOptions, workspaceFilesQueryOptions } from "../api/workspace-queries";
+import { useOpenWorkspacePath } from "../hooks/use-open-workspace-path";
 
 interface FileTreeNode {
   children: FileTreeNode[];
@@ -94,10 +102,12 @@ function flattenFileTree(
 
 function WorkspaceFilePreview({
   content,
+  onOpen,
   path,
   showHeader = true,
 }: {
   content: string;
+  onOpen: () => void;
   path: string;
   showHeader?: boolean;
 }) {
@@ -111,7 +121,10 @@ function WorkspaceFilePreview({
               {path}
             </span>
           </div>
-          <CodeBlock.CopyButton aria-label="复制文件内容" code={content} />
+          <div className="flex shrink-0 items-center gap-1">
+            <WorkspaceFileOpenButton onOpen={onOpen} />
+            <CodeBlock.CopyButton aria-label="复制文件内容" code={content} />
+          </div>
         </CodeBlock.Header>
       ) : null}
       <CodeBlock.Code
@@ -123,8 +136,27 @@ function WorkspaceFilePreview({
   );
 }
 
+function WorkspaceFileOpenButton({ onOpen }: { onOpen: () => void }) {
+  return (
+    <Tooltip delay={0}>
+      <Button
+        isIconOnly
+        aria-label="打开文件"
+        className="code-block__copy-button shrink-0"
+        size="sm"
+        variant="ghost"
+        onPress={onOpen}
+      >
+        <ArrowUpRightFromSquare aria-hidden />
+      </Button>
+      <Tooltip.Content placement="bottom">打开文件</Tooltip.Content>
+    </Tooltip>
+  );
+}
+
 export function WorkspaceFilesView({ workspaceId }: { workspaceId: string }) {
   const isMobile = useMediaQuery("(max-width: 639px)");
+  const openWorkspacePath = useOpenWorkspacePath();
   const filesQuery = useQuery(workspaceFilesQueryOptions(workspaceId));
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(new Set());
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -309,6 +341,7 @@ export function WorkspaceFilesView({ workspaceId }: { workspaceId: string }) {
       ) : fileQuery.data ? (
         <WorkspaceFilePreview
           content={fileQuery.data.content}
+          onOpen={() => openWorkspacePath(workspaceId, fileQuery.data.path)}
           path={fileQuery.data.path}
           showHeader={!isMobile}
         />
@@ -340,11 +373,16 @@ export function WorkspaceFilesView({ workspaceId }: { workspaceId: string }) {
             {selectedPath}
           </span>
           {fileQuery.data ? (
-            <CodeBlock.CopyButton
-              aria-label="复制文件内容"
-              className="shrink-0"
-              code={fileQuery.data.content}
-            />
+            <div className="flex shrink-0 items-center gap-1">
+              <WorkspaceFileOpenButton
+                onOpen={() => openWorkspacePath(workspaceId, fileQuery.data.path)}
+              />
+              <CodeBlock.CopyButton
+                aria-label="复制文件内容"
+                className="shrink-0"
+                code={fileQuery.data.content}
+              />
+            </div>
           ) : null}
         </div>
         <div className="min-h-0 flex-1">{contentPanel}</div>

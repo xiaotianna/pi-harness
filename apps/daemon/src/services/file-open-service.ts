@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { glob, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import {
   FileOpenMode,
   FileOpenResultStatus,
@@ -12,6 +12,16 @@ import type { AppSettingRepository, FileOpenApplicationSetting } from "../storag
 const PICKER_TIMEOUT_MS = 5 * 60 * 1_000;
 const OPEN_TIMEOUT_MS = 10_000;
 const MAX_ICON_BYTES = 256 * 1_024;
+const MAC_FINDER_PATH = "/System/Library/CoreServices/Finder.app";
+const LINUX_FILE_MANAGER_NAMES = new Set([
+  "caja",
+  "dolphin",
+  "nautilus",
+  "nemo",
+  "pcmanfm",
+  "pcmanfm-qt",
+  "thunar",
+]);
 
 export const FileOpenErrorCode = {
   OPEN_FAILED: "FILE_OPEN_FAILED",
@@ -77,7 +87,7 @@ function readApplicationPickerCommand(): { args: readonly string[]; command: str
     return {
       args: [
         "-e",
-        'set selectedApp to choose file with prompt "选择用于打开文件的应用" of type {"com.apple.application-bundle"} default location (path to applications folder)',
+        'set selectedApp to choose application with prompt "选择用于打开文件的应用" as alias',
         "-e",
         "return POSIX path of selectedApp",
       ],
@@ -128,9 +138,15 @@ function readApplicationOpenCommand(
   targetPath: string,
 ): { args: readonly string[]; command: string } {
   if (process.platform === "darwin") {
+    if (applicationPath === MAC_FINDER_PATH) {
+      return { args: ["-R", targetPath], command: "/usr/bin/open" };
+    }
     return { args: ["-a", applicationPath, targetPath], command: "/usr/bin/open" };
   }
   if (process.platform === "win32") {
+    if (basename(applicationPath).toLowerCase() === "explorer.exe") {
+      return { args: [`/select,${targetPath}`], command: applicationPath };
+    }
     return {
       args: [
         "-NoProfile",
@@ -143,7 +159,12 @@ function readApplicationOpenCommand(
       command: "powershell.exe",
     };
   }
-  if (process.platform === "linux") return { args: [targetPath], command: applicationPath };
+  if (process.platform === "linux") {
+    if (LINUX_FILE_MANAGER_NAMES.has(basename(applicationPath).toLowerCase())) {
+      return { args: [dirname(targetPath)], command: applicationPath };
+    }
+    return { args: [targetPath], command: applicationPath };
+  }
   throw new FileOpenServiceError(
     FileOpenErrorCode.OPEN_UNAVAILABLE,
     "当前操作系统不支持指定应用打开文件",
