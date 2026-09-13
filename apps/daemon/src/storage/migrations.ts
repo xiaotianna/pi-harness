@@ -294,4 +294,145 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: "017-memories.sql",
+    sql: `
+      CREATE TABLE memories (
+        id TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        normalized_content TEXT NOT NULL,
+        scope TEXT NOT NULL CHECK (scope IN ('user', 'workspace')),
+        workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK (status IN ('saved', 'suggested')),
+        source_type TEXT NOT NULL CHECK (source_type IN ('manual', 'session')),
+        source_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+        revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (
+          (scope = 'user' AND workspace_id IS NULL)
+          OR (scope = 'workspace' AND workspace_id IS NOT NULL)
+        )
+      ) STRICT;
+
+      CREATE UNIQUE INDEX memories_scope_content_idx
+        ON memories(scope, COALESCE(workspace_id, ''), normalized_content);
+      CREATE INDEX memories_visibility_idx
+        ON memories(status, scope, workspace_id, updated_at DESC);
+
+      CREATE VIRTUAL TABLE memory_search USING fts5(
+        memory_id UNINDEXED,
+        content,
+        tokenize='trigram'
+      );
+
+      CREATE TABLE memory_settings (
+        key TEXT PRIMARY KEY CHECK (key IN ('use_memories', 'generate_memories')),
+        value INTEGER NOT NULL CHECK (value IN (0, 1)),
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+    `,
+  },
+  {
+    version: "018-memory-user-profile.sql",
+    sql: `
+      ALTER TABLE memories ADD COLUMN profile_facet TEXT
+        CHECK (profile_facet IS NULL OR profile_facet IN (
+          'background', 'communication', 'expertise', 'interests', 'preferences', 'workflow'
+        ));
+
+      UPDATE memories SET profile_facet = 'preferences' WHERE scope = 'user';
+    `,
+  },
+  {
+    version: "019-memory-embeddings.sql",
+    sql: `
+      CREATE TABLE memory_embedding_settings (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+
+      CREATE TABLE memory_embeddings (
+        memory_id TEXT PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        dimensions INTEGER NOT NULL CHECK (dimensions > 0),
+        embedding BLOB NOT NULL,
+        memory_revision INTEGER NOT NULL CHECK (memory_revision > 0),
+        updated_at INTEGER NOT NULL,
+        CHECK (length(embedding) = dimensions * 4)
+      ) STRICT;
+
+      CREATE INDEX memory_embeddings_model_idx
+        ON memory_embeddings(provider_id, model_id);
+    `,
+  },
+  {
+    version: "020-local-memory-embeddings.sql",
+    sql: `
+      DROP INDEX memory_embeddings_model_idx;
+      DROP TABLE memory_embeddings;
+      DROP TABLE memory_embedding_settings;
+
+      CREATE TABLE memory_embedding_settings (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        model_id TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+
+      CREATE TABLE memory_embeddings (
+        memory_id TEXT PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+        model_id TEXT NOT NULL,
+        dimensions INTEGER NOT NULL CHECK (dimensions > 0),
+        embedding BLOB NOT NULL,
+        memory_revision INTEGER NOT NULL CHECK (memory_revision > 0),
+        updated_at INTEGER NOT NULL,
+        CHECK (length(embedding) = dimensions * 4)
+      ) STRICT;
+
+      CREATE INDEX memory_embeddings_model_idx ON memory_embeddings(model_id);
+    `,
+  },
+  {
+    version: "021-repair-local-memory-embeddings.sql",
+    migrate: (database) => {
+      const hasLegacyProviderColumn =
+        database
+          .prepare(
+            "SELECT 1 FROM pragma_table_info('memory_embeddings') WHERE name = 'provider_id'",
+          )
+          .get() !== undefined;
+      if (!hasLegacyProviderColumn) return;
+
+      database.exec(`
+        DROP INDEX IF EXISTS memory_embeddings_model_idx;
+        DROP TABLE memory_embeddings;
+        DROP TABLE memory_embedding_settings;
+
+        CREATE TABLE memory_embedding_settings (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          model_id TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        ) STRICT;
+
+        CREATE TABLE memory_embeddings (
+          memory_id TEXT PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+          model_id TEXT NOT NULL,
+          dimensions INTEGER NOT NULL CHECK (dimensions > 0),
+          embedding BLOB NOT NULL,
+          memory_revision INTEGER NOT NULL CHECK (memory_revision > 0),
+          updated_at INTEGER NOT NULL,
+          CHECK (length(embedding) = dimensions * 4)
+        ) STRICT;
+
+        CREATE INDEX memory_embeddings_model_idx ON memory_embeddings(model_id);
+      `);
+    },
+  },
+  {
+    version: "022-save-memory-suggestions.sql",
+    sql: `UPDATE memories SET status = 'saved' WHERE status = 'suggested';`,
+  },
 ];

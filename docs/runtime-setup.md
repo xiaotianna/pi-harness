@@ -2,6 +2,8 @@
 
 本文档只记录 Agent Runtime 的实施顺序、执行过程、完成进度和验证结果。稳定的模块职责、数据协议、安全边界与演进原则以 [`架构设计.md`](./架构设计.md) 为准。
 
+最后按实际代码核对：2026-09-12。MCP 完整协议能力的细项状态以 [`mcp-client-host-plan.md`](./mcp-client-host-plan.md) 为准。
+
 ## 进度说明
 
 - `已完成`：代码已落地，并通过对应静态检查或冒烟验证。
@@ -10,23 +12,21 @@
 
 ## 当前总进度
 
-| 步骤 | 内容 | 状态 |
+| 能力 | 状态 | 实际边界 |
 |---|---|---|
-| 1 | Provider 到 Runtime 的模型解析入口 | 已完成 |
-| 2 | 无工具 Agent 创建与最小 System Prompt | 已完成 |
-| 3 | Pi 事件到 HarnessEvent 的适配 | 已完成 |
-| 4 | RunCoordinator 与 AgentManager | 已完成 |
-| 5 | Session SQLite 索引与 Session JSONL | 已完成 |
-| 6 | Session/Run HTTP API 与 SSE | 已完成 |
-| 7 | daemon 运行时装配、关闭与 Provider 占用保护 | 已完成 |
-| 8 | Web 对话页接入真实 Session/Run/SSE | 已完成 |
-| 9 | Tool Registry、Policy、HITL、Sandbox | 已完成 |
-| 10 | AGENTS.md 与 Skill Registry | 已完成 |
-| 11 | 消息附件与 `@` Workspace 上下文 | 已完成 |
-| 12 | Context 预算、裁剪与压缩 | 已完成 |
-| 13 | 基础 Trace 与真实 Run 数据 | 已完成 |
+| Provider、Agent、Run、Session 恢复、HarnessEvent、HTTP/SSE | 已完成 | 已形成真实模型对话与可恢复运行闭环 |
+| Workspace Tools、Policy、审批、Sandbox、文件变化 | 已完成 | 文件、网络与命令副作用经过统一执行保护 |
+| AGENTS.md、Skill Registry、插件 Skill、附件与 `@` 上下文 | 已完成 | 每次 Run 重新发现上下文，Skill 正文按需加载 |
+| Plan 模式、Planner、Todos、用户提问、排队追加与调整方向 | 已完成 | 状态进入 Session JSONL，并支持活动 Run 内挂起与恢复 |
+| Context 预算、裁剪、结构化压缩、Checkpoint 回滚与用量 | 已完成 | 确定性 eval 已落地；真实 Provider burn-in 仍是发布验收项 |
+| Trace 与 Session 搜索 | 已完成基础闭环 | Trace 使用真实事件；Session 列表搜索已有 SQLite FTS |
+| 当前 Session 历史取回 | 已完成基础闭环 | Agent 的 `search_session_history` 仍对当前 Agent 消息做倒序线性扫描，不等同于长期记忆 |
+| MCP Host Tools 闭环 | 已完成 | 配置、连接、发现、Run 工具冻结、Policy、调用与 UI 已接通；Resources、Prompts 等完整协议扩展继续由 MCP 专项台账跟踪 |
+| Long-term Memory | 已完成 | 独立 `@pi-harness/memory`、SQLite/FTS5、派生用户画像、HTTP API、Web 管理、自动学习与 Runtime 注入已闭环 |
+| RAG / Tool Selector | 待开始 | 尚无 `tool-selector.ts` 或通用 Retrieval 实现 |
+| Computer Use Runtime 接入 | 进行中 | `computer-use` package 与原生 helper 已存在，尚未装配到 daemon 和 Agent Runtime |
 
-当前已完成真实 Web 对话、workspace 工具、审批、文件变化、AGENTS.md、两级 Skill Registry、消息附件与 `@` Workspace 上下文、Context 管理，以及基础 Trace 闭环。Trace 界面已从 mock 数据切换到真实 Session/Run 事件。
+当前 Runtime 核心执行链与 Long-term Memory 已经可用。剩余工作按独立能力推进；Context burn-in 属于发布验收，不再作为唯一“下一步”。
 
 ## 2026-08-24：无工具 Runtime 后端闭环
 
@@ -225,8 +225,22 @@
 
 验证：`@pi-harness/agent-runtime`、`@pi-harness/web` typecheck 和相关文件 Biome 检查通过；事件投影通过单次可运行断言校验。未执行 dev、build 或 git。
 
+## 2026-09-12：Long-term Memory v1
+
+状态：`已完成`
+
+- 新增独立 `@pi-harness/memory` package，承载浏览器安全 contract、长期记忆领域规则、Context 投影和 Agent 工具；不依赖 `agent-runtime`、HTTP 或 SQLite。
+- daemon 增加 `memories`、`memory_settings` 与 FTS5 `memory_search` migration，以及实现 `MemoryRepository` 的 SQLite adapter。
+- `/api/memories` 和 `/api/memory-settings` 已支持真实列表、创建、编辑、删除和启停；Web 移除 `memory-demo-store.ts`，改用 TanStack Query 与真实 Workspace scope。
+- 每次 Run 读取当前 Workspace 可见的长期记忆，有界生成独立 `Memory` Context；记忆正文按不可信派生上下文处理，并进入现有 Context/Trace 快照。
+- Agent 提供 `search_memories`、`learn_memory`、`save_memory`、`update_memory` 和 `delete_memory`。自动学习在开关允许时直接保存稳定偏好或事实；用户明确要求的保存和改写经校验后直接执行，删除仍需审批，三者都保留 revision 冲突保护。
+- 个人记忆按背景、沟通、技能、兴趣、偏好和工作方式生成可编辑的用户画像分组；画像不单独落表，由 `MemoryService` 可重建派生，Runtime 继续只依赖 `MemoryRuntime`。
+- SQLite 记录是事实源，FTS5 与本地 `multilingual-e5-small` Float32 向量均为可重建派生索引；模型由 daemon 通过 Transformers.js + ONNX 在 CPU 运行并缓存到本地数据目录，不依赖对话 Provider。
+
+验证：`@pi-harness/memory`、`@pi-harness/tools`、`@pi-harness/agent-runtime`、`@pi-harness/daemon` 和 `@pi-harness/web` typecheck 通过；SQLite migration、旧数据升级、画像分组与改类、创建、FTS 检索、Context 投影和删除通过一次性冒烟断言；本地真实模型链路完成无审批保存、跨 Session 召回、无审批更新、旧值消失及用户画像展示验证。未执行 dev、build 或 git；验证环境为 Node.js 22，项目目标仍是 Node.js 24 LTS。
+
 ## 下一步
 
 状态：`待开始`
 
-使用已配置的真实 Provider 做发布前 burn-in，覆盖长会话、Tool 审批、Context 压缩、停止与失败恢复；发现可复现问题后再补针对性修复。
+真实 Provider burn-in 保留为发布前验收，覆盖长会话、Memory 注入、Tool/MCP 审批、Context 压缩、停止与失败恢复。Memory 的本地向量链路需覆盖首次下载、缓存复用、索引重建与关键词降级；通用 Retrieval package 等 Tool/Skill 成为第二个稳定消费者后再提取。

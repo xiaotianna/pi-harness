@@ -946,6 +946,7 @@ export class SessionService {
       streamFn,
       thinkingLevel: session.thinkingLevel,
       todos: snapshot.todos,
+      workspaceId: session.workspaceId,
       workspaceRoot: session.workspaceRoot,
     });
     this.trackBackgroundTask(task, {

@@ -1,5 +1,6 @@
 import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { createMemoryToolRegistrations, type MemoryRuntime } from "@pi-harness/memory";
 import type { CommandPrefixRule, SandboxCredential } from "@pi-harness/policy";
 import {
   createWorkspaceToolRegistry,
@@ -41,6 +42,7 @@ export interface RestoreAgentInput {
   sessionId: SessionId;
   streamFn: StreamFn;
   todos: TodoUpdatedData | null;
+  workspaceId: string;
   workspaceRoot: string;
 }
 
@@ -83,6 +85,7 @@ export class AgentManager {
     private readonly isSkillEnabled: (directory: string) => boolean = () => true,
     private readonly getAllowedCommandPrefixes: () => readonly CommandPrefixRule[] = () => [],
     private readonly getSandboxCredentials: () => readonly SandboxCredential[],
+    private readonly memory: MemoryRuntime,
     private readonly prepareExternalTools?: PrepareExternalTools,
   ) {}
 
@@ -96,16 +99,20 @@ export class AgentManager {
   }
 
   public async startRun(input: StartSessionRunInput): Promise<void> {
-    const workspaceContext = await loadWorkspaceAgentContext({
-      getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
-      globalRoot: this.globalRoot,
-      isSkillEnabled: this.isSkillEnabled,
-      workspaceRoot: input.workspaceRoot,
-    });
+    const [workspaceContext, memoryContext] = await Promise.all([
+      loadWorkspaceAgentContext({
+        getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
+        globalRoot: this.globalRoot,
+        isSkillEnabled: this.isSkillEnabled,
+        workspaceRoot: input.workspaceRoot,
+      }),
+      this.memory.buildContext(input.userInput.prompt, input.workspaceId),
+    ]);
     const prompts = buildSystemPrompts(workspaceContext, input.workspaceRoot);
     const preparedInput = {
       ...input,
       ...prompts,
+      contexts: [...prompts.contexts, { content: memoryContext, label: "Memory", type: "memory" }],
       systemPrompt:
         input.userInput.mode === RunMode.PLAN
           ? `${prompts.systemPrompt}\n${PLAN_MODE_SYSTEM_INSTRUCTION}`
@@ -243,6 +250,7 @@ export class AgentManager {
         workspaceRoot: input.workspaceRoot,
       },
       skillRegistry,
+      createMemoryToolRegistrations(this.memory, input.sessionId, input.workspaceId),
     );
     const agent = createAgent({ ...input, tools: toolRegistry.tools });
     runtime = new RunCoordinator(

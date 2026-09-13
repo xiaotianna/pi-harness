@@ -94,6 +94,7 @@ apps/
 
 packages/
 ├── agent-runtime/          # AgentManager、Agent 创建、上下文和事件适配
+├── memory/                 # 长期记忆 contract、领域服务、用户画像派生、Context 投影与 Agent 工具
 ├── providers/              # 创建 pi-ai Models、按需加载内置 Provider 和导出自定义 Provider 能力
 ├── tools/                  # tools：文件、Shell、Planner、Todos；skills：发现、加载与选择
 └── policy/                 # 路径保护、命令策略和用户审批
@@ -106,6 +107,7 @@ packages/
 - `apps/web` 只能依赖浏览器安全的包，不得导入 daemon 源码、Node API、`pi-ai`、`pi-agent-core`、daemon storage 或 tools。
 - Fastify route 只负责声明路径、schema 和 controller；controller 映射 HTTP 请求与响应，service 处理业务流程。
 - `agent-runtime` 负责编排，不直接实现文件读写或 SQL。
+- `memory` 不依赖 `agent-runtime`、HTTP 或 SQLite；用户画像只由已确认个人记忆派生，不建立第二事实源；daemon 实现其持久化端口，Web 只导入浏览器安全的 `@pi-harness/memory/contract`。
 - `tools` 不直接操作 Web、SSE 或数据库事务；工具进度通过回调或领域事件上报。
 - `apps/daemon/src/storage` 只负责当前 daemon 的持久化，不包含 OAuth 流程、Agent 调度、权限判断或 UI 逻辑；出现第二个真实消费者前不提前拆成 workspace package。
 - `policy` 是所有副作用操作的统一入口。审批不能散落在 route 或具体页面中。

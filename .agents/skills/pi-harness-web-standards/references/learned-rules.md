@@ -1029,6 +1029,15 @@
 - 原因：系统浏览器能复用用户现有 GitHub 会话并隔离第三方授权页面；外部浏览器与 WebView 不共享 Cookie，因此必须由 daemon 以一次性状态安全交接本地会话，不能只替换打开窗口的方式。
 - 已提升至：`docs/架构设计.md`。
 
+### WEB-118
+
+- 状态：`promoted`
+- 范围：长期记忆前端边界
+- 规则：记忆设置页继续使用筛选、搜索、连续列表和用户画像分组作为主内容，低频启停与学习开关放在标题 Popover。自动学习直接保存稳定、可跨 Session 复用的偏好或事实，不保留待确认状态。混合检索固定使用 daemon 内置并管理的本地 `multilingual-e5-small`，Web 不提供模型配置，也不重复聚合、不生成向量、不维护画像、索引或长期记忆 Zustand 副本。所有长期记忆数据通过 TanStack Query 调用 daemon API，Web 只从浏览器安全的 `@pi-harness/memory/contract` 复用类型与 Schema，不导入 Runtime、SQLite 或 Agent 工具实现。个人范围适用于所有项目，项目范围必须使用真实 Workspace ID；编辑和删除携带服务端 revision，冲突后刷新真实状态。
+- 依据：用户明确要求 Memory 建立独立子包，完成前后端、Runtime 与用户画像闭环，并避免与 Runtime 过度耦合；随后明确首版即采用参考 Mem0 的混合检索，并将向量模型固定为 daemon 内置的本地 `multilingual-e5-small`；本次进一步纠正不能只在前端隐藏待确认入口，要求同步移除完整链路中的待确认阶段。
+- 原因：共享浏览器安全 contract 可以防止 API 协议漂移；服务端数据只保留在 Query cache，能够避免 demo store 与 SQLite 双事实源，同时让 Web、Runtime 和持久化各自只依赖 Memory 的最小公开边界。
+- 已提升至：`project-map.md` 与 `docs/架构设计.md`。
+
 ## 维护规则
 
 - 新规则使用下一个数字 ID。

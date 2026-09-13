@@ -34,6 +34,7 @@ const RUN_COMMAND_TIMEOUT_MS = 610_000;
 export function createWorkspaceToolRegistry(
   context: WorkspaceToolContext,
   skillRegistry = new SkillRegistry(context),
+  additionalRegistrations: readonly ToolRegistration[] = [],
 ): ToolRegistry {
   const readOnlyPolicy = { permission: ToolPermission.READ_ONLY } as const;
   const builtInTools: ToolRegistration[] = [
@@ -202,5 +203,10 @@ export function createWorkspaceToolRegistry(
           },
         ]),
   ];
-  return new ToolRegistry([...builtInTools, ...builtInSkills, ...controlTools]);
+  return new ToolRegistry([
+    ...builtInTools,
+    ...builtInSkills,
+    ...controlTools,
+    ...additionalRegistrations,
+  ]);
 }

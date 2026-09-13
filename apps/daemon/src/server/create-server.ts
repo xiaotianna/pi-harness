@@ -3,6 +3,7 @@ import { join } from "node:path";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
 import { AgentManager } from "@pi-harness/agent-runtime";
+import { MemoryService } from "@pi-harness/memory";
 import { AVAILABLE_PLUGINS, resolveRegisteredPluginSkills } from "@pi-harness/tools";
 import Fastify from "fastify";
 import { type HarnessConfig, loadHarnessConfig } from "../config/index.js";
@@ -14,6 +15,7 @@ import { registerAuthRoutes } from "../routes/auth-routes.js";
 import { registerDesktopRoutes } from "../routes/desktop-routes.js";
 import { registerHealthRoutes } from "../routes/health-routes.js";
 import { registerMcpRoutes } from "../routes/mcp-routes.js";
+import { registerMemoryRoutes } from "../routes/memory-routes.js";
 import { registerProviderRoutes } from "../routes/provider-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerSkillConnectionRoutes } from "../routes/skill-connection-routes.js";
@@ -21,6 +23,7 @@ import { registerWorkspaceRoutes } from "../routes/workspace-routes.js";
 import { AppSettingsService } from "../services/app-settings-service.js";
 import { FileOpenService } from "../services/file-open-service.js";
 import { HumanInteractionService } from "../services/human-interaction-service.js";
+import { LocalMemoryEmbedder } from "../services/local-memory-embedder.js";
 import { McpDiagnosticsService } from "../services/mcp-diagnostics-service.js";
 import { McpOAuthService } from "../services/mcp-oauth-service.js";
 import { McpServerService } from "../services/mcp-server-service.js";
@@ -108,7 +111,28 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
       database.appSettings.getDisabledSkillCollectionSkillIds(),
     );
   const mcpTools = new McpToolService(mcpServers, mcpClients, database.sessions);
-  const agents = new AgentManager(
+  let agents: AgentManager | undefined;
+  let sessions: SessionService | undefined;
+  const providers = await ProviderService.create(
+    database.providerSettings,
+    credentials,
+    (providerId) =>
+      (agents?.isProviderActive(providerId) ?? false) ||
+      (sessions?.isProviderActive(providerId) ?? false),
+  );
+  const localMemoryEmbedder = new LocalMemoryEmbedder(config.globalRoot);
+  const memories = new MemoryService(database.memories, {
+    modelId: localMemoryEmbedder.modelId,
+    embed: async (purpose, inputs, signal) => {
+      try {
+        return await localMemoryEmbedder.embed(purpose, inputs, signal);
+      } catch (error: unknown) {
+        server.log.warn({ err: error }, "Local memory embedding unavailable");
+        throw error;
+      }
+    },
+  });
+  agents = new AgentManager(
     sessionEvents.handle,
     interactions.requestApproval,
     interactions.requestInput,
@@ -121,6 +145,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     (directory) => !database.appSettings.getDisabledSkillDirectories().includes(directory),
     () => allowedCommandPrefixes.getAll(),
     () => sandboxCredentials,
+    memories,
     mcpTools.prepare,
   );
   const workspaces = new WorkspaceService(
@@ -130,13 +155,6 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     fileOpen,
     config.skillGatewayUrl,
     getRegisteredGlobalSkills,
-  );
-  let sessions: SessionService | undefined;
-  const providers = await ProviderService.create(
-    database.providerSettings,
-    credentials,
-    (providerId) =>
-      agents.isProviderActive(providerId) || (sessions?.isProviderActive(providerId) ?? false),
   );
   sessions = new SessionService(
     database.sessions,
@@ -211,6 +229,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   await registerAppSettingsRoutes(server, config, appSettings, fileOpen);
   await registerHealthRoutes(server);
   await registerMcpRoutes(server, config, mcpServers, mcpDiagnostics, mcpOAuth);
+  await registerMemoryRoutes(server, config, memories);
   await registerProviderRoutes(server, config, providers);
   await registerSessionRoutes(server, config, sessions, broker);
   await registerSkillConnectionRoutes(server, config, skillConnections, skillGatewayToken);
