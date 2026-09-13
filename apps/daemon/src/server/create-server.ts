@@ -12,6 +12,7 @@ import { McpDiscovery } from "../mcp/discovery.js";
 import { createMcpTransportFactory } from "../mcp/transports/factory.js";
 import { registerAppSettingsRoutes } from "../routes/app-settings-routes.js";
 import { registerAuthRoutes } from "../routes/auth-routes.js";
+import { registerBoardTaskRoutes } from "../routes/board-task-routes.js";
 import { registerDesktopRoutes } from "../routes/desktop-routes.js";
 import { registerHealthRoutes } from "../routes/health-routes.js";
 import { registerMcpRoutes } from "../routes/mcp-routes.js";
@@ -21,6 +22,7 @@ import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerSkillConnectionRoutes } from "../routes/skill-connection-routes.js";
 import { registerWorkspaceRoutes } from "../routes/workspace-routes.js";
 import { AppSettingsService } from "../services/app-settings-service.js";
+import { BoardTaskService } from "../services/board-task-service.js";
 import { FileOpenService } from "../services/file-open-service.js";
 import { HumanInteractionService } from "../services/human-interaction-service.js";
 import { LocalMemoryEmbedder } from "../services/local-memory-embedder.js";
@@ -102,7 +104,8 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   const eventStore = new SessionEventStore(config.sessionsPath);
   await eventStore.initialize();
   const broker = new SessionEventBroker();
-  const sessionEvents = new SessionEventService(database.sessions, eventStore, broker);
+  const boardTasks = new BoardTaskService(database.boardTasks, database.workspaces, eventStore);
+  const sessionEvents = new SessionEventService(database.sessions, eventStore, broker, boardTasks);
   await sessionEvents.recoverInterruptedRuns();
   const interactions = new HumanInteractionService();
   const getRegisteredGlobalSkills = () =>
@@ -163,6 +166,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     allowedCommandPrefixes,
     eventStore,
     sessionEvents,
+    boardTasks,
     providers,
     agents,
     interactions,
@@ -227,6 +231,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
 
   await registerAuthRoutes(server, config, database.authSessions, fileOpen);
   await registerAppSettingsRoutes(server, config, appSettings, fileOpen);
+  await registerBoardTaskRoutes(server, config, boardTasks);
   await registerHealthRoutes(server);
   await registerMcpRoutes(server, config, mcpServers, mcpDiagnostics, mcpOAuth);
   await registerMemoryRoutes(server, config, memories);

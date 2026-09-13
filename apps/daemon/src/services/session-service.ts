@@ -59,6 +59,7 @@ import {
   createFallbackSessionTitle,
   normalizeGeneratedSessionTitle,
 } from "../utils/session-title.js";
+import { type BoardTaskService, BoardTaskServiceError } from "./board-task-service.js";
 import type {
   HumanInteractionService,
   PendingToolApproval,
@@ -80,6 +81,7 @@ const SessionErrorCode = {
   QUEUED_INPUT_NOT_FOUND: "QUEUED_INPUT_NOT_FOUND",
   MESSAGE_NOT_FOUND: "MESSAGE_NOT_FOUND",
   USER_CONTEXT_INVALID: "USER_CONTEXT_INVALID",
+  BOARD_TASK_INVALID: "BOARD_TASK_INVALID",
   WORKSPACE_INVALID: "WORKSPACE_INVALID",
 } as const;
 
@@ -237,6 +239,7 @@ export class SessionService {
     private readonly allowedCommandPrefixes: AllowedCommandPrefixStore,
     private readonly eventStore: SessionEventStore,
     private readonly sessionEvents: SessionEventService,
+    private readonly boardTasks: BoardTaskService,
     private readonly providers: ProviderService,
     private readonly agents: AgentManager,
     private readonly interactions: HumanInteractionService,
@@ -469,7 +472,11 @@ export class SessionService {
     return this.getRequiredSession(sessionId);
   }
 
-  public async startRun(sessionId: SessionId, input: RunUserInput): Promise<RunAccepted> {
+  public async startRun(
+    sessionId: SessionId,
+    input: RunUserInput,
+    boardTaskId?: string,
+  ): Promise<RunAccepted> {
     // 1. Session 是否空闲
     this.assertSessionIdle(sessionId);
     const userInput = normalizeRunUserInput(input);
@@ -483,7 +490,7 @@ export class SessionService {
         session.providerId,
         session.modelId,
       );
-      return this.launchRun(session, snapshot, resolvedModel, userInput);
+      return this.launchRun(session, snapshot, resolvedModel, userInput, undefined, boardTaskId);
     } catch (error: unknown) {
       this.activeSessionIds.delete(sessionId);
       this.activeProviderBySession.delete(sessionId);
@@ -921,9 +928,35 @@ export class SessionService {
     resolvedModel: { model: Model<Api>; streamFn: StreamFn },
     userInput: RunUserInput,
     userMessage?: HarnessUserMessage,
+    boardTaskId?: string,
   ): Promise<RunAccepted> {
     const { model, streamFn } = resolvedModel;
     const runId = randomUUID();
+    const source = buildSessionTitleSource(
+      userInput.prompt,
+      userInput.attachments.map((attachment) => attachment.name),
+      userInput.references.map((reference) => reference.path),
+    );
+    try {
+      this.boardTasks.attachRun({
+        objective: userInput.prompt,
+        runId,
+        sessionId: session.id,
+        ...(boardTaskId === undefined ? {} : { taskId: boardTaskId }),
+        title:
+          boardTaskId === undefined
+            ? session.title === DEFAULT_SESSION_TITLE
+              ? createFallbackSessionTitle(source)
+              : session.title
+            : session.title,
+        workspaceId: session.workspaceId,
+      });
+    } catch (error: unknown) {
+      if (error instanceof BoardTaskServiceError) {
+        throw new SessionServiceError(SessionErrorCode.BOARD_TASK_INVALID, error.message);
+      }
+      throw error;
+    }
     this.activeProviderBySession.set(session.id, session.providerId);
     const task = this.agents.startRun({
       approvalPolicy: this.settings.getApprovalPolicy(),
@@ -956,11 +989,6 @@ export class SessionService {
     });
     let title = session.title;
     if (snapshot.messages.length === 0 && title === DEFAULT_SESSION_TITLE) {
-      const source = buildSessionTitleSource(
-        userInput.prompt,
-        userInput.attachments.map((attachment) => attachment.name),
-        userInput.references.map((reference) => reference.path),
-      );
       const generatedTitle = await this.generateSessionTitle(model, streamFn, source);
       if (this.sessions.updateTitle(session.id, generatedTitle, Date.now())) title = generatedTitle;
     }

@@ -82,7 +82,7 @@ export type ChatWorkspace = {
 
 export const CHAT_NAV_ITEMS: readonly ChatNavItem[] = [
   { href: "/new", icon: MessageCirclePlus, id: "new", label: "新对话" },
-  { href: "/board", icon: FolderKanban, id: "board", label: "项目看板" },
+  { href: "/board", icon: FolderKanban, id: "board", label: "任务中心" },
 ] as const;
 
 export const CHAT_SEARCH_MODES: readonly ChatSearchMode[] = [

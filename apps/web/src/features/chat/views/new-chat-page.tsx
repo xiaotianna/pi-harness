@@ -48,7 +48,7 @@ export function NewChatPage() {
         sessionQueryKeys.detail(session.id),
         stageOptimisticUserInput({ events: [], session }, input),
       );
-      const run = startSessionRun(session.id, input);
+      const run = startSessionRun(session.id, input, draft?.boardTaskId);
       router.history.push(`/${session.id}`);
       let accepted: Awaited<typeof run>;
       try {

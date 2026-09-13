@@ -5,12 +5,13 @@ import { Magnifier as Search } from "@gravity-ui/icons";
 import { Button, Kbd, Tooltip } from "@heroui/react";
 import { memo } from "react";
 import type { ChatActivePage } from "../data/chat";
+import { CHAT_NAVBAR_ACTIONS_ID } from "./chat-navbar-actions";
 import { ChatViewToggle } from "./chat-view-toggle";
 
 const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: string }> = {
   board: {
-    subtitle: "拖动任务卡片，跟踪项目从待处理到完成的进度",
-    title: "项目看板",
+    subtitle: "掌握 AI 执行、等待处理与验收状态",
+    title: "任务中心",
   },
   new: { subtitle: "开始一段全新的对话", title: "新对话" },
   thread: { subtitle: "", title: "" },
@@ -41,6 +42,7 @@ export const ChatNavbar = memo(function ChatNavbar({ activePage, onSearch }: Cha
         </div>
         <Navbar.Spacer />
         <div className="flex items-center gap-2">
+          <div className="contents" id={CHAT_NAVBAR_ACTIONS_ID} />
           <Tooltip delay={0}>
             <Button
               aria-label="搜索对话"

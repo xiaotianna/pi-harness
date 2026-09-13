@@ -174,12 +174,16 @@ export class SessionController {
   ): Promise<FastifyReply | RunAcceptedVo> => {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
-      const accepted = await this.sessions.startRun(request.params.sessionId, {
-        attachments: request.body.attachments ?? [],
-        ...(request.body.mode === undefined ? {} : { mode: request.body.mode }),
-        prompt: request.body.prompt,
-        references: request.body.references ?? [],
-      });
+      const accepted = await this.sessions.startRun(
+        request.params.sessionId,
+        {
+          attachments: request.body.attachments ?? [],
+          ...(request.body.mode === undefined ? {} : { mode: request.body.mode }),
+          prompt: request.body.prompt,
+          references: request.body.references ?? [],
+        },
+        request.body.boardTaskId,
+      );
       return reply.status(202).send(accepted);
     } catch (error: unknown) {
       return this.sendError(request, reply, error);

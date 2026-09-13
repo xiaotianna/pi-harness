@@ -158,6 +158,7 @@ const RunInputContextReferenceSchema = Type.Object({
 
 export const StartRunDtoSchema = Type.Object({
   attachments: Type.Optional(Type.Array(RunInputAttachmentSchema, { maxItems: 8 })),
+  boardTaskId: Type.Optional(Type.String({ format: "uuid" })),
   mode: Type.Optional(Type.Union([Type.Literal(RunMode.DEFAULT), Type.Literal(RunMode.PLAN)])),
   prompt: Type.String({ maxLength: 1_000_000 }),
   references: Type.Optional(Type.Array(RunInputContextReferenceSchema, { maxItems: 32 })),

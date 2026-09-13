@@ -232,10 +232,11 @@ export async function updateSessionModel(
 export async function startSessionRun(
   sessionId: string,
   input: RunUserInput,
+  boardTaskId?: string,
 ): Promise<RunAccepted> {
   const body = (await (
     await apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, ...(boardTaskId ? { boardTaskId } : {}) }),
       method: "POST",
     })
   ).json()) as unknown;

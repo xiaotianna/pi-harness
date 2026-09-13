@@ -435,4 +435,31 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     version: "022-save-memory-suggestions.sql",
     sql: `UPDATE memories SET status = 'saved' WHERE status = 'suggested';`,
   },
+  {
+    version: "023-board-tasks.sql",
+    sql: `
+      CREATE TABLE board_tasks (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE RESTRICT,
+        session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+        root_run_id TEXT UNIQUE,
+        title TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN ('pending', 'in_progress', 'waiting', 'review', 'completed')
+        ),
+        position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        archived_at INTEGER
+      ) STRICT;
+
+      CREATE INDEX board_tasks_status_position_idx
+        ON board_tasks(archived_at, status, position, updated_at DESC);
+      CREATE INDEX board_tasks_workspace_idx
+        ON board_tasks(workspace_id, archived_at, updated_at DESC);
+      CREATE INDEX board_tasks_session_idx ON board_tasks(session_id);
+    `,
+  },
 ];

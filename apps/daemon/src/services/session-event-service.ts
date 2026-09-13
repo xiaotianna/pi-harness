@@ -17,6 +17,7 @@ import {
   shouldPersistSessionEvent,
 } from "../storage/session-event-store.js";
 import { findInterruptedRun } from "../utils/session-recovery.js";
+import type { BoardTaskService } from "./board-task-service.js";
 
 interface RecordedRunContextState {
   contexts: ReadonlyMap<string, string>;
@@ -133,6 +134,7 @@ export class SessionEventService {
     private readonly sessions: SessionRepository,
     private readonly eventStore: SessionEventStore,
     private readonly broker: SessionEventBroker,
+    private readonly boardTasks: BoardTaskService,
   ) {}
 
   public handle = async (event: HarnessEvent): Promise<void> => {
@@ -156,6 +158,7 @@ export class SessionEventService {
         throw new Error("Session event index could not be updated");
       }
     }
+    await this.boardTasks.handleEvent(prepared.event);
     this.broker.publish(prepared.event);
   };
 

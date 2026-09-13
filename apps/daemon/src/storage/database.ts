@@ -19,6 +19,7 @@ import {
 import { ApprovalPolicy, type ApprovalPolicyValue, isApprovalPolicy } from "@pi-harness/policy";
 import { isPlainObject } from "es-toolkit";
 import { FileOpenMode, type FileOpenMode as FileOpenModeValue } from "../schemas/file-open.js";
+import { type BoardTaskRepository, SqliteBoardTaskRepository } from "./board-task-repository.js";
 import { type McpServerRepository, SqliteMcpServerRepository } from "./mcp-server-repository.js";
 import { SqliteMemoryRepository } from "./memory-repository.js";
 import { DATABASE_MIGRATIONS } from "./migrations.js";
@@ -1058,6 +1059,7 @@ class SqliteWorkspaceRepository implements WorkspaceRepository {
 }
 
 export interface HarnessDatabase {
+  boardTasks: BoardTaskRepository;
   mcpServers: McpServerRepository;
   memories: SqliteMemoryRepository;
   appSettings: AppSettingRepository;
@@ -1077,6 +1079,7 @@ export function openHarnessDatabase(databasePath: string): HarnessDatabase {
   runMigrations(database);
 
   return {
+    boardTasks: new SqliteBoardTaskRepository(database),
     mcpServers: new SqliteMcpServerRepository(database),
     memories: new SqliteMemoryRepository(database),
     appSettings: new SqliteAppSettingRepository(database),

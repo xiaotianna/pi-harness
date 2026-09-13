@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 export interface NewChatDraft {
+  boardTaskId?: string;
   id: number;
   prompt: string;
   skillLabel?: string;
@@ -26,12 +27,13 @@ export const useNewChatStore = create<NewChatState>((set) => ({
   draftVersion: 0,
   workspaceId: null,
   setWorkspaceId: (workspaceId) => set({ workspaceId }),
-  startDraft: ({ prompt, skillLabel, skillName, workspaceId }) =>
+  startDraft: ({ boardTaskId, prompt, skillLabel, skillName, workspaceId }) =>
     set((state) => {
       const draftVersion = state.draftVersion + 1;
       return {
         draft: {
           id: draftVersion,
+          ...(boardTaskId ? { boardTaskId } : {}),
           prompt,
           ...(skillLabel ? { skillLabel } : {}),
           ...(skillName ? { skillName } : {}),
