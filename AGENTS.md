@@ -17,7 +17,7 @@ PI Harness 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 
 - Agent Loop 使用 `@earendil-works/pi-agent-core` 的 `Agent`，模型与 Provider 使用 `@earendil-works/pi-ai`。
 - 不将 Pi 原始事件直接暴露给 Web；必须转换为项目自己的 `HarnessEvent` 协议。
 - 初始阶段不实现云端服务、多 Agent、MCP、Skill 市场、完整 IDE 或内嵌终端；该限制描述初始范围，不代表后续已明确纳入的能力。
-- MCP Client + Host 已纳入后续完整实现目标，目标、全部任务、当前任务状态与验收证据统一维护在 `docs/mcp-client-host-plan.md`；实现前后同步更新台账，不把方案或通用基础设施标为 MCP 功能已完成。PI Harness 作为 Host，Client 运行在 daemon，外部 MCP 工具继续经过现有 Policy、审批与工具执行链；本轮不提供对外 MCP Server。
+- PI Harness 作为 MCP Host，Client 运行在 daemon，外部 MCP 工具继续经过现有 Policy、审批与工具执行链；本轮不提供对外 MCP Server。
 
 ## 技术栈
 
