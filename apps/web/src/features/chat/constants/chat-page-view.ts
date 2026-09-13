@@ -1,5 +1,6 @@
 export const ChatPageView = {
   CONVERSATION: "conversation",
+  FILES: "files",
   TRACE: "trace",
 } as const;
 

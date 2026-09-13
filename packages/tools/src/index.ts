@@ -36,8 +36,13 @@ export {
 export {
   type FileChangeDetails,
   isFileChangeDetails,
+  MAX_FILE_BYTES,
   readFileChangeDetails,
+  readTextFile,
 } from "./utils/file.js";
 export { createToolFingerprint } from "./utils/tool-fingerprint.js";
-export { hasIgnoredWorkspaceDirectory } from "./utils/workspace-file-changes.js";
+export {
+  hasIgnoredWorkspaceDirectory,
+  WORKSPACE_FILE_PATTERNS,
+} from "./utils/workspace-file-changes.js";
 export { createWorkspaceToolRegistry } from "./workspace-tool-registry.js";

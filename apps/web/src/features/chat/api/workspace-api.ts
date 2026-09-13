@@ -28,7 +28,18 @@ const WorkspaceContextItemListSchema = Type.Array(
     path: Type.String({ minLength: 1 }),
   }),
 );
+const WorkspaceFileListSchema = Type.Object({
+  items: WorkspaceContextItemListSchema,
+  truncated: Type.Boolean(),
+});
+const WorkspaceFileContentSchema = Type.Object({
+  content: Type.String(),
+  path: Type.String({ minLength: 1 }),
+});
 type Workspace = Static<typeof WorkspaceSchema>;
+
+export type WorkspaceFileList = Static<typeof WorkspaceFileListSchema>;
+export type WorkspaceFileContent = Static<typeof WorkspaceFileContentSchema>;
 
 function toChatWorkspace(workspace: Workspace): ChatWorkspace {
   return {
@@ -72,6 +83,40 @@ export async function listWorkspaceContextItems(
   ).json()) as unknown;
   if (!Value.Check(WorkspaceContextItemListSchema, body)) {
     throw new Error("daemon 返回了无效的 Workspace 上下文列表");
+  }
+  return body;
+}
+
+export async function listWorkspaceFiles(
+  workspaceId: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceFileList> {
+  const body = (await (
+    await apiRequest(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/files`,
+      signal ? { signal } : undefined,
+    )
+  ).json()) as unknown;
+  if (!Value.Check(WorkspaceFileListSchema, body)) {
+    throw new Error("daemon 返回了无效的 Workspace 文件列表");
+  }
+  return body;
+}
+
+export async function readWorkspaceFile(
+  workspaceId: string,
+  path: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceFileContent> {
+  const search = new URLSearchParams({ path });
+  const body = (await (
+    await apiRequest(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/files/content?${search}`,
+      signal ? { signal } : undefined,
+    )
+  ).json()) as unknown;
+  if (!Value.Check(WorkspaceFileContentSchema, body)) {
+    throw new Error("daemon 返回了无效的 Workspace 文件内容");
   }
   return body;
 }

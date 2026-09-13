@@ -41,6 +41,7 @@ import { ThreadMessageList, type ThreadMessageListHandle } from "../components/t
 import { ToolApprovalCard } from "../components/tool-approval-card";
 import { UserInputCard } from "../components/user-input-card";
 import { WorkingStatePanel } from "../components/working-state-panel";
+import { WorkspaceFilesView } from "../components/workspace-files-view";
 import { ChatPageView } from "../constants/chat-page-view";
 import { type ChatMessage, ChatMessageType } from "../data/chat";
 import { useSessionEvents } from "../hooks/use-session-events";
@@ -581,8 +582,10 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   <ChatConversation.ScrollButton aria-label="滚动到底部" />
                   <ChatConversation.ScrollAnchor />
                 </ChatConversation>
-              ) : (
+              ) : activeView === ChatPageView.TRACE ? (
                 <ChatTraceView sessionId={sessionId} />
+              ) : (
+                <WorkspaceFilesView workspaceId={snapshot.session.workspaceId} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -600,10 +603,12 @@ export function ChatPage({ sessionId }: ChatPageProps) {
         </div>
 
         <div className="relative z-10 shrink-0 bg-background px-4 pb-2">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
-          />
+          {activeView === ChatPageView.CONVERSATION ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
+            />
+          ) : null}
           <div className="mx-auto w-full max-w-[714px]">
             <WorkingStatePanel
               plan={workingState.plan}

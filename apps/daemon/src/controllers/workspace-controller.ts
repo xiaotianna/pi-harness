@@ -6,6 +6,7 @@ import type {
   ReorderWorkspacesDto,
   UpdateWorkspaceDto,
   UpdateWorkspaceSkillDto,
+  WorkspaceFileQueryDto,
   WorkspaceParamsDto,
   WorkspaceSkillParamsDto,
   WritableWorkspaceSkillParamsDto,
@@ -15,6 +16,8 @@ import { isMutationRequestAllowed, rejectMutation } from "../utils/request-secur
 import type {
   OpenWorkspacePathVo,
   WorkspaceContextItemVo,
+  WorkspaceFileContentVo,
+  WorkspaceFileListVo,
   WorkspaceSkillContentVo,
   WorkspaceSkillInstallVo,
   WorkspaceSkillVo,
@@ -39,6 +42,45 @@ export class WorkspaceController {
     try {
       return await this.workspaces.listContextItems(
         request.params.workspaceId,
+        abortController.signal,
+      );
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
+
+  public listFiles = async (
+    request: FastifyRequest<{ Params: WorkspaceParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | WorkspaceFileListVo> => {
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+    try {
+      return await this.workspaces.listFiles(request.params.workspaceId, abortController.signal);
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
+
+  public readFile = async (
+    request: FastifyRequest<{
+      Params: WorkspaceParamsDto;
+      Querystring: WorkspaceFileQueryDto;
+    }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | WorkspaceFileContentVo> => {
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+    try {
+      return await this.workspaces.readFile(
+        request.params.workspaceId,
+        request.query.path,
         abortController.signal,
       );
     } catch (error: unknown) {

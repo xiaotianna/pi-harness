@@ -10,7 +10,7 @@ const MAX_TRACKED_FILES = 10_000;
 const MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024;
 const MAX_REPORTED_FILES = 50;
 const MAX_REPORTED_BYTES = 4 * 1024 * 1024;
-const WORKSPACE_FILE_PATTERNS = [
+export const WORKSPACE_FILE_PATTERNS = [
   "**/*",
   ".*",
   "**/.*",

@@ -7,6 +7,12 @@ export const WorkspaceParamsDtoSchema = Type.Object({
 
 export type WorkspaceParamsDto = Static<typeof WorkspaceParamsDtoSchema>;
 
+export const WorkspaceFileQueryDtoSchema = Type.Object({
+  path: Type.String({ maxLength: 4_096, minLength: 1 }),
+});
+
+export type WorkspaceFileQueryDto = Static<typeof WorkspaceFileQueryDtoSchema>;
+
 export const WorkspaceSkillParamsDtoSchema = Type.Object({
   name: Type.String({ maxLength: 64, minLength: 1, pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }),
   scope: Type.Union([

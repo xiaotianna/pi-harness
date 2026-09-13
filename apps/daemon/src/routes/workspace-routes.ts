@@ -13,6 +13,8 @@ import {
   UpdateWorkspaceDtoSchema,
   type UpdateWorkspaceSkillDto,
   UpdateWorkspaceSkillDtoSchema,
+  type WorkspaceFileQueryDto,
+  WorkspaceFileQueryDtoSchema,
   type WorkspaceParamsDto,
   WorkspaceParamsDtoSchema,
   type WorkspaceSkillParamsDto,
@@ -25,6 +27,8 @@ import { ApiErrorVoSchema } from "../vo/auth-vo.js";
 import {
   OpenWorkspacePathVoSchema,
   WorkspaceContextItemListVoSchema,
+  WorkspaceFileContentVoSchema,
+  WorkspaceFileListVoSchema,
   WorkspaceListVoSchema,
   WorkspaceSkillContentVoSchema,
   WorkspaceSkillInstallVoSchema,
@@ -62,6 +66,29 @@ export async function registerWorkspaceRoutes(
       },
     },
     controller.listContextItems,
+  );
+
+  server.get<{ Params: WorkspaceParamsDto }>(
+    "/api/workspaces/:workspaceId/files",
+    {
+      schema: {
+        params: WorkspaceParamsDtoSchema,
+        response: { 200: WorkspaceFileListVoSchema, ...errors },
+      },
+    },
+    controller.listFiles,
+  );
+
+  server.get<{ Params: WorkspaceParamsDto; Querystring: WorkspaceFileQueryDto }>(
+    "/api/workspaces/:workspaceId/files/content",
+    {
+      schema: {
+        params: WorkspaceParamsDtoSchema,
+        querystring: WorkspaceFileQueryDtoSchema,
+        response: { 200: WorkspaceFileContentVoSchema, ...errors },
+      },
+    },
+    controller.readFile,
   );
 
   server.get<{ Params: WorkspaceParamsDto }>(

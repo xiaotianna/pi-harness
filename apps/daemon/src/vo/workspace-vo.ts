@@ -28,6 +28,20 @@ export const WorkspaceContextItemVoSchema = Type.Object({
 export const WorkspaceContextItemListVoSchema = Type.Array(WorkspaceContextItemVoSchema);
 export type WorkspaceContextItemVo = Static<typeof WorkspaceContextItemVoSchema>;
 
+export const WorkspaceFileListVoSchema = Type.Object({
+  items: Type.Array(WorkspaceContextItemVoSchema),
+  truncated: Type.Boolean(),
+});
+
+export type WorkspaceFileListVo = Static<typeof WorkspaceFileListVoSchema>;
+
+export const WorkspaceFileContentVoSchema = Type.Object({
+  content: Type.String(),
+  path: Type.String({ minLength: 1 }),
+});
+
+export type WorkspaceFileContentVo = Static<typeof WorkspaceFileContentVoSchema>;
+
 export const OpenWorkspacePathVoSchema = Type.Object({
   status: Type.Union([
     Type.Literal(FileOpenResultStatus.APPLICATION_REQUIRED),

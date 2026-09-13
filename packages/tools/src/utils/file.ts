@@ -73,11 +73,20 @@ export function readFileChangeDetails(value: unknown): readonly FileChangeDetail
 }
 
 export async function readTextFile(path: string, signal?: AbortSignal): Promise<string> {
+  await assertTextFileFormat(path, signal);
   const metadata = await stat(path);
   if (!metadata.isFile() || metadata.size > MAX_FILE_BYTES) {
     throw new Error(`文件不存在、不是普通文件或超过 ${MAX_FILE_BYTES} 字节限制`);
   }
-  return readFile(path, { encoding: "utf8", ...(signal === undefined ? {} : { signal }) });
+  const content = await readFile(path, signal === undefined ? undefined : { signal });
+  if (content.byteLength > MAX_FILE_BYTES) {
+    throw new Error(`文件内容超过 ${MAX_FILE_BYTES} 字节限制`);
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(content);
+  } catch {
+    throw new Error("文件不是有效的 UTF-8 文本");
+  }
 }
 
 export async function readTextFilePage(

@@ -142,7 +142,7 @@ function getRenderedLineContent(content: string): string {
   return `${content.slice(0, MAX_RENDERED_LINE_CHARACTERS)} …（该行过长，已截断）`;
 }
 
-function getLanguage(path: string): BundledLanguage | "plaintext" {
+export function resolveCodeLanguage(path: string): BundledLanguage | "plaintext" {
   const fileName = path.split(/[\\/]/).at(-1)?.toLowerCase() ?? "";
   const language = fileName.includes(".") ? fileName.split(".").at(-1) : fileName;
   return language && language in bundledLanguages ? (language as BundledLanguage) : "plaintext";
@@ -150,7 +150,7 @@ function getLanguage(path: string): BundledLanguage | "plaintext" {
 
 export function CodeDiff({ ariaLabel, className, lines, path }: CodeDiffProps) {
   const code = useMemo(() => getHighlightCode(lines), [lines]);
-  const language = getLanguage(path);
+  const language = resolveCodeLanguage(path);
   const highlightKey = code === null ? null : `${language}:${code}`;
   const viewportId = useId();
   const viewportRef = useRef<HTMLDivElement>(null);

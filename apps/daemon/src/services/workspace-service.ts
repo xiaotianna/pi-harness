@@ -10,10 +10,13 @@ import {
 import { isPathWithin, resolveWorkspacePath } from "@pi-harness/policy";
 import {
   hasIgnoredWorkspaceDirectory,
+  MAX_FILE_BYTES,
+  readTextFile,
   type SkillDefinition,
   SkillRegistry,
   SkillScope,
   type SkillScope as SkillScopeValue,
+  WORKSPACE_FILE_PATTERNS,
   type WritableSkillScope,
 } from "@pi-harness/tools";
 import type { InstallWorkspaceSkillDto } from "../dto/workspace-dto.js";
@@ -39,6 +42,8 @@ const GITHUB_SHORTHAND_PATTERN =
   /^[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?$/;
 const MAX_CONTEXT_ITEMS = 500;
 const MAX_CONTEXT_CANDIDATES = 2_000;
+// ponytail: 文件树单次最多 10,000 项；真实项目超过后再改为分页目录读取。
+const MAX_WORKSPACE_FILES = 10_000;
 const IMAGE_FILE_EXTENSIONS = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
 
 const WorkspaceErrorCode = {
@@ -387,10 +392,50 @@ export class WorkspaceService {
     workspaceId: string,
     signal?: AbortSignal,
   ): Promise<readonly RunInputContextReference[]> {
+    return (
+      await this.scanWorkspaceFiles(workspaceId, "**/*", MAX_CONTEXT_CANDIDATES, signal)
+    ).items.slice(0, MAX_CONTEXT_ITEMS);
+  }
+
+  public listFiles(workspaceId: string, signal?: AbortSignal) {
+    return this.scanWorkspaceFiles(
+      workspaceId,
+      WORKSPACE_FILE_PATTERNS,
+      MAX_WORKSPACE_FILES,
+      signal,
+    );
+  }
+
+  public async readFile(workspaceId: string, path: string, signal?: AbortSignal) {
+    const workspaceRoot = this.getRequired(workspaceId).rootPath;
+    try {
+      const resolvedPath = await resolveWorkspacePath({ path, workspaceRoot });
+      const workspacePath = relative(workspaceRoot, resolvedPath);
+      if (hasIgnoredWorkspaceDirectory(workspacePath)) throw new Error("文件不可预览");
+      return {
+        content: await readTextFile(resolvedPath, signal),
+        path: workspacePath.split(sep).join("/"),
+      };
+    } catch (error: unknown) {
+      if (signal?.aborted) throw error;
+      throw new WorkspaceServiceError(
+        WorkspaceErrorCode.INVALID,
+        `文件不存在、不是可预览的 UTF-8 文本或超过 ${MAX_FILE_BYTES} 字节限制`,
+      );
+    }
+  }
+
+  private async scanWorkspaceFiles(
+    workspaceId: string,
+    pattern: string | string[],
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<{ items: RunInputContextReference[]; truncated: boolean }> {
     const workspaceRoot = this.getRequired(workspaceId).rootPath;
     const items = new Map<string, RunInputContextReference>();
+    let truncated = false;
 
-    for await (const entry of glob("**/*", {
+    for await (const entry of glob(pattern, {
       cwd: workspaceRoot,
       exclude: (candidate) =>
         hasIgnoredWorkspaceDirectory(
@@ -429,16 +474,20 @@ export class WorkspaceService {
             : null;
       if (kind === null) continue;
       items.set(normalizedPath, { kind, path: normalizedPath });
-      if (items.size === MAX_CONTEXT_CANDIDATES) break;
+      if (items.size === limit) {
+        truncated = true;
+        break;
+      }
     }
 
-    return [...items.values()]
-      .toSorted(
+    return {
+      items: [...items.values()].toSorted(
         (left, right) =>
           left.path.split("/").length - right.path.split("/").length ||
           left.path.localeCompare(right.path),
-      )
-      .slice(0, MAX_CONTEXT_ITEMS);
+      ),
+      truncated,
+    };
   }
 
   public async listSkills(workspaceId: string) {

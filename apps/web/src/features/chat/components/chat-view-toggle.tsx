@@ -29,6 +29,10 @@ export const ChatViewToggle = memo(function ChatViewToggle() {
             轨迹
             <Tabs.Indicator />
           </Tabs.Tab>
+          <Tabs.Tab className="h-7 px-3 text-xs" id={ChatPageView.FILES}>
+            文件
+            <Tabs.Indicator />
+          </Tabs.Tab>
         </Tabs.List>
       </Tabs.ListContainer>
     </Tabs>
