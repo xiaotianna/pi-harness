@@ -462,4 +462,80 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX board_tasks_session_idx ON board_tasks(session_id);
     `,
   },
+  {
+    version: "024-simplify-board-task-statuses.sql",
+    sql: `
+      CREATE TABLE board_tasks_next (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE RESTRICT,
+        session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+        root_run_id TEXT UNIQUE,
+        title TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN ('pending', 'in_progress', 'waiting', 'completed')
+        ),
+        position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        archived_at INTEGER
+      ) STRICT;
+
+      INSERT INTO board_tasks_next (
+        id, workspace_id, session_id, root_run_id, title, objective, status, position,
+        created_at, updated_at, completed_at, archived_at
+      )
+      SELECT
+        id, workspace_id, session_id, root_run_id, title, objective,
+        CASE WHEN status = 'review' THEN 'completed' ELSE status END,
+        position, created_at, updated_at,
+        CASE
+          WHEN status IN ('review', 'completed') THEN COALESCE(completed_at, updated_at)
+          ELSE NULL
+        END,
+        archived_at
+      FROM board_tasks;
+
+      DROP TABLE board_tasks;
+      ALTER TABLE board_tasks_next RENAME TO board_tasks;
+
+      CREATE INDEX board_tasks_status_position_idx
+        ON board_tasks(archived_at, status, position, updated_at DESC);
+      CREATE INDEX board_tasks_workspace_idx
+        ON board_tasks(workspace_id, archived_at, updated_at DESC);
+      CREATE INDEX board_tasks_session_idx ON board_tasks(session_id);
+    `,
+  },
+  {
+    version: "025-add-board-task-confirmation.sql",
+    sql: `
+      CREATE TABLE board_tasks_next (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE RESTRICT,
+        session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+        root_run_id TEXT UNIQUE,
+        title TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN ('pending', 'in_progress', 'waiting', 'confirmation', 'completed')
+        ),
+        position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        archived_at INTEGER
+      ) STRICT;
+
+      INSERT INTO board_tasks_next SELECT * FROM board_tasks;
+      DROP TABLE board_tasks;
+      ALTER TABLE board_tasks_next RENAME TO board_tasks;
+
+      CREATE INDEX board_tasks_status_position_idx
+        ON board_tasks(archived_at, status, position, updated_at DESC);
+      CREATE INDEX board_tasks_workspace_idx
+        ON board_tasks(workspace_id, archived_at, updated_at DESC);
+      CREATE INDEX board_tasks_session_idx ON board_tasks(session_id);
+    `,
+  },
 ];

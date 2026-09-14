@@ -1,8 +1,8 @@
 export const BoardTaskStatus = {
   COMPLETED: "completed",
+  CONFIRMATION: "confirmation",
   IN_PROGRESS: "in_progress",
   PENDING: "pending",
-  REVIEW: "review",
   WAITING: "waiting",
 } as const;
 
@@ -13,9 +13,9 @@ export const BOARD_TASK_COLUMNS = [
   { color: "var(--accent)", id: BoardTaskStatus.IN_PROGRESS, label: "执行中" },
   { color: "var(--warning)", id: BoardTaskStatus.WAITING, label: "需处理" },
   {
-    color: "color-mix(in oklab, var(--accent) 62%, var(--danger))",
-    id: BoardTaskStatus.REVIEW,
-    label: "待验收",
+    color: "color-mix(in oklch, var(--accent) 70%, var(--danger))",
+    id: BoardTaskStatus.CONFIRMATION,
+    label: "待确认",
   },
   { color: "var(--success)", id: BoardTaskStatus.COMPLETED, label: "已完成" },
 ] as const;

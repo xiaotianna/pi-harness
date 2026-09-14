@@ -23,7 +23,7 @@ const BoardTaskSchema = Type.Object({
     Type.Literal(BoardTaskStatus.PENDING),
     Type.Literal(BoardTaskStatus.IN_PROGRESS),
     Type.Literal(BoardTaskStatus.WAITING),
-    Type.Literal(BoardTaskStatus.REVIEW),
+    Type.Literal(BoardTaskStatus.CONFIRMATION),
     Type.Literal(BoardTaskStatus.COMPLETED),
   ]),
   title: Type.String({ minLength: 1 }),

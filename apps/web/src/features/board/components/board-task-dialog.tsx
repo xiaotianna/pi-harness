@@ -1,3 +1,4 @@
+import { FolderOpen } from "@gravity-ui/icons";
 import {
   Button,
   Form,
@@ -70,14 +71,15 @@ export function BoardTaskDialog({
               >
                 <Label>Workspace</Label>
                 <Select.Trigger>
-                  <Select.Value />
+                  <Select.Value className="flex items-center gap-2" />
                   <Select.Indicator />
                 </Select.Trigger>
                 <Select.Popover className="max-w-[calc(100vw-2rem)]">
                   <ListBox>
                     {workspaces.map((workspace) => (
                       <ListBox.Item id={workspace.id} key={workspace.id} textValue={workspace.name}>
-                        {workspace.name}
+                        <FolderOpen aria-hidden className="size-4 shrink-0 text-muted" />
+                        <Label className="min-w-0 flex-1 truncate">{workspace.name}</Label>
                         <ListBox.ItemIndicator />
                       </ListBox.Item>
                     ))}

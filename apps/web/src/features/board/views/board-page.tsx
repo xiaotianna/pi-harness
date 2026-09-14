@@ -3,7 +3,7 @@
 import { EmptyState } from "@agile-avocation/ui-pro/empty-state";
 import type { UseKanbanReturn } from "@agile-avocation/ui-pro/kanban";
 import { Kanban, useKanban, useKanbanColumn } from "@agile-avocation/ui-pro/kanban";
-import { CircleExclamation, FolderFlows, Plus } from "@gravity-ui/icons";
+import { CircleExclamation, Plus } from "@gravity-ui/icons";
 import { Button, Chip, ProgressBar, ScrollShadow, Spinner } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
@@ -252,23 +252,6 @@ export function BoardPage() {
                 </EmptyState.Header>
                 <EmptyState.Content>
                   <Button onPress={() => void tasksQuery.refetch()}>重新加载</Button>
-                </EmptyState.Content>
-              </EmptyState>
-            </div>
-          ) : tasks.length === 0 ? (
-            <div className="flex h-full items-center justify-center">
-              <EmptyState size="lg">
-                <EmptyState.Header>
-                  <EmptyState.Media variant="icon">
-                    <FolderFlows />
-                  </EmptyState.Media>
-                  <EmptyState.Title>把下一件事交给任务中心</EmptyState.Title>
-                  <EmptyState.Description>
-                    创建任务后，可从这里发起执行并跟踪等待、验收和文件变更。
-                  </EmptyState.Description>
-                </EmptyState.Header>
-                <EmptyState.Content>
-                  <Button onPress={() => setEditorTask(null)}>新建第一个任务</Button>
                 </EmptyState.Content>
               </EmptyState>
             </div>

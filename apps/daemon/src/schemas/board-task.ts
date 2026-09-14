@@ -1,8 +1,8 @@
 export const BoardTaskStatus = {
   COMPLETED: "completed",
+  CONFIRMATION: "confirmation",
   IN_PROGRESS: "in_progress",
   PENDING: "pending",
-  REVIEW: "review",
   WAITING: "waiting",
 } as const;
 

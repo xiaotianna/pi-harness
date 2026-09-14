@@ -1,9 +1,10 @@
-import { ArrowRight, FileText, Pencil } from "@gravity-ui/icons";
+import { ArrowRight, Check, FileText, Pencil } from "@gravity-ui/icons";
 import { Button, Chip, ListBox, Modal, ProgressBar, Select } from "@heroui/react";
 import type { BoardTask } from "../api/board-task-api";
 import {
   BOARD_TASK_COLUMNS,
   BOARD_TASK_STATUS_LABELS,
+  BoardTaskStatus,
   isBoardTaskStatus,
 } from "../constants/board-task";
 
@@ -113,7 +114,10 @@ export function BoardTaskDetail({
                 关闭
               </Button>
               {task.sessionId ? (
-                <Button onPress={onOpenConversation}>
+                <Button
+                  onPress={onOpenConversation}
+                  variant={task.status === BoardTaskStatus.CONFIRMATION ? "secondary" : "primary"}
+                >
                   进入对话
                   <ArrowRight className="size-4" />
                 </Button>
@@ -122,6 +126,12 @@ export function BoardTaskDetail({
                   开始执行
                 </Button>
               )}
+              {task.status === BoardTaskStatus.CONFIRMATION ? (
+                <Button onPress={() => onStatusChange(BoardTaskStatus.COMPLETED)}>
+                  <Check className="size-4" />
+                  确认完成
+                </Button>
+              ) : null}
             </div>
           </Modal.Footer>
         </Modal.Dialog>

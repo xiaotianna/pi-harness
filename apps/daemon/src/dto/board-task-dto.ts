@@ -15,7 +15,7 @@ const BoardTaskStatusSchema = Type.Union([
   Type.Literal(BoardTaskStatus.PENDING),
   Type.Literal(BoardTaskStatus.IN_PROGRESS),
   Type.Literal(BoardTaskStatus.WAITING),
-  Type.Literal(BoardTaskStatus.REVIEW),
+  Type.Literal(BoardTaskStatus.CONFIRMATION),
   Type.Literal(BoardTaskStatus.COMPLETED),
 ]);
 

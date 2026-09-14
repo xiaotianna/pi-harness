@@ -27,7 +27,7 @@ const BOARD_TASK_STATUS_ORDER = [
   BoardTaskStatus.PENDING,
   BoardTaskStatus.IN_PROGRESS,
   BoardTaskStatus.WAITING,
-  BoardTaskStatus.REVIEW,
+  BoardTaskStatus.CONFIRMATION,
   BoardTaskStatus.COMPLETED,
 ] as const;
 
@@ -291,10 +291,14 @@ export class BoardTaskService {
     ) {
       status = BoardTaskStatus.WAITING;
     } else if (event.type === HarnessEventType.RUN_COMPLETED) {
-      status = BoardTaskStatus.REVIEW;
+      status = BoardTaskStatus.CONFIRMATION;
     }
     if (status !== null && status !== task.status) {
-      this.tasks.update(task.id, { completedAt: null, status, updatedAt: event.timestamp });
+      this.tasks.update(task.id, {
+        completedAt: null,
+        status,
+        updatedAt: event.timestamp,
+      });
     }
   }
 
