@@ -34,6 +34,19 @@ export class BoardTaskController {
     }
   };
 
+  public remove = (
+    request: FastifyRequest<{ Params: BoardTaskParamsDto }>,
+    reply: FastifyReply,
+  ): FastifyReply => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      this.tasks.delete(request.params.taskId);
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(reply, error);
+    }
+  };
+
   public update = async (
     request: FastifyRequest<{ Body: UpdateBoardTaskDto; Params: BoardTaskParamsDto }>,
     reply: FastifyReply,

@@ -4,7 +4,7 @@ import { EmptyState } from "@agile-avocation/ui-pro/empty-state";
 import type { UseKanbanReturn } from "@agile-avocation/ui-pro/kanban";
 import { Kanban, useKanban, useKanbanColumn } from "@agile-avocation/ui-pro/kanban";
 import { CircleExclamation, Plus } from "@gravity-ui/icons";
-import { Button, Chip, ProgressBar, ScrollShadow, Spinner } from "@heroui/react";
+import { Button, Chip, ProgressBar, ScrollShadow, Spinner, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
@@ -13,6 +13,7 @@ import {
   type BoardTask,
   type CreateBoardTaskInput,
   createBoardTask,
+  deleteBoardTask,
   updateBoardTask,
 } from "../api/board-task-api";
 import { boardTaskListQueryOptions, boardTaskQueryKeys } from "../api/board-task-queries";
@@ -137,7 +138,7 @@ function TaskBoard({
     setColumn: (item, column) => {
       if (!isBoardTaskStatus(column) || item.status === column) return item;
       onMove(item, column);
-      return { ...item, status: column };
+      return item;
     },
   });
 
@@ -209,6 +210,17 @@ export function BoardPage() {
       setSelectedTask(task);
     },
   });
+  const deleteMutation = useMutation({
+    mutationFn: deleteBoardTask,
+    onError: (error) => toast.danger(error.message || "任务删除失败"),
+    onSuccess: (_, taskId) => {
+      queryClient.setQueryData<readonly BoardTask[]>(boardTaskQueryKeys.list(), (current) =>
+        (current ?? []).filter((task) => task.id !== taskId),
+      );
+      setSelectedTask(null);
+      toast.success("任务已删除");
+    },
+  });
 
   const saveEditor = async (input: CreateBoardTaskInput) => {
     if (editorTask) {
@@ -258,7 +270,30 @@ export function BoardPage() {
           ) : (
             <TaskBoard
               key={boardKey}
-              onMove={(task, status) => updateMutation.mutate({ id: task.id, input: { status } })}
+              onMove={(task, status) => {
+                if (
+                  task.status === BoardTaskStatus.PENDING &&
+                  status === BoardTaskStatus.IN_PROGRESS
+                ) {
+                  if (startTaskMutation.isPending) {
+                    toast.warning("任务正在启动");
+                    return;
+                  }
+                  startTaskMutation.mutate(task);
+                  return;
+                }
+                if (
+                  task.status === BoardTaskStatus.CONFIRMATION &&
+                  status === BoardTaskStatus.COMPLETED
+                ) {
+                  updateMutation.mutate({
+                    id: task.id,
+                    input: { status: BoardTaskStatus.COMPLETED },
+                  });
+                  return;
+                }
+                toast.warning("任务状态会随实际执行自动更新");
+              }}
               onSelect={setSelectedTask}
               tasks={tasks}
             />
@@ -267,10 +302,12 @@ export function BoardPage() {
 
         {selectedTask ? (
           <BoardTaskDetail
+            isDeleting={deleteMutation.isPending && deleteMutation.variables === selectedTask.id}
             isStarting={
               startTaskMutation.isPending && startTaskMutation.variables?.id === selectedTask.id
             }
             onClose={() => setSelectedTask(null)}
+            onDelete={() => deleteMutation.mutate(selectedTask.id)}
             onEdit={() => {
               setEditorTask(selectedTask);
               setSelectedTask(null);
@@ -283,8 +320,11 @@ export function BoardPage() {
                 onSuccess: () => setSelectedTask(null),
               })
             }
-            onStatusChange={(status) =>
-              updateMutation.mutate({ id: selectedTask.id, input: { status } })
+            onConfirm={() =>
+              updateMutation.mutate({
+                id: selectedTask.id,
+                input: { status: BoardTaskStatus.COMPLETED },
+              })
             }
             task={selectedTask}
           />

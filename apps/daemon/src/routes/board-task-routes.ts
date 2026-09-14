@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { Type } from "typebox";
 import type { HarnessConfig } from "../config/index.js";
 import { BoardTaskController } from "../controllers/board-task-controller.js";
 import {
@@ -38,6 +39,13 @@ export async function registerBoardTaskRoutes(
   server.post<{ Body: CreateBoardTaskDto }>("/api/board-tasks", {
     schema: { body: CreateBoardTaskDtoSchema, response: { 200: BoardTaskVoSchema, ...errors } },
     handler: controller.create,
+  });
+  server.delete<{ Params: BoardTaskParamsDto }>("/api/board-tasks/:taskId", {
+    schema: {
+      params: BoardTaskParamsDtoSchema,
+      response: { 204: Type.Null(), ...errors },
+    },
+    handler: controller.remove,
   });
   server.patch<{ Body: UpdateBoardTaskDto; Params: BoardTaskParamsDto }>(
     "/api/board-tasks/:taskId",

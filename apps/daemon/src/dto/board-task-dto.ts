@@ -11,14 +11,6 @@ export const BoardTaskListQueryDtoSchema = Type.Object({
 });
 export type BoardTaskListQueryDto = Static<typeof BoardTaskListQueryDtoSchema>;
 
-const BoardTaskStatusSchema = Type.Union([
-  Type.Literal(BoardTaskStatus.PENDING),
-  Type.Literal(BoardTaskStatus.IN_PROGRESS),
-  Type.Literal(BoardTaskStatus.WAITING),
-  Type.Literal(BoardTaskStatus.CONFIRMATION),
-  Type.Literal(BoardTaskStatus.COMPLETED),
-]);
-
 export const CreateBoardTaskDtoSchema = Type.Object({
   objective: Type.String({ maxLength: 20_000 }),
   title: Type.String({ maxLength: 200, minLength: 1 }),
@@ -29,7 +21,7 @@ export type CreateBoardTaskDto = Static<typeof CreateBoardTaskDtoSchema>;
 export const UpdateBoardTaskDtoSchema = Type.Object(
   {
     objective: Type.Optional(Type.String({ maxLength: 20_000 })),
-    status: Type.Optional(BoardTaskStatusSchema),
+    status: Type.Optional(Type.Literal(BoardTaskStatus.COMPLETED)),
     title: Type.Optional(Type.String({ maxLength: 200, minLength: 1 })),
   },
   { minProperties: 1 },

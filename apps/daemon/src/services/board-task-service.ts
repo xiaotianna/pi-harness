@@ -71,7 +71,7 @@ export interface CreateBoardTaskInput {
 
 export interface UpdateBoardTaskInput {
   objective?: string;
-  status?: BoardTaskStatusValue;
+  status?: typeof BoardTaskStatus.COMPLETED;
   title?: string;
 }
 
@@ -207,11 +207,28 @@ export class BoardTaskService {
     return this.toView(created);
   }
 
+  public delete(taskId: string): void {
+    this.getRequired(taskId);
+    if (!this.tasks.delete(taskId)) {
+      throw new BoardTaskServiceError(BoardTaskErrorCode.NOT_FOUND, "看板任务不存在");
+    }
+  }
+
   public async update(taskId: string, input: UpdateBoardTaskInput): Promise<BoardTaskView> {
     const current = this.getRequired(taskId);
     const title = input.title?.trim();
     if (title !== undefined && !title) {
       throw new BoardTaskServiceError(BoardTaskErrorCode.INVALID_INPUT, "任务标题不能为空");
+    }
+    if (
+      input.status === BoardTaskStatus.COMPLETED &&
+      current.status !== BoardTaskStatus.CONFIRMATION &&
+      current.status !== BoardTaskStatus.COMPLETED
+    ) {
+      throw new BoardTaskServiceError(
+        BoardTaskErrorCode.INVALID_INPUT,
+        "只有待确认任务可以确认完成",
+      );
     }
     const status = input.status ?? current.status;
     const updated = this.tasks.update(taskId, {

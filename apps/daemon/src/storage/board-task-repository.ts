@@ -39,6 +39,7 @@ export interface UpdateBoardTaskRecord {
 
 export interface BoardTaskRepository {
   create(task: CreateBoardTaskRecord): BoardTaskRecord;
+  delete(taskId: string): boolean;
   find(taskId: string): BoardTaskRecord | null;
   findByRunId(runId: string): BoardTaskRecord | null;
   list(): readonly BoardTaskRecord[];
@@ -132,6 +133,10 @@ export class SqliteBoardTaskRepository implements BoardTaskRepository {
     const created = this.find(task.id);
     if (!created) throw new Error("Created board task could not be read");
     return created;
+  }
+
+  public delete(taskId: string): boolean {
+    return this.database.prepare("DELETE FROM board_tasks WHERE id = ?").run(taskId).changes > 0;
   }
 
   public find(taskId: string): BoardTaskRecord | null {

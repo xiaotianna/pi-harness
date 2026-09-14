@@ -43,7 +43,7 @@ export interface CreateBoardTaskInput {
 
 export interface UpdateBoardTaskInput {
   objective?: string;
-  status?: BoardTask["status"];
+  status?: typeof BoardTaskStatus.COMPLETED;
   title?: string;
 }
 
@@ -66,6 +66,10 @@ export async function createBoardTask(input: CreateBoardTaskInput): Promise<Boar
     method: "POST",
   });
   return readTask((await response.json()) as unknown);
+}
+
+export async function deleteBoardTask(taskId: string): Promise<void> {
+  await apiRequest(`/api/board-tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
 }
 
 export async function updateBoardTask(
