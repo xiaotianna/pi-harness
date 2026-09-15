@@ -33,6 +33,7 @@ interface ToolApprovalGrant {
   fingerprint: string;
   isGranted?: boolean;
   risk: string;
+  sessionFingerprint?: string;
   summary: string;
   target: string;
 }
@@ -40,6 +41,7 @@ interface ToolApprovalGrant {
 export type ToolPolicy =
   | {
       allowInFullAccess?: boolean;
+      allowRepeatedCalls?: boolean;
       permission: typeof ToolPermission.USER_APPROVAL;
       resolveGrant: (
         args: unknown,
@@ -72,6 +74,7 @@ export type ToolPolicyResult =
       decision: typeof ToolPolicyDecision.ASK;
       fingerprint: string;
       risk: string;
+      sessionFingerprint?: string;
       summary: string;
       target: string;
       allowSession?: boolean;

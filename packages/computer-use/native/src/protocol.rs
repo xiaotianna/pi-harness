@@ -45,6 +45,19 @@ pub(crate) struct ActParams {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RequestPermissionParams {
+    pub(crate) permission: PermissionKind,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PermissionKind {
+    Accessibility,
+    ScreenRecording,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum Action {
     Press {

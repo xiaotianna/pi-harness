@@ -13,6 +13,7 @@ import type { UpdateAppSettingsDto } from "../dto/app-settings-dto.js";
 import type { FileOpenMode } from "../schemas/file-open.js";
 import type {
   AppSettingRepository,
+  ComputerUseAllowedApp,
   DefaultModelSetting,
   FileOpenApplicationSetting,
 } from "../storage/database.js";
@@ -20,6 +21,7 @@ import type {
 export interface AppSettings {
   approvalPolicy: ApprovalPolicyValue;
   busySubmitBehavior: BusySubmitBehavior;
+  computerUseAllowedApps: ComputerUseAllowedApp[];
   defaultModel: DefaultModelSetting | null;
   fileOpenApplication: Omit<FileOpenApplicationSetting, "path"> | null;
   fileOpenMode: FileOpenMode;
@@ -43,6 +45,7 @@ export class AppSettingsService {
     return {
       approvalPolicy: this.settings.getApprovalPolicy(),
       busySubmitBehavior: this.settings.getBusySubmitBehavior(),
+      computerUseAllowedApps: this.settings.getComputerUseAllowedApps(),
       defaultModel: this.settings.getDefaultModel(),
       fileOpenApplication: fileOpenApplication
         ? { iconDataUrl: fileOpenApplication.iconDataUrl, name: fileOpenApplication.name }
@@ -92,5 +95,9 @@ export class AppSettingsService {
       await this.onSandboxPolicyChanged();
     }
     return this.get();
+  }
+
+  public revokeComputerUseApp(bundleId: string): void {
+    this.settings.revokeComputerUseApp(bundleId);
   }
 }

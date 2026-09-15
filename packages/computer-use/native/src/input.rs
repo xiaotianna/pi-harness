@@ -9,7 +9,35 @@ use std::thread;
 use std::time::Duration;
 
 const AX_PRESS: &str = "AXPress";
+const AX_ROLE: &str = "AXRole";
+const AX_SECURE_TEXT_FIELD: &str = "AXSecureTextField";
 const AX_VALUE: &str = "AXValue";
+
+fn reject_secure_field(element: &AXUIElement) -> Result<(), AppError> {
+    if element
+        .string_attribute(AX_ROLE)
+        .ok()
+        .flatten()
+        .is_some_and(|role| role == AX_SECURE_TEXT_FIELD)
+    {
+        return Err(AppError::new(
+            "SECURE_INPUT_PROTECTED",
+            "computer use cannot enter or change passwords",
+        ));
+    }
+    Ok(())
+}
+
+fn reject_focused_secure_field() -> Result<(), AppError> {
+    let focused = axuielement::system_wide()
+        .ok_or_else(|| AppError::new("ACTION_FAILED", "system accessibility element unavailable"))?
+        .focused_ui_element()
+        .map_err(|error| AppError::new("ACTION_FAILED", error.to_string()))?;
+    if let Some(element) = focused {
+        reject_secure_field(&element)?;
+    }
+    Ok(())
+}
 
 pub(crate) fn perform_action(
     elements: &[AXUIElement],
@@ -43,6 +71,7 @@ pub(crate) fn perform_action(
             let element = elements.get(*element_id).ok_or_else(|| {
                 AppError::new("ELEMENT_NOT_FOUND", "elementId is outside the tree")
             })?;
+            reject_secure_field(element)?;
             if !element
                 .is_attribute_settable(AX_VALUE)
                 .map_err(|error| AppError::new("ACTION_FAILED", error.to_string()))?
@@ -69,7 +98,10 @@ pub(crate) fn perform_action(
             verify_point(frame, *to)?;
             drag(*from, *to, (*duration_ms).min(5_000))
         }
-        Action::PressKey { key, modifiers } => press_key(key, modifiers),
+        Action::PressKey { key, modifiers } => {
+            reject_focused_secure_field()?;
+            press_key(key, modifiers)
+        }
         Action::Scroll {
             delta_x,
             delta_y,
@@ -78,7 +110,10 @@ pub(crate) fn perform_action(
             verify_point(frame, *point)?;
             scroll(*point, *delta_x, *delta_y)
         }
-        Action::TypeText { text } => type_text(text),
+        Action::TypeText { text } => {
+            reject_focused_secure_field()?;
+            type_text(text)
+        }
     }
 }
 

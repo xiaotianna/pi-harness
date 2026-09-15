@@ -7,6 +7,8 @@ mod input;
 #[cfg(target_os = "macos")]
 mod mcp;
 #[cfg(target_os = "macos")]
+mod permissions;
+#[cfg(target_os = "macos")]
 mod runtime;
 #[cfg(target_os = "macos")]
 mod screenshot;
@@ -72,8 +74,10 @@ fn main() -> io::Result<()> {
         };
         let result = match request.method.as_str() {
             "ping" => Ok(json!({ "protocolVersion": 1 })),
+            "get_permissions" => permissions::get_permissions(),
             "list_apps" => runtime.list_apps(),
             "observe" => runtime.observe(request.params),
+            "request_permission" => permissions::request_permission(request.params),
             "act" => runtime.act(request.params),
             _ => Err(AppError::new("METHOD_NOT_FOUND", "unknown method")),
         };

@@ -40,6 +40,7 @@ import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp
 import { useAppSettings } from "../hooks/use-app-settings";
 import { useAppTheme } from "../theme-provider";
 import { ApprovalPolicySelect } from "./approval-policy-select";
+import { ComputerUseSettingsPanel } from "./computer-use-settings-panel";
 import { McpSettingsPanel } from "./mcp-settings-panel";
 import { MemorySettingsPanel } from "./memory-settings-panel";
 import { ModelSettingsPanel } from "./model-settings-panel";
@@ -88,12 +89,6 @@ const SETTINGS_SECTIONS = [
     icon: Settings2,
   },
   {
-    id: "sandbox",
-    label: "沙箱",
-    description: "管理本地命令与 MCP 的文件和网络隔离。",
-    icon: Shield,
-  },
-  {
     id: "models",
     label: "模型",
     description: "管理模型 Provider、凭据与默认模型。",
@@ -106,10 +101,22 @@ const SETTINGS_SECTIONS = [
     icon: Brain,
   },
   {
+    id: "sandbox",
+    label: "沙箱",
+    description: "管理本地命令与 MCP 的文件和网络隔离。",
+    icon: Shield,
+  },
+  {
     id: "plugins",
     label: "插件市场",
     description: "发现并安装可连接外部服务的插件。",
     icon: Store,
+  },
+  {
+    id: "computer-use",
+    label: "电脑操控",
+    description: "管理可供 Agent 观察和操作的本机应用。",
+    icon: Monitor,
   },
   {
     id: "skills",
@@ -639,6 +646,8 @@ export function SettingsDialog({
                   <GeneralSettingsPanel />
                 ) : activeSectionId === "sandbox" ? (
                   <SandboxSettingsPanel />
+                ) : activeSectionId === "computer-use" ? (
+                  <ComputerUseSettingsPanel />
                 ) : activeSectionId === "models" ? (
                   <ModelSettingsPanel />
                 ) : activeSectionId === "memory" ? (

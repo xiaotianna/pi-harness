@@ -72,6 +72,7 @@
 | 折叠详情 | HeroUI `Disclosure`；带阴影提示的滚动正文使用 `ScrollShadow` | `components/ai/reasoning-panel.tsx` |
 | 设置面板标题 | 复用 `SettingsPanelHeader` | `features/settings/components/settings-panel-header.tsx` |
 | 设置项行 | 复用 `SettingsRow` | `features/settings/components/settings-row.tsx` |
+| 电脑操控设置 | 系统权限与应用授权分区展示；Web 用独立 TanStack Query 读取 daemon 返回的 macOS 辅助功能/屏幕录制实时状态，缺失时由明确的 HeroUI 操作请求 daemon 发起系统授权，最终确认仍由用户完成；始终允许应用继续按 bundle ID 管理 | `features/settings/components/computer-use-settings-panel.tsx`、`hooks/use-computer-use-permissions.ts` |
 | 沙箱设置 | 独立设置菜单复用 `SettingsPanelHeader` 与普通 `SettingsRow` 节奏；文件访问只描述并控制本地命令与 MCP，内置文件工具继续使用自身 Policy；Profile 使用行级 `Select`，联网规则使用两个带可见 Label 的多行 `TextField`，桌面并排、窄屏纵向，并在尾部统一保存；允许访问字段留空表示允许所有未被拒绝目标，联网规则保存成功或失败都使用 Toast 反馈 | `features/settings/components/sandbox-settings-panel.tsx` |
 | 记忆设置 | 筛选、搜索、真实记忆列表与用户画像分组作为连续主内容，启停与学习开关保留在标题 Popover；自动学习直接保存稳定、可跨 Session 复用的偏好或事实，不保留待确认状态。混合检索固定使用 daemon 内置并管理的本地 `multilingual-e5-small`，Web 不提供模型配置，也不自行聚合、生成向量或维护画像/索引副本。Web 通过 TanStack Query 调用 daemon API，并只从浏览器安全的 `@pi-harness/memory/contract` 复用协议，不导入 Runtime/SQLite 实现。个人范围覆盖所有项目，项目范围使用真实 Workspace ID；编辑和删除均携带 revision | `features/settings/components/memory-settings-panel.tsx`、`memory-editor-dialog.tsx`、`api/memory-api.ts`、`hooks/use-memories.ts` |
 | Provider 品牌 | 复用 `ModelProviderIcon`，按 Provider ID 映射直接 SVG | `features/models/components/model-provider-icon.tsx` |

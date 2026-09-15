@@ -13,10 +13,62 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MAX_OBSERVATION_AGE_MS: u128 = 120_000;
 const MAX_SCOPES: usize = 128;
+const PROTECTED_BUNDLE_IDS: &[&str] = &[
+    "co.zeit.hyper",
+    "com.apple.Terminal",
+    "com.googlecode.iterm2",
+    "com.mitchellh.ghostty",
+    "com.piharness.desktop",
+    "dev.warp.Warp-Stable",
+    "net.kovidgoyal.kitty",
+    "org.alacritty",
+];
+const PROTECTED_APP_NAMES: &[&str] = &[
+    "Alacritty",
+    "Ghostty",
+    "Hyper",
+    "iTerm",
+    "iTerm2",
+    "kitty",
+    "PI Harness",
+    "Terminal",
+    "Warp",
+];
+
+fn is_protected_app(bundle_id: &str) -> bool {
+    PROTECTED_BUNDLE_IDS
+        .iter()
+        .any(|blocked| blocked.eq_ignore_ascii_case(bundle_id.trim()))
+}
+
+fn reject_protected_app(bundle_id: &str) -> Result<(), AppError> {
+    if is_protected_app(bundle_id) {
+        return Err(AppError::new(
+            "APP_PROTECTED",
+            "computer use cannot control PI Harness or terminal applications",
+        ));
+    }
+    Ok(())
+}
+
+fn reject_protected_target(target: &str) -> Result<(), AppError> {
+    let leaf = target.trim().rsplit('/').next().unwrap_or(target);
+    let name = leaf.strip_suffix(".app").unwrap_or(leaf);
+    if is_protected_app(target)
+        || PROTECTED_APP_NAMES
+            .iter()
+            .any(|blocked| blocked.eq_ignore_ascii_case(name))
+    {
+        return Err(AppError::new(
+            "APP_PROTECTED",
+            "computer use cannot control PI Harness or terminal applications",
+        ));
+    }
+    Ok(())
+}
 
 struct ScopeState {
     application_bundle_id: String,
-    application_name: String,
     elements: Vec<AXUIElement>,
     frame: Option<Frame>,
     observed_at: u128,
@@ -33,8 +85,13 @@ pub(crate) struct Runtime {
 
 impl Runtime {
     pub(crate) fn list_apps(&self) -> Result<Value, AppError> {
-        serde_json::to_value(list_apps()?)
-            .map_err(|error| AppError::new("ENCODE_FAILED", error.to_string()))
+        serde_json::to_value(
+            list_apps()?
+                .into_iter()
+                .filter(|app| !is_protected_app(&app.bundle_id))
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|error| AppError::new("ENCODE_FAILED", error.to_string()))
     }
 
     pub(crate) fn observe(&mut self, params: Value) -> Result<Value, AppError> {
@@ -50,6 +107,7 @@ impl Runtime {
         }
 
         if let Some(app) = params.app.as_deref() {
+            reject_protected_target(app)?;
             activate_app(app)?;
         }
 
@@ -69,6 +127,7 @@ impl Runtime {
                 (application.bundle_id, application.name, application.pid)
             }
         };
+        reject_protected_app(&application_bundle_id)?;
         let AccessibilitySnapshot {
             elements,
             fallback_name,
@@ -94,7 +153,6 @@ impl Runtime {
             params.scope_id,
             ScopeState {
                 application_bundle_id: application_bundle_id.clone(),
-                application_name: application_name.clone(),
                 elements,
                 frame,
                 observed_at,
@@ -149,13 +207,15 @@ impl Runtime {
                     "observation is older than 120 seconds",
                 ));
             }
-            if params.app.as_deref().is_some_and(|app| {
-                !state.application_bundle_id.eq_ignore_ascii_case(app.trim())
-                    && !state.application_name.eq_ignore_ascii_case(app.trim())
-            }) {
+            reject_protected_app(&state.application_bundle_id)?;
+            if params
+                .app
+                .as_deref()
+                .is_some_and(|app| !state.application_bundle_id.eq_ignore_ascii_case(app.trim()))
+            {
                 return Err(AppError::new(
                     "TARGET_CHANGED",
-                    "app does not match the observed application",
+                    "app bundle ID does not match the observed application",
                 ));
             }
         }

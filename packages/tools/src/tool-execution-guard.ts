@@ -39,11 +39,15 @@ export class ToolExecutionGuard {
     return createToolFingerprint([toolName, argumentsValue, workspaceFingerprint]);
   }
 
-  public getBlockReason(toolCallId: string, fingerprint: string): string | null {
+  public getBlockReason(
+    toolCallId: string,
+    fingerprint: string,
+    allowRepeatedFingerprint = false,
+  ): string | null {
     if (this.approvedToolCallIds.has(toolCallId)) {
       return "TOOL_DUPLICATE: 已阻止重复执行同一工具调用";
     }
-    if (this.fingerprints.has(fingerprint)) {
+    if (!allowRepeatedFingerprint && this.fingerprints.has(fingerprint)) {
       return "TOOL_LOOP_DETECTED: 已阻止重复的副作用工具调用";
     }
     return null;

@@ -1,7 +1,13 @@
+import type { ComputerUsePermissions } from "@pi-harness/computer-use";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { HarnessConfig } from "../config/index.js";
-import type { UpdateAppSettingsDto } from "../dto/app-settings-dto.js";
+import type {
+  ComputerUseAllowedAppParams,
+  ComputerUsePermissionParams,
+  UpdateAppSettingsDto,
+} from "../dto/app-settings-dto.js";
 import type { AppSettingsService } from "../services/app-settings-service.js";
+import type { ComputerUsePermissionService } from "../services/computer-use-permission-service.js";
 import {
   FileOpenErrorCode,
   type FileOpenService,
@@ -15,6 +21,7 @@ export class AppSettingsController {
     private readonly config: HarnessConfig,
     private readonly settings: AppSettingsService,
     private readonly fileOpen: FileOpenService,
+    private readonly computerUsePermissions: ComputerUsePermissionService,
   ) {}
 
   public get = async (
@@ -51,6 +58,55 @@ export class AppSettingsController {
     try {
       const selected = await this.fileOpen.selectDefaultApplication(abortController.signal);
       return selected ? this.settings.get() : reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
+
+  public revokeComputerUseApp = async (
+    request: FastifyRequest<{ Params: ComputerUseAllowedAppParams }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      this.settings.revokeComputerUseApp(request.params.bundleId);
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public getComputerUsePermissions = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<ComputerUsePermissions | FastifyReply> => {
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+    try {
+      return await this.computerUsePermissions.getPermissions(abortController.signal);
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
+
+  public requestComputerUsePermission = async (
+    request: FastifyRequest<{ Params: ComputerUsePermissionParams }>,
+    reply: FastifyReply,
+  ): Promise<ComputerUsePermissions | FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+    try {
+      return await this.computerUsePermissions.requestPermission(
+        request.params.permission,
+        abortController.signal,
+      );
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     } finally {

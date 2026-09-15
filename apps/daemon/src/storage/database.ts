@@ -83,6 +83,11 @@ export interface ProviderSettingRepository {
   updateCustom(provider: CustomProviderRecord): boolean;
 }
 
+export interface ComputerUseAllowedApp {
+  bundleId: string;
+  name: string;
+}
+
 export interface AppSettingRepository {
   getApprovalPolicy(): ApprovalPolicyValue;
   getBusySubmitBehavior(): BusySubmitBehaviorValue;
@@ -94,6 +99,10 @@ export interface AppSettingRepository {
   getFileOpenMode(): FileOpenModeValue;
   getOutputDetail(): OutputDetailValue;
   getReasoningSummary(): ReasoningSummaryValue;
+  getComputerUseAllowedApps(): ComputerUseAllowedApp[];
+  isComputerUseAppAllowed(bundleId: string): boolean;
+  grantComputerUseApp(app: ComputerUseAllowedApp, updatedAt: number): void;
+  revokeComputerUseApp(bundleId: string): boolean;
   setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void;
   setBusySubmitBehavior(behavior: BusySubmitBehaviorValue, updatedAt: number): void;
   setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void;
@@ -545,6 +554,7 @@ const FILE_OPEN_APPLICATION_KEY = "file_open_application";
 const FILE_OPEN_MODE_KEY = "file_open_mode";
 const OUTPUT_DETAIL_KEY = "output_detail";
 const REASONING_SUMMARY_KEY = "reasoning_summary";
+const COMPUTER_USE_ALLOWED_APP_PREFIX = "computer_use_allowed_app:";
 
 class SqliteAppSettingRepository implements AppSettingRepository {
   public constructor(private readonly database: DatabaseSync) {}
@@ -697,6 +707,44 @@ class SqliteAppSettingRepository implements AppSettingRepository {
       throw new Error("Invalid database value for reasoning summary");
     }
     return value;
+  }
+
+  public getComputerUseAllowedApps(): ComputerUseAllowedApp[] {
+    return (
+      this.database
+        .prepare(
+          "SELECT key, value FROM app_settings WHERE key LIKE ? ORDER BY value COLLATE NOCASE",
+        )
+        .all(`${COMPUTER_USE_ALLOWED_APP_PREFIX}%`) as DatabaseRow[]
+    ).map((row) => ({
+      bundleId: readRequiredString(row, "key").slice(COMPUTER_USE_ALLOWED_APP_PREFIX.length),
+      name: readRequiredString(row, "value"),
+    }));
+  }
+
+  public isComputerUseAppAllowed(bundleId: string): boolean {
+    return (
+      this.database
+        .prepare("SELECT 1 FROM app_settings WHERE key = ?")
+        .get(`${COMPUTER_USE_ALLOWED_APP_PREFIX}${bundleId}`) !== undefined
+    );
+  }
+
+  public grantComputerUseApp(app: ComputerUseAllowedApp, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(`${COMPUTER_USE_ALLOWED_APP_PREFIX}${app.bundleId}`, app.name, updatedAt);
+  }
+
+  public revokeComputerUseApp(bundleId: string): boolean {
+    return (
+      this.database
+        .prepare("DELETE FROM app_settings WHERE key = ?")
+        .run(`${COMPUTER_USE_ALLOWED_APP_PREFIX}${bundleId}`).changes > 0
+    );
   }
 
   public setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void {

@@ -9,6 +9,7 @@ import { isEqual } from "es-toolkit";
 import type { SkillOAuthClientConfig } from "../config/index.js";
 import type { McpCredential } from "../mcp/credential.js";
 import { McpError, McpErrorCode } from "../mcp/errors.js";
+import { COMPUTER_USE_MCP_SERVER_NAME } from "../mcp/utils/computer-use-server.js";
 import {
   McpAuthMode,
   type McpServerConfig,
@@ -35,7 +36,7 @@ export function isPluginAppMcpServer(name: string): boolean {
 }
 
 export function isComputerUsePluginAppMcpServer(name: string): boolean {
-  return name === pluginAppServerName("computer-use", "computer-use");
+  return name === COMPUTER_USE_MCP_SERVER_NAME;
 }
 
 export function getPluginAppDisplayName(name: string): string | null {

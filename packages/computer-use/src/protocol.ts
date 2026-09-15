@@ -23,6 +23,14 @@ export const KeyModifier = {
   SHIFT: "shift",
 } as const;
 
+export const ComputerUsePermission = {
+  ACCESSIBILITY: "accessibility",
+  SCREEN_RECORDING: "screen_recording",
+} as const;
+
+export type ComputerUsePermission =
+  (typeof ComputerUsePermission)[keyof typeof ComputerUsePermission];
+
 const PointSchema = Type.Object({
   x: Type.Number({ maximum: 100_000, minimum: -100_000 }),
   y: Type.Number({ maximum: 100_000, minimum: -100_000 }),
@@ -126,6 +134,12 @@ export interface ComputerActionResult {
   performedAt: number;
 }
 
+export interface ComputerUsePermissions {
+  accessibility: boolean;
+  screenRecording: boolean;
+  supported: boolean;
+}
+
 export interface ObserveOptions {
   app?: string;
   includeScreenshot?: boolean;
@@ -135,7 +149,7 @@ export interface ObserveOptions {
 
 export interface ComputerUseRequest {
   id: string;
-  method: "act" | "list_apps" | "observe" | "ping";
+  method: "act" | "get_permissions" | "list_apps" | "observe" | "ping" | "request_permission";
   params: unknown;
 }
 
@@ -176,6 +190,12 @@ export const ComputerObservationSchema = Type.Object({
 export const ComputerActionResultSchema = Type.Object({
   observationId: Type.String({ maxLength: 200, minLength: 1 }),
   performedAt: Type.Integer({ minimum: 0 }),
+});
+
+export const ComputerUsePermissionsSchema = Type.Object({
+  accessibility: Type.Boolean(),
+  screenRecording: Type.Boolean(),
+  supported: Type.Boolean(),
 });
 
 export const ComputerRunningApplicationsSchema = Type.Array(

@@ -141,6 +141,7 @@ function ServerOverview({ result, server }: { result: McpTestResult | null; serv
 }
 
 export function McpServerCapabilities({
+  allowTrustedReadOnly = true,
   isBusy,
   isLoading,
   isLoadingCancelable,
@@ -151,6 +152,7 @@ export function McpServerCapabilities({
   onRefresh,
   onToolChange,
 }: {
+  allowTrustedReadOnly?: boolean;
   isBusy: boolean;
   isLoading: boolean;
   isLoadingCancelable: boolean;
@@ -249,7 +251,13 @@ export function McpServerCapabilities({
                           isDisabled={isSavingTool}
                           isSelected={tool.enabled}
                           size="sm"
-                          onChange={(enabled) => onToolChange(tool, enabled, tool.trustedReadOnly)}
+                          onChange={(enabled) =>
+                            onToolChange(
+                              tool,
+                              enabled,
+                              allowTrustedReadOnly ? tool.trustedReadOnly : false,
+                            )
+                          }
                         >
                           <Switch.Content className="gap-2">
                             <Label className="text-xs font-normal text-muted">启用</Label>
@@ -258,22 +266,24 @@ export function McpServerCapabilities({
                             </Switch.Control>
                           </Switch.Content>
                         </Switch>
-                        <Switch
-                          aria-label={`${tool.name} 可信只读状态`}
-                          isDisabled={isSavingTool || !tool.enabled}
-                          isSelected={tool.trustedReadOnly}
-                          size="sm"
-                          onChange={(trustedReadOnly) =>
-                            onToolChange(tool, tool.enabled, trustedReadOnly)
-                          }
-                        >
-                          <Switch.Content className="gap-2">
-                            <Label className="text-xs font-normal text-muted">只读免审批</Label>
-                            <Switch.Control>
-                              <Switch.Thumb />
-                            </Switch.Control>
-                          </Switch.Content>
-                        </Switch>
+                        {allowTrustedReadOnly ? (
+                          <Switch
+                            aria-label={`${tool.name} 可信只读状态`}
+                            isDisabled={isSavingTool || !tool.enabled}
+                            isSelected={tool.trustedReadOnly}
+                            size="sm"
+                            onChange={(trustedReadOnly) =>
+                              onToolChange(tool, tool.enabled, trustedReadOnly)
+                            }
+                          >
+                            <Switch.Content className="gap-2">
+                              <Label className="text-xs font-normal text-muted">只读免审批</Label>
+                              <Switch.Control>
+                                <Switch.Thumb />
+                              </Switch.Control>
+                            </Switch.Content>
+                          </Switch>
+                        ) : null}
                       </>
                     }
                     description={tool.description}

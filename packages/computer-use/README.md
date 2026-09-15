@@ -1,6 +1,6 @@
 # computer-use
 
-macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、JSONL RPC、超时和中止；长期驻留的 Rust helper 同时提供内置 MCP 服务，负责 Accessibility Tree、单帧窗口截图与输入事件。
+macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、受限 JavaScript 执行、JSONL RPC、超时和中止；长期驻留的 Rust helper 同时提供内置 MCP 服务，负责 Accessibility Tree、单帧窗口截图与输入事件。
 
 ## 为什么使用 Rust
 
@@ -35,8 +35,25 @@ macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、JSONL RPC�
 - 坐标是 macOS 全局逻辑坐标；`screenshotFrame.scale` 只描述截图像素与逻辑坐标的比例。
 - AX 树限制深度、节点数和字符数，截图最长边限制在 1920 × 1200 范围内，RPC 响应限制为 24 MiB。
 - secure text field 不回传值；截图 base64 只存在于 Tool content，不在 `details` 中重复保存。
-- `computer_observe` 和 `computer_act` 都是串行工具，并分别导出 `computerObservePolicy` / `computerActPolicy`。它们通过通用 `USER_APPROVAL` 策略自行定义审批信息；除 `full_access` 外不会自动放行。
-- 通过插件 MCP 接入时，daemon 会把 grant 参数归一化为目标应用；用户选择允许类似操作后，同一应用不会因新的 `observationId` 反复审批。
+- `computer_exec` 在 SRT 隔离的持久化 JavaScript 子进程中运行，只暴露 `cua` 能力对象；禁用动态代码生成，不提供 Node、Shell、文件系统或网络对象，并限制为 25 个输入动作、50 个步骤和 30 秒。
+- `computer_observe` 和 `computer_act` 都是串行工具，并分别导出 `computerObservePolicy` / `computerActPolicy`。它们通过通用 `USER_APPROVAL` 策略自行定义审批信息，不因 `full_access` 自动放行。
+- 通过插件 MCP 接入时，daemon 只按稳定 bundle ID 保存应用观察授权；`computer_exec` 的一次批准只覆盖当前脚本，选择“本次会话允许”后，同一 Run 内针对该应用的后续脚本可继续执行。单步 `computer_act` 仍逐次审批。
+
+## 脚本执行
+
+Computer Use MCP 启用且同时提供观察和动作能力时，daemon 会额外注册 `computer_exec`：
+
+```js
+const before = await cua.observe();
+if (before.accessibilityTree.includes("继续")) {
+  return await cua.press({ elementId: 12 });
+}
+return before;
+```
+
+每个动作完成后运行时会通过 helper 自动重新观察，脚本拿到的元素编号始终来自最新状态。需要跨 `computer_exec` 调用保存的值放在 `globalThis`。
+`computer_exec` 复用当前 Computer Use MCP 连接和已驻留的 helper，不会另起一份原生 helper；脚本运行时关闭时也不会关闭共享 MCP 客户端。
+所有 `cua` 调用都必须 `await`；脚本结束时仍有未完成的电脑操作会失败并重置运行时，避免悬空 RPC 影响后续调用。沙箱不提供 `cua.find`、`cua.elements`、`setTimeout` 或 `console.error`，等待使用 `cua.wait(ms)`。
 
 ## 构建与使用
 
@@ -48,7 +65,7 @@ pnpm --filter @pi-harness/computer-use native:build
 
 Cargo 构建脚本会为 helper 写入 macOS 系统 Swift runtime search path。
 
-桌面端打包会构建并签入 helper sidecar。插件市场中的 Computer Use 包含一个 MCP 服务和一个 Skill；安装插件后分别开启它们即可接入 Agent Runtime。首次使用需要为 PI Harness 授予“辅助功能”和“屏幕与系统录制”权限。
+桌面端打包会构建并签入 helper sidecar。插件市场中的 Computer Use 包含一个 MCP 服务和一个 Skill；安装插件后分别开启它们即可接入 Agent Runtime。首次使用可在「设置 → 电脑操控」查看“辅助功能”和“屏幕与系统录制”状态，并由本地 daemon 调用 helper 发起 macOS 授权；系统弹窗中的最终确认仍由用户完成。
 
 ## 调试
 
@@ -85,4 +102,4 @@ const tools = [
 ];
 ```
 
-直接嵌入工具时同时把 `COMPUTER_USE_SYSTEM_PROMPT` 注入 System Prompt，daemon 关闭时调用 `client.close()`。产品默认通过插件市场的 MCP 与 Skill 接入；所有调用继续经过 daemon 的 MCP Policy 与审批链。
+直接嵌入工具时同时把 `COMPUTER_USE_SYSTEM_PROMPT` 注入 System Prompt，daemon 关闭时调用 `client.close()`。通过插件 MCP 接入时 daemon 会在工具准备阶段自动注入这段上下文，并兼容部分 Provider 把 `computer_act.action` 输出为 JSON 字符串的情况；字符串解析后仍按原始动作 Schema 严格校验。所有调用继续经过 daemon 的 MCP Policy 与审批链。

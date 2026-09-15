@@ -694,6 +694,9 @@ export class RunCoordinator {
       protectedPaths: this.protectedPaths,
       workspaceRoot: this.workspaceRoot,
     });
+    const allowRepeatedCalls =
+      registration?.policy.permission === ToolPermission.USER_APPROVAL &&
+      registration.policy.allowRepeatedCalls === true;
     // 阻止工具
     if (policy.decision === ToolPolicyDecision.DENY) {
       return { block: true, reason: policy.reason };
@@ -709,6 +712,7 @@ export class RunCoordinator {
       const blockReason = this.executionGuard.getBlockReason(
         context.toolCall.id,
         toolCallFingerprint,
+        allowRepeatedCalls,
       );
       if (blockReason !== null) return { block: true, reason: blockReason };
       this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
@@ -720,12 +724,21 @@ export class RunCoordinator {
       context.args,
       policy.fingerprint,
     );
+    const sessionApprovalFingerprint =
+      policy.sessionFingerprint === undefined
+        ? toolCallFingerprint
+        : this.executionGuard.createFingerprint(
+            context.toolCall.name,
+            null,
+            policy.sessionFingerprint,
+          );
     const blockReason = this.executionGuard.getBlockReason(
       context.toolCall.id,
       toolCallFingerprint,
+      allowRepeatedCalls,
     );
     if (blockReason !== null) return { block: true, reason: blockReason };
-    if (this.sessionApprovedFingerprints.has(toolCallFingerprint)) {
+    if (this.sessionApprovedFingerprints.has(sessionApprovalFingerprint)) {
       this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
       return undefined;
     }
@@ -772,6 +785,7 @@ export class RunCoordinator {
       const currentBlockReason = this.executionGuard.getBlockReason(
         context.toolCall.id,
         toolCallFingerprint,
+        allowRepeatedCalls,
       );
       if (currentBlockReason !== null) return { block: true, reason: currentBlockReason };
       this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
@@ -913,7 +927,8 @@ export class RunCoordinator {
           decision !== ApprovalDecision.APPROVED_SESSION ||
           (policy.allowSession !== false &&
             currentPolicy.decision === ToolPolicyDecision.ASK &&
-            currentPolicy.allowSession !== false);
+            currentPolicy.allowSession !== false &&
+            currentPolicy.sessionFingerprint === policy.sessionFingerprint);
         const isStoredSimilarApproval =
           decision === ApprovalDecision.APPROVED_SIMILAR &&
           currentPolicy.decision === ToolPolicyDecision.ALLOW &&
@@ -927,13 +942,14 @@ export class RunCoordinator {
         const currentBlockReason = this.executionGuard.getBlockReason(
           context.toolCall.id,
           toolCallFingerprint,
+          allowRepeatedCalls,
         );
         if (currentBlockReason !== null) {
           return { block: true, reason: currentBlockReason };
         }
         this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
         if (decision === ApprovalDecision.APPROVED_SESSION) {
-          this.sessionApprovedFingerprints.add(toolCallFingerprint);
+          this.sessionApprovedFingerprints.add(sessionApprovalFingerprint);
         }
         return undefined;
       }
@@ -1221,14 +1237,15 @@ export class RunCoordinator {
     this.setSupportsImageInput(input.model.input.includes("image"));
     const thinkingLevel = clampThinkingLevel(input.model, input.thinkingLevel);
     this.agent.state.thinkingLevel = thinkingLevel;
+    const runContexts = [...input.contexts];
     this.agent.state.systemPrompt = [
       input.systemPrompt,
-      ...input.contexts.map(({ content }) => content),
+      ...runContexts.map(({ content }) => content),
     ]
       .filter(Boolean)
       .join("\n");
     const runStartedData = {
-      contexts: [...input.contexts],
+      contexts: runContexts,
       maxTokens: input.model.maxTokens,
       modelId: input.modelId,
       mode: input.userInput.mode ?? RunMode.DEFAULT,
@@ -1243,7 +1260,7 @@ export class RunCoordinator {
       await this.emit(
         {
           data: {
-            ...estimateContextUsage(context, input.contexts),
+            ...estimateContextUsage(context, runContexts),
             requestIndex,
           } satisfies ContextUsageSnapshotData,
           type: HarnessEventType.CONTEXT_USAGE_SNAPSHOT,
@@ -1303,6 +1320,13 @@ export class RunCoordinator {
         );
         activeRun.preparationFailures = externalTools?.failures ?? [];
         preparationAbortController.signal.throwIfAborted();
+        runContexts.push(...(externalTools?.contexts ?? []));
+        this.agent.state.systemPrompt = [
+          input.systemPrompt,
+          ...runContexts.map(({ content }) => content),
+        ]
+          .filter(Boolean)
+          .join("\n");
         this.toolRegistry.replaceExternal(externalTools?.registrations ?? []);
         this.agent.state.tools = this.toolRegistry.tools;
         runStartedData.tools = createRunToolSnapshot(this.toolRegistry);
@@ -1402,7 +1426,7 @@ export class RunCoordinator {
         }
       }
     } finally {
-      externalTools?.release();
+      await externalTools?.release();
       this.toolRegistry.replaceExternal([]);
       this.agent.state.tools = this.toolRegistry.tools;
       this.executionGuard.reset();

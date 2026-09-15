@@ -4,6 +4,7 @@ import {
 } from "@pi-harness/agent-runtime/model-response-preferences";
 import { ThinkingLevel } from "@pi-harness/agent-runtime/thinking-level";
 import { BusySubmitBehavior } from "@pi-harness/agent-runtime/user-input";
+import { ComputerUsePermission } from "@pi-harness/computer-use";
 import { ApprovalPolicy, SandboxProfile } from "@pi-harness/policy";
 import { type Static, Type } from "typebox";
 import { FileOpenMode } from "../schemas/file-open.js";
@@ -79,4 +80,21 @@ export const UpdateAppSettingsDtoSchema = Type.Object(
   { minProperties: 1 },
 );
 
+export const ComputerUseAllowedAppParamsSchema = Type.Object({
+  bundleId: Type.String({
+    maxLength: 500,
+    minLength: 3,
+    pattern: "^[A-Za-z0-9][A-Za-z0-9-]*(?:\\.[A-Za-z0-9][A-Za-z0-9-]*)+$",
+  }),
+});
+
+export const ComputerUsePermissionParamsSchema = Type.Object({
+  permission: Type.Union([
+    Type.Literal(ComputerUsePermission.ACCESSIBILITY),
+    Type.Literal(ComputerUsePermission.SCREEN_RECORDING),
+  ]),
+});
+
 export type UpdateAppSettingsDto = Static<typeof UpdateAppSettingsDtoSchema>;
+export type ComputerUseAllowedAppParams = Static<typeof ComputerUseAllowedAppParamsSchema>;
+export type ComputerUsePermissionParams = Static<typeof ComputerUsePermissionParamsSchema>;

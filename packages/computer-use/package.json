@@ -15,6 +15,7 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "catalog:",
     "@pi-harness/policy": "workspace:*",
+    "@pi-harness/sandbox": "workspace:*",
     "typebox": "catalog:"
   },
   "devDependencies": {

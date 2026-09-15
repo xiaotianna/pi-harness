@@ -57,12 +57,33 @@ const SandboxProfileSchema = Type.Union([
   Type.Literal(SandboxProfile.WORKSPACE_WRITE),
 ]);
 
+export const ComputerUsePermission = {
+  ACCESSIBILITY: "accessibility",
+  SCREEN_RECORDING: "screen_recording",
+} as const;
+
+export type ComputerUsePermission =
+  (typeof ComputerUsePermission)[keyof typeof ComputerUsePermission];
+
+const ComputerUsePermissionsSchema = Type.Object({
+  accessibility: Type.Boolean(),
+  screenRecording: Type.Boolean(),
+  supported: Type.Boolean(),
+});
+
 const AppSettingsSchema = Type.Object({
   approvalPolicy: ApprovalPolicySchema,
   busySubmitBehavior: Type.Union([
     Type.Literal(BusySubmitBehavior.QUEUE),
     Type.Literal(BusySubmitBehavior.STEER),
   ]),
+  computerUseAllowedApps: Type.Array(
+    Type.Object({
+      bundleId: Type.String({ maxLength: 500, minLength: 3 }),
+      name: Type.String({ maxLength: 200, minLength: 1 }),
+    }),
+    { maxItems: 1_000 },
+  ),
   defaultModel: Type.Union([DefaultModelSettingSchema, Type.Null()]),
   fileOpenApplication: Type.Union([
     Type.Object({
@@ -99,6 +120,7 @@ const UpdateAppSettingsSchema = Type.Object({
 });
 
 export type AppSettings = Static<typeof AppSettingsSchema>;
+export type ComputerUsePermissions = Static<typeof ComputerUsePermissionsSchema>;
 export type UpdateAppSettings = Static<typeof UpdateAppSettingsSchema>;
 
 async function readAppSettings(response: Response): Promise<AppSettings> {
@@ -125,4 +147,34 @@ export async function updateAppSettings(settings: UpdateAppSettings): Promise<Ap
 export async function selectDefaultFileOpenApplication(): Promise<AppSettings | null> {
   const response = await apiRequest("/api/settings/file-open-application", { method: "POST" });
   return response.status === 204 ? null : readAppSettings(response);
+}
+
+export async function revokeComputerUseAllowedApp(bundleId: string): Promise<void> {
+  await apiRequest(`/api/settings/computer-use/allowed-apps/${encodeURIComponent(bundleId)}`, {
+    method: "DELETE",
+  });
+}
+
+async function readComputerUsePermissions(response: Response): Promise<ComputerUsePermissions> {
+  const body = (await response.json()) as unknown;
+  if (!Value.Check(ComputerUsePermissionsSchema, body)) {
+    throw new Error("daemon 返回了无效的电脑操控权限状态");
+  }
+  return body;
+}
+
+export async function getComputerUsePermissions(
+  signal?: AbortSignal,
+): Promise<ComputerUsePermissions> {
+  return readComputerUsePermissions(
+    await apiRequest("/api/settings/computer-use/permissions", signal ? { signal } : undefined),
+  );
+}
+
+export async function requestComputerUsePermission(
+  permission: ComputerUsePermission,
+): Promise<ComputerUsePermissions> {
+  return readComputerUsePermissions(
+    await apiRequest(`/api/settings/computer-use/permissions/${permission}`, { method: "POST" }),
+  );
 }

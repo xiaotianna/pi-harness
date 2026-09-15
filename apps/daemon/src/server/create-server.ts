@@ -23,6 +23,7 @@ import { registerSkillConnectionRoutes } from "../routes/skill-connection-routes
 import { registerWorkspaceRoutes } from "../routes/workspace-routes.js";
 import { AppSettingsService } from "../services/app-settings-service.js";
 import { BoardTaskService } from "../services/board-task-service.js";
+import { ComputerUsePermissionService } from "../services/computer-use-permission-service.js";
 import { FileOpenService } from "../services/file-open-service.js";
 import { HumanInteractionService } from "../services/human-interaction-service.js";
 import { LocalMemoryEmbedder } from "../services/local-memory-embedder.js";
@@ -59,6 +60,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   const database = openHarnessDatabase(config.databasePath);
   const allowedCommandPrefixes = AllowedCommandPrefixStore.open(config.allowedCommandPrefixesPath);
   const fileOpen = new FileOpenService(database.appSettings);
+  const computerUsePermissions = new ComputerUsePermissionService();
   const credentials = await FileCredentialStore.open(config.credentialsPath);
   const skillCredentials = await SkillCredentialStore.open(config.skillCredentialsPath);
   const mcpCredentials = await McpCredentialStore.open(
@@ -144,7 +146,12 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
       database.appSettings.getInstalledSkillCollectionIds(),
       database.appSettings.getDisabledSkillCollectionSkillIds(),
     );
-  const mcpTools = new McpToolService(mcpServers, mcpClients, database.sessions);
+  const mcpTools = new McpToolService(
+    mcpServers,
+    mcpClients,
+    database.sessions,
+    database.appSettings,
+  );
   let agents: AgentManager | undefined;
   let sessions: SessionService | undefined;
   const providers = await ProviderService.create(
@@ -251,6 +258,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     mcpWarmupController.abort();
     await mcpWarmup;
     fileOpen.close();
+    computerUsePermissions.close();
     workspaces.close();
     await sessions.close();
     await mcpServers.close();
@@ -261,7 +269,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   });
 
   await registerAuthRoutes(server, config, database.authSessions, fileOpen);
-  await registerAppSettingsRoutes(server, config, appSettings, fileOpen);
+  await registerAppSettingsRoutes(server, config, appSettings, fileOpen, computerUsePermissions);
   await registerBoardTaskRoutes(server, config, boardTasks);
   await registerHealthRoutes(server);
   await registerMcpRoutes(server, config, mcpServers, mcpDiagnostics, mcpOAuth);

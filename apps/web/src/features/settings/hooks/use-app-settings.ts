@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { pick } from "es-toolkit";
 import {
   type AppSettings,
+  revokeComputerUseAllowedApp,
   selectDefaultFileOpenApplication,
   type UpdateAppSettings,
   updateAppSettings,
@@ -44,14 +45,38 @@ export function useAppSettings() {
       if (settings) queryClient.setQueryData(appSettingsQueryKeys.all, settings);
     },
   });
+  const computerUseAppMutation = useMutation<void, Error, string, AppSettings | undefined>({
+    mutationFn: revokeComputerUseAllowedApp,
+    onError: (_error, _bundleId, previous) => {
+      if (previous) queryClient.setQueryData(appSettingsQueryKeys.all, previous);
+    },
+    onMutate: async (bundleId) => {
+      await queryClient.cancelQueries({ queryKey: appSettingsQueryKeys.all });
+      const previous = queryClient.getQueryData<AppSettings>(appSettingsQueryKeys.all);
+      if (previous) {
+        queryClient.setQueryData<AppSettings>(appSettingsQueryKeys.all, {
+          ...previous,
+          computerUseAllowedApps: previous.computerUseAllowedApps.filter(
+            (app) => app.bundleId !== bundleId,
+          ),
+        });
+      }
+      return previous;
+    },
+  });
 
   return {
+    error: settingsQuery.error,
     isLoading: settingsQuery.isPending,
     isSaving: (key: keyof UpdateAppSettings) =>
       mutation.isPending &&
       mutation.variables !== undefined &&
       Object.hasOwn(mutation.variables, key),
     isSelectingFileOpenApplication: applicationMutation.isPending,
+    revokingComputerUseApp: computerUseAppMutation.isPending
+      ? computerUseAppMutation.variables
+      : null,
+    revokeComputerUseApp: computerUseAppMutation.mutateAsync,
     selectFileOpenApplication: applicationMutation.mutateAsync,
     settings: settingsQuery.data,
     updateSettings: mutation.mutateAsync,

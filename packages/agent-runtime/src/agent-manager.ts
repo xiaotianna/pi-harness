@@ -15,6 +15,7 @@ import { createAgent } from "./create-agent.js";
 import type {
   ContextCheckpointRecord,
   ContextCompactedData,
+  RunContextData,
   RunId,
   SessionId,
 } from "./harness-event.js";
@@ -56,9 +57,10 @@ export interface ExternalToolPreparationFailure {
 }
 
 export interface PreparedExternalTools {
+  contexts?: readonly RunContextData[];
   failures: readonly ExternalToolPreparationFailure[];
   registrations: readonly ToolRegistration[];
-  release(): void;
+  release(): Promise<void> | void;
 }
 
 export type PrepareExternalTools = (

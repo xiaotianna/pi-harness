@@ -360,6 +360,7 @@ function PluginAppDetail({
 
         {mcpServer ? (
           <McpServerCapabilities
+            allowTrustedReadOnly={plugin.id !== "computer-use"}
             isBusy={refreshMutation.isPending}
             isLoading={
               refreshMutation.isPending ||

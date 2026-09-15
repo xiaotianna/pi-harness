@@ -69,7 +69,7 @@ fn initialize(params: Value) -> Result<Value, AppError> {
         .ok_or_else(|| AppError::new("INVALID_REQUEST", "protocolVersion is required"))?;
     Ok(json!({
         "capabilities": { "tools": { "listChanged": false } },
-        "instructions": "Target an app directly when known. Observe before acting, use only the latest observationId, and observe again after every action.",
+        "instructions": "Target apps by bundle ID when known. Observe before acting, pass the observed bundle ID and latest observationId, and observe again after every action.",
         "protocolVersion": protocol_version,
         "serverInfo": { "name": "computer-use", "version": "0.1.0" }
     }))
@@ -172,7 +172,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "computer_observe",
-            "description": "Observe a Mac app by display name or bundle ID, launching and focusing it when needed. Returns a screenshot and Accessibility Tree. Observe again after every action.",
+            "description": "Observe a Mac app, preferring its bundle ID so the user can grant persistent app access. Returns a screenshot and Accessibility Tree. Observe again after every action.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -181,7 +181,13 @@ fn tool_definitions() -> Vec<Value> {
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 500,
-                        "description": "App display name or bundle ID. Omit only to inspect the current foreground app."
+                        "description": "App bundle ID, or a display name for one-time access. Omit only to inspect the current foreground app."
+                    },
+                    "appName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "description": "Display-only app name paired with app when app is a bundle ID."
                     },
                     "includeScreenshot": {
                         "type": "boolean",
@@ -202,7 +208,7 @@ fn tool_definitions() -> Vec<Value> {
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 500,
-                        "description": "Display name or bundle ID returned by the observation. It must match the observed app."
+                        "description": "Exact bundle ID returned by the observation."
                     },
                     "observationId": {
                         "type": "string",

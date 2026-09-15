@@ -12,6 +12,7 @@ import type {
 import type { McpConnectionContext } from "../mcp/client-manager.js";
 import type { McpCredential } from "../mcp/credential.js";
 import { McpError, McpErrorCode } from "../mcp/errors.js";
+import { isComputerUseMcpServer } from "../mcp/utils/computer-use-server.js";
 import { createMcpServerRecord } from "../mcp/utils/create-server-record.js";
 import { normalizeMcpConfig, normalizeMcpName } from "../mcp/utils/server-config.js";
 import { reserveUniqueMcpName } from "../mcp/utils/unique-server-name.js";
@@ -110,7 +111,10 @@ export class McpServerService {
   }
 
   public updateToolSetting(serverId: string, input: UpdateMcpToolDto): void {
-    this.requireRevision(serverId, input.expectedRevision);
+    const server = this.requireRevision(serverId, input.expectedRevision);
+    if (input.trustedReadOnly && isComputerUseMcpServer(server)) {
+      throw new McpError(McpErrorCode.INVALID_CONFIG, "电脑操控工具不能设为只读免审批");
+    }
     this.repository.setToolSetting(
       serverId,
       input.toolName,

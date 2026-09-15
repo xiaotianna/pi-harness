@@ -12,19 +12,30 @@ export {
   type ComputerAction,
   ComputerActionKind,
   type ComputerActionResult,
+  ComputerActionResultSchema,
   type ComputerApplication,
   type ComputerObservation,
+  ComputerObservationSchema,
   type ComputerRunningApplication,
   type ComputerScreenshotFrame,
+  ComputerUsePermission,
+  type ComputerUsePermissions,
   type ImageContent,
   KeyModifier,
   MouseButton,
   type ObserveOptions,
 } from "./protocol.js";
 export {
+  type ComputerScriptResult,
+  type ComputerUseRuntimeClient,
+  ComputerUseScriptRuntime,
+} from "./script-runtime.js";
+export {
+  ComputerExecParametersSchema,
   type ComputerObservationDetails,
   computerActPolicy,
   computerObservePolicy,
   createComputerActTool,
+  createComputerExecTool,
   createComputerObserveTool,
 } from "./tools.js";

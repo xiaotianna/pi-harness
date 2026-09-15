@@ -1,14 +1,12 @@
 import { constants } from "node:fs";
 import { access, realpath, stat } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
-import {
-  COMPUTER_USE_HELPER_COMMAND,
-  resolveComputerUseHelperPath,
-} from "@pi-harness/computer-use";
+import { resolveComputerUseHelperPath } from "@pi-harness/computer-use";
 import { McpAuthMode, McpTransport } from "../../schemas/mcp.js";
 import type { McpConnectionContext } from "../client-manager.js";
 import { McpError, McpErrorCode } from "../errors.js";
 import type { McpProcessLaunch } from "../transports/stdio.js";
+import { isComputerUseMcpServer } from "./computer-use-server.js";
 import { validateMcpCredential } from "./credential.js";
 
 /** 固定搜索路径不读取 daemon PATH；不允许项目内的同名程序劫持启动命令。 */
@@ -35,7 +33,7 @@ export async function prepareMcpProcessLaunch(
   }
   let cwd: string;
   let command: string | undefined;
-  const hasHostAccess = config.command === COMPUTER_USE_HELPER_COMMAND;
+  const hasHostAccess = isComputerUseMcpServer(context.server);
   try {
     cwd = await realpath(context.workspaceRoot);
     if (cwd !== resolve(context.workspaceRoot)) throw new Error("workspace identity changed");

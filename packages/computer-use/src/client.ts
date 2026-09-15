@@ -10,6 +10,9 @@ import {
   ComputerObservationSchema,
   type ComputerRunningApplication,
   ComputerRunningApplicationsSchema,
+  type ComputerUsePermission,
+  type ComputerUsePermissions,
+  ComputerUsePermissionsSchema,
   type ComputerUseRequest,
   ComputerUseResponseSchema,
   type ObserveOptions,
@@ -115,6 +118,34 @@ export class ComputerUseClient {
     return result;
   }
 
+  public async getPermissions(signal?: AbortSignal): Promise<ComputerUsePermissions> {
+    if (process.platform !== "darwin") {
+      return { accessibility: false, screenRecording: false, supported: false };
+    }
+    const result = await this.request("get_permissions", {}, signal);
+    if (!Value.Check(ComputerUsePermissionsSchema, result)) {
+      throw new ComputerUseError(
+        "INVALID_HELPER_RESPONSE",
+        "computer-use helper 返回了无效权限状态",
+      );
+    }
+    return result;
+  }
+
+  public async requestPermission(
+    permission: ComputerUsePermission,
+    signal?: AbortSignal,
+  ): Promise<ComputerUsePermissions> {
+    const result = await this.request("request_permission", { permission }, signal);
+    if (!Value.Check(ComputerUsePermissionsSchema, result)) {
+      throw new ComputerUseError(
+        "INVALID_HELPER_RESPONSE",
+        "computer-use helper 返回了无效权限状态",
+      );
+    }
+    return result;
+  }
+
   public async act(
     scopeId: string,
     observationId: string,
@@ -159,7 +190,10 @@ export class ComputerUseClient {
           signal?.reason instanceof Error ? signal.reason : new Error("computer-use 操作已中止"),
         );
       const timeout = setTimeout(
-        () => this.stop(new ComputerUseError("HELPER_TIMEOUT", "computer-use helper 响应超时")),
+        () =>
+          this.stop(
+            new ComputerUseError("HELPER_TIMEOUT", `computer-use helper 响应超时（${method}）`),
+          ),
         timeoutMs,
       );
       const cleanup = () => {
