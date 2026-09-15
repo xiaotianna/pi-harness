@@ -5,6 +5,13 @@ import type { ComputerUseClient } from "./client.js";
 import { ComputerActionKind, ComputerActionSchema, type ComputerObservation } from "./protocol.js";
 
 const ObserveParameters = Type.Object({
+  app: Type.Optional(
+    Type.String({
+      description: "目标应用显示名称或 bundle ID；省略时观察当前前台应用",
+      maxLength: 500,
+      minLength: 1,
+    }),
+  ),
   includeScreenshot: Type.Optional(
     Type.Boolean({ description: "是否同时返回当前前台窗口截图，默认 true" }),
   ),
@@ -22,13 +29,19 @@ const ActParameters = Type.Object({
 export const computerObservePolicy = {
   allowInFullAccess: true,
   permission: ToolPermission.USER_APPROVAL,
-  resolveGrant: () => ({
-    allowSession: true,
-    fingerprint: "computer_observe:current_foreground_window",
-    risk: "该操作会读取当前前台窗口的可访问性结构，并可能截取窗口画面。",
-    summary: "观察当前前台窗口",
-    target: "当前前台窗口",
-  }),
+  resolveGrant: (args: unknown) => {
+    const target =
+      typeof args === "object" && args !== null && "app" in args && typeof args.app === "string"
+        ? args.app
+        : "当前前台窗口";
+    return {
+      allowSession: true,
+      fingerprint: `computer_observe:${target}`,
+      risk: "该操作会读取当前前台窗口的可访问性结构，并可能截取窗口画面。",
+      summary: "观察本机应用窗口",
+      target,
+    };
+  },
 } as const satisfies ToolPolicy;
 
 export const computerActPolicy = {
@@ -67,7 +80,7 @@ export function createComputerObserveTool(
 ): AgentTool<typeof ObserveParameters, ComputerObservationDetails> {
   return {
     description:
-      "观察 Mac 当前前台窗口，返回一张静态截图和带稳定元素编号的 Accessibility Tree。执行动作后必须重新观察。",
+      "观察指定 Mac 应用或当前前台窗口，返回一张静态截图和带稳定元素编号的 Accessibility Tree。执行动作后必须重新观察。",
     executionMode: "sequential",
     label: "Observe computer",
     name: "computer_observe",
@@ -75,7 +88,12 @@ export function createComputerObserveTool(
     async execute(_toolCallId, input, signal) {
       const observation = await client.observe(
         scopeId,
-        input.includeScreenshot === undefined ? {} : { includeScreenshot: input.includeScreenshot },
+        {
+          ...(input.app === undefined ? {} : { app: input.app }),
+          ...(input.includeScreenshot === undefined
+            ? {}
+            : { includeScreenshot: input.includeScreenshot }),
+        },
         signal,
       );
       const { screenshot, ...observationDetails } = observation;
@@ -99,7 +117,7 @@ export function createComputerActTool(
   scopeId: string,
 ): AgentTool<typeof ActParameters, { observationId: string; performedAt: number }> {
   return {
-    description: `操作 Mac 当前前台窗口。优先使用 ${ComputerActionKind.PRESS}/${ComputerActionKind.SET_VALUE} 的元素编号；坐标使用 Accessibility Tree 中的全局逻辑坐标。动作完成后调用 computer_observe。`,
+    description: `操作已观察的 Mac 应用。优先使用 ${ComputerActionKind.PRESS}/${ComputerActionKind.SET_VALUE}/${ComputerActionKind.PERFORM_ACTION} 的元素编号；坐标使用 Accessibility Tree 中的全局逻辑坐标。动作完成后调用 computer_observe。`,
     executionMode: "sequential",
     label: "Control computer",
     name: "computer_act",

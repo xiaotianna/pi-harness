@@ -34,6 +34,10 @@ export function isPluginAppMcpServer(name: string): boolean {
   return name.startsWith(PLUGIN_APP_SERVER_PREFIX);
 }
 
+export function isComputerUsePluginAppMcpServer(name: string): boolean {
+  return name === pluginAppServerName("computer-use", "computer-use");
+}
+
 export function getPluginAppDisplayName(name: string): string | null {
   if (!isPluginAppMcpServer(name)) return null;
   const [collectionId, appId] = name.slice(PLUGIN_APP_SERVER_PREFIX.length).split(":");

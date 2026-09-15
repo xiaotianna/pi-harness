@@ -155,6 +155,7 @@ fn describe_element(element: &AXUIElement, id: usize, depth: usize) -> String {
         .or_else(|| description.filter(|value| !value.is_empty()))
         .or_else(|| value.filter(|value| !value.is_empty()));
     let enabled = element.bool_attribute(AX_ENABLED).ok().flatten();
+    let actions = element.action_names().unwrap_or_default();
     let identifier = element.string_attribute(AX_IDENTIFIER).ok().flatten();
     let subrole = element.string_attribute(AX_SUBROLE).ok().flatten();
     let position = element.point_attribute(AX_POSITION).ok().flatten();
@@ -172,6 +173,9 @@ fn describe_element(element: &AXUIElement, id: usize, depth: usize) -> String {
     }
     if enabled == Some(false) {
         line.push_str(" disabled");
+    }
+    if !actions.is_empty() {
+        line.push_str(&format!(" actions={}", actions.join(",")));
     }
     if let (Some(position), Some(size)) = (position, size) {
         line.push_str(&format!(

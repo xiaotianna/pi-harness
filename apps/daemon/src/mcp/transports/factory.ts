@@ -26,15 +26,17 @@ export function createMcpTransportFactory(
       const sandboxPolicy = await readSandboxPolicy(globalRoot, signal);
       return new McpStdioTransport(
         launch,
-        {
-          allowedDomains: sandboxPolicy.network.allowedDomains,
-          deniedDomains: sandboxPolicy.network.deniedDomains,
-          isWorkspaceWritable: sandboxPolicy.profile === SandboxProfile.WORKSPACE_WRITE,
-          protectedPaths,
-          readPaths: [launch.command],
-          signal,
-          workspaceRoot: context.workspaceRoot,
-        },
+        launch.hasHostAccess
+          ? null
+          : {
+              allowedDomains: sandboxPolicy.network.allowedDomains,
+              deniedDomains: sandboxPolicy.network.deniedDomains,
+              isWorkspaceWritable: sandboxPolicy.profile === SandboxProfile.WORKSPACE_WRITE,
+              protectedPaths,
+              readPaths: [launch.command],
+              signal,
+              workspaceRoot: context.workspaceRoot,
+            },
         () => {
           signal.throwIfAborted();
           verifyContext(context);

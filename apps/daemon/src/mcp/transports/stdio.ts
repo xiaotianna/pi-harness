@@ -1,3 +1,5 @@
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   type JSONRPCMessage,
   serializeMessage,
@@ -11,10 +13,10 @@ import {
 import { McpError, McpErrorCode } from "../errors.js";
 import { McpStdioMessageBuffer } from "../utils/stdio-message-buffer.js";
 
-const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
+const MAX_MESSAGE_BYTES = 24 * 1024 * 1024;
 const MAX_PENDING_BYTES = 8 * 1024 * 1024;
 const MAX_STDERR_BYTES = 1024 * 1024;
-const MAX_BYTES_PER_SECOND = 16 * 1024 * 1024;
+const MAX_BYTES_PER_SECOND = 32 * 1024 * 1024;
 const MAX_MESSAGES_PER_SECOND = 1_024;
 const WRITE_TIMEOUT_MS = 15_000;
 
@@ -25,6 +27,7 @@ export interface McpProcessLaunch {
   cwd: string;
   environment: Readonly<Record<string, string>>;
   credentials: Readonly<Record<string, string>>;
+  hasHostAccess: boolean;
 }
 
 /** 使用 SDK 的协议解析器；Host 独立控制环境、进程组和有界 I/O。 */
@@ -49,7 +52,7 @@ export class McpStdioTransport implements Transport {
     private readonly sandbox: Omit<
       SandboxProcessInput,
       "args" | "command" | "commandId" | "credentials" | "environment"
-    >,
+    > | null,
     private readonly verifyBeforeSpawn: () => void,
   ) {}
 
@@ -70,22 +73,25 @@ export class McpStdioTransport implements Transport {
     this.isStarted = true;
     let sandboxedProcess: SandboxedProcess;
     try {
-      sandboxedProcess = await spawnSandboxedProcess({
-        ...this.sandbox,
-        args: this.launch.args,
-        command: this.launch.command,
-        commandId: this.launch.commandId,
-        credentials: Object.entries(this.launch.credentials).map(([name, value]) => ({
-          name,
-          value,
-        })),
-        environment: this.launch.environment,
-      });
+      sandboxedProcess =
+        this.sandbox === null
+          ? await spawnTrustedHostProcess(this.launch)
+          : await spawnSandboxedProcess({
+              ...this.sandbox,
+              args: this.launch.args,
+              command: this.launch.command,
+              commandId: this.launch.commandId,
+              credentials: Object.entries(this.launch.credentials).map(([name, value]) => ({
+                name,
+                value,
+              })),
+              environment: this.launch.environment,
+            });
     } catch {
       this.isClosed = true;
       throw new McpError(
         McpErrorCode.CAPABILITY_UNAVAILABLE,
-        "无法在沙箱中启动 MCP 进程，请检查平台能力与沙箱配置",
+        "无法启动 MCP 进程，请检查平台能力与本地服务配置",
       );
     }
     this.sandboxedProcess = sandboxedProcess;
@@ -189,4 +195,41 @@ export class McpStdioTransport implements Transport {
       this.onerror?.(new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 进程清理失败")),
     );
   }
+}
+
+async function spawnTrustedHostProcess(launch: McpProcessLaunch): Promise<SandboxedProcess> {
+  const child = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
+    detached: true,
+    env: launch.environment,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  await new Promise<void>((resolve, reject) => {
+    child.once("spawn", resolve);
+    child.once("error", reject);
+  });
+  const process = child as ChildProcessWithoutNullStreams;
+  const exited = new Promise<void>((resolve) => process.once("exit", () => resolve()));
+  let closing: Promise<void> | undefined;
+  const signalGroup = (signal: NodeJS.Signals) => {
+    if (process.pid === undefined) return;
+    try {
+      globalThis.process.kill(-process.pid, signal);
+    } catch (error: unknown) {
+      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+    }
+  };
+  return {
+    process,
+    close: () =>
+      (closing ??= (async () => {
+        if (process.exitCode !== null || process.signalCode !== null) return;
+        signalGroup("SIGTERM");
+        await Promise.race([exited, delay(500)]);
+        if (process.exitCode === null && process.signalCode === null) {
+          signalGroup("SIGKILL");
+          await exited;
+        }
+      })()),
+  };
 }

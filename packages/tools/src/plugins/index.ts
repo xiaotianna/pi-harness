@@ -3,6 +3,7 @@ import { loadPlugin } from "./load-plugin.js";
 import type { PluginDefinition } from "./types.js";
 
 const BUILT_IN_PLUGIN_IDS = [
+  "computer-use",
   "vercel",
   "github",
   "google",

@@ -3,6 +3,10 @@ export {
   type ComputerUseClientOptions,
   ComputerUseError,
 } from "./client.js";
+export {
+  COMPUTER_USE_HELPER_COMMAND,
+  resolveComputerUseHelperPath,
+} from "./helper-path.js";
 export { COMPUTER_USE_SYSTEM_PROMPT } from "./prompt.js";
 export {
   type ComputerAction,
@@ -10,6 +14,7 @@ export {
   type ComputerActionResult,
   type ComputerApplication,
   type ComputerObservation,
+  type ComputerRunningApplication,
   type ComputerScreenshotFrame,
   type ImageContent,
   KeyModifier,

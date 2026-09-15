@@ -10,10 +10,25 @@ import { describeMcpTool } from "../mcp/prompts/tool-description.js";
 import { createMcpApprovalSummary } from "../mcp/utils/approval-summary.js";
 import { redactMcpText } from "../mcp/utils/credential-redaction.js";
 import { createMcpToolAlias } from "../mcp/utils/tool-alias.js";
-import { readMcpToolResult } from "../mcp/utils/tool-result.js";
+import { readMcpToolContent } from "../mcp/utils/tool-result.js";
 import { compileMcpToolSchema, normalizeMcpToolSchema } from "../mcp/utils/tool-schema.js";
 import type { SessionRepository } from "../storage/database.js";
 import type { McpServerService } from "./mcp-server-service.js";
+import { isComputerUsePluginAppMcpServer } from "./skill-connection-service.js";
+
+function grantArguments(serverName: string, toolName: string, args: unknown): unknown {
+  if (
+    !isComputerUsePluginAppMcpServer(serverName) ||
+    (toolName !== "computer_observe" && toolName !== "computer_act")
+  ) {
+    return args;
+  }
+  const app =
+    typeof args === "object" && args !== null && "app" in args && typeof args.app === "string"
+      ? args.app.trim().toLowerCase()
+      : "current_foreground_app";
+  return { app };
+}
 
 export class McpToolService {
   public constructor(
@@ -105,10 +120,11 @@ export class McpToolService {
                         ...(approvalSignal ? [approvalSignal] : []),
                       ]),
                     );
-                    const argumentsFingerprint = createToolFingerprint(args);
+                    const normalizedGrantArguments = grantArguments(server.name, tool.name, args);
+                    const argumentsFingerprint = createToolFingerprint(normalizedGrantArguments);
                     return {
                       allowSimilar: true,
-                      fingerprint: createToolFingerprint([identity, args]),
+                      fingerprint: createToolFingerprint([identity, normalizedGrantArguments]),
                       isGranted: this.servers.isToolGrantActive({
                         argumentsFingerprint,
                         configRevision: server.revision,
@@ -132,7 +148,9 @@ export class McpToolService {
                     ]);
                     await verify(args, grantSignal);
                     this.servers.grantTool({
-                      argumentsFingerprint: createToolFingerprint(args),
+                      argumentsFingerprint: createToolFingerprint(
+                        grantArguments(server.name, tool.name, args),
+                      ),
                       configRevision: server.revision,
                       createdAt: Date.now(),
                       definitionFingerprint: definitionHash,
@@ -179,14 +197,7 @@ export class McpToolService {
                 }
                 if (result.isError) throw new Error("MCP_TOOL_FAILED: 外部服务报告工具执行失败");
                 return {
-                  content: [
-                    {
-                      type: "text",
-                      text:
-                        readMcpToolResult(result, context.credential) ||
-                        "MCP 工具已完成，未返回文本",
-                    },
-                  ],
+                  content: readMcpToolContent(result, context.credential),
                   details: {
                     source: "mcp",
                     serverId: server.id,

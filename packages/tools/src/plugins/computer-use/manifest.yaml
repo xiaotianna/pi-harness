@@ -1,0 +1,13 @@
+id: computer-use
+displayName: Computer Use
+logo: logo.png
+apiUrl: https://localhost.invalid
+description: Target, read, and operate local Mac apps through screenshots and Accessibility.
+category: productivity
+type: none
+gateway:
+  allowedPaths:
+    - '^/$'
+skills:
+  - id: computer-use
+    displayName: Computer Use

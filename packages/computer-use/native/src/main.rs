@@ -5,6 +5,8 @@ mod accessibility;
 #[cfg(target_os = "macos")]
 mod input;
 #[cfg(target_os = "macos")]
+mod mcp;
+#[cfg(target_os = "macos")]
 mod runtime;
 #[cfg(target_os = "macos")]
 mod screenshot;
@@ -44,8 +46,11 @@ fn main() {
 fn main() -> io::Result<()> {
     // Headless helpers must initialize the WindowServer connection on the main thread.
     let _ = CGDisplay::main();
-    let stdin = io::stdin();
     let mut runtime = runtime::Runtime::default();
+    if std::env::args().any(|argument| argument == "--mcp") {
+        return mcp::run(&mut runtime);
+    }
+    let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = line?;
         if line.len() > 1_000_000 {
@@ -67,6 +72,7 @@ fn main() -> io::Result<()> {
         };
         let result = match request.method.as_str() {
             "ping" => Ok(json!({ "protocolVersion": 1 })),
+            "list_apps" => runtime.list_apps(),
             "observe" => runtime.observe(request.params),
             "act" => runtime.act(request.params),
             _ => Err(AppError::new("METHOD_NOT_FOUND", "unknown method")),

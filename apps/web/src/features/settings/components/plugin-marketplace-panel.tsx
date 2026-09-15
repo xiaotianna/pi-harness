@@ -160,7 +160,7 @@ function PluginAppItem({ app, onPress }: { app: PluginApp; onPress: () => void }
         )
       }
       ariaLabel={`查看 ${app.name} 应用详情`}
-      icon={<SkillIcon icon={app.icon} className="size-5 shrink-0 text-muted" />}
+      icon={<SkillIcon fillRaster icon={app.icon} className="size-5 shrink-0 text-muted" />}
       name={app.name}
       secondary={<span className="min-w-0 flex-1 truncate">{app.description}</span>}
       onPress={onPress}
@@ -284,7 +284,7 @@ function PluginAppDetail({
         ariaLabel={`${app.name} 应用详情`}
         backLabel={`返回 ${plugin.name}`}
         description={app.description}
-        icon={<SkillIcon icon={app.icon} className="size-5 shrink-0 text-muted" />}
+        icon={<SkillIcon fillRaster icon={app.icon} className="size-5 shrink-0 text-muted" />}
         name={app.name}
         onBack={onBack}
       >
@@ -477,7 +477,7 @@ function PluginSkillDetail({
       content={contentQuery.data}
       contentError={contentQuery.error}
       description={skill.description}
-      icon={<SkillIcon icon={skill.icon} className="size-6 shrink-0 text-muted" />}
+      icon={<SkillIcon fillRaster icon={skill.icon} className="size-6 shrink-0 text-muted" />}
       isContentPending={contentQuery.isPending}
       name={skill.name}
       onBack={onBack}
@@ -745,7 +745,7 @@ function PluginList({
         <SettingsCatalogItem
           action={<PluginInstallAction plugin={plugin} />}
           ariaLabel={`查看 ${plugin.name} 插件详情`}
-          icon={<SkillIcon icon={plugin.logo} className="size-5 shrink-0 text-muted" />}
+          icon={<SkillIcon fillRaster icon={plugin.logo} className="size-5 shrink-0 text-muted" />}
           key={plugin.id}
           name={plugin.name}
           secondary={<span className="min-w-0 flex-1 truncate">{plugin.description}</span>}
@@ -826,7 +826,7 @@ function PluginDetail({ onBack, plugin }: { onBack: () => void; plugin: SkillCol
       ariaLabel={`${plugin.name} 插件详情`}
       backLabel="返回插件市场"
       description={plugin.description}
-      icon={<SkillIcon icon={plugin.logo} className="size-6 shrink-0 text-muted" />}
+      icon={<SkillIcon fillRaster icon={plugin.logo} className="size-6 shrink-0 text-muted" />}
       name={plugin.name}
       onBack={onBack}
     >
@@ -871,7 +871,13 @@ function PluginDetail({ onBack, plugin }: { onBack: () => void; plugin: SkillCol
                     ) : null
                   }
                   ariaLabel={`查看 ${skill.name} 技能详情`}
-                  icon={<SkillIcon icon={skill.icon} className="size-5 shrink-0 text-muted" />}
+                  icon={
+                    <SkillIcon
+                      fillRaster
+                      icon={skill.icon}
+                      className="size-5 shrink-0 text-muted"
+                    />
+                  }
                   key={skill.id}
                   name={skill.name}
                   secondary={<span className="min-w-0 flex-1 truncate">{skill.description}</span>}

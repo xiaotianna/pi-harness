@@ -3,13 +3,14 @@ import { type Static, Type } from "typebox";
 import { McpAuthMode, McpAuthRequirement, McpCatalogStatus, McpTransport } from "../schemas/mcp.js";
 
 const SkillTypeSchema = Type.Union([Type.Literal(SkillType.NONE), Type.Literal(SkillType.OAUTH)]);
+const PluginImageDataUrlSchema = Type.String({
+  maxLength: 1_400_000,
+  pattern: "^data:image/(?:svg\\+xml|png|jpeg|webp|gif);base64,",
+});
 
 const SkillCollectionItemVoSchema = Type.Object({
   description: Type.String({ minLength: 1 }),
-  icon: Type.Union([
-    Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
-    Type.Null(),
-  ]),
+  icon: Type.Union([PluginImageDataUrlSchema, Type.Null()]),
   id: Type.String({ minLength: 1 }),
   isEnabled: Type.Boolean(),
   name: Type.String({ minLength: 1 }),
@@ -46,10 +47,7 @@ const PluginAppServerVoSchema = Type.Object({
 
 const PluginAppVoSchema = Type.Object({
   description: Type.String({ minLength: 1 }),
-  icon: Type.Union([
-    Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
-    Type.Null(),
-  ]),
+  icon: Type.Union([PluginImageDataUrlSchema, Type.Null()]),
   id: Type.String({ minLength: 1 }),
   name: Type.String({ minLength: 1 }),
   usesPluginOAuth: Type.Boolean(),
@@ -62,10 +60,7 @@ export const SkillCollectionVoSchema = Type.Object({
   description: Type.String({ minLength: 1 }),
   id: Type.String({ minLength: 1 }),
   isInstalled: Type.Boolean(),
-  logo: Type.Union([
-    Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
-    Type.Null(),
-  ]),
+  logo: Type.Union([PluginImageDataUrlSchema, Type.Null()]),
   name: Type.String({ minLength: 1 }),
   skills: Type.Array(SkillCollectionItemVoSchema),
   type: SkillTypeSchema,

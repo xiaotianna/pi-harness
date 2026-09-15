@@ -2,7 +2,8 @@ use crate::accessibility::{observe_accessibility, AccessibilitySnapshot};
 use crate::input::perform_action;
 use crate::protocol::{ActParams, Action, AppError, Frame, ObserveParams};
 use crate::screenshot::{
-    capture_frontmost_window, frontmost_pid, verify_frontmost_pid, verify_window_frame,
+    activate_app, capture_frontmost_window, frontmost_application, list_apps, verify_frontmost_pid,
+    verify_window_frame,
 };
 use axuielement::prelude::*;
 use serde_json::{json, Value};
@@ -14,6 +15,8 @@ const MAX_OBSERVATION_AGE_MS: u128 = 120_000;
 const MAX_SCOPES: usize = 128;
 
 struct ScopeState {
+    application_bundle_id: String,
+    application_name: String,
     elements: Vec<AXUIElement>,
     frame: Option<Frame>,
     observed_at: u128,
@@ -29,6 +32,11 @@ pub(crate) struct Runtime {
 }
 
 impl Runtime {
+    pub(crate) fn list_apps(&self) -> Result<Value, AppError> {
+        serde_json::to_value(list_apps()?)
+            .map_err(|error| AppError::new("ENCODE_FAILED", error.to_string()))
+    }
+
     pub(crate) fn observe(&mut self, params: Value) -> Result<Value, AppError> {
         let params: ObserveParams = serde_json::from_value(params).map_err(invalid_request)?;
         if params.scope_id.is_empty()
@@ -41,14 +49,25 @@ impl Runtime {
             ));
         }
 
+        if let Some(app) = params.app.as_deref() {
+            activate_app(app)?;
+        }
+
         let screenshot = if params.include_screenshot {
             Some(capture_frontmost_window()?)
         } else {
             None
         };
-        let pid = match screenshot.as_ref() {
-            Some(screenshot) => screenshot.pid,
-            None => frontmost_pid()?,
+        let (application_bundle_id, application_name, pid) = match screenshot.as_ref() {
+            Some(screenshot) => (
+                screenshot.bundle_id.clone(),
+                screenshot.application_name.clone(),
+                screenshot.pid,
+            ),
+            None => {
+                let application = frontmost_application()?;
+                (application.bundle_id, application.name, application.pid)
+            }
         };
         let AccessibilitySnapshot {
             elements,
@@ -74,6 +93,8 @@ impl Runtime {
         self.scopes.insert(
             params.scope_id,
             ScopeState {
+                application_bundle_id: application_bundle_id.clone(),
+                application_name: application_name.clone(),
                 elements,
                 frame,
                 observed_at,
@@ -86,8 +107,8 @@ impl Runtime {
         let mut result = json!({
             "accessibilityTree": tree,
             "application": {
-                "bundleId": screenshot.as_ref().map(|value| value.bundle_id.as_str()).unwrap_or(""),
-                "name": screenshot.as_ref().map(|value| value.application_name.as_str()).unwrap_or(&fallback_name),
+                "bundleId": application_bundle_id,
+                "name": if application_name.is_empty() { fallback_name } else { application_name },
                 "pid": pid,
             },
             "observedAt": observed_at,
@@ -128,6 +149,15 @@ impl Runtime {
                     "observation is older than 120 seconds",
                 ));
             }
+            if params.app.as_deref().is_some_and(|app| {
+                !state.application_bundle_id.eq_ignore_ascii_case(app.trim())
+                    && !state.application_name.eq_ignore_ascii_case(app.trim())
+            }) {
+                return Err(AppError::new(
+                    "TARGET_CHANGED",
+                    "app does not match the observed application",
+                ));
+            }
         }
         // Remove before dispatch so a partially completed native action can never be retried.
         let state = self.scopes.remove(&params.scope_id).ok_or_else(|| {
@@ -154,6 +184,10 @@ fn validate_action_params(params: &ActParams) -> Result<(), AppError> {
         || params.scope_id.len() > 200
         || params.observation_id.is_empty()
         || params.observation_id.len() > 200
+        || params
+            .app
+            .as_deref()
+            .is_some_and(|app| app.trim().is_empty() || app.len() > 500)
     {
         return Err(AppError::new(
             "INVALID_REQUEST",
@@ -164,6 +198,9 @@ fn validate_action_params(params: &ActParams) -> Result<(), AppError> {
         Action::SetValue { value, .. } if value.len() > 20_000 => {
             Err(AppError::new("INVALID_REQUEST", "value exceeds 20 KB"))
         }
+        Action::PerformAction { action, .. } if action.is_empty() || action.len() > 200 => Err(
+            AppError::new("INVALID_REQUEST", "invalid accessibility action"),
+        ),
         Action::TypeText { text } if text.len() > 20_000 => {
             Err(AppError::new("INVALID_REQUEST", "text exceeds 20 KB"))
         }

@@ -278,6 +278,9 @@ importers:
       '@pi-harness/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@pi-harness/computer-use':
+        specifier: workspace:*
+        version: link:../../packages/computer-use
       '@pi-harness/memory':
         specifier: workspace:*
         version: link:../../packages/memory

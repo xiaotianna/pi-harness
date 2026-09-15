@@ -6,7 +6,21 @@ use core_graphics::window::{
 };
 use screencapturekit::prelude::*;
 use screencapturekit::screenshot_manager::{CGImageExt, SCScreenshotManager};
+use serde::Serialize;
 use std::collections::HashMap;
+use std::path::Path;
+use std::process::Command;
+use std::thread;
+use std::time::Duration;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Application {
+    pub(crate) bundle_id: String,
+    pub(crate) is_running: bool,
+    pub(crate) name: String,
+    pub(crate) pid: i32,
+}
 
 pub(crate) struct Screenshot {
     pub(crate) application_name: String,
@@ -26,6 +40,103 @@ pub(crate) fn frontmost_pid() -> Result<i32, AppError> {
         .owning_application()
         .ok_or_else(|| AppError::new("WINDOW_NOT_FOUND", "window has no owning application"))?
         .process_id())
+}
+
+pub(crate) fn list_apps() -> Result<Vec<Application>, AppError> {
+    let content = SCShareableContent::get()
+        .map_err(|error| AppError::new("SCREEN_CAPTURE_FAILED", error.to_string()))?;
+    let mut applications = content
+        .applications()
+        .into_iter()
+        .filter_map(|application| {
+            let name = application.application_name();
+            let bundle_id = application.bundle_identifier();
+            if name.trim().is_empty() || bundle_id.trim().is_empty() {
+                return None;
+            }
+            Some(Application {
+                bundle_id,
+                is_running: true,
+                name,
+                pid: application.process_id(),
+            })
+        })
+        .collect::<Vec<_>>();
+    applications.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(applications)
+}
+
+pub(crate) fn activate_app(target: &str) -> Result<(), AppError> {
+    let target = target.trim();
+    if target.is_empty() || target.len() > 500 {
+        return Err(AppError::new("INVALID_REQUEST", "invalid app target"));
+    }
+    if frontmost_application().is_ok_and(|application| matches_app(&application, target)) {
+        return Ok(());
+    }
+
+    let running = list_apps()?
+        .into_iter()
+        .find(|application| matches_app(application, target));
+    let mut command = Command::new("/usr/bin/open");
+    if let Some(application) = &running {
+        command.arg("-b").arg(&application.bundle_id);
+    } else if target.ends_with(".app") {
+        command.arg("--").arg(target);
+    } else if target.contains('.') && !target.contains(char::is_whitespace) {
+        command.args(["-b", target]);
+    } else {
+        command.args(["-a", target]);
+    }
+    let status = command
+        .status()
+        .map_err(|error| AppError::new("APP_LAUNCH_FAILED", error.to_string()))?;
+    if !status.success() {
+        return Err(AppError::new(
+            "APP_NOT_FOUND",
+            format!("cannot open app: {target}"),
+        ));
+    }
+
+    let path_name = Path::new(target)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(target);
+    for _ in 0..50 {
+        if frontmost_application().is_ok_and(|application| {
+            running
+                .as_ref()
+                .is_some_and(|expected| expected.pid == application.pid)
+                || matches_app(&application, target)
+                || application.name.eq_ignore_ascii_case(path_name)
+        }) {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Err(AppError::new(
+        "APP_NOT_FOCUSED",
+        format!("app did not become active: {target}"),
+    ))
+}
+
+pub(crate) fn frontmost_application() -> Result<Application, AppError> {
+    let content = SCShareableContent::get()
+        .map_err(|error| AppError::new("SCREEN_CAPTURE_FAILED", error.to_string()))?;
+    let application = frontmost_window(&content)?
+        .owning_application()
+        .ok_or_else(|| AppError::new("WINDOW_NOT_FOUND", "window has no owning application"))?;
+    Ok(Application {
+        bundle_id: application.bundle_identifier(),
+        is_running: true,
+        name: application.application_name(),
+        pid: application.process_id(),
+    })
+}
+
+fn matches_app(application: &Application, target: &str) -> bool {
+    application.bundle_id.eq_ignore_ascii_case(target)
+        || application.name.eq_ignore_ascii_case(target)
 }
 
 pub(crate) fn capture_frontmost_window() -> Result<Screenshot, AppError> {

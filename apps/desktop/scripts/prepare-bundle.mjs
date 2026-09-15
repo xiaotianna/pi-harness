@@ -8,11 +8,25 @@ const workspaceRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const tauriRoot = join(desktopRoot, "src-tauri");
 const daemonRoot = join(tauriRoot, "resources", "daemon");
 const binariesRoot = join(tauriRoot, "binaries");
+const computerUseManifest = join(workspaceRoot, "packages", "computer-use", "native", "Cargo.toml");
+const computerUseBinary = join(
+  workspaceRoot,
+  "packages",
+  "computer-use",
+  "native",
+  "target",
+  "release",
+  `pi-computer-use-helper${process.platform === "win32" ? ".exe" : ""}`,
+);
 const targetTriple = execFileSync("rustc", ["--print", "host-tuple"], {
   encoding: "utf8",
 }).trim();
 const extension = process.platform === "win32" ? ".exe" : "";
 const sidecarPath = join(binariesRoot, `pi-harness-node-${targetTriple}${extension}`);
+const computerUseSidecarPath = join(
+  binariesRoot,
+  `pi-computer-use-helper-${targetTriple}${extension}`,
+);
 const targetArchitecture = targetTriple.startsWith("aarch64")
   ? "arm64"
   : targetTriple.startsWith("x86_64")
@@ -37,18 +51,29 @@ execFileSync(
   ["--filter", "@pi-harness/daemon", "deploy", daemonRoot, "--prod", "--legacy"],
   { cwd: workspaceRoot, stdio: "inherit" },
 );
+execFileSync("cargo", ["build", "--manifest-path", computerUseManifest, "--release"], {
+  cwd: workspaceRoot,
+  stdio: "inherit",
+});
 
 mkdirSync(binariesRoot, { recursive: true });
 for (const file of readdirSync(binariesRoot)) {
-  if (file.startsWith("pi-harness-node-")) rmSync(join(binariesRoot, file));
+  if (file.startsWith("pi-harness-node-") || file.startsWith("pi-computer-use-helper-")) {
+    rmSync(join(binariesRoot, file));
+  }
 }
 copyFileSync(process.execPath, sidecarPath);
-if (process.platform !== "win32") chmodSync(sidecarPath, 0o755);
+copyFileSync(computerUseBinary, computerUseSidecarPath);
+if (process.platform !== "win32") {
+  chmodSync(sidecarPath, 0o755);
+  chmodSync(computerUseSidecarPath, 0o755);
+}
 
 for (const requiredPath of [
   join(daemonRoot, "src", "bootstrap.ts"),
   join(daemonRoot, "node_modules", "tsx"),
   join(workspaceRoot, "apps", "web", "dist", "index.html"),
+  computerUseSidecarPath,
   sidecarPath,
 ]) {
   if (!existsSync(requiredPath))

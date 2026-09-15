@@ -8,11 +8,13 @@ import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
 
+const SkillImageDataUrlSchema = Type.String({
+  maxLength: 1_400_000,
+  pattern: "^data:image/(?:svg\\+xml|png|jpeg|webp|gif);base64,",
+});
+
 const SkillSchema = Type.Object({
-  icon: Type.Union([
-    Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
-    Type.Null(),
-  ]),
+  icon: Type.Union([SkillImageDataUrlSchema, Type.Null()]),
   collectionId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
   description: Type.String({ minLength: 1 }),
   directory: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
@@ -34,10 +36,7 @@ const SkillCollectionSchema = Type.Object({
   apps: Type.Array(
     Type.Object({
       description: Type.String({ minLength: 1 }),
-      icon: Type.Union([
-        Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
-        Type.Null(),
-      ]),
+      icon: Type.Union([SkillImageDataUrlSchema, Type.Null()]),
       id: Type.String({ minLength: 1 }),
       name: Type.String({ minLength: 1 }),
       usesPluginOAuth: Type.Boolean(),
@@ -77,18 +76,12 @@ const SkillCollectionSchema = Type.Object({
   description: Type.String({ minLength: 1 }),
   id: Type.String({ minLength: 1 }),
   isInstalled: Type.Boolean(),
-  logo: Type.Union([
-    Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
-    Type.Null(),
-  ]),
+  logo: Type.Union([SkillImageDataUrlSchema, Type.Null()]),
   name: Type.String({ minLength: 1 }),
   skills: Type.Array(
     Type.Object({
       description: Type.String({ minLength: 1 }),
-      icon: Type.Union([
-        Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
-        Type.Null(),
-      ]),
+      icon: Type.Union([SkillImageDataUrlSchema, Type.Null()]),
       id: Type.String({ minLength: 1 }),
       isEnabled: Type.Boolean(),
       name: Type.String({ minLength: 1 }),

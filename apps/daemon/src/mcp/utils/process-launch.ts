@@ -1,6 +1,10 @@
 import { constants } from "node:fs";
 import { access, realpath, stat } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import {
+  COMPUTER_USE_HELPER_COMMAND,
+  resolveComputerUseHelperPath,
+} from "@pi-harness/computer-use";
 import { McpAuthMode, McpTransport } from "../../schemas/mcp.js";
 import type { McpConnectionContext } from "../client-manager.js";
 import { McpError, McpErrorCode } from "../errors.js";
@@ -31,15 +35,18 @@ export async function prepareMcpProcessLaunch(
   }
   let cwd: string;
   let command: string | undefined;
+  const hasHostAccess = config.command === COMPUTER_USE_HELPER_COMMAND;
   try {
     cwd = await realpath(context.workspaceRoot);
     if (cwd !== resolve(context.workspaceRoot)) throw new Error("workspace identity changed");
     if (!(await stat(cwd)).isDirectory()) throw new Error("invalid workspace");
-    const candidates = isAbsolute(config.command)
-      ? [config.command]
-      : config.command.includes("/")
-        ? []
-        : MCP_EXECUTABLE_DIRECTORIES.map((path) => join(path, config.command));
+    const candidates = hasHostAccess
+      ? [resolveComputerUseHelperPath(), join(dirname(process.execPath), config.command)]
+      : isAbsolute(config.command)
+        ? [config.command]
+        : config.command.includes("/")
+          ? []
+          : MCP_EXECUTABLE_DIRECTORIES.map((path) => join(path, config.command));
     for (const candidate of candidates) {
       try {
         const resolved = await realpath(candidate);
@@ -75,6 +82,7 @@ export async function prepareMcpProcessLaunch(
       PATH: MCP_EXECUTABLE_DIRECTORIES.join(delimiter),
       LANG: "en_US.UTF-8",
     },
+    hasHostAccess,
     credentials:
       credential?.material.mode === McpAuthMode.STATIC ? credential.material.environment : {},
   };

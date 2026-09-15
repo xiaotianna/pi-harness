@@ -1,7 +1,6 @@
 import { constants } from "node:fs";
 import { access, writeFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
 import {
   ComputerActionKind,
   ComputerUseClient,
@@ -9,12 +8,10 @@ import {
   createComputerActTool,
   createComputerObserveTool,
   type ImageContent,
+  resolveComputerUseHelperPath,
 } from "../src/index.js";
 
-const DEFAULT_HELPER_PATH = fileURLToPath(
-  new URL("../native/target/release/pi-computer-use-helper", import.meta.url),
-);
-const helperPath = process.env.COMPUTER_USE_HELPER_PATH ?? DEFAULT_HELPER_PATH;
+const helperPath = resolveComputerUseHelperPath();
 const delayMs = Number(process.env.COMPUTER_USE_DEBUG_DELAY_MS ?? 3_000);
 const mode = process.argv[2];
 const pressElementId = readPressElementId(process.argv);

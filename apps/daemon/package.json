@@ -21,6 +21,7 @@
     "@fastify/static": "catalog:",
     "@huggingface/transformers": "catalog:",
     "@pi-harness/agent-runtime": "workspace:*",
+    "@pi-harness/computer-use": "workspace:*",
     "@pi-harness/memory": "workspace:*",
     "@pi-harness/policy": "workspace:*",
     "@pi-harness/providers": "workspace:*",

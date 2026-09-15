@@ -548,17 +548,15 @@ export class McpServerService {
     const credential = this.readCredential(record);
     const catalogUpdatedAt = this.repository.findCatalogUpdatedAt(record.id, record.revision);
     const catalogRefresh = this.catalogRefreshes.get(record.id);
-    const configuredRequirement =
-      record.config.transport === McpTransport.STDIO
-        ? McpAuthRequirement.STATIC
-        : record.config.authMode;
     return {
       ...record,
       authRequirement:
         credential?.material.mode ??
-        (configuredRequirement === McpAuthMode.NONE
-          ? (this.authRequirements.get(record.id)?.requirement ?? McpAuthRequirement.UNKNOWN)
-          : configuredRequirement),
+        (record.config.transport === McpTransport.STDIO
+          ? McpAuthRequirement.NONE
+          : record.config.authMode === McpAuthMode.NONE
+            ? (this.authRequirements.get(record.id)?.requirement ?? McpAuthRequirement.UNKNOWN)
+            : record.config.authMode),
       ...(credential
         ? { credentialMode: credential.material.mode, credentialRevision: credential.revision }
         : {}),

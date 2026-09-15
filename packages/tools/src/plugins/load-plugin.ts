@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
@@ -8,8 +9,17 @@ import { readSkillDocument } from "../utils/skill-document.js";
 import type { PluginDefinition } from "./types.js";
 
 const MAX_DOCUMENT_BYTES = 128 * 1024;
-const MAX_LOGO_BYTES = 64 * 1024;
+const MAX_ICON_BYTES = 64 * 1024;
+const MAX_LOGO_BYTES = 1024 * 1024;
 const NAME_PATTERN = "^[a-z0-9]+(?:-[a-z0-9]+)*$";
+const LOGO_FILE_PATTERN = "^[a-z0-9]+(?:-[a-z0-9]+)*\\.(?:svg|png|jpe?g|webp|gif)$";
+const ImageMimeType = {
+  GIF: "image/gif",
+  JPEG: "image/jpeg",
+  PNG: "image/png",
+  SVG: "image/svg+xml",
+  WEBP: "image/webp",
+} as const;
 const PathOrUrlSchema = Type.Union([
   Type.String({ minLength: 1, pattern: "^/" }),
   Type.String({ format: "uri", minLength: 1 }),
@@ -154,6 +164,7 @@ const PluginMetadataSchema = Type.Object(
     displayName: Type.String({ maxLength: 64, minLength: 1 }),
     gateway: PluginGatewaySchema,
     id: Type.String({ maxLength: 64, minLength: 1, pattern: NAME_PATTERN }),
+    logo: Type.Optional(Type.String({ maxLength: 128, pattern: LOGO_FILE_PATTERN })),
     oauth: Type.Optional(PluginOAuthSchema),
     skills: Type.Array(PluginSkillSchema),
     type: SkillTypeSchema,
@@ -174,20 +185,62 @@ const RESERVED_OAUTH_PARAMS = new Set([
   "state",
 ]);
 
-function readBoundedText(url: URL, maxBytes: number): string {
-  const metadata = statSync(url);
+function readBoundedFile(url: URL, maxBytes: number): Buffer {
+  let metadata: ReturnType<typeof statSync>;
+  try {
+    metadata = statSync(url);
+  } catch {
+    throw new Error(`PLUGIN_INVALID: ${url.pathname} 不存在或无法读取`);
+  }
   if (!metadata.isFile() || metadata.size > maxBytes) {
     throw new Error(`PLUGIN_INVALID: ${url.pathname} 不是普通文件或超过大小限制`);
   }
-  return readFileSync(url, "utf8");
+  try {
+    return readFileSync(url);
+  } catch {
+    throw new Error(`PLUGIN_INVALID: ${url.pathname} 无法读取`);
+  }
+}
+
+function readBoundedText(url: URL, maxBytes: number): string {
+  return readBoundedFile(url, maxBytes).toString("utf8");
+}
+
+function readImageDataUrl(url: URL, label: string, maxBytes: number): string {
+  const image = readBoundedFile(url, maxBytes);
+  const extension = extname(fileURLToPath(url)).slice(1).toLowerCase();
+  const mimeType =
+    extension === "svg"
+      ? ImageMimeType.SVG
+      : extension === "png"
+        ? ImageMimeType.PNG
+        : extension === "jpg" || extension === "jpeg"
+          ? ImageMimeType.JPEG
+          : extension === "webp"
+            ? ImageMimeType.WEBP
+            : extension === "gif"
+              ? ImageMimeType.GIF
+              : null;
+  const isValid =
+    (mimeType === ImageMimeType.SVG && /^\s*<svg[\s>]/.test(image.toString("utf8"))) ||
+    (mimeType === ImageMimeType.PNG &&
+      image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
+    (mimeType === ImageMimeType.JPEG &&
+      image[0] === 0xff &&
+      image[1] === 0xd8 &&
+      image[2] === 0xff) ||
+    (mimeType === ImageMimeType.WEBP &&
+      image.subarray(0, 4).toString("ascii") === "RIFF" &&
+      image.subarray(8, 12).toString("ascii") === "WEBP") ||
+    (mimeType === ImageMimeType.GIF && /^GIF8[79]a$/.test(image.subarray(0, 6).toString("ascii")));
+  if (!mimeType || !isValid) {
+    throw new Error(`PLUGIN_INVALID: ${label} 不是支持的图片`);
+  }
+  return `data:${mimeType};base64,${image.toString("base64")}`;
 }
 
 function readSvgDataUrl(url: URL, label: string): string {
-  const svg = readBoundedText(url, MAX_LOGO_BYTES);
-  if (!/^\s*<svg[\s>]/.test(svg)) {
-    throw new Error(`PLUGIN_INVALID: ${label} 不是有效的 SVG`);
-  }
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+  return readImageDataUrl(url, label, MAX_ICON_BYTES);
 }
 
 function readYaml<T>(url: URL, schema: typeof PluginMetadataSchema): T {
@@ -274,8 +327,12 @@ export function loadPlugin(pluginId: string): PluginDefinition {
     throw new Error(`PLUGIN_INVALID: ${pluginId} 包含重复的 Skill`);
   }
 
-  const logoUrl = new URL("logo.svg", root);
-  const logo = existsSync(logoUrl) ? readSvgDataUrl(logoUrl, `${pluginId}/logo.svg`) : undefined;
+  const logoFile = metadata.logo ?? "logo.svg";
+  const logoUrl = new URL(logoFile, root);
+  const logo =
+    metadata.logo !== undefined || existsSync(logoUrl)
+      ? readImageDataUrl(logoUrl, `${pluginId}/${logoFile}`, MAX_LOGO_BYTES)
+      : undefined;
   const appsUrl = new URL(".app.json", root);
   const apps = existsSync(appsUrl)
     ? readJson<Static<typeof PluginAppsSchema>>(appsUrl, PluginAppsSchema).apps

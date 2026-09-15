@@ -26,6 +26,8 @@ impl AppError {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ObserveParams {
+    #[serde(default)]
+    pub(crate) app: Option<String>,
     pub(crate) include_screenshot: bool,
     pub(crate) max_depth: usize,
     pub(crate) max_nodes: usize,
@@ -36,6 +38,8 @@ pub(crate) struct ObserveParams {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ActParams {
     pub(crate) action: Action,
+    #[serde(default)]
+    pub(crate) app: Option<String>,
     pub(crate) observation_id: String,
     pub(crate) scope_id: String,
 }
@@ -46,6 +50,11 @@ pub(crate) enum Action {
     Press {
         #[serde(rename = "elementId")]
         element_id: usize,
+    },
+    PerformAction {
+        #[serde(rename = "elementId")]
+        element_id: usize,
+        action: String,
     },
     SetValue {
         #[serde(rename = "elementId")]

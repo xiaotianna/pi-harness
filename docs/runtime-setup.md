@@ -2,7 +2,7 @@
 
 本文档只记录 Agent Runtime 的实施顺序、执行过程、完成进度和验证结果。稳定的模块职责、数据协议、安全边界与演进原则以 [`架构设计.md`](./架构设计.md) 为准。
 
-最后按实际代码核对：2026-09-12。
+最后按实际代码核对：2026-09-15。
 
 ## 进度说明
 
@@ -24,7 +24,7 @@
 | MCP Host Tools 闭环 | 已完成 | 配置、连接、发现、Run 工具冻结、Policy、调用与 UI 已接通；Resources、Prompts 等完整协议扩展继续由 MCP 专项台账跟踪 |
 | Long-term Memory | 已完成 | 独立 `@pi-harness/memory`、SQLite/FTS5、派生用户画像、HTTP API、Web 管理、自动学习与 Runtime 注入已闭环 |
 | RAG / Tool Selector | 待开始 | 尚无 `tool-selector.ts` 或通用 Retrieval 实现 |
-| Computer Use Runtime 接入 | 进行中 | `computer-use` package 与原生 helper 已存在，尚未装配到 daemon 和 Agent Runtime |
+| Computer Use Runtime 接入 | 已完成 | 内置插件提供独立 MCP 与 Skill 开关；原生 helper 随桌面端打包并接入 MCP Host、Policy 与图片结果链路 |
 
 当前 Runtime 核心执行链与 Long-term Memory 已经可用。剩余工作按独立能力推进；Context burn-in 属于发布验收，不再作为唯一“下一步”。
 

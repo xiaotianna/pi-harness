@@ -1,0 +1,13 @@
+{
+  "apps": {
+    "computer-use": {
+      "displayName": "Computer Use",
+      "description": "Target, read, and operate local Mac app interfaces through Computer Use.",
+      "mcpServer": {
+        "type": "stdio",
+        "command": "pi-computer-use-helper",
+        "args": ["--mcp"]
+      }
+    }
+  }
+}

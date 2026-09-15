@@ -3,6 +3,11 @@ import { SkillScope, SkillType } from "@pi-harness/tools";
 import { type Static, Type } from "typebox";
 import { FileOpenResultStatus } from "../schemas/file-open.js";
 
+const SkillImageDataUrlSchema = Type.String({
+  maxLength: 1_400_000,
+  pattern: "^data:image/(?:svg\\+xml|png|jpeg|webp|gif);base64,",
+});
+
 export const WorkspaceVoSchema = Type.Object({
   createdAt: Type.Integer({ minimum: 0 }),
   id: Type.String({ format: "uuid" }),
@@ -53,10 +58,7 @@ export const OpenWorkspacePathVoSchema = Type.Object({
 export type OpenWorkspacePathVo = Static<typeof OpenWorkspacePathVoSchema>;
 
 export const WorkspaceSkillVoSchema = Type.Object({
-  icon: Type.Union([
-    Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
-    Type.Null(),
-  ]),
+  icon: Type.Union([SkillImageDataUrlSchema, Type.Null()]),
   collectionId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
   description: Type.String({ minLength: 1 }),
   directory: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),

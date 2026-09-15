@@ -1,6 +1,6 @@
 # computer-use
 
-macOS 本地 Computer Use 执行层。TypeScript 负责 Agent Tool、JSONL RPC、超时和中止；长期驻留的 Rust helper 负责 Accessibility Tree、单帧窗口截图与输入事件。
+macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、JSONL RPC、超时和中止；长期驻留的 Rust helper 同时提供内置 MCP 服务，负责 Accessibility Tree、单帧窗口截图与输入事件。
 
 ## 为什么使用 Rust
 
@@ -8,7 +8,7 @@ macOS 本地 Computer Use 执行层。TypeScript 负责 Agent Tool、JSONL RPC�
 
 ## 给模型的数据
 
-`computer_observe` 返回两个 content block：
+`computer_list_apps` 可列出当前运行的应用；`computer_observe` 可用显示名称或 bundle ID 聚焦/启动目标应用，并返回两个 content block：
 
 1. 可选的 PNG `ImageContent`；
 2. 一段 JSON 文本，其中 `accessibilityTree` 是可直接引用元素编号的缩进树。
@@ -30,11 +30,13 @@ macOS 本地 Computer Use 执行层。TypeScript 负责 Agent Tool、JSONL RPC�
 ## 安全边界
 
 - 元素编号只在同一 `scopeId + observationId` 中有效；一次成功动作后立即失效。
+- 每个动作仍会校验前台应用 PID 和窗口尺寸，避免目标应用切换后误操作。
 - 观察超过 120 秒、前台应用改变、元素不存在或坐标落在观察窗口外时拒绝动作。
 - 坐标是 macOS 全局逻辑坐标；`screenshotFrame.scale` 只描述截图像素与逻辑坐标的比例。
 - AX 树限制深度、节点数和字符数，截图最长边限制在 1920 × 1200 范围内，RPC 响应限制为 24 MiB。
 - secure text field 不回传值；截图 base64 只存在于 Tool content，不在 `details` 中重复保存。
 - `computer_observe` 和 `computer_act` 都是串行工具，并分别导出 `computerObservePolicy` / `computerActPolicy`。它们通过通用 `USER_APPROVAL` 策略自行定义审批信息；除 `full_access` 外不会自动放行。
+- 通过插件 MCP 接入时，daemon 会把 grant 参数归一化为目标应用；用户选择允许类似操作后，同一应用不会因新的 `observationId` 反复审批。
 
 ## 构建与使用
 
@@ -45,6 +47,8 @@ pnpm --filter @pi-harness/computer-use native:build
 ```
 
 Cargo 构建脚本会为 helper 写入 macOS 系统 Swift runtime search path。
+
+桌面端打包会构建并签入 helper sidecar。插件市场中的 Computer Use 包含一个 MCP 服务和一个 Skill；安装插件后分别开启它们即可接入 Agent Runtime。首次使用需要为 PI Harness 授予“辅助功能”和“屏幕与系统录制”权限。
 
 ## 调试
 
@@ -81,4 +85,4 @@ const tools = [
 ];
 ```
 
-启用工具时同时把 `COMPUTER_USE_SYSTEM_PROMPT` 注入 System Prompt，daemon 关闭时调用 `client.close()`。当前包刻意不自行接入 `AgentManager`：helper 的签名/安装路径、TCC 权限引导和 Tool Policy 审批 UI 必须由 daemon 产品层一次性装配，不能在 package 内绕过。
+直接嵌入工具时同时把 `COMPUTER_USE_SYSTEM_PROMPT` 注入 System Prompt，daemon 关闭时调用 `client.close()`。产品默认通过插件市场的 MCP 与 Skill 接入；所有调用继续经过 daemon 的 MCP Policy 与审批链。

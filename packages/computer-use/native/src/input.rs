@@ -22,6 +22,23 @@ pub(crate) fn perform_action(
             .ok_or_else(|| AppError::new("ELEMENT_NOT_FOUND", "elementId is outside the tree"))?
             .perform_action(AX_PRESS)
             .map_err(|error| AppError::new("ACTION_FAILED", error.to_string())),
+        Action::PerformAction { element_id, action } => {
+            let element = elements.get(*element_id).ok_or_else(|| {
+                AppError::new("ELEMENT_NOT_FOUND", "elementId is outside the tree")
+            })?;
+            let actions = element
+                .action_names()
+                .map_err(|error| AppError::new("ACTION_FAILED", error.to_string()))?;
+            if !actions.iter().any(|candidate| candidate == action) {
+                return Err(AppError::new(
+                    "ACTION_UNSUPPORTED",
+                    "action is not exposed by the accessibility element",
+                ));
+            }
+            element
+                .perform_action(action)
+                .map_err(|error| AppError::new("ACTION_FAILED", error.to_string()))
+        }
         Action::SetValue { element_id, value } => {
             let element = elements.get(*element_id).ok_or_else(|| {
                 AppError::new("ELEMENT_NOT_FOUND", "elementId is outside the tree")

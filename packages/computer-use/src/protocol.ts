@@ -3,6 +3,7 @@ import { type Static, Type } from "typebox";
 export const ComputerActionKind = {
   CLICK: "click",
   DRAG: "drag",
+  PERFORM_ACTION: "perform_action",
   PRESS: "press",
   PRESS_KEY: "press_key",
   SCROLL: "scroll",
@@ -28,6 +29,11 @@ const PointSchema = Type.Object({
 });
 
 export const ComputerActionSchema = Type.Union([
+  Type.Object({
+    action: Type.String({ maxLength: 200, minLength: 1 }),
+    elementId: Type.Integer({ minimum: 0 }),
+    kind: Type.Literal(ComputerActionKind.PERFORM_ACTION),
+  }),
   Type.Object({
     elementId: Type.Integer({ minimum: 0 }),
     kind: Type.Literal(ComputerActionKind.PRESS),
@@ -91,6 +97,10 @@ export interface ComputerApplication {
   pid: number;
 }
 
+export interface ComputerRunningApplication extends ComputerApplication {
+  isRunning: true;
+}
+
 export interface ComputerScreenshotFrame {
   height: number;
   scale: number;
@@ -117,6 +127,7 @@ export interface ComputerActionResult {
 }
 
 export interface ObserveOptions {
+  app?: string;
   includeScreenshot?: boolean;
   maxDepth?: number;
   maxNodes?: number;
@@ -124,7 +135,7 @@ export interface ObserveOptions {
 
 export interface ComputerUseRequest {
   id: string;
-  method: "act" | "observe" | "ping";
+  method: "act" | "list_apps" | "observe" | "ping";
   params: unknown;
 }
 
@@ -166,6 +177,16 @@ export const ComputerActionResultSchema = Type.Object({
   observationId: Type.String({ maxLength: 200, minLength: 1 }),
   performedAt: Type.Integer({ minimum: 0 }),
 });
+
+export const ComputerRunningApplicationsSchema = Type.Array(
+  Type.Object({
+    bundleId: Type.String({ maxLength: 500, minLength: 1 }),
+    isRunning: Type.Literal(true),
+    name: Type.String({ maxLength: 500, minLength: 1 }),
+    pid: Type.Integer({ minimum: 1 }),
+  }),
+  { maxItems: 1_000 },
+);
 
 export const ComputerUseResponseSchema = Type.Union([
   Type.Object({

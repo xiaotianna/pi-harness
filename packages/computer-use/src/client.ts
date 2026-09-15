@@ -8,6 +8,8 @@ import {
   ComputerActionResultSchema,
   type ComputerObservation,
   ComputerObservationSchema,
+  type ComputerRunningApplication,
+  ComputerRunningApplicationsSchema,
   type ComputerUseRequest,
   ComputerUseResponseSchema,
   type ObserveOptions,
@@ -85,6 +87,7 @@ export class ComputerUseClient {
     const result = await this.request(
       "observe",
       {
+        app: options.app,
         includeScreenshot: options.includeScreenshot ?? true,
         maxDepth: options.maxDepth ?? 20,
         maxNodes: options.maxNodes ?? 1_000,
@@ -96,6 +99,17 @@ export class ComputerUseClient {
       throw new ComputerUseError(
         "INVALID_HELPER_RESPONSE",
         "computer-use helper 返回了无效观察结果",
+      );
+    }
+    return result;
+  }
+
+  public async listApps(signal?: AbortSignal): Promise<readonly ComputerRunningApplication[]> {
+    const result = await this.request("list_apps", {}, signal);
+    if (!Value.Check(ComputerRunningApplicationsSchema, result)) {
+      throw new ComputerUseError(
+        "INVALID_HELPER_RESPONSE",
+        "computer-use helper 返回了无效应用列表",
       );
     }
     return result;
