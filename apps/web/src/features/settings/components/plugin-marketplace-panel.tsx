@@ -26,7 +26,10 @@ import {
   updateSkillCollectionApp,
   updateSkillCollectionSkill,
 } from "../../skills";
+import { testMcpServer, updateMcpTool } from "../api/mcp-api";
+import { mcpCatalogQueryOptions, mcpQueryKeys, mcpServerQueryOptions } from "../api/mcp-queries";
 import { McpCredentialEditor } from "./mcp-credential-editor";
+import { McpServerCapabilities } from "./mcp-server-detail";
 import { SettingsCatalogDetail } from "./settings-catalog-detail";
 import { SettingsCatalogItem } from "./settings-catalog-item";
 import { SettingsFilterTabs } from "./settings-filter-tabs";
@@ -177,13 +180,68 @@ function PluginAppDetail({
   const queryClient = useQueryClient();
   const [isEditingCredential, setIsEditingCredential] = useState(false);
   const { authorize, isAwaitingAuthorization } = usePluginAppOAuth(app);
+  const server = app.server;
+  const serverId = server?.id ?? "";
+  const mcpServerQuery = useQuery(mcpServerQueryOptions(serverId));
+  const mcpCatalogQuery = useQuery(mcpCatalogQueryOptions(serverId));
+  const mcpServer = mcpServerQuery.data;
+  const catalog =
+    mcpServer && mcpCatalogQuery.data?.configRevision === mcpServer.revision
+      ? mcpCatalogQuery.data
+      : null;
+
+  useEffect(() => {
+    if (
+      mcpServer?.catalogUpdatedAt !== undefined &&
+      mcpCatalogQuery.data?.discoveredAt !== mcpServer.catalogUpdatedAt
+    ) {
+      void mcpCatalogQuery.refetch();
+    }
+  }, [mcpCatalogQuery.data?.discoveredAt, mcpCatalogQuery.refetch, mcpServer?.catalogUpdatedAt]);
+
+  const refreshMutation = useMutation({
+    mutationFn: () => {
+      if (!mcpServer) throw new Error("MCP 服务器尚未就绪");
+      return testMcpServer(mcpServer, new AbortController().signal);
+    },
+    onError: (error: Error) => toast.danger(error.message),
+    onSuccess: (result) => {
+      queryClient.setQueryData(mcpQueryKeys.catalog(result.serverId), result);
+      toast.success(`${app.name} 能力目录已刷新`);
+    },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: mcpQueryKeys.server(serverId) }),
+        queryClient.invalidateQueries({ queryKey: skillQueryKeys.collections() }),
+      ]),
+  });
+  const toolMutation = useMutation({
+    mutationFn: ({
+      enabled,
+      tool,
+      trustedReadOnly,
+    }: {
+      enabled: boolean;
+      tool: NonNullable<typeof catalog>["tools"][number];
+      trustedReadOnly: boolean;
+    }) => {
+      if (!mcpServer) throw new Error("MCP 服务器尚未就绪");
+      return updateMcpTool(mcpServer, tool, enabled, trustedReadOnly);
+    },
+    onError: (error: Error) => toast.danger(error.message),
+    onSuccess: () => mcpCatalogQuery.refetch(),
+  });
   const updateMutation = useMutation({
     mutationFn: (isEnabled: boolean) => updateSkillCollectionApp(plugin.id, app.id, isEnabled),
     onError: (error: Error) => toast.danger(error.message),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: skillQueryKeys.collections() }),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: skillQueryKeys.collections() }),
+        queryClient.invalidateQueries({ queryKey: mcpQueryKeys.server(serverId) }),
+        queryClient.invalidateQueries({ queryKey: mcpQueryKeys.catalog(serverId) }),
+      ]),
   });
 
-  const server = app.server;
   const isOAuth = !app.usesPluginOAuth && server?.authRequirement === McpAuthRequirement.OAUTH;
   const isStatic = !app.usesPluginOAuth && server?.authRequirement === McpAuthRequirement.STATIC;
   const authLabel = app.usesPluginOAuth
@@ -299,6 +357,40 @@ function PluginAppDetail({
             </Button>
           </div>
         ) : null}
+
+        {mcpServer ? (
+          <McpServerCapabilities
+            isBusy={refreshMutation.isPending}
+            isLoading={
+              refreshMutation.isPending ||
+              mcpServer.catalogStatus === McpCatalogStatus.LOADING ||
+              mcpCatalogQuery.isPending
+            }
+            isLoadingCancelable={false}
+            isSavingTool={toolMutation.isPending}
+            result={catalog}
+            server={mcpServer}
+            onCancelTest={() => undefined}
+            onRefresh={() => refreshMutation.mutate()}
+            onToolChange={(tool, enabled, trustedReadOnly) =>
+              toolMutation.mutate({ enabled, tool, trustedReadOnly })
+            }
+          />
+        ) : plugin.isInstalled && server ? (
+          <div aria-busy={mcpServerQuery.isPending} className="mt-6" role="status">
+            {mcpServerQuery.isError ? (
+              <Alert status="danger">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>无法读取 MCP 详情</Alert.Title>
+                  <Alert.Description>{mcpServerQuery.error.message}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            ) : (
+              <Skeleton className="h-28 w-full rounded-3xl" />
+            )}
+          </div>
+        ) : null}
       </SettingsCatalogDetail>
       {isEditingCredential && server ? (
         <McpCredentialEditor
@@ -318,7 +410,13 @@ function PluginAppDetail({
               server.transport === McpTransport.STDIO ? material.environment : material.headers,
             )
           }
-          onSaved={() => queryClient.invalidateQueries({ queryKey: skillQueryKeys.collections() })}
+          onSaved={async () => {
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: skillQueryKeys.collections() }),
+              queryClient.invalidateQueries({ queryKey: mcpQueryKeys.server(server.id) }),
+              queryClient.invalidateQueries({ queryKey: mcpQueryKeys.catalog(server.id) }),
+            ]);
+          }}
         />
       ) : null}
     </>

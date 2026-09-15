@@ -229,6 +229,11 @@ export async function listMcpServers(signal: AbortSignal): Promise<McpServer[]> 
   if (!Value.Check(McpServersSchema, body)) throw new Error("MCP 服务器列表格式无效");
   return body;
 }
+export async function getMcpServer(serverId: string, signal: AbortSignal): Promise<McpServer> {
+  const body: unknown = await (await requestMcp(serverPath(serverId), { signal })).json();
+  if (!Value.Check(McpServerSchema, body)) throw new Error("MCP 服务器详情格式无效");
+  return body;
+}
 export async function saveMcpServer(
   input: McpServerInput,
   current?: McpServer,

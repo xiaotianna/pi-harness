@@ -140,19 +140,14 @@ function ServerOverview({ result, server }: { result: McpTestResult | null; serv
   );
 }
 
-export function McpServerDetail({
+export function McpServerCapabilities({
   isBusy,
   isLoading,
   isLoadingCancelable,
   isSavingTool,
   result,
   server,
-  onBack,
-  onAuthorize,
   onCancelTest,
-  onCredentials,
-  onEdit,
-  onEnabledChange,
   onRefresh,
   onToolChange,
 }: {
@@ -162,12 +157,7 @@ export function McpServerDetail({
   isSavingTool: boolean;
   result: McpTestResult | null;
   server: McpServer;
-  onBack: () => void;
-  onAuthorize: () => void;
   onCancelTest: () => void;
-  onCredentials: () => void;
-  onEdit: () => void;
-  onEnabledChange: (isEnabled: boolean) => void;
   onRefresh: () => void;
   onToolChange: (
     tool: McpTestResult["tools"][number],
@@ -175,23 +165,9 @@ export function McpServerDetail({
     trustedReadOnly: boolean,
   ) => void;
 }) {
-  const endpoint =
-    server.config.transport === McpTransport.STDIO ? server.config.command : server.config.url;
   const needsCredential = needsMcpCredential(server);
-  const needsOAuth = !server.hasCredential && server.authRequirement === McpAuthRequirement.OAUTH;
   const canUse = server.enabled && server.isTrusted;
   const resourceCount = (result?.resources.length ?? 0) + (result?.resourceTemplates.length ?? 0);
-  const statusLabel = !server.enabled
-    ? "未启用"
-    : needsCredential
-      ? "待鉴权"
-      : isLoading
-        ? "连接中"
-        : server.catalogStatus === McpCatalogStatus.ERROR
-          ? "加载失败"
-          : server.isTrusted
-            ? "已启用"
-            : "待连接";
   const emptyCatalogMessage = !server.enabled
     ? "服务器尚未启用"
     : !server.isTrusted
@@ -200,84 +176,7 @@ export function McpServerDetail({
         ? "服务器尚未配置凭据"
         : "能力目录加载失败";
   return (
-    <SettingsCatalogDetail
-      action={
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-sm text-muted">{statusLabel}</span>
-          <Switch
-            aria-label={`${server.name} 启用状态`}
-            isDisabled={isBusy}
-            isSelected={server.enabled}
-            size="sm"
-            onChange={onEnabledChange}
-          >
-            <Switch.Content>
-              <Switch.Control>
-                <Switch.Thumb />
-              </Switch.Control>
-            </Switch.Content>
-          </Switch>
-        </div>
-      }
-      ariaLabel={`${server.name} MCP 服务器详情`}
-      backLabel="返回 MCP 服务器"
-      description={endpoint}
-      icon={<McpServerIcon endpoint={endpoint} icons={result?.serverInfo.icons} />}
-      name={server.name}
-      toolbarAction={
-        <Button isDisabled={isBusy} size="sm" variant="secondary" onPress={onEdit}>
-          <Pencil aria-hidden className="size-4" />
-          编辑
-        </Button>
-      }
-      onBack={onBack}
-    >
-      <ServerOverview result={result} server={server} />
-
-      {needsCredential ? (
-        <Alert className="mt-4" status="warning">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{mcpAuthLabel(server)}</Alert.Title>
-            <Alert.Description>
-              {needsOAuth
-                ? "服务器声明了 OAuth，授权完成后会自动保存并刷新令牌。"
-                : "服务器未声明 OAuth，请填写它文档提供的请求头名称和值。"}
-            </Alert.Description>
-            <Button
-              size="sm"
-              variant="tertiary"
-              isDisabled={isBusy || (needsOAuth && !server.enabled)}
-              onPress={needsOAuth ? onAuthorize : onCredentials}
-            >
-              {needsOAuth && !server.enabled
-                ? "先启用服务器"
-                : needsOAuth
-                  ? "OAuth 授权"
-                  : "设置凭据"}
-            </Button>
-          </Alert.Content>
-        </Alert>
-      ) : null}
-
-      {server.enabled && !server.isTrusted && !needsCredential ? (
-        <Alert className="mt-4" status="warning">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>需要确认连接</Alert.Title>
-            <Alert.Description>确认后，该服务器才会向会话提供工具。</Alert.Description>
-            <Button
-              size="sm"
-              variant="tertiary"
-              isDisabled={isBusy}
-              onPress={() => onEnabledChange(true)}
-            >
-              连接服务器
-            </Button>
-          </Alert.Content>
-        </Alert>
-      ) : null}
-
+    <>
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-medium text-foreground">服务器能力</h3>
@@ -535,6 +434,149 @@ export function McpServerDetail({
       ) : (
         <EmptyCatalog>{emptyCatalogMessage}</EmptyCatalog>
       )}
+    </>
+  );
+}
+export function McpServerDetail({
+  isBusy,
+  isLoading,
+  isLoadingCancelable,
+  isSavingTool,
+  result,
+  server,
+  onBack,
+  onAuthorize,
+  onCancelTest,
+  onCredentials,
+  onEdit,
+  onEnabledChange,
+  onRefresh,
+  onToolChange,
+}: {
+  isBusy: boolean;
+  isLoading: boolean;
+  isLoadingCancelable: boolean;
+  isSavingTool: boolean;
+  result: McpTestResult | null;
+  server: McpServer;
+  onBack: () => void;
+  onAuthorize: () => void;
+  onCancelTest: () => void;
+  onCredentials: () => void;
+  onEdit: () => void;
+  onEnabledChange: (isEnabled: boolean) => void;
+  onRefresh: () => void;
+  onToolChange: (
+    tool: McpTestResult["tools"][number],
+    enabled: boolean,
+    trustedReadOnly: boolean,
+  ) => void;
+}) {
+  const endpoint =
+    server.config.transport === McpTransport.STDIO ? server.config.command : server.config.url;
+  const needsCredential = needsMcpCredential(server);
+  const needsOAuth = !server.hasCredential && server.authRequirement === McpAuthRequirement.OAUTH;
+  const statusLabel = !server.enabled
+    ? "未启用"
+    : needsCredential
+      ? "待鉴权"
+      : isLoading
+        ? "连接中"
+        : server.catalogStatus === McpCatalogStatus.ERROR
+          ? "加载失败"
+          : server.isTrusted
+            ? "已启用"
+            : "待连接";
+  return (
+    <SettingsCatalogDetail
+      action={
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-sm text-muted">{statusLabel}</span>
+          <Switch
+            aria-label={`${server.name} 启用状态`}
+            isDisabled={isBusy}
+            isSelected={server.enabled}
+            size="sm"
+            onChange={onEnabledChange}
+          >
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
+          </Switch>
+        </div>
+      }
+      ariaLabel={`${server.name} MCP 服务器详情`}
+      backLabel="返回 MCP 服务器"
+      description={endpoint}
+      icon={<McpServerIcon endpoint={endpoint} icons={result?.serverInfo.icons} />}
+      name={server.name}
+      toolbarAction={
+        <Button isDisabled={isBusy} size="sm" variant="secondary" onPress={onEdit}>
+          <Pencil aria-hidden className="size-4" />
+          编辑
+        </Button>
+      }
+      onBack={onBack}
+    >
+      <ServerOverview result={result} server={server} />
+
+      {needsCredential ? (
+        <Alert className="mt-4" status="warning">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{mcpAuthLabel(server)}</Alert.Title>
+            <Alert.Description>
+              {needsOAuth
+                ? "服务器声明了 OAuth，授权完成后会自动保存并刷新令牌。"
+                : "服务器未声明 OAuth，请填写它文档提供的请求头名称和值。"}
+            </Alert.Description>
+            <Button
+              size="sm"
+              variant="tertiary"
+              isDisabled={isBusy || (needsOAuth && !server.enabled)}
+              onPress={needsOAuth ? onAuthorize : onCredentials}
+            >
+              {needsOAuth && !server.enabled
+                ? "先启用服务器"
+                : needsOAuth
+                  ? "OAuth 授权"
+                  : "设置凭据"}
+            </Button>
+          </Alert.Content>
+        </Alert>
+      ) : null}
+
+      {server.enabled && !server.isTrusted && !needsCredential ? (
+        <Alert className="mt-4" status="warning">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>需要确认连接</Alert.Title>
+            <Alert.Description>确认后，该服务器才会向会话提供工具。</Alert.Description>
+            <Button
+              size="sm"
+              variant="tertiary"
+              isDisabled={isBusy}
+              onPress={() => onEnabledChange(true)}
+            >
+              连接服务器
+            </Button>
+          </Alert.Content>
+        </Alert>
+      ) : null}
+
+      <McpServerCapabilities
+        isBusy={isBusy}
+        isLoading={isLoading}
+        isLoadingCancelable={isLoadingCancelable}
+        isSavingTool={isSavingTool}
+        result={result}
+        server={server}
+        onCancelTest={onCancelTest}
+        onRefresh={onRefresh}
+        onToolChange={onToolChange}
+      />
     </SettingsCatalogDetail>
   );
 }
