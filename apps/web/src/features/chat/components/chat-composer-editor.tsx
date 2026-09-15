@@ -152,13 +152,21 @@ function getTokenVisualStrategy(kind: ChatComposerTokenKind): TokenVisualStrateg
 
 const ComposerTokensContext = createContext<readonly ChatComposerToken[]>([]);
 
+export function McpOptionIcon({ className, icon }: { className: string; icon: string | null }) {
+  return icon ? (
+    <SkillIcon className={className} icon={icon} />
+  ) : (
+    <MCP aria-hidden className={className} />
+  );
+}
+
 function TokenVisualIcon({ className, token }: { className: string; token: ChatComposerToken }) {
   const tokens = useContext(ComposerTokensContext);
+  const icon = tokens.find((item) => item.kind === token.kind && item.id === token.id)?.icon;
   if (token.kind === ChatComposerTokenKind.MCP) {
-    return <MCP aria-hidden className={className} />;
+    return <McpOptionIcon className={className} icon={icon ?? token.icon ?? null} />;
   }
   if (token.kind === ChatComposerTokenKind.SKILL) {
-    const icon = tokens.find((item) => item.kind === token.kind && item.id === token.id)?.icon;
     return <SkillIcon className={className} icon={icon ?? token.icon ?? null} />;
   }
   const Icon = getTokenVisualStrategy(token.kind).icon;

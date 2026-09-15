@@ -60,7 +60,7 @@ import {
   useModelSettingsStore,
 } from "../../models";
 import { ApprovalPolicySelect, mcpServersQueryOptions, useAppSettings } from "../../settings";
-import { SkillIcon, skillListQueryOptions } from "../../skills";
+import { SkillIcon, skillCollectionQueryOptions, skillListQueryOptions } from "../../skills";
 import { workspaceContextItemsQueryOptions } from "../api/workspace-queries";
 import type { ChatWorkspace } from "../data/chat";
 import { useNewChatStore } from "../state/new-chat-store";
@@ -79,6 +79,7 @@ import {
   ChatComposerTokenKind,
   type ChatComposerTokenKind as ChatComposerTokenKindValue,
   createChatComposerTokenValue,
+  McpOptionIcon,
 } from "./chat-composer-editor";
 import { ContextUsagePopover } from "./context-usage-popover";
 import { QueuedRunInputs } from "./queued-run-inputs";
@@ -315,21 +316,44 @@ export function ChatComposer({
     [skillsQuery.data],
   );
   const mcpServersQuery = useQuery(mcpServersQueryOptions());
+  const skillCollectionsQuery = useQuery(skillCollectionQueryOptions);
   const mcpOptions = useMemo(
     () =>
-      (mcpServersQuery.data ?? [])
-        .filter((server) => server.enabled && server.isTrusted)
-        .toSorted((left, right) => left.name.localeCompare(right.name))
-        .map((server) => ({
-          description:
-            server.config.transport === McpTransport.STDIO
-              ? server.config.command
-              : server.config.url,
-          id: server.id,
-          label: server.name,
-        })),
-    [mcpServersQuery.data],
+      [
+        ...(mcpServersQuery.data ?? [])
+          .filter((server) => server.enabled && server.isTrusted)
+          .map((server) => ({
+            description:
+              server.config.transport === McpTransport.STDIO
+                ? server.config.command
+                : server.config.url,
+            id: server.id,
+            icon: null,
+            label: server.name,
+          })),
+        ...(skillCollectionsQuery.data ?? []).flatMap((plugin) =>
+          plugin.isInstalled
+            ? plugin.apps.flatMap((app) =>
+                app.server?.isEnabled
+                  ? [
+                      {
+                        description: app.description,
+                        icon: app.icon,
+                        id: app.server.id,
+                        label: app.name,
+                      },
+                    ]
+                  : [],
+              )
+            : [],
+        ),
+      ].toSorted((left, right) => left.label.localeCompare(right.label)),
+    [mcpServersQuery.data, skillCollectionsQuery.data],
   );
+  const isMcpOptionsPending =
+    mcpOptions.length === 0 && (mcpServersQuery.isPending || skillCollectionsQuery.isPending);
+  const isMcpOptionsError =
+    mcpOptions.length === 0 && (mcpServersQuery.isError || skillCollectionsQuery.isError);
   const slashMenuItems = useMemo(
     () => [
       { ...PLAN_MODE_TOKEN, label: "Plan 模式" },
@@ -920,11 +944,11 @@ export function ChatComposer({
                                 closeMobileAddMenu();
                               }}
                             >
-                              {mcpServersQuery.isPending ? (
+                              {isMcpOptionsPending ? (
                                 <ListBox.Item id="mcp-loading" isDisabled>
                                   <Label>正在加载 MCP...</Label>
                                 </ListBox.Item>
-                              ) : mcpServersQuery.isError ? (
+                              ) : isMcpOptionsError ? (
                                 <ListBox.Item id="mcp-error" isDisabled>
                                   <Label>MCP 加载失败</Label>
                                 </ListBox.Item>
@@ -940,7 +964,10 @@ export function ChatComposer({
                                     textValue={option.label}
                                   >
                                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                                      <MCP aria-hidden className="size-4 shrink-0 text-muted" />
+                                      <McpOptionIcon
+                                        className="size-4 shrink-0 text-muted"
+                                        icon={option.icon}
+                                      />
                                       <div className="flex min-w-0 flex-1 flex-col">
                                         <Label>{option.label}</Label>
                                         <Description className="max-w-72 truncate">
@@ -1050,11 +1077,11 @@ export function ChatComposer({
                             handleInsertToken(ChatComposerTokenKind.MCP, mcpOptions, key)
                           }
                         >
-                          {mcpServersQuery.isPending ? (
+                          {isMcpOptionsPending ? (
                             <Dropdown.Item id="mcp-loading" isDisabled>
                               <Label>正在加载 MCP...</Label>
                             </Dropdown.Item>
-                          ) : mcpServersQuery.isError ? (
+                          ) : isMcpOptionsError ? (
                             <Dropdown.Item id="mcp-error" isDisabled>
                               <Label>MCP 加载失败</Label>
                             </Dropdown.Item>
@@ -1070,7 +1097,10 @@ export function ChatComposer({
                                 textValue={option.label}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-3">
-                                  <MCP aria-hidden className="size-4 shrink-0 text-muted" />
+                                  <McpOptionIcon
+                                    className="size-4 shrink-0 text-muted"
+                                    icon={option.icon}
+                                  />
                                   <div className="flex min-w-0 flex-1 flex-col">
                                     <Label>{option.label}</Label>
                                     <Description className="max-w-72 truncate">
