@@ -1,7 +1,7 @@
 id: google
 displayName: Google
 apiUrl: https://www.googleapis.com
-description: Inspect Drive content and comments and prepare Docs, Sheets, and Slides workflows.
+description: Work with Google Drive, Docs, Sheets, Slides, and Calendar through Skills and Workspace MCP.
 category: productivity
 type: oauth
 gateway:
@@ -28,7 +28,17 @@ oauth:
     - email
     - profile
     - https://www.googleapis.com/auth/drive.readonly
-    - https://www.googleapis.com/auth/calendar.readonly
+    - https://www.googleapis.com/auth/drive.file
+    - https://www.googleapis.com/auth/documents.readonly
+    - https://www.googleapis.com/auth/documents
+    - https://www.googleapis.com/auth/spreadsheets.readonly
+    - https://www.googleapis.com/auth/spreadsheets
+    - https://www.googleapis.com/auth/presentations.readonly
+    - https://www.googleapis.com/auth/presentations
+    - https://www.googleapis.com/auth/calendar.calendarlist.readonly
+    - https://www.googleapis.com/auth/calendar.events.freebusy
+    - https://www.googleapis.com/auth/calendar.events.readonly
+    - https://www.googleapis.com/auth/calendar.events
   profile:
     source: id-token
     idField: sub

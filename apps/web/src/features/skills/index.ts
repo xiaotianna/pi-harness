@@ -1,5 +1,7 @@
 export {
+  deleteSkillCollectionAppCredential,
   disconnectSkill,
+  getSkillCollectionAppOAuthLaunchUrl,
   getSkillCollectionSkillContent,
   getSkillContent,
   getSkillOAuthLaunchUrl,
@@ -8,12 +10,14 @@ export {
   installSkillCollection,
   openSkillDirectory,
   openSkillRootDirectory,
+  putSkillCollectionAppCredential,
   removeSkill,
   type Skill,
   type SkillCollection,
   type SkillConnectionStatus,
   uninstallSkillCollection,
   updateSkill,
+  updateSkillCollectionApp,
   updateSkillCollectionSkill,
 } from "./api/skill-api";
 export {

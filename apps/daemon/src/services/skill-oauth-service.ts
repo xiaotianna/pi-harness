@@ -206,6 +206,7 @@ export class SkillOAuthService {
       return credential;
     }
     if (!credential.refreshToken) {
+      await this.credentials.delete(plugin.id);
       throw new SkillConnectionError(
         SkillConnectionErrorCode.NOT_CONNECTED,
         `${plugin.name} 授权已过期，请重新连接`,
@@ -312,6 +313,17 @@ export class SkillOAuthService {
     });
     const tokenBody = await readJson(response);
     if (!response.ok || !isPlainObject(tokenBody) || typeof tokenBody.access_token !== "string") {
+      const error = isPlainObject(tokenBody) ? tokenBody.error : undefined;
+      if (
+        body.get("grant_type") === "refresh_token" &&
+        (error === "bad_refresh_token" || error === "invalid_grant" || error === "invalid_token")
+      ) {
+        await this.credentials.delete(plugin.id);
+        throw new SkillConnectionError(
+          SkillConnectionErrorCode.NOT_CONNECTED,
+          `${plugin.name} 授权已失效，请重新连接`,
+        );
+      }
       throw new SkillConnectionError(
         SkillConnectionErrorCode.OAUTH_FAILED,
         `${plugin.name} OAuth token 交换失败`,

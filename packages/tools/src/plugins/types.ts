@@ -42,8 +42,29 @@ export interface PluginSkillDefinition {
   type: SkillType;
 }
 
+export type PluginAppServerDefinition =
+  | {
+      args: readonly string[];
+      command: string;
+      type: "stdio";
+    }
+  | {
+      type: "http" | "sse";
+      url: string;
+    };
+
+export interface PluginAppDefinition {
+  credentialSource?: "plugin-oauth";
+  description: string;
+  displayName: string;
+  icon?: string;
+  id: string;
+  server: PluginAppServerDefinition;
+}
+
 export interface PluginDefinition {
   apiUrl: string;
+  apps: readonly PluginAppDefinition[];
   category: "developer" | "productivity";
   description: string;
   gateway: PluginGatewayDefinition;

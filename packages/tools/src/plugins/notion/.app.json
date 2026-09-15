@@ -1,0 +1,13 @@
+{
+  "apps": {
+    "notion": {
+      "displayName": "Notion",
+      "description": "创建文档，根据研究与项目资料生成 PRD、技术规范和架构文档。",
+      "icon": "logo.svg",
+      "mcpServer": {
+        "type": "http",
+        "url": "https://mcp.notion.com/mcp"
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "apps": {
+    "google-drive": {
+      "credentialSource": "plugin-oauth",
+      "displayName": "Google Drive",
+      "description": "搜索、读取、创建和管理 Google Drive 文件与文件夹。",
+      "icon": "google-drive.svg",
+      "mcpServer": {
+        "type": "http",
+        "url": "https://drivemcp.googleapis.com/mcp/v1"
+      }
+    },
+    "google-docs": {
+      "credentialSource": "plugin-oauth",
+      "displayName": "Google Docs",
+      "description": "读取和更新 Google 文档的内容、结构与样式。",
+      "mcpServer": {
+        "type": "http",
+        "url": "https://docsmcp.googleapis.com/mcp/v1"
+      }
+    },
+    "google-sheets": {
+      "credentialSource": "plugin-oauth",
+      "displayName": "Google Sheets",
+      "description": "读取和更新表格数据、公式、格式与工作表结构。",
+      "mcpServer": {
+        "type": "http",
+        "url": "https://sheetsmcp.googleapis.com/mcp/v1"
+      }
+    },
+    "google-slides": {
+      "credentialSource": "plugin-oauth",
+      "displayName": "Google Slides",
+      "description": "读取和更新演示文稿的内容、结构与版式。",
+      "mcpServer": {
+        "type": "http",
+        "url": "https://slidesmcp.googleapis.com/mcp/v1"
+      }
+    },
+    "google-calendar": {
+      "credentialSource": "plugin-oauth",
+      "displayName": "Google Calendar",
+      "description": "查看日历、查询空闲时间并创建或管理日程。",
+      "icon": "google-calendar.svg",
+      "mcpServer": {
+        "type": "http",
+        "url": "https://calendarmcp.googleapis.com/mcp/v1"
+      }
+    }
+  }
+}

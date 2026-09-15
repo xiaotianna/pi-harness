@@ -14,6 +14,12 @@ Grant only the read scopes used by the bundled skills.
 
 The Supabase logo is provided by the Iconify Logos collection.
 
+## MCP app
+
+The bundled app uses Supabase's hosted Streamable HTTP MCP server at
+`https://mcp.supabase.com/mcp`. It uses the server's dynamic OAuth flow instead of reusing the
+plugin gateway OAuth credential.
+
 ## Skills and resources
 
 - `supabase`: development, troubleshooting, access review and local migrations.

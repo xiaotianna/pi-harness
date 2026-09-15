@@ -134,6 +134,9 @@ export class McpOAuthService {
         challenge.resourceMetadataUrl !== undefined);
     if (!isOAuth) {
       this.servers.noteAuthenticationRequired(context.server.id, McpAuthRequirement.STATIC);
+      if (await this.servers.invalidateExternalCredential(context.server.id)) {
+        throw new McpError(McpErrorCode.STATIC_CREDENTIAL_REQUIRED, "插件授权已失效，请重新授权");
+      }
       throw new McpError(
         McpErrorCode.STATIC_CREDENTIAL_REQUIRED,
         "该 MCP 服务需要 Token 或 API Key，请设置请求头凭据",

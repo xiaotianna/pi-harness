@@ -36,7 +36,12 @@ export class McpToolService {
       if (!server.enabled || !server.isTrusted) continue;
       const registrationStart = registrations.length;
       try {
-        const context = this.servers.authorizeConnection(server.id, sessionId, workspaceRoot);
+        const context = await this.servers.authorizeConnection(
+          server.id,
+          sessionId,
+          workspaceRoot,
+          signal,
+        );
         const catalog = this.servers.getCatalog(server.id);
         if (catalog === null) {
           throw new McpError(

@@ -2,6 +2,7 @@ export type { WorkspaceToolContext } from "./lib/tool-context.js";
 export { type ToolRegistration, ToolRegistry } from "./lib/tool-registry.js";
 export {
   AVAILABLE_PLUGINS,
+  type PluginAppDefinition,
   type PluginDefinition,
   type PluginSkillDefinition,
   resolveRegisteredPluginSkills,

@@ -28,6 +28,50 @@ const PluginSkillSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const PluginAppSchema = Type.Object(
+  {
+    credentialSource: Type.Optional(Type.Literal("plugin-oauth")),
+    description: Type.String({ maxLength: 1024, minLength: 1 }),
+    displayName: Type.String({ maxLength: 64, minLength: 1 }),
+    icon: Type.Optional(
+      Type.String({ maxLength: 128, pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*\\.svg$" }),
+    ),
+    mcpServer: Type.Union([
+      Type.Object(
+        {
+          args: Type.Optional(
+            Type.Array(Type.String({ maxLength: 8_192, pattern: "^[^\\u0000]*$" }), {
+              maxItems: 128,
+            }),
+          ),
+          command: Type.String({ maxLength: 4_096, minLength: 1 }),
+          type: Type.Literal("stdio"),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Object(
+        {
+          type: Type.Union([Type.Literal("http"), Type.Literal("sse")]),
+          url: Type.String({ format: "uri", maxLength: 2_048, minLength: 1 }),
+        },
+        { additionalProperties: false },
+      ),
+    ]),
+  },
+  { additionalProperties: false },
+);
+
+const PluginAppsSchema = Type.Object(
+  {
+    apps: Type.Record(
+      Type.String({ maxLength: 64, minLength: 1, pattern: NAME_PATTERN }),
+      PluginAppSchema,
+      { maxProperties: 32 },
+    ),
+  },
+  { additionalProperties: false },
+);
+
 const PluginOAuthSchema = Type.Object(
   {
     authorizationParams: Type.Optional(
@@ -162,6 +206,19 @@ function readYaml<T>(url: URL, schema: typeof PluginMetadataSchema): T {
   return metadata as T;
 }
 
+function readJson<T>(url: URL, schema: typeof PluginAppsSchema): T {
+  let metadata: unknown;
+  try {
+    metadata = JSON.parse(readBoundedText(url, MAX_DOCUMENT_BYTES));
+  } catch {
+    throw new Error(`PLUGIN_INVALID: ${url.pathname} 不是有效 JSON`);
+  }
+  if (!Value.Check(schema, metadata)) {
+    throw new Error(`PLUGIN_INVALID: ${url.pathname} 不符合结构规范`);
+  }
+  return metadata as T;
+}
+
 function validatePathPatterns(pluginId: string, patterns: readonly string[]): void {
   for (const pattern of patterns) {
     if (!pattern.startsWith("^") || !pattern.endsWith("$")) {
@@ -219,9 +276,41 @@ export function loadPlugin(pluginId: string): PluginDefinition {
 
   const logoUrl = new URL("logo.svg", root);
   const logo = existsSync(logoUrl) ? readSvgDataUrl(logoUrl, `${pluginId}/logo.svg`) : undefined;
+  const appsUrl = new URL(".app.json", root);
+  const apps = existsSync(appsUrl)
+    ? readJson<Static<typeof PluginAppsSchema>>(appsUrl, PluginAppsSchema).apps
+    : {};
+  for (const appId of Object.keys(apps)) {
+    if (`__pi_plugin_app__:${pluginId}:${appId}`.length > 100) {
+      throw new Error(`PLUGIN_INVALID: ${pluginId}/${appId} 的 App ID 过长`);
+    }
+    const app = apps[appId];
+    if (app?.credentialSource === "plugin-oauth") {
+      if (metadata.type !== SkillType.OAUTH || app.mcpServer.type === "stdio") {
+        throw new Error(`PLUGIN_INVALID: ${pluginId}/${appId} 不能使用插件 OAuth 凭据`);
+      }
+    }
+  }
 
   return {
     apiUrl: metadata.apiUrl,
+    apps: Object.entries(apps).map(([appId, app]) => ({
+      ...(app.credentialSource === undefined ? {} : { credentialSource: app.credentialSource }),
+      description: app.description,
+      displayName: app.displayName,
+      ...(app.icon === undefined
+        ? {}
+        : { icon: readSvgDataUrl(new URL(app.icon, root), `${pluginId}/${app.icon}`) }),
+      id: appId,
+      server:
+        app.mcpServer.type === "stdio"
+          ? {
+              args: app.mcpServer.args ?? [],
+              command: app.mcpServer.command,
+              type: app.mcpServer.type,
+            }
+          : app.mcpServer,
+    })),
     category: metadata.category,
     description: metadata.description,
     gateway: metadata.gateway,

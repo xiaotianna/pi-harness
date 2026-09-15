@@ -1,16 +1,31 @@
 import { Alert, Button, Description, Label, Modal, TextArea, TextField } from "@heroui/react";
 import { McpTransport } from "@pi-harness/agent-runtime/mcp-contract";
 import { useState } from "react";
-import { deleteMcpCredential, type McpServer, putMcpCredential } from "../api/mcp-api";
+import {
+  deleteMcpCredential,
+  type McpServer,
+  type McpStaticCredential,
+  putMcpCredential,
+} from "../api/mcp-api";
 import { readMcpCredential } from "../utils/mcp-form";
 
 export function McpCredentialEditor({
   server,
   onClose,
+  onDeleteCredential,
+  onPutCredential,
   onSaved,
 }: {
-  server: McpServer;
+  server: {
+    config: { transport: McpServer["config"]["transport"] };
+    hasCredential: boolean;
+    id: string;
+    name: string;
+    revision: number;
+  };
   onClose: () => void;
+  onDeleteCredential?: () => Promise<void>;
+  onPutCredential?: (material: McpStaticCredential) => Promise<void>;
   onSaved: () => Promise<void>;
 }) {
   const [text, setText] = useState("");
@@ -21,8 +36,11 @@ export function McpCredentialEditor({
     setIsSaving(true);
     setError(null);
     try {
-      if (shouldDelete) await deleteMcpCredential(server);
-      else await putMcpCredential(server, readMcpCredential(text, server));
+      if (shouldDelete) await (onDeleteCredential?.() ?? deleteMcpCredential(server));
+      else {
+        const material = readMcpCredential(text, server);
+        await (onPutCredential?.(material) ?? putMcpCredential(server, material));
+      }
       setText("");
       await onSaved();
       onClose();

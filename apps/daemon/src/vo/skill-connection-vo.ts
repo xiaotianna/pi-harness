@@ -1,5 +1,6 @@
 import { SkillType } from "@pi-harness/tools";
 import { type Static, Type } from "typebox";
+import { McpAuthMode, McpAuthRequirement, McpCatalogStatus, McpTransport } from "../schemas/mcp.js";
 
 const SkillTypeSchema = Type.Union([Type.Literal(SkillType.NONE), Type.Literal(SkillType.OAUTH)]);
 
@@ -15,7 +16,48 @@ const SkillCollectionItemVoSchema = Type.Object({
   type: SkillTypeSchema,
 });
 
+const PluginAppServerVoSchema = Type.Object({
+  authRequirement: Type.Union([
+    Type.Literal(McpAuthRequirement.UNKNOWN),
+    Type.Literal(McpAuthRequirement.NONE),
+    Type.Literal(McpAuthRequirement.STATIC),
+    Type.Literal(McpAuthRequirement.OAUTH),
+  ]),
+  catalogStatus: Type.Union([
+    Type.Literal(McpCatalogStatus.IDLE),
+    Type.Literal(McpCatalogStatus.LOADING),
+    Type.Literal(McpCatalogStatus.READY),
+    Type.Literal(McpCatalogStatus.ERROR),
+  ]),
+  credentialMode: Type.Optional(
+    Type.Union([Type.Literal(McpAuthMode.STATIC), Type.Literal(McpAuthMode.OAUTH)]),
+  ),
+  credentialRevision: Type.Optional(Type.Integer({ minimum: 1 })),
+  hasCredential: Type.Boolean(),
+  id: Type.String({ minLength: 1 }),
+  isEnabled: Type.Boolean(),
+  revision: Type.Integer({ minimum: 1 }),
+  transport: Type.Union([
+    Type.Literal(McpTransport.STDIO),
+    Type.Literal(McpTransport.STREAMABLE_HTTP),
+    Type.Literal(McpTransport.SSE),
+  ]),
+});
+
+const PluginAppVoSchema = Type.Object({
+  description: Type.String({ minLength: 1 }),
+  icon: Type.Union([
+    Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
+    Type.Null(),
+  ]),
+  id: Type.String({ minLength: 1 }),
+  name: Type.String({ minLength: 1 }),
+  usesPluginOAuth: Type.Boolean(),
+  server: Type.Union([PluginAppServerVoSchema, Type.Null()]),
+});
+
 export const SkillCollectionVoSchema = Type.Object({
+  apps: Type.Array(PluginAppVoSchema),
   category: Type.Union([Type.Literal("developer"), Type.Literal("productivity")]),
   description: Type.String({ minLength: 1 }),
   id: Type.String({ minLength: 1 }),

@@ -231,7 +231,10 @@ export function writeMcpJson(draft: McpFormDraft): string {
     2,
   );
 }
-export function readMcpCredential(text: string, server: McpServer): McpStaticCredential {
+export function readMcpCredential(
+  text: string,
+  server: { config: { transport: McpServer["config"]["transport"] } },
+): McpStaticCredential {
   let value: unknown;
   try {
     value = JSON.parse(text);

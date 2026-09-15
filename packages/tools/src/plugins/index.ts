@@ -43,4 +43,9 @@ export function resolveRegisteredPluginSkills(
   );
 }
 
-export type { PluginDefinition, PluginSkillDefinition } from "./types.js";
+export type {
+  PluginAppDefinition,
+  PluginAppServerDefinition,
+  PluginDefinition,
+  PluginSkillDefinition,
+} from "./types.js";

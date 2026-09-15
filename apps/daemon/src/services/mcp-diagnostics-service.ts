@@ -155,10 +155,11 @@ export class McpDiagnosticsService {
     const directory = await mkdtemp(join(tmpdir(), "pi-harness-mcp-diagnostics-"));
     try {
       // 管理连接不依赖任何项目，也不把 daemon 凭据目录作为本地进程 cwd。
-      const context = this.servers.authorizeConnection(
+      const context = await this.servers.authorizeConnection(
         serverId,
         ownerId,
         await realpath(directory),
+        signal,
       );
       if (context.server.revision !== input.expectedRevision)
         throw new McpError(McpErrorCode.CONFIG_CONFLICT, "MCP 配置已变更，请刷新后重试");

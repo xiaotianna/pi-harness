@@ -1,0 +1,13 @@
+{
+  "apps": {
+    "vercel": {
+      "displayName": "Vercel",
+      "description": "搜索 Vercel 文档，并管理项目、部署与运行日志。",
+      "icon": "logo.svg",
+      "mcpServer": {
+        "type": "http",
+        "url": "https://mcp.vercel.com"
+      }
+    }
+  }
+}

@@ -10,22 +10,24 @@ export function SettingsCatalogItem({
   secondary,
 }: {
   action: ReactNode;
-  ariaLabel: string;
+  ariaLabel?: string;
   icon: ReactNode;
   name: string;
-  onPress: () => void;
+  onPress?: () => void;
   secondary: ReactNode;
 }) {
   return (
     <li className="group relative min-h-16 rounded-xl">
-      <Button
-        aria-label={ariaLabel}
-        className="absolute inset-0 z-0 h-full w-full cursor-[var(--cursor-interactive)] rounded-xl"
-        variant="ghost"
-        onPress={onPress}
-      >
-        <span className="sr-only">{ariaLabel}</span>
-      </Button>
+      {onPress && ariaLabel ? (
+        <Button
+          aria-label={ariaLabel}
+          className="absolute inset-0 z-0 h-full w-full cursor-[var(--cursor-interactive)] rounded-xl"
+          variant="ghost"
+          onPress={onPress}
+        >
+          <span className="sr-only">{ariaLabel}</span>
+        </Button>
+      ) : null}
       <div className="pointer-events-none relative z-10 grid min-h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 px-3 py-2">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-default">
           {icon}

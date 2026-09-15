@@ -33,7 +33,10 @@ import { McpToolService } from "../services/mcp-tool-service.js";
 import { ProviderService } from "../services/provider-service.js";
 import { SessionEventService } from "../services/session-event-service.js";
 import { SessionService } from "../services/session-service.js";
-import { SkillConnectionService } from "../services/skill-connection-service.js";
+import {
+  resolvePluginAppCredential,
+  SkillConnectionService,
+} from "../services/skill-connection-service.js";
 import { WorkspaceService } from "../services/workspace-service.js";
 import { SessionEventBroker } from "../sse/session-event-broker.js";
 import { AllowedCommandPrefixStore } from "../storage/allowed-command-prefix-store.js";
@@ -70,6 +73,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   ];
   const protectedPaths = [config.globalRoot];
   let mcpOAuth: McpOAuthService;
+  let skillConnections: SkillConnectionService | null = null;
   const mcpClients = new McpClientManager(
     createMcpTransportFactory(
       (context) => mcpServers.verifyContext(context),
@@ -81,25 +85,52 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     (error) => server.log.warn({ code: error.code }, "MCP client lifecycle warning"),
     (context) => mcpServers.verifyContext(context),
   );
-  const mcpServers = new McpServerService(database.mcpServers, mcpCredentials, (id) =>
-    mcpClients.invalidateServer(id),
+  const mcpServers = new McpServerService(
+    database.mcpServers,
+    mcpCredentials,
+    (id) => mcpClients.invalidateServer(id),
+    (mcpServer) => resolvePluginAppCredential(mcpServer, skillCredentials),
+    async (mcpServer, signal) => {
+      await skillConnections?.refreshPluginAppCredential(mcpServer, signal);
+    },
+    async (mcpServer) =>
+      (await skillConnections?.invalidatePluginAppCredential(mcpServer)) ?? false,
   );
   const appSettings = new AppSettingsService(database.appSettings, config.globalRoot, () =>
     mcpClients.invalidateAll(),
   );
   mcpOAuth = new McpOAuthService(config, mcpServers, protectedLocalPorts);
   const mcpDiagnostics = new McpDiagnosticsService(mcpServers, mcpClients, new McpDiscovery());
-  const mcpWarmupController = new AbortController();
-  const mcpWarmup = mcpDiagnostics.refreshAll(mcpWarmupController.signal, (serverId, error) => {
-    server.log.warn({ err: error, serverId }, "MCP catalog warmup failed");
-  });
   const sandboxCredentials = await loadSandboxCredentials(config.sandboxCredentialsPath);
-  const skillConnections = new SkillConnectionService(
+  skillConnections = new SkillConnectionService(
     skillCredentials,
     database.appSettings,
     config.skillGatewayUrl,
     config.skillOAuthClients,
+    mcpServers,
+    (mcpServer) => {
+      void mcpClients
+        .invalidateServer(mcpServer.id)
+        .then(() =>
+          mcpDiagnostics.test(
+            mcpServer.id,
+            { expectedRevision: mcpServer.revision },
+            AbortSignal.timeout(30_000),
+          ),
+        )
+        .catch((error: unknown) => {
+          server.log.warn(
+            { err: error, serverId: mcpServer.id },
+            "Plugin app MCP catalog refresh failed",
+          );
+        });
+    },
   );
+  await skillConnections.synchronizeApps();
+  const mcpWarmupController = new AbortController();
+  const mcpWarmup = mcpDiagnostics.refreshAll(mcpWarmupController.signal, (serverId, error) => {
+    server.log.warn({ err: error, serverId }, "MCP catalog warmup failed");
+  });
   const skillGatewayToken = randomBytes(32).toString("base64url");
   const eventStore = new SessionEventStore(config.sessionsPath);
   await eventStore.initialize();

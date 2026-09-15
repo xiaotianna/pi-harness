@@ -290,7 +290,7 @@ export async function deleteMcpServer(server: McpServer): Promise<void> {
   });
 }
 export async function putMcpCredential(
-  server: McpServer,
+  server: Pick<McpServer, "id" | "revision">,
   material: McpStaticCredential,
 ): Promise<void> {
   await requestMcp(`${serverPath(server.id)}/credentials`, {
@@ -298,7 +298,9 @@ export async function putMcpCredential(
     body: JSON.stringify({ expectedRevision: server.revision, material }),
   });
 }
-export async function deleteMcpCredential(server: McpServer): Promise<void> {
+export async function deleteMcpCredential(
+  server: Pick<McpServer, "id" | "revision">,
+): Promise<void> {
   await requestMcp(`${serverPath(server.id)}/credentials`, {
     method: "DELETE",
     body: JSON.stringify({ expectedRevision: server.revision }),

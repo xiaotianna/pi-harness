@@ -16,6 +16,10 @@ import { MCP_ERROR_STATUS, McpError, McpErrorCode } from "../mcp/errors.js";
 import type { McpDiagnosticsService } from "../services/mcp-diagnostics-service.js";
 import type { McpOAuthService } from "../services/mcp-oauth-service.js";
 import type { McpServerService } from "../services/mcp-server-service.js";
+import {
+  getPluginAppDisplayName,
+  isPluginAppMcpServer,
+} from "../services/skill-connection-service.js";
 import { isMutationRequestAllowed, rejectMutation } from "../utils/request-security.js";
 
 export class McpController {
@@ -27,7 +31,9 @@ export class McpController {
   ) {}
 
   public list = (request: FastifyRequest, reply: FastifyReply) =>
-    this.respond(request, reply, () => this.servers.list());
+    this.respond(request, reply, () =>
+      this.servers.list().filter((server) => !isPluginAppMcpServer(server.name)),
+    );
   public get = (request: FastifyRequest<{ Params: McpServerParamsDto }>, reply: FastifyReply) =>
     this.respond(request, reply, () => this.servers.get(request.params.serverId));
   public getCatalog = (
@@ -176,7 +182,8 @@ export class McpController {
   ): FastifyReply {
     let name = "MCP 服务器";
     try {
-      name = this.servers.get(serverId).name;
+      const serverName = this.servers.get(serverId).name;
+      name = getPluginAppDisplayName(serverName) ?? serverName;
     } catch {
       name = "MCP 服务器";
     }

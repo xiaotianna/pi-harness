@@ -1,3 +1,4 @@
+import { McpCatalogStatus } from "@pi-harness/agent-runtime/mcp-contract";
 import { queryOptions, skipToken } from "@tanstack/react-query";
 import {
   getSkillCollectionSkillContent,
@@ -24,6 +25,12 @@ export const skillQueryKeys = {
 export const skillCollectionQueryOptions = queryOptions({
   queryFn: ({ signal }) => listSkillCollections(signal),
   queryKey: skillQueryKeys.collections(),
+  refetchInterval: ({ state }) =>
+    state.data?.some((plugin) =>
+      plugin.apps.some((app) => app.server?.catalogStatus === McpCatalogStatus.LOADING),
+    )
+      ? 1_000
+      : false,
 });
 
 export const skillConnectionQueryOptions = (collectionId: string) =>

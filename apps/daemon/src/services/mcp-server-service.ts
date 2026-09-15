@@ -29,6 +29,13 @@ import type { McpDiagnosticsVo, McpServerVo } from "../vo/mcp-vo.js";
 
 const MAX_MCP_SERVERS = 1_000;
 
+export type McpCredentialResolver = (server: McpServerRecord) => McpCredential | null | undefined;
+export type McpCredentialRefresher = (
+  server: McpServerRecord,
+  signal?: AbortSignal,
+) => Promise<void>;
+export type McpCredentialInvalidator = (server: McpServerRecord) => Promise<boolean>;
+
 export class McpServerService {
   private readonly authRequirements = new Map<
     string,
@@ -46,6 +53,9 @@ export class McpServerService {
     private readonly repository: McpServerRepository,
     private readonly credentials: McpCredentialStore,
     private readonly invalidateServer: (serverId: string) => Promise<void>,
+    private readonly resolveCredential?: McpCredentialResolver,
+    private readonly refreshCredential?: McpCredentialRefresher,
+    private readonly invalidateResolvedCredential?: McpCredentialInvalidator,
   ) {}
 
   public list(): readonly McpServerVo[] {
@@ -430,11 +440,14 @@ export class McpServerService {
     context.credential = current;
   }
 
-  public authorizeConnection(
+  public async authorizeConnection(
     serverId: string,
     ownerId: string,
     workspaceRoot: string,
-  ): McpConnectionContext {
+    signal?: AbortSignal,
+  ): Promise<McpConnectionContext> {
+    this.assertAvailable();
+    await this.refreshCredential?.(this.requireServer(serverId), signal);
     this.assertAvailable();
     const server = this.requireServer(serverId);
     const policy = evaluateExternalConnection({
@@ -453,6 +466,10 @@ export class McpServerService {
     return this.createConnectionContext(server, ownerId, workspaceRoot);
   }
 
+  public async invalidateExternalCredential(serverId: string): Promise<boolean> {
+    return (await this.invalidateResolvedCredential?.(this.requireServer(serverId))) ?? false;
+  }
+
   public createOAuthContext(
     serverId: string,
     expectedRevision: number,
@@ -469,7 +486,7 @@ export class McpServerService {
     ownerId: string,
     workspaceRoot: string,
   ): McpConnectionContext {
-    const credential = this.credentials.read(server.id);
+    const credential = this.readCredential(server);
     if (credential !== undefined && credential.configRevision !== server.revision) {
       throw new McpError(McpErrorCode.CREDENTIAL_INVALID, "MCP 凭据与当前配置不匹配");
     }
@@ -492,7 +509,7 @@ export class McpServerService {
   private verifyCurrentContext(context: McpConnectionContext, requiresTrust: boolean): void {
     this.assertAvailable();
     const current = this.requireServer(context.server.id);
-    const credential = this.credentials.read(current.id);
+    const credential = this.readCredential(current);
     if (
       !current.enabled ||
       current.revision !== context.server.revision ||
@@ -528,7 +545,7 @@ export class McpServerService {
     record: McpServerRecord,
     isTrusted = this.repository.isTrusted(record.id, record.revision),
   ): McpServerVo {
-    const credential = this.credentials.read(record.id);
+    const credential = this.readCredential(record);
     const catalogUpdatedAt = this.repository.findCatalogUpdatedAt(record.id, record.revision);
     const catalogRefresh = this.catalogRefreshes.get(record.id);
     const configuredRequirement =
@@ -570,6 +587,11 @@ export class McpServerService {
       () => undefined,
     );
     return result;
+  }
+
+  private readCredential(server: McpServerRecord): McpCredential | undefined {
+    const resolved = this.resolveCredential?.(server);
+    return resolved === undefined ? this.credentials.read(server.id) : (resolved ?? undefined);
   }
 
   private assertAvailable(): void {

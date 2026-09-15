@@ -4,9 +4,12 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { HarnessConfig } from "../config/index.js";
 import type { SkillOAuthCallbackDto } from "../dto/auth-dto.js";
 import type {
+  PutSkillCollectionAppCredentialDto,
+  SkillCollectionAppParamsDto,
   SkillCollectionSkillParamsDto,
   SkillConnectionParamsDto,
   SkillGatewayParamsDto,
+  UpdateSkillCollectionAppDto,
   UpdateSkillCollectionSkillDto,
 } from "../dto/skill-connection-dto.js";
 import {
@@ -32,6 +35,34 @@ export class SkillConnectionController {
 
   public listCollections = async (): Promise<readonly SkillCollectionVo[]> =>
     AVAILABLE_PLUGINS.map((collection) => ({
+      apps: collection.apps.map((app) => {
+        const server = this.connections.getAppServer(collection.id, app.id);
+        return {
+          description: app.description,
+          icon: app.icon ?? collection.logo ?? null,
+          id: app.id,
+          name: app.displayName,
+          usesPluginOAuth: app.credentialSource === "plugin-oauth",
+          server:
+            server === null
+              ? null
+              : {
+                  authRequirement: server.authRequirement,
+                  catalogStatus: server.catalogStatus,
+                  ...(server.credentialMode === undefined
+                    ? {}
+                    : { credentialMode: server.credentialMode }),
+                  ...(server.credentialRevision === undefined
+                    ? {}
+                    : { credentialRevision: server.credentialRevision }),
+                  hasCredential: server.hasCredential,
+                  id: server.id,
+                  isEnabled: server.enabled,
+                  revision: server.revision,
+                  transport: server.config.transport,
+                },
+        };
+      }),
       category: collection.category,
       description: collection.description,
       id: collection.id,
@@ -54,7 +85,7 @@ export class SkillConnectionController {
     reply: FastifyReply,
   ): Promise<FastifyReply | SkillConnectionStatusVo> => {
     try {
-      return this.connections.getStatus(request.params.collectionId);
+      return await this.connections.getStatus(request.params.collectionId);
     } catch (cause: unknown) {
       if (!(cause instanceof SkillConnectionError)) throw cause;
       return reply.status(404).send({ code: cause.code, message: cause.message });
@@ -84,11 +115,64 @@ export class SkillConnectionController {
   ): Promise<FastifyReply> => {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
-      this.connections.install(request.params.collectionId);
+      await this.connections.install(request.params.collectionId);
       return reply.status(204).send();
     } catch (cause: unknown) {
       if (!(cause instanceof SkillConnectionError)) throw cause;
       return reply.status(404).send({ code: cause.code, message: cause.message });
+    }
+  };
+
+  public updateApp = async (
+    request: FastifyRequest<{
+      Body: UpdateSkillCollectionAppDto;
+      Params: SkillCollectionAppParamsDto;
+    }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.connections.setAppEnabled(
+        request.params.collectionId,
+        request.params.appId,
+        request.body.isEnabled,
+      );
+      return reply.status(204).send();
+    } catch (cause: unknown) {
+      return this.appError(reply, cause);
+    }
+  };
+
+  public putAppCredential = async (
+    request: FastifyRequest<{
+      Body: PutSkillCollectionAppCredentialDto;
+      Params: SkillCollectionAppParamsDto;
+    }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.connections.putAppCredential(
+        request.params.collectionId,
+        request.params.appId,
+        request.body.values,
+      );
+      return reply.status(204).send();
+    } catch (cause: unknown) {
+      return this.appError(reply, cause);
+    }
+  };
+
+  public deleteAppCredential = async (
+    request: FastifyRequest<{ Params: SkillCollectionAppParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.connections.deleteAppCredential(request.params.collectionId, request.params.appId);
+      return reply.status(204).send();
+    } catch (cause: unknown) {
+      return this.appError(reply, cause);
     }
   };
 
@@ -254,6 +338,20 @@ export class SkillConnectionController {
     const actual = Buffer.from(value);
     const expected = Buffer.from(this.gatewayToken);
     return actual.length === expected.length && timingSafeEqual(actual, expected);
+  }
+
+  private appError(reply: FastifyReply, cause: unknown): FastifyReply {
+    const error =
+      cause instanceof SkillConnectionError
+        ? cause
+        : new SkillConnectionError(
+            SkillConnectionErrorCode.APP_MCP_FAILED,
+            "插件应用操作失败，请查看 daemon 日志",
+          );
+    return reply.status(error.code === SkillConnectionErrorCode.APP_NOT_FOUND ? 404 : 409).send({
+      code: error.code,
+      message: error.message,
+    });
   }
 
   private redirectToOAuthResult(

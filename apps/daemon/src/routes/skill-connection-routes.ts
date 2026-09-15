@@ -4,12 +4,18 @@ import type { HarnessConfig } from "../config/index.js";
 import { SkillConnectionController } from "../controllers/skill-connection-controller.js";
 import { type SkillOAuthCallbackDto, SkillOAuthCallbackDtoSchema } from "../dto/auth-dto.js";
 import {
+  type PutSkillCollectionAppCredentialDto,
+  PutSkillCollectionAppCredentialDtoSchema,
+  type SkillCollectionAppParamsDto,
+  SkillCollectionAppParamsDtoSchema,
   type SkillCollectionSkillParamsDto,
   SkillCollectionSkillParamsDtoSchema,
   type SkillConnectionParamsDto,
   SkillConnectionParamsDtoSchema,
   type SkillGatewayParamsDto,
   SkillGatewayParamsDtoSchema,
+  type UpdateSkillCollectionAppDto,
+  UpdateSkillCollectionAppDtoSchema,
   type UpdateSkillCollectionSkillDto,
   UpdateSkillCollectionSkillDtoSchema,
 } from "../dto/skill-connection-dto.js";
@@ -87,6 +93,62 @@ export async function registerSkillConnectionRoutes(
       },
     },
     controller.updateSkill,
+  );
+
+  server.patch<{
+    Body: UpdateSkillCollectionAppDto;
+    Params: SkillCollectionAppParamsDto;
+  }>(
+    "/api/skill-collections/:collectionId/apps/:appId",
+    {
+      schema: {
+        body: UpdateSkillCollectionAppDtoSchema,
+        params: SkillCollectionAppParamsDtoSchema,
+        response: {
+          204: Type.Null(),
+          403: ApiErrorVoSchema,
+          404: ApiErrorVoSchema,
+          409: ApiErrorVoSchema,
+        },
+      },
+    },
+    controller.updateApp,
+  );
+
+  server.put<{
+    Body: PutSkillCollectionAppCredentialDto;
+    Params: SkillCollectionAppParamsDto;
+  }>(
+    "/api/skill-collections/:collectionId/apps/:appId/credentials",
+    {
+      schema: {
+        body: PutSkillCollectionAppCredentialDtoSchema,
+        params: SkillCollectionAppParamsDtoSchema,
+        response: {
+          204: Type.Null(),
+          403: ApiErrorVoSchema,
+          404: ApiErrorVoSchema,
+          409: ApiErrorVoSchema,
+        },
+      },
+    },
+    controller.putAppCredential,
+  );
+
+  server.delete<{ Params: SkillCollectionAppParamsDto }>(
+    "/api/skill-collections/:collectionId/apps/:appId/credentials",
+    {
+      schema: {
+        params: SkillCollectionAppParamsDtoSchema,
+        response: {
+          204: Type.Null(),
+          403: ApiErrorVoSchema,
+          404: ApiErrorVoSchema,
+          409: ApiErrorVoSchema,
+        },
+      },
+    },
+    controller.deleteAppCredential,
   );
 
   server.get<{ Params: SkillConnectionParamsDto }>(

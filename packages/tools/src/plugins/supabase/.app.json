@@ -1,0 +1,13 @@
+{
+  "apps": {
+    "supabase": {
+      "displayName": "Supabase",
+      "description": "管理 Supabase 项目、执行 PostgreSQL SQL 查询并设计数据库架构。",
+      "icon": "logo.svg",
+      "mcpServer": {
+        "type": "http",
+        "url": "https://mcp.supabase.com/mcp"
+      }
+    }
+  }
+}

@@ -1,3 +1,9 @@
+import {
+  McpAuthMode,
+  McpAuthRequirement,
+  McpCatalogStatus,
+  McpTransport,
+} from "@pi-harness/agent-runtime/mcp-contract";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { apiRequest } from "../../../api/request";
@@ -25,6 +31,48 @@ const SkillInstallResultSchema = Type.Object({
 });
 
 const SkillCollectionSchema = Type.Object({
+  apps: Type.Array(
+    Type.Object({
+      description: Type.String({ minLength: 1 }),
+      icon: Type.Union([
+        Type.String({ maxLength: 400_000, pattern: "^data:image/svg\\+xml;base64," }),
+        Type.Null(),
+      ]),
+      id: Type.String({ minLength: 1 }),
+      name: Type.String({ minLength: 1 }),
+      usesPluginOAuth: Type.Boolean(),
+      server: Type.Union([
+        Type.Object({
+          authRequirement: Type.Union([
+            Type.Literal(McpAuthRequirement.UNKNOWN),
+            Type.Literal(McpAuthRequirement.NONE),
+            Type.Literal(McpAuthRequirement.STATIC),
+            Type.Literal(McpAuthRequirement.OAUTH),
+          ]),
+          catalogStatus: Type.Union([
+            Type.Literal(McpCatalogStatus.IDLE),
+            Type.Literal(McpCatalogStatus.LOADING),
+            Type.Literal(McpCatalogStatus.READY),
+            Type.Literal(McpCatalogStatus.ERROR),
+          ]),
+          credentialMode: Type.Optional(
+            Type.Union([Type.Literal(McpAuthMode.STATIC), Type.Literal(McpAuthMode.OAUTH)]),
+          ),
+          credentialRevision: Type.Optional(Type.Integer({ minimum: 1 })),
+          hasCredential: Type.Boolean(),
+          id: Type.String({ minLength: 1 }),
+          isEnabled: Type.Boolean(),
+          revision: Type.Integer({ minimum: 1 }),
+          transport: Type.Union([
+            Type.Literal(McpTransport.STDIO),
+            Type.Literal(McpTransport.STREAMABLE_HTTP),
+            Type.Literal(McpTransport.SSE),
+          ]),
+        }),
+        Type.Null(),
+      ]),
+    }),
+  ),
   category: Type.Union([Type.Literal("developer"), Type.Literal("productivity")]),
   description: Type.String({ minLength: 1 }),
   id: Type.String({ minLength: 1 }),
@@ -181,6 +229,50 @@ export async function updateSkillCollectionSkill(
     `/api/skill-collections/${encodeURIComponent(collectionId)}/skills/${encodeURIComponent(skillId)}`,
     { body: JSON.stringify({ isEnabled }), method: "PATCH" },
   );
+}
+
+function pluginAppPath(collectionId: string, appId: string): string {
+  return `/api/skill-collections/${encodeURIComponent(collectionId)}/apps/${encodeURIComponent(appId)}`;
+}
+
+export async function updateSkillCollectionApp(
+  collectionId: string,
+  appId: string,
+  isEnabled: boolean,
+): Promise<void> {
+  await apiRequest(pluginAppPath(collectionId, appId), {
+    body: JSON.stringify({ isEnabled }),
+    method: "PATCH",
+  });
+}
+
+export async function putSkillCollectionAppCredential(
+  collectionId: string,
+  appId: string,
+  values: Readonly<Record<string, string>>,
+): Promise<void> {
+  await apiRequest(`${pluginAppPath(collectionId, appId)}/credentials`, {
+    body: JSON.stringify({ values }),
+    method: "PUT",
+  });
+}
+
+export async function deleteSkillCollectionAppCredential(
+  collectionId: string,
+  appId: string,
+): Promise<void> {
+  await apiRequest(`${pluginAppPath(collectionId, appId)}/credentials`, { method: "DELETE" });
+}
+
+export function getSkillCollectionAppOAuthLaunchUrl(
+  app: SkillCollection["apps"][number],
+): string | null {
+  if (app.server === null) return null;
+  const query = new URLSearchParams({
+    expectedRevision: String(app.server.revision),
+    name: app.name,
+  });
+  return `/mcp-oauth/${encodeURIComponent(app.server.id)}/launch?${query}`;
 }
 
 export async function installSkill(
