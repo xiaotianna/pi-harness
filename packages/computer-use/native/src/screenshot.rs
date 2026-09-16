@@ -4,6 +4,8 @@ use core_graphics::window::{
     create_window_list, kCGNullWindowID, kCGWindowListExcludeDesktopElements,
     kCGWindowListOptionOnScreenOnly,
 };
+use objc2_app_kit::{NSRunningApplication, NSWorkspace, NSWorkspaceOpenConfiguration};
+use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSRunLoop};
 use screencapturekit::prelude::*;
 use screencapturekit::screenshot_manager::{CGImageExt, SCScreenshotManager};
 use serde::Serialize;
@@ -33,13 +35,7 @@ pub(crate) struct Screenshot {
 }
 
 pub(crate) fn frontmost_pid() -> Result<i32, AppError> {
-    let content = SCShareableContent::get()
-        .map_err(|error| AppError::new("SCREEN_CAPTURE_FAILED", error.to_string()))?;
-    let window = frontmost_window(&content)?;
-    Ok(window
-        .owning_application()
-        .ok_or_else(|| AppError::new("WINDOW_NOT_FOUND", "window has no owning application"))?
-        .process_id())
+    Ok(frontmost_application()?.pid)
 }
 
 pub(crate) fn list_apps() -> Result<Vec<Application>, AppError> {
@@ -78,37 +74,47 @@ pub(crate) fn activate_app(target: &str) -> Result<(), AppError> {
     let running = list_apps()?
         .into_iter()
         .find(|application| matches_app(application, target));
-    let mut command = Command::new("/usr/bin/open");
     if let Some(application) = &running {
-        command.arg("-b").arg(&application.bundle_id);
-    } else if target.ends_with(".app") {
-        command.arg("--").arg(target);
-    } else if target.contains('.') && !target.contains(char::is_whitespace) {
-        command.args(["-b", target]);
+        let app = NSRunningApplication::runningApplicationWithProcessIdentifier(application.pid)
+            .ok_or_else(|| AppError::new("APP_NOT_FOUND", "running app exited"))?;
+        let url = app
+            .bundleURL()
+            .ok_or_else(|| AppError::new("APP_NOT_FOUND", "running app has no bundle URL"))?;
+        let configuration = NSWorkspaceOpenConfiguration::configuration();
+        configuration.setActivates(true);
+        configuration.setCreatesNewApplicationInstance(false);
+        configuration.setAllowsRunningApplicationSubstitution(true);
+        NSWorkspace::sharedWorkspace().openApplicationAtURL_configuration_completionHandler(
+            &url,
+            &configuration,
+            None,
+        );
     } else {
-        command.args(["-a", target]);
-    }
-    let status = command
-        .status()
-        .map_err(|error| AppError::new("APP_LAUNCH_FAILED", error.to_string()))?;
-    if !status.success() {
-        return Err(AppError::new(
-            "APP_NOT_FOUND",
-            format!("cannot open app: {target}"),
-        ));
+        let mut command = Command::new("/usr/bin/open");
+        if target.ends_with(".app") {
+            command.arg("--").arg(target);
+        } else if target.contains('.') && !target.contains(char::is_whitespace) {
+            command.args(["-b", target]);
+        } else {
+            command.args(["-a", target]);
+        }
+        let status = command
+            .status()
+            .map_err(|error| AppError::new("APP_LAUNCH_FAILED", error.to_string()))?;
+        if !status.success() {
+            return Err(AppError::new(
+                "APP_NOT_FOUND",
+                format!("cannot open app: {target}"),
+            ));
+        }
     }
 
-    let path_name = Path::new(target)
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or(target);
     for _ in 0..50 {
         if frontmost_application().is_ok_and(|application| {
             running
                 .as_ref()
                 .is_some_and(|expected| expected.pid == application.pid)
                 || matches_app(&application, target)
-                || application.name.eq_ignore_ascii_case(path_name)
         }) {
             return Ok(());
         }
@@ -121,28 +127,50 @@ pub(crate) fn activate_app(target: &str) -> Result<(), AppError> {
 }
 
 pub(crate) fn frontmost_application() -> Result<Application, AppError> {
-    let content = SCShareableContent::get()
-        .map_err(|error| AppError::new("SCREEN_CAPTURE_FAILED", error.to_string()))?;
-    let application = frontmost_window(&content)?
-        .owning_application()
-        .ok_or_else(|| AppError::new("WINDOW_NOT_FOUND", "window has no owning application"))?;
+    // NSWorkspace updates dynamic app state on the main run loop, not during sleep.
+    let until = NSDate::dateWithTimeIntervalSinceNow(0.01);
+    NSRunLoop::currentRunLoop().runMode_beforeDate(unsafe { NSDefaultRunLoopMode }, &until);
+    let application = NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .ok_or_else(|| AppError::new("WINDOW_NOT_FOUND", "no active application"))?;
+    let bundle_id = application
+        .bundleIdentifier()
+        .map(|value| value.to_string())
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| AppError::new("WINDOW_NOT_FOUND", "active app has no bundle ID"))?;
     Ok(Application {
-        bundle_id: application.bundle_identifier(),
+        bundle_id,
         is_running: true,
-        name: application.application_name(),
-        pid: application.process_id(),
+        name: application
+            .localizedName()
+            .map(|value| value.to_string())
+            .unwrap_or_default(),
+        pid: application.processIdentifier(),
     })
 }
 
 fn matches_app(application: &Application, target: &str) -> bool {
-    application.bundle_id.eq_ignore_ascii_case(target)
-        || application.name.eq_ignore_ascii_case(target)
+    matches_app_target(&application.bundle_id, &application.name, target)
+}
+
+pub(crate) fn matches_app_target(bundle_id: &str, name: &str, target: &str) -> bool {
+    let path_name = target
+        .ends_with(".app")
+        .then(|| {
+            Path::new(target)
+                .file_stem()
+                .and_then(|value| value.to_str())
+        })
+        .flatten();
+    bundle_id.eq_ignore_ascii_case(target)
+        || name.eq_ignore_ascii_case(target)
+        || path_name.is_some_and(|path_name| name.eq_ignore_ascii_case(path_name))
 }
 
 pub(crate) fn capture_frontmost_window() -> Result<Screenshot, AppError> {
     let content = SCShareableContent::get()
         .map_err(|error| AppError::new("SCREEN_CAPTURE_FAILED", error.to_string()))?;
-    let window = frontmost_window(&content)?;
+    let window = frontmost_window(&content, frontmost_pid()?)?;
     let application = window
         .owning_application()
         .ok_or_else(|| AppError::new("WINDOW_NOT_FOUND", "window has no owning application"))?;
@@ -151,7 +179,7 @@ pub(crate) fn capture_frontmost_window() -> Result<Screenshot, AppError> {
     let point_height = frame.size.height.max(1.0);
     let scale = (1920.0 / point_width)
         .min(1200.0 / point_height)
-        .min(2.0)
+        .min(1.0)
         .max(0.25);
     let width = (point_width * scale).round() as u32;
     let height = (point_height * scale).round() as u32;
@@ -210,6 +238,12 @@ pub(crate) fn verify_frontmost_pid(expected: i32) -> Result<(), AppError> {
 pub(crate) fn verify_window_frame(window_id: u32, expected: Frame) -> Result<(), AppError> {
     let content = SCShareableContent::get()
         .map_err(|error| AppError::new("SCREEN_CAPTURE_FAILED", error.to_string()))?;
+    if frontmost_window(&content, frontmost_pid()?)?.window_id() != window_id {
+        return Err(AppError::new(
+            "TARGET_CHANGED",
+            "focused window changed after observation",
+        ));
+    }
     let current = content
         .windows()
         .into_iter()
@@ -229,7 +263,7 @@ pub(crate) fn verify_window_frame(window_id: u32, expected: Frame) -> Result<(),
     Ok(())
 }
 
-fn frontmost_window(content: &SCShareableContent) -> Result<SCWindow, AppError> {
+fn frontmost_window(content: &SCShareableContent, pid: i32) -> Result<SCWindow, AppError> {
     let window_ids = create_window_list(
         kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
         kCGNullWindowID,
@@ -244,7 +278,12 @@ fn frontmost_window(content: &SCShareableContent) -> Result<SCWindow, AppError> 
     content
         .windows()
         .into_iter()
-        .filter(is_user_window)
+        .filter(|window| {
+            is_user_window(window)
+                && window
+                    .owning_application()
+                    .is_some_and(|application| application.process_id() == pid)
+        })
         .min_by_key(|window| {
             z_order
                 .get(&window.window_id())

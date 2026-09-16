@@ -40,6 +40,7 @@ interface ToolApprovalGrant {
 
 export type ToolPolicy =
   | {
+      allowAiApproval?: boolean;
       allowInFullAccess?: boolean;
       allowRepeatedCalls?: boolean;
       permission: typeof ToolPermission.USER_APPROVAL;
@@ -178,7 +179,11 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
         return { decision: ToolPolicyDecision.ALLOW, fingerprint: grant.fingerprint };
       }
       const { isGranted: _isGranted, ...approval } = grant;
-      return { ...approval, decision: ToolPolicyDecision.ASK };
+      return {
+        ...approval,
+        ...(input.policy.allowAiApproval === true ? { allowAiApproval: true } : {}),
+        decision: ToolPolicyDecision.ASK,
+      };
     }
     case ToolPermission.SKILL_ACTIVATION: {
       const grant = await input.policy.resolveGrant(input.arguments);

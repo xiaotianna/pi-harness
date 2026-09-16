@@ -10,6 +10,20 @@ const app = join(releaseDir, "PI Harness Computer Use.app");
 const contents = join(app, "Contents");
 const executable = join(contents, "MacOS", "pi-computer-use-helper");
 const resources = join(contents, "Resources");
+const localSigningName = "PI Harness Local Code Signing";
+
+function findLocalSigningIdentity() {
+  try {
+    const output = execFileSync(
+      "/usr/bin/security",
+      ["find-certificate", "-a", "-Z", "-c", localSigningName],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    return output.match(/^SHA-1 hash: ([A-F0-9]{40})$/m)?.[1];
+  } catch {
+    return undefined;
+  }
+}
 
 rmSync(app, { recursive: true, force: true });
 mkdirSync(join(contents, "MacOS"), { recursive: true });
@@ -38,13 +52,13 @@ writeFileSync(
 </dict></plist>
 `,
 );
-execFileSync(
-  "/usr/bin/codesign",
-  [
-    "--force",
-    "--sign",
-    process.env.COMPUTER_USE_CODESIGN_IDENTITY || process.env.APPLE_SIGNING_IDENTITY || "-",
-    app,
-  ],
-  { stdio: "inherit" },
-);
+const signingIdentity =
+  process.env.COMPUTER_USE_CODESIGN_IDENTITY ||
+  process.env.APPLE_SIGNING_IDENTITY ||
+  findLocalSigningIdentity();
+if (!signingIdentity) {
+  console.warn("Computer Use 使用临时签名；重建后 macOS 可能要求重置并重新授予权限。");
+}
+execFileSync("/usr/bin/codesign", ["--force", "--sign", signingIdentity || "-", app], {
+  stdio: "inherit",
+});

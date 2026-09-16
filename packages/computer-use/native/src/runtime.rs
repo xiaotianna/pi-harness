@@ -2,8 +2,8 @@ use crate::accessibility::{observe_accessibility, AccessibilitySnapshot};
 use crate::input::perform_action;
 use crate::protocol::{ActParams, Action, AppError, Frame, ObserveParams};
 use crate::screenshot::{
-    activate_app, capture_frontmost_window, frontmost_application, list_apps, verify_frontmost_pid,
-    verify_window_frame,
+    activate_app, capture_frontmost_window, frontmost_application, list_apps, matches_app_target,
+    verify_frontmost_pid, verify_window_frame,
 };
 use axuielement::prelude::*;
 use serde_json::{json, Value};
@@ -127,6 +127,14 @@ impl Runtime {
                 (application.bundle_id, application.name, application.pid)
             }
         };
+        if params.app.as_deref().is_some_and(|target| {
+            !matches_app_target(&application_bundle_id, &application_name, target)
+        }) {
+            return Err(AppError::new(
+                "TARGET_CHANGED",
+                "active app changed before observation",
+            ));
+        }
         reject_protected_app(&application_bundle_id)?;
         let AccessibilitySnapshot {
             elements,

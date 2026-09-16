@@ -24,19 +24,19 @@ const FULL_ACCESS_TEXT_CLASS_NAME = "text-[color-mix(in_oklab,var(--danger)_65%,
 
 const APPROVAL_POLICY_OPTIONS = [
   {
-    description: "编辑工作区文件和执行命令前始终询问",
+    description: "修改工作区文件、执行命令和调用 MCP 工具前询问",
     icon: Hand,
     label: "请求批准",
     value: ApprovalPolicy.REQUEST_APPROVAL,
   },
   {
-    description: "自动批准文件修改，命令由独立 AI 复核后决定是否询问",
+    description: "自动批准文件修改，命令和 MCP 工具由独立 AI 复核",
     icon: ShieldCheck,
     label: "帮我批准",
     value: ApprovalPolicy.AUTO_APPROVE,
   },
   {
-    description: "允许工作区文件修改和命令执行，不再询问",
+    description: "自动批准工作区文件修改、命令和 MCP 工具调用",
     icon: ShieldAlert,
     label: "完全访问权限",
     value: ApprovalPolicy.FULL_ACCESS,
@@ -76,7 +76,9 @@ export function ApprovalPolicySelect({
           </AlertDialog.Header>
           <AlertDialog.Body>
             <p>
-              开启后，工作区文件修改和命令执行将自动批准，不再逐次询问。工作区边界和其他安全限制仍然生效，请仅在信任当前工作区时使用。
+              开启后，工作区文件修改、命令执行和 MCP
+              工具调用将自动批准，不再逐次询问。本地工作区边界、MCP
+              连接信任与账号授权等安全限制仍然生效，请确认你信任已连接的服务。
             </p>
           </AlertDialog.Body>
           <AlertDialog.Footer>

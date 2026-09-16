@@ -647,7 +647,7 @@ export class RunCoordinator {
       }
       return parseToolApprovalResponse(
         response.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
-        input.summary,
+        input.toolName === "run_command" ? input.summary : "",
       );
     } catch {
       signal?.throwIfAborted();
@@ -745,7 +745,8 @@ export class RunCoordinator {
 
     const aiApproval =
       activeRun.approvalPolicy === ApprovalPolicy.AUTO_APPROVE &&
-      registration?.policy.permission === ToolPermission.SHELL &&
+      (registration?.policy.permission === ToolPermission.SHELL ||
+        policy.allowAiApproval === true) &&
       policy.allowAiApproval !== false
         ? await this.requestAiToolApproval(
             {
@@ -775,7 +776,7 @@ export class RunCoordinator {
       });
       if (
         currentPolicy.decision !== ToolPolicyDecision.ASK ||
-        currentPolicy.allowAiApproval === false ||
+        currentPolicy.allowAiApproval !== policy.allowAiApproval ||
         currentPolicy.fingerprint !== policy.fingerprint ||
         currentPolicy.summary !== policy.summary ||
         currentPolicy.target !== policy.target

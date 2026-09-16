@@ -131,6 +131,8 @@ function createComputerUsePolicy(input: {
       input.toolName === "computer_observe" ||
       input.toolName === "computer_list_apps" ||
       input.toolName === "computer_exec",
+    allowAiApproval: true,
+    allowInFullAccess: true,
     permission: ToolPermission.USER_APPROVAL,
     resolveGrant: async (args, signal) => {
       await input.verify(args, approvalSignal(signal));
@@ -270,6 +272,8 @@ export class McpToolService {
             requestSignal.throwIfAborted();
           };
           const genericPolicy: ToolPolicy = {
+            allowAiApproval: true,
+            allowInFullAccess: true,
             permission: ToolPermission.USER_APPROVAL,
             resolveGrant: async (args, approvalSignal) => {
               await verify(
@@ -337,7 +341,7 @@ export class McpToolService {
                     })
                   : genericPolicy,
             tool: {
-              name: createMcpToolAlias(server.id, tool.name),
+              name: createMcpToolAlias(server.name, tool.name),
               label: `${server.name} / ${tool.name}`,
               description: describeMcpTool(
                 server.name,
@@ -376,7 +380,10 @@ export class McpToolService {
                 } finally {
                   lease.release();
                 }
-                if (result.isError) throw new Error("MCP_TOOL_FAILED: 外部服务报告工具执行失败");
+                if (result.isError) {
+                  if (isComputerUse) parseComputerUseMcpJson(result);
+                  throw new Error("MCP_TOOL_FAILED: 外部服务报告工具执行失败");
+                }
                 return {
                   content: readMcpToolContent(result, context.credential),
                   details: {
@@ -504,7 +511,7 @@ export class McpToolService {
               description: tool.description,
               executionMode: "sequential",
               label: tool.label,
-              name: createMcpToolAlias(server.id, tool.name),
+              name: createMcpToolAlias(server.name, tool.name),
               parameters: tool.parameters,
               execute: async (toolCallId, args, executionSignal) => {
                 const requestSignal = AbortSignal.any([

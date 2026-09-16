@@ -63,7 +63,14 @@ return before;
 pnpm --filter @pi-harness/computer-use native:build
 ```
 
-Cargo 构建脚本会为 helper 写入 macOS 系统 Swift runtime search path。开发包默认使用临时签名；修改原生代码后重建可能让 macOS 保留旧的已开启开关，却拒绝新版本。此时在系统设置中移除 PI Harness Computer Use 的旧授权，再对当前 App 授权；正式分发时设置 `COMPUTER_USE_CODESIGN_IDENTITY` 指向稳定的 Apple 代码签名身份。
+Cargo 构建脚本会为 helper 写入 macOS 系统 Swift runtime search path。未设置签名身份且未找到名为 `PI Harness Local Code Signing` 的本地证书时，开发包使用临时签名；修改原生代码后重建会改变应用身份，macOS 可能保留旧的已开启开关，却拒绝新版本。先停止 daemon，在终端仅重置此应用的两项旧记录，然后重新启动 daemon，并在「设置 → 电脑操控」授权和刷新状态：
+
+```sh
+tccutil reset Accessibility com.piharness.computer-use
+tccutil reset ScreenCapture com.piharness.computer-use
+```
+
+要让后续重建保留授权，可在钥匙串访问的「证书助理 → 创建证书」中创建一个「自签名根」身份、「代码签名」类型、名称为 `PI Harness Local Code Signing` 的本地证书；打包脚本会自动使用它，不需将证书设为系统信任根。也可安装 Apple Development 证书，并设置 `COMPUTER_USE_CODESIGN_IDENTITY` 为其 SHA-1，该变量优先于本地证书。切换到固定签名后还需按上述方式重置一次旧授权。正式分发使用稳定的 Apple 代码签名身份。
 单独部署 daemon 时，把 `pi-computer-use-helper` 与 `PI Harness Computer Use.app` 放在同一目录，并用 `COMPUTER_USE_HELPER_PATH` 指向命令行代理；无需安装或启动 Tauri 桌面端。
 
 桌面端打包会构建命令行代理 sidecar，并将后台 App 放在 `Contents/Helpers`。插件市场中的 Computer Use 包含一个 MCP 服务和一个 Skill；安装插件后分别开启它们即可接入 Agent Runtime。首次使用可在「设置 → 电脑操控」查看“辅助功能”和“屏幕与系统录制”状态，并由本地 daemon 调用后台 App 发起 macOS 授权；系统弹窗中的最终确认仍由用户完成。

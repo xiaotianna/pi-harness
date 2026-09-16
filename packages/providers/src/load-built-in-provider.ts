@@ -94,5 +94,17 @@ export async function loadBuiltInProvider(providerId: string): Promise<Provider>
     throw new ModelsError("provider", `Unsupported built-in provider: ${providerId}`);
   }
 
-  return loadProvider();
+  const provider = await loadProvider();
+  if (providerId !== "deepseek") return provider;
+
+  // DeepSeek routes this legacy ID to its image-capable Flash model; pi-ai still marks it text-only.
+  return {
+    ...provider,
+    getModels: () =>
+      provider
+        .getModels()
+        .map((model) =>
+          model.id === "deepseek-v4-flash" ? { ...model, input: ["text", "image"] } : model,
+        ),
+  };
 }
