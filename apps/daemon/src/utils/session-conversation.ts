@@ -58,6 +58,11 @@ export function projectSessionConversationEvents(
       return [{ ...event, data: { role: event.data.role } }];
     }
 
+    if (event.type === HarnessEventType.CONTEXT_USAGE_SNAPSHOT && isPlainObject(event.data)) {
+      const { messages: _messages, ...data } = event.data;
+      return [{ ...event, data }];
+    }
+
     if (event.type === HarnessEventType.FILE_CHANGED && isPlainObject(event.data)) {
       const { before, after, diff: _diff, ...data } = event.data;
       return [

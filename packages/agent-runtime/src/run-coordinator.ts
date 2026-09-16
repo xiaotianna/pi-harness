@@ -1261,6 +1261,8 @@ export class RunCoordinator {
         {
           data: {
             ...estimateContextUsage(context, runContexts),
+            // ponytail: 完整快照会放大会话 JSONL；体积成为问题时再改为增量快照。
+            messages: structuredClone(context.messages),
             requestIndex,
           } satisfies ContextUsageSnapshotData,
           type: HarnessEventType.CONTEXT_USAGE_SNAPSHOT,

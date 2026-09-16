@@ -19,6 +19,7 @@ const EMPTY_USAGE: AgentTraceTokenUsage = {
 };
 const REQUEST_TABS = [
   ["summary", "Summary"],
+  ["messages", "Messages"],
   ["options", "Options"],
   ["usage", "Usage"],
   ["timing", "Timing"],
@@ -107,6 +108,15 @@ export function RequestTraceDetails({
 }) {
   const [selectedTab, setSelectedTab] = useState("summary");
   const rawOptions = isPlainObject(record.raw.options) ? record.raw.options : {};
+  const context = isPlainObject(record.raw.context) ? record.raw.context : {};
+  const messages =
+    Array.isArray(context.messages) &&
+    context.messages.every(
+      (message: unknown): message is Record<string, unknown> & { role: string } =>
+        isPlainObject(message) && typeof message.role === "string",
+    )
+      ? context.messages
+      : null;
   const response = isPlainObject(record.raw.response) ? record.raw.response : {};
   const provider = readString(rawOptions.provider) ?? readString(response.provider) ?? "未记录";
   const model = readString(rawOptions.model) ?? readString(response.model) ?? "未记录";
@@ -165,6 +175,16 @@ export function RequestTraceDetails({
           </dd>
           <dt className="text-muted">Tool calls</dt>
           <dd className="tabular-nums">{toolCallCount.toLocaleString()}</dd>
+          <dt className="text-muted">Messages</dt>
+          <dd>
+            <Link
+              className="gap-0 text-[13px] font-normal text-foreground"
+              onPress={() => setSelectedTab("messages")}
+            >
+              {messages === null ? "未记录" : `${messages.length} 条`}
+              <ChevronRight aria-hidden className="size-3 text-muted" />
+            </Link>
+          </dd>
           <dt className="text-muted">Result</dt>
           <dd>
             <Link
@@ -228,6 +248,30 @@ export function RequestTraceDetails({
             ttftMs={ttftMs}
           />
         </section>
+      </Tabs.Panel>
+
+      <Tabs.Panel className="mt-0! min-h-0 flex-1 overflow-auto px-4 py-3" id="messages">
+        {messages === null ? (
+          <p className="text-[13px] text-muted">此请求的消息未记录。</p>
+        ) : messages.length === 0 ? (
+          <p className="text-[13px] text-muted">此请求没有消息。</p>
+        ) : (
+          <ol className="flex flex-col gap-4">
+            {messages.map((message, index) => (
+              <li key={index}>
+                <div className="mb-1 font-mono text-[11px] text-muted">
+                  {`Message #${index + 1} ${message.role}`}
+                </div>
+                <TraceDetailCode
+                  ariaLabel={`复制 Request #${record.request ?? "—"} Message #${index + 1}`}
+                  code={message}
+                  isHeaderHidden
+                  name={`Message #${index + 1}`}
+                />
+              </li>
+            ))}
+          </ol>
+        )}
       </Tabs.Panel>
 
       <Tabs.Panel className="mt-0! min-h-0 flex-1 overflow-auto p-2" id="options">

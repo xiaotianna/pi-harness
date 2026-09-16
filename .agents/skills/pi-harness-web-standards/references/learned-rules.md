@@ -779,8 +779,8 @@
 
 - 状态：`active`
 - 范围：Trace Request 详情
-- 规则：Request 详情只统计对应 Assistant 模型请求，使用 Summary、Options、Usage 和 Timing 四个页签；Session cumulative 只累计到当前 Request 为止的 Assistant 消息用量，不混入工具、审批或上下文压缩调用。参考界面只用于确定信息结构，具体字段命名、组件和视觉继续遵循项目现有 Trace 与 HeroUI 设计。
-- 依据：用户提供 Request 详情参考图，同时明确要求具体实现以当前项目为准，并说明该详情只统计 AI 消息内容。
+- 规则：Request 详情只统计对应 Assistant 模型请求，使用 Summary、Messages、Options、Usage 和 Timing 五个页签；Messages 按当次请求的原始顺序展示传给模型的完整消息，旧会话缺少快照时显示未记录；Session cumulative 只累计到当前 Request 为止的 Assistant 消息用量，不混入工具、审批或上下文压缩调用。参考界面只用于确定信息结构，具体字段命名、组件和视觉继续遵循项目现有 Trace 与 HeroUI 设计。
+- 依据：用户提供 Request 详情参考图，同时明确要求具体实现以当前项目为准，并说明该详情只统计 AI 消息内容；本次进一步要求查看每次发给模型的消息列表。
 - 原因：把 Request 限定为一次 Assistant 模型调用可以保持请求编号、用量和时序精确对应，也避免与完整 Session 用量口径混淆。
 
 ### WEB-092

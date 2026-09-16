@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ModelThinkingLevel, Usage } from "@earendil-works/pi-ai";
+import type { Message, ModelThinkingLevel, Usage } from "@earendil-works/pi-ai";
 import type {
   RequestUserInputData,
   UserInputAnswer,
@@ -141,7 +141,7 @@ export const HarnessEventType = {
   /**
    * Context 上下文事件
    */
-  // 每次模型请求发送前的上下文用量快照，只保存分类 Token 估算值
+  // 每次模型请求发送前的上下文快照
   CONTEXT_USAGE_SNAPSHOT: "context.usage_snapshot",
   // Runtime 开始自动压缩历史上下文
   CONTEXT_COMPACTION_STARTED: "context.compaction_started",
@@ -241,11 +241,13 @@ export interface RunStartedData {
   tools?: RunToolDefinition[];
 }
 
-// context.usage_snapshot：一次模型请求前的完整 Session Context 用量，不是单轮消息用量
+// context.usage_snapshot：一次模型请求前的完整 Session Context，不是单轮消息
 export interface ContextUsageSnapshotData {
   conversationTokens: number;
   contexts: RunContextUsageData[];
   estimatedTotalTokens: number;
+  // 旧会话只有用量；新请求记录当次实际传入 streamFn 的消息。
+  messages?: Message[];
   requestIndex: number;
   systemPromptTokens: number;
   toolTokens: number;
