@@ -703,7 +703,7 @@ function PluginInstalledActions({ plugin }: { plugin: SkillCollection }) {
   );
 }
 
-function PluginInstallAction({ plugin }: { plugin: SkillCollection }) {
+export function PluginInstallButton({ plugin }: { plugin: SkillCollection }) {
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: () => installSkillCollection(plugin.id),
@@ -717,10 +717,6 @@ function PluginInstallAction({ plugin }: { plugin: SkillCollection }) {
     },
   });
 
-  if (plugin.isInstalled) {
-    return <PluginInstalledActions plugin={plugin} />;
-  }
-
   return (
     <Button
       isPending={mutation.isPending}
@@ -730,6 +726,14 @@ function PluginInstallAction({ plugin }: { plugin: SkillCollection }) {
     >
       安装
     </Button>
+  );
+}
+
+function PluginInstallAction({ plugin }: { plugin: SkillCollection }) {
+  return plugin.isInstalled ? (
+    <PluginInstalledActions plugin={plugin} />
+  ) : (
+    <PluginInstallButton plugin={plugin} />
   );
 }
 

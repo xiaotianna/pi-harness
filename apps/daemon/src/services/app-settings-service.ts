@@ -17,6 +17,7 @@ import type {
   DefaultModelSetting,
   FileOpenApplicationSetting,
 } from "../storage/database.js";
+import { readMacApplicationIconByBundleId } from "../utils/mac-application-icon.js";
 
 export interface AppSettings {
   approvalPolicy: ApprovalPolicyValue;
@@ -99,5 +100,11 @@ export class AppSettingsService {
 
   public revokeComputerUseApp(bundleId: string): void {
     this.settings.revokeComputerUseApp(bundleId);
+  }
+
+  public getComputerUseAppIcon(bundleId: string, signal: AbortSignal): Promise<Buffer | null> {
+    return this.settings.isComputerUseAppAllowed(bundleId)
+      ? readMacApplicationIconByBundleId(bundleId, signal)
+      : Promise.resolve(null);
   }
 }

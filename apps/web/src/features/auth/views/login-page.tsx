@@ -58,7 +58,7 @@ export function LoginPage({ authError, desktopAuthResult }: LoginPageProps) {
         <Card className="w-full max-w-sm">
           <Card.Header className="items-center gap-2 text-center">
             <Avatar>
-              <Avatar.Image alt="PI Harness" src="/images/blue-avatar.jpg" />
+              <Avatar.Image alt="PI Harness" src="/images/pi-harness-logo.png" />
               <Avatar.Fallback>PI</Avatar.Fallback>
             </Avatar>
             <Card.Title className="text-lg">{isSuccess ? "授权完成" : "授权失败"}</Card.Title>
@@ -78,7 +78,7 @@ export function LoginPage({ authError, desktopAuthResult }: LoginPageProps) {
       <Card className="w-full max-w-sm">
         <Card.Header className="items-center gap-2 text-center">
           <Avatar>
-            <Avatar.Image alt="PI Harness" src="/images/blue-avatar.jpg" />
+            <Avatar.Image alt="PI Harness" src="/images/pi-harness-logo.png" />
             <Avatar.Fallback>PI</Avatar.Fallback>
           </Avatar>
           <Card.Title className="text-lg">登录</Card.Title>

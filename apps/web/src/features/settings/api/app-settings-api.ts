@@ -155,6 +155,10 @@ export async function revokeComputerUseAllowedApp(bundleId: string): Promise<voi
   });
 }
 
+export function getComputerUseAppIconUrl(bundleId: string): string {
+  return `/api/settings/computer-use/allowed-apps/${encodeURIComponent(bundleId)}/icon`;
+}
+
 async function readComputerUsePermissions(response: Response): Promise<ComputerUsePermissions> {
   const body = (await response.json()) as unknown;
   if (!Value.Check(ComputerUsePermissionsSchema, body)) {
@@ -177,4 +181,12 @@ export async function requestComputerUsePermission(
   return readComputerUsePermissions(
     await apiRequest(`/api/settings/computer-use/permissions/${permission}`, { method: "POST" }),
   );
+}
+
+export async function openComputerUsePermissionSettings(
+  permission: ComputerUsePermission,
+): Promise<void> {
+  await apiRequest(`/api/settings/computer-use/permissions/${permission}/settings`, {
+    method: "POST",
+  });
 }

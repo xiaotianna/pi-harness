@@ -55,6 +55,12 @@ execFileSync("cargo", ["build", "--manifest-path", computerUseManifest, "--relea
   cwd: workspaceRoot,
   stdio: "inherit",
 });
+if (process.platform === "darwin") {
+  execFileSync("node", [join(workspaceRoot, "packages/computer-use/scripts/prepare-app.mjs")], {
+    cwd: workspaceRoot,
+    stdio: "inherit",
+  });
+}
 
 mkdirSync(binariesRoot, { recursive: true });
 for (const file of readdirSync(binariesRoot)) {

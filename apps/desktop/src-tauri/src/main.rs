@@ -86,6 +86,10 @@ fn start_daemon(app: &tauri::AppHandle) -> Result<ManagedDaemon, Box<dyn std::er
     let daemon_dir = resource_dir.join("daemon");
     let web_dir = resource_dir.join("web");
     let data_dir = app.path().app_data_dir()?;
+    let helper_path = std::env::current_exe()?
+        .parent()
+        .ok_or("PI Harness executable has no parent directory")?
+        .join("pi-computer-use-helper");
     fs::create_dir_all(&data_dir)?;
 
     let (mut events, mut child) = app
@@ -99,6 +103,7 @@ fn start_daemon(app: &tauri::AppHandle) -> Result<ManagedDaemon, Box<dyn std::er
         .env("PI_HARNESS_DESKTOP_TOKEN", &token)
         .env("PI_HARNESS_WEB_DIST_PATH", &web_dir)
         .env("PI_HARNESS_WEB_URL", format!("http://127.0.0.1:{port}"))
+        .env("COMPUTER_USE_HELPER_PATH", &helper_path)
         .spawn()?;
 
     let is_running = Arc::new(AtomicBool::new(true));

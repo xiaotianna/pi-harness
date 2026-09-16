@@ -53,12 +53,6 @@ export function MessageActions({
           <Pencil aria-hidden className="size-4" />
         </ChatMessage.Action>
       ) : null}
-      {variant === "full" ? (
-        <>
-          <ChatMessageActions.ThumbsUp aria-label="有帮助" tooltip="有帮助" />
-          <ChatMessageActions.ThumbsDown aria-label="没有帮助" tooltip="没有帮助" />
-        </>
-      ) : null}
       {timestampPosition === "end" ? timestampElement : null}
     </ChatMessageActions>
   );

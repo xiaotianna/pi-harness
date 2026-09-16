@@ -4,29 +4,26 @@ import { AppLayout, Navbar, Sidebar } from "@agile-avocation/ui-pro";
 import { Magnifier as Search } from "@gravity-ui/icons";
 import { Button, Kbd, Tooltip } from "@heroui/react";
 import { memo } from "react";
-import type { ChatActivePage } from "../data/chat";
+import type { ChatPageKind } from "../data/chat";
 import { CHAT_NAVBAR_ACTIONS_ID } from "./chat-navbar-actions";
 import { ChatViewToggle } from "./chat-view-toggle";
 
-const NAV_TITLES: Record<ChatActivePage["kind"], { title: string; subtitle: string }> = {
+const NAV_TITLES: Record<Exclude<ChatPageKind, "thread">, { title: string; subtitle: string }> = {
   board: {
     subtitle: "掌握 AI 执行、等待处理与验收状态",
     title: "任务中心",
   },
   new: { subtitle: "开始一段全新的对话", title: "新对话" },
-  thread: { subtitle: "", title: "" },
 };
 
 export interface ChatNavbarProps {
-  activePage: ChatActivePage;
+  pageKind: ChatPageKind;
   onSearch?: (() => void) | undefined;
 }
 
-export const ChatNavbar = memo(function ChatNavbar({ activePage, onSearch }: ChatNavbarProps) {
-  const isThread = activePage.kind === "thread";
-  const thread = isThread ? activePage.thread : undefined;
-  const title = isThread ? (thread?.title ?? "对话") : NAV_TITLES[activePage.kind].title;
-  const subtitle = isThread ? "" : NAV_TITLES[activePage.kind].subtitle;
+export const ChatNavbar = memo(function ChatNavbar({ pageKind, onSearch }: ChatNavbarProps) {
+  const isThread = pageKind === "thread";
+  const navTitle = isThread ? null : NAV_TITLES[pageKind];
 
   return (
     <Navbar maxWidth="full">
@@ -34,10 +31,14 @@ export const ChatNavbar = memo(function ChatNavbar({ activePage, onSearch }: Cha
         <AppLayout.MenuToggle aria-label="打开导航" tooltip="打开导航" />
         <Sidebar.Trigger aria-label="切换侧边栏" />
         <div className="flex min-w-0 items-center gap-3">
-          <div className={`min-w-0 flex-col ${isThread ? "hidden sm:flex" : "flex"}`}>
-            <h1 className="truncate text-sm font-semibold text-foreground sm:text-base">{title}</h1>
-            {subtitle ? <span className="truncate text-xs text-muted">{subtitle}</span> : null}
-          </div>
+          {navTitle ? (
+            <div className="flex min-w-0 flex-col">
+              <h1 className="truncate text-sm font-semibold text-foreground sm:text-base">
+                {navTitle.title}
+              </h1>
+              <span className="truncate text-xs text-muted">{navTitle.subtitle}</span>
+            </div>
+          ) : null}
           {isThread ? <ChatViewToggle /> : null}
         </div>
         <Navbar.Spacer />

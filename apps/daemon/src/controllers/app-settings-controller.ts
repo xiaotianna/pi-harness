@@ -78,6 +78,28 @@ export class AppSettingsController {
     }
   };
 
+  public getComputerUseAppIcon = async (
+    request: FastifyRequest<{ Params: ComputerUseAllowedAppParams }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+    try {
+      const icon = await this.settings.getComputerUseAppIcon(
+        request.params.bundleId,
+        abortController.signal,
+      );
+      return icon
+        ? reply.header("Cache-Control", "private, max-age=3600").type("image/png").send(icon)
+        : reply.status(404).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
+
   public getComputerUsePermissions = async (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -107,6 +129,27 @@ export class AppSettingsController {
         request.params.permission,
         abortController.signal,
       );
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
+
+  public openComputerUsePermissionSettings = async (
+    request: FastifyRequest<{ Params: ComputerUsePermissionParams }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+    try {
+      await this.computerUsePermissions.openPermissionSettings(
+        request.params.permission,
+        abortController.signal,
+      );
+      return reply.status(204).send();
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     } finally {

@@ -70,6 +70,12 @@ export async function registerAppSettingsRoutes(
     controller.revokeComputerUseApp,
   );
 
+  server.get<{ Params: ComputerUseAllowedAppParams }>(
+    "/api/settings/computer-use/allowed-apps/:bundleId/icon",
+    { schema: { params: ComputerUseAllowedAppParamsSchema } },
+    controller.getComputerUseAppIcon,
+  );
+
   server.get(
     "/api/settings/computer-use/permissions",
     {
@@ -93,5 +99,20 @@ export async function registerAppSettingsRoutes(
       },
     },
     controller.requestComputerUsePermission,
+  );
+
+  server.post<{ Params: ComputerUsePermissionParams }>(
+    "/api/settings/computer-use/permissions/:permission/settings",
+    {
+      schema: {
+        params: ComputerUsePermissionParamsSchema,
+        response: {
+          204: Type.Null(),
+          403: ApiErrorVoSchema,
+          500: ApiErrorVoSchema,
+        },
+      },
+    },
+    controller.openComputerUsePermissionSettings,
   );
 }

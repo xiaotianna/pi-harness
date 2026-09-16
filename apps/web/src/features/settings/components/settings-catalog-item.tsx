@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 export function SettingsCatalogItem({
   action,
   ariaLabel,
+  hasIconBackground = true,
   icon,
   name,
   onPress,
@@ -11,6 +12,7 @@ export function SettingsCatalogItem({
 }: {
   action: ReactNode;
   ariaLabel?: string;
+  hasIconBackground?: boolean;
   icon: ReactNode;
   name: string;
   onPress?: () => void;
@@ -29,7 +31,9 @@ export function SettingsCatalogItem({
         </Button>
       ) : null}
       <div className="pointer-events-none relative z-10 grid min-h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 px-3 py-2">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-default">
+        <div
+          className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${hasIconBackground ? "bg-default" : ""}`}
+        >
           {icon}
         </div>
         <div className="min-w-0">

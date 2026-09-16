@@ -5,23 +5,32 @@ use std::io::{self, BufRead, Write};
 
 const SCOPE_ID: &str = "mcp";
 
-pub(crate) fn run(runtime: &mut Runtime) -> io::Result<()> {
-    let stdin = io::stdin();
-    for line in stdin.lock().lines() {
+pub(crate) fn run(
+    runtime: &mut Runtime,
+    input: impl BufRead,
+    mut output: impl Write,
+) -> io::Result<()> {
+    for line in input.lines() {
         let line = line?;
         if line.len() > 1_000_000 {
-            write_message(&error_response(Value::Null, -32600, "request exceeds 1 MB"))?;
+            write_message(
+                &mut output,
+                &error_response(Value::Null, -32600, "request exceeds 1 MB"),
+            )?;
             continue;
         }
         let request: Value = match serde_json::from_str(&line) {
             Ok(request) => request,
             Err(_) => {
-                write_message(&error_response(Value::Null, -32700, "invalid JSON"))?;
+                write_message(
+                    &mut output,
+                    &error_response(Value::Null, -32700, "invalid JSON"),
+                )?;
                 continue;
             }
         };
         if let Some(response) = handle_request(request, runtime) {
-            write_message(&response)?;
+            write_message(&mut output, &response)?;
         }
     }
     Ok(())
@@ -335,10 +344,8 @@ fn error_response(id: Value, code: i32, message: &str) -> Value {
     })
 }
 
-fn write_message(value: &Value) -> io::Result<()> {
-    let stdout = io::stdout();
-    let mut output = stdout.lock();
-    serde_json::to_writer(&mut output, value)
+fn write_message(output: &mut impl Write, value: &Value) -> io::Result<()> {
+    serde_json::to_writer(&mut *output, value)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     output.write_all(b"\n")?;
     output.flush()

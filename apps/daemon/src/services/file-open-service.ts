@@ -1,17 +1,16 @@
 import { execFile } from "node:child_process";
-import { glob, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, dirname, extname, join } from "node:path";
+import { realpath, stat } from "node:fs/promises";
+import { basename, dirname, extname } from "node:path";
 import {
   FileOpenMode,
   FileOpenResultStatus,
   type FileOpenResultStatus as FileOpenResultStatusValue,
 } from "../schemas/file-open.js";
 import type { AppSettingRepository, FileOpenApplicationSetting } from "../storage/database.js";
+import { readMacApplicationIcon } from "../utils/mac-application-icon.js";
 
 const PICKER_TIMEOUT_MS = 5 * 60 * 1_000;
 const OPEN_TIMEOUT_MS = 10_000;
-const MAX_ICON_BYTES = 256 * 1_024;
 const MAC_FINDER_PATH = "/System/Library/CoreServices/Finder.app";
 const LINUX_FILE_MANAGER_NAMES = new Set([
   "caja",
@@ -171,59 +170,6 @@ function readApplicationOpenCommand(
   );
 }
 
-async function readMacApplicationIcon(
-  applicationPath: string,
-  signal: AbortSignal,
-): Promise<string | null> {
-  const resourcesPath = join(applicationPath, "Contents", "Resources");
-  let iconPath: string | null = null;
-  try {
-    const iconName = await runText(
-      "/usr/bin/plutil",
-      [
-        "-extract",
-        "CFBundleIconFile",
-        "raw",
-        "-o",
-        "-",
-        join(applicationPath, "Contents", "Info.plist"),
-      ],
-      signal,
-      OPEN_TIMEOUT_MS,
-    );
-    iconPath = join(resourcesPath, iconName.endsWith(".icns") ? iconName : `${iconName}.icns`);
-  } catch {
-    try {
-      for await (const path of glob("*.icns", { cwd: resourcesPath })) {
-        iconPath = join(resourcesPath, path);
-        break;
-      }
-    } catch {
-      return null;
-    }
-  }
-  if (!iconPath) return null;
-
-  const outputDirectory = await mkdtemp(join(tmpdir(), "pi-harness-app-icon-"));
-  const outputPath = join(outputDirectory, "icon.png");
-  try {
-    await runWithoutOutput(
-      "/usr/bin/sips",
-      ["-z", "64", "64", "-s", "format", "png", iconPath, "--out", outputPath],
-      signal,
-      OPEN_TIMEOUT_MS,
-    );
-    const icon = await readFile(outputPath);
-    return icon.byteLength <= MAX_ICON_BYTES
-      ? `data:image/png;base64,${icon.toString("base64")}`
-      : null;
-  } catch {
-    return null;
-  } finally {
-    await rm(outputDirectory, { force: true, recursive: true });
-  }
-}
-
 async function readApplication(
   applicationPath: string,
   signal: AbortSignal,
@@ -237,8 +183,9 @@ async function readApplication(
   if (!isValid) {
     throw new FileOpenServiceError(FileOpenErrorCode.PICKER_FAILED, "选择的项目不是可用应用");
   }
+  const icon = process.platform === "darwin" ? await readMacApplicationIcon(path, signal) : null;
   return {
-    iconDataUrl: process.platform === "darwin" ? await readMacApplicationIcon(path, signal) : null,
+    iconDataUrl: icon ? `data:image/png;base64,${icon.toString("base64")}` : null,
     name: basename(path, extname(path)),
     path,
   };

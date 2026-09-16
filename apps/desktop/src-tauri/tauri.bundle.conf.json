@@ -2,6 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "externalBin": ["binaries/pi-harness-node", "binaries/pi-computer-use-helper"],
+    "macOS": {
+      "files": {
+        "Helpers/PI Harness Computer Use.app": "../../../packages/computer-use/native/target/release/PI Harness Computer Use.app"
+      }
+    },
     "resources": {
       "resources/daemon/": "daemon/",
       "../../web/dist/": "web/"

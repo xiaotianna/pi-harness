@@ -16,5 +16,5 @@ export const computerUsePermissionsQueryOptions = () =>
   queryOptions({
     queryFn: ({ signal }) => getComputerUsePermissions(signal),
     queryKey: appSettingsQueryKeys.computerUsePermissions,
-    refetchOnWindowFocus: "always",
+    refetchOnWindowFocus: false,
   });

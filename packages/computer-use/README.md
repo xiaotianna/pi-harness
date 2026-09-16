@@ -57,15 +57,16 @@ return before;
 
 ## 构建与使用
 
-要求 macOS 14+、Rust toolchain，并为 helper 授予“辅助功能”和“屏幕与系统录制”权限。
+要求 macOS 14+、Rust toolchain。构建命令同时生成命令行代理和独立的后台 `PI Harness Computer Use.app`；daemon 可独立运行，通过命令行代理用系统 Launch Services 启动后台 App，桌面端也使用同一后台 App。系统权限授予的是“PI Harness Computer Use”，不依赖浏览器、VS Code 或桌面窗口。
 
 ```sh
 pnpm --filter @pi-harness/computer-use native:build
 ```
 
-Cargo 构建脚本会为 helper 写入 macOS 系统 Swift runtime search path。
+Cargo 构建脚本会为 helper 写入 macOS 系统 Swift runtime search path。开发包默认使用临时签名；修改原生代码后重建可能让 macOS 保留旧的已开启开关，却拒绝新版本。此时在系统设置中移除 PI Harness Computer Use 的旧授权，再对当前 App 授权；正式分发时设置 `COMPUTER_USE_CODESIGN_IDENTITY` 指向稳定的 Apple 代码签名身份。
+单独部署 daemon 时，把 `pi-computer-use-helper` 与 `PI Harness Computer Use.app` 放在同一目录，并用 `COMPUTER_USE_HELPER_PATH` 指向命令行代理；无需安装或启动 Tauri 桌面端。
 
-桌面端打包会构建并签入 helper sidecar。插件市场中的 Computer Use 包含一个 MCP 服务和一个 Skill；安装插件后分别开启它们即可接入 Agent Runtime。首次使用可在「设置 → 电脑操控」查看“辅助功能”和“屏幕与系统录制”状态，并由本地 daemon 调用 helper 发起 macOS 授权；系统弹窗中的最终确认仍由用户完成。
+桌面端打包会构建命令行代理 sidecar，并将后台 App 放在 `Contents/Helpers`。插件市场中的 Computer Use 包含一个 MCP 服务和一个 Skill；安装插件后分别开启它们即可接入 Agent Runtime。首次使用可在「设置 → 电脑操控」查看“辅助功能”和“屏幕与系统录制”状态，并由本地 daemon 调用后台 App 发起 macOS 授权；系统弹窗中的最终确认仍由用户完成。
 
 ## 调试
 

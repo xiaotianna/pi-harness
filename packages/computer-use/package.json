@@ -10,7 +10,7 @@
     "debug:client": "tsx scripts/debug.ts client",
     "debug:tools": "tsx scripts/debug.ts tools",
     "typecheck": "tsc --noEmit",
-    "native:build": "cargo build --manifest-path native/Cargo.toml --release"
+    "native:build": "cargo build --manifest-path native/Cargo.toml --release && node scripts/prepare-app.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "catalog:",

@@ -389,7 +389,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       onAsideOpenChange={handleInspectorOpenChange}
       navbar={
         <ChatNavbar
-          activePage={activePage}
+          pageKind={activePage.kind}
           onSearch={disableNavigation ? undefined : handleSearchOpen}
         />
       }
