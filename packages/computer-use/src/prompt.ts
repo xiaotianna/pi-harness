@@ -7,6 +7,7 @@ export const COMPUTER_USE_SYSTEM_PROMPT = `
 - 最近一次观察可从 cua.state 读取；不存在 globalThis.__state 或 globalThis.__lastState。Accessibility Tree 的标签可能包含转义字符，优先使用树中稳定的 id 属性或数字元素编号，不要依赖本地化标签全文匹配。
 - computer_exec 只能访问受限 cua API；不要尝试导入 Node 模块、访问文件、网络或 Shell。跨调用变量必须显式保存在 globalThis。
 - 任务指定应用时优先把 bundle ID 传给 computer_observe；只有一次性访问或无法判断目标应用时才使用显示名称或列举应用。
+- 目标应用可以在后台操作；不要要求用户切换前台，也不要用用户实体光标的位置推断 AI 的动作位置。
 - 动作前先观察；每次动作只使用同一 Session 最近一次观察的 observationId，动作后立即重新观察。
 - 优先对 Accessibility Tree 元素使用 press、set_value 或其明确列出的 perform_action；只有目标缺少可访问性语义时才使用坐标。
 - 如果 Accessibility Tree 只有空窗口，检查观察结果附带的截图，通过截图识别可见控件并在每次坐标动作后重新观察；仅当当前模型看不到截图时说明需要支持图片的模型，不要仅凭空树断言无法控制应用。

@@ -15,7 +15,7 @@ import {
   ComputerUseScriptRuntime,
   createComputerExecTool,
 } from "@pi-harness/computer-use";
-import { ToolPermission, type ToolPolicy } from "@pi-harness/policy";
+import { ApprovalPolicy, ToolPermission, type ToolPolicy } from "@pi-harness/policy";
 import { createToolFingerprint, type ToolRegistration } from "@pi-harness/tools";
 import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -492,6 +492,7 @@ export class McpToolService {
             runtimeClient,
             `${sessionId}:${randomUUID()}`,
             workspaceRoot,
+            () => this.appSettings.getApprovalPolicy() === ApprovalPolicy.FULL_ACCESS,
           );
           computerUseRuntimes.push(runtime);
           const tool = createComputerExecTool(runtime);

@@ -206,6 +206,7 @@ export class AgentManager {
       {
         getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
         getSandboxCredentials: this.getSandboxCredentials,
+        isFullAccess: () => runtime?.isFullAccess ?? false,
         globalRoot: this.globalRoot,
         isSkillEnabled: this.isSkillEnabled,
         onPlanUpdated: (data) => {

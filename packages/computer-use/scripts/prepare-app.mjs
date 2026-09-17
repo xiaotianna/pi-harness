@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +10,7 @@ const releaseDir = fileURLToPath(new URL("../native/target/release/", import.met
 const app = join(releaseDir, "PI Harness Computer Use.app");
 const contents = join(app, "Contents");
 const executable = join(contents, "MacOS", "pi-computer-use-helper");
+const overlay = join(contents, "Helpers", "pi-computer-use-overlay");
 const resources = join(contents, "Resources");
 const localSigningName = "PI Harness Local Code Signing";
 
@@ -27,11 +29,32 @@ function findLocalSigningIdentity() {
 
 rmSync(app, { recursive: true, force: true });
 mkdirSync(join(contents, "MacOS"), { recursive: true });
+mkdirSync(join(contents, "Helpers"), { recursive: true });
 mkdirSync(resources, { recursive: true });
 copyFileSync(join(releaseDir, "pi-computer-use-helper"), executable);
+execFileSync(
+  "/usr/bin/swiftc",
+  [
+    "-O",
+    "-target",
+    `${process.arch === "arm64" ? "arm64" : "x86_64"}-apple-macosx14.0`,
+    "-module-cache-path",
+    join(tmpdir(), "pi-harness-computer-use-swift-modules"),
+    "-framework",
+    "AppKit",
+    fileURLToPath(new URL("../native/computer-use-overlay.swift", import.meta.url)),
+    "-o",
+    overlay,
+  ],
+  { stdio: "inherit" },
+);
 copyFileSync(
   fileURLToPath(new URL("../native/assets/icon.icns", import.meta.url)),
   join(resources, "icon.icns"),
+);
+copyFileSync(
+  fileURLToPath(new URL("../native/assets/cursor.svg", import.meta.url)),
+  join(resources, "cursor.svg"),
 );
 chmodSync(executable, 0o755);
 writeFileSync(
@@ -47,7 +70,7 @@ writeFileSync(
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleVersion</key><string>1</string>
-<key>LSBackgroundOnly</key><true/>
+<key>LSUIElement</key><true/>
 <key>NSScreenCaptureUsageDescription</key><string>PI Harness 需要截取当前目标窗口，以便在你确认后执行电脑操作。</string>
 </dict></plist>
 `,
@@ -59,6 +82,9 @@ const signingIdentity =
 if (!signingIdentity) {
   console.warn("Computer Use 使用临时签名；重建后 macOS 可能要求重置并重新授予权限。");
 }
+execFileSync("/usr/bin/codesign", ["--force", "--sign", signingIdentity || "-", overlay], {
+  stdio: "inherit",
+});
 execFileSync("/usr/bin/codesign", ["--force", "--sign", signingIdentity || "-", app], {
   stdio: "inherit",
 });

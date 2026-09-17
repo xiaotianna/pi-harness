@@ -14,7 +14,7 @@ const ObserveParameters = Type.Object({
     }),
   ),
   includeScreenshot: Type.Optional(
-    Type.Boolean({ description: "是否同时返回当前前台窗口截图，默认 true" }),
+    Type.Boolean({ description: "是否同时返回目标窗口截图，默认 true" }),
   ),
 });
 
@@ -45,6 +45,7 @@ export const ComputerExecParametersSchema = Type.Object({
 });
 
 export const computerObservePolicy = {
+  allowInFullAccess: true,
   allowRepeatedCalls: true,
   permission: ToolPermission.USER_APPROVAL,
   resolveGrant: (args: unknown) => {
@@ -55,7 +56,7 @@ export const computerObservePolicy = {
     return {
       allowSession: false,
       fingerprint: `computer_observe:${target}`,
-      risk: "该操作会读取当前前台窗口的可访问性结构，并可能截取窗口画面。",
+      risk: "该操作会读取目标窗口的可访问性结构，并可能截取窗口画面。",
       summary: "观察本机应用窗口",
       target,
     };
@@ -63,13 +64,14 @@ export const computerObservePolicy = {
 } as const satisfies ToolPolicy;
 
 export const computerActPolicy = {
+  allowInFullAccess: true,
   permission: ToolPermission.USER_APPROVAL,
   resolveGrant: (args: unknown) => ({
     allowSession: false,
     fingerprint: `computer_act:${JSON.stringify(args)}`,
-    risk: "该操作会向当前前台应用发送点击、键盘、滚动或可访问性动作，可能更改应用数据。",
-    summary: "操作当前前台窗口",
-    target: "当前前台窗口",
+    risk: "该操作会向已观察的目标应用发送点击、键盘、滚动或可访问性动作，可能更改应用数据。",
+    summary: "操作已观察的应用窗口",
+    target: "已观察的应用窗口",
   }),
 } as const satisfies ToolPolicy;
 

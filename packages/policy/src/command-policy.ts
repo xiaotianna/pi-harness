@@ -79,7 +79,7 @@ function parseSimpleCommand(command: string): readonly string[] | null {
 
 const DESTRUCTIVE_COMMANDS = new Set(["rm", "rmdir", "del", "erase", "rd", "remove-item"]);
 
-/** 关键删除即使在 full_access 下也必须逐次审批；复杂 Shell 删除默认按危险处理。 */
+/** 非完全访问时，关键删除必须逐次审批；复杂 Shell 删除默认按危险处理。 */
 export function isCriticalDestructiveCommand(command: string, workspaceRoot: string): boolean {
   const normalizedRoot = workspaceRoot.replaceAll("\\", "/").replace(/\/$/u, "");
   if (/\bgit\s+clean\b[^\r\n;&|]*(?:\s-f|\s--force)/iu.test(command)) return true;

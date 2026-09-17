@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
 import { AgentManager } from "@pi-harness/agent-runtime";
 import { MemoryService } from "@pi-harness/memory";
+import { ApprovalPolicy } from "@pi-harness/policy";
 import { AVAILABLE_PLUGINS, resolveRegisteredPluginSkills } from "@pi-harness/tools";
 import Fastify from "fastify";
 import { type HarnessConfig, loadHarnessConfig } from "../config/index.js";
@@ -83,6 +84,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
       protectedLocalPorts,
       config.globalRoot,
       protectedPaths,
+      () => database.appSettings.getApprovalPolicy() === ApprovalPolicy.FULL_ACCESS,
     ),
     (error) => server.log.warn({ code: error.code }, "MCP client lifecycle warning"),
     (context) => mcpServers.verifyContext(context),

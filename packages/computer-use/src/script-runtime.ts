@@ -1,3 +1,4 @@
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -221,6 +222,7 @@ export class ComputerUseScriptRuntime {
     private readonly client: ComputerUseRuntimeClient,
     private readonly scopeId: string,
     private readonly workspaceRoot: string,
+    private readonly isFullAccess: () => boolean,
   ) {}
 
   public async execute(
@@ -276,19 +278,25 @@ export class ComputerUseScriptRuntime {
 
   private async ensureProcess(signal: AbortSignal): Promise<SandboxedProcess> {
     if (this.process !== null) return this.process;
-    const sandboxed = await spawnSandboxedProcess({
-      allowedDomains: ["localhost.invalid"],
-      args: ["--input-type=module", "-e", WORKER_SOURCE],
-      command: process.execPath,
-      commandId: `computer-exec:${this.scopeId}`,
-      deniedDomains: ["*"],
-      environment: {},
-      isWorkspaceWritable: false,
-      protectedPaths: [],
-      readPaths: [dirname(process.execPath)],
-      signal,
-      workspaceRoot: this.workspaceRoot,
-    });
+    const sandboxed = this.isFullAccess()
+      ? await spawnComputerScriptHostProcess(this.workspaceRoot)
+      : await spawnSandboxedProcess({
+          allowedDomains: ["localhost.invalid"],
+          args: ["--input-type=module", "-e", WORKER_SOURCE],
+          command: process.execPath,
+          commandId: `computer-exec:${this.scopeId}`,
+          deniedDomains: ["*"],
+          environment: {},
+          isWorkspaceWritable: false,
+          protectedPaths: [],
+          readPaths: [dirname(process.execPath)],
+          signal,
+          workspaceRoot: this.workspaceRoot,
+        });
+    if (signal.aborted) {
+      await sandboxed.close();
+      signal.throwIfAborted();
+    }
     this.process = sandboxed;
     sandboxed.process.stdout.setEncoding("utf8");
     sandboxed.process.stderr.setEncoding("utf8");
@@ -444,4 +452,41 @@ export class ComputerUseScriptRuntime {
     if (error !== undefined) active.reject(error);
     else if (result !== undefined) active.resolve(result);
   }
+}
+
+async function spawnComputerScriptHostProcess(workspaceRoot: string): Promise<SandboxedProcess> {
+  const child = spawn(process.execPath, ["--input-type=module", "-e", WORKER_SOURCE], {
+    cwd: workspaceRoot,
+    detached: true,
+    env: {},
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  await new Promise<void>((resolve, reject) => {
+    child.once("spawn", resolve);
+    child.once("error", reject);
+  });
+  const worker = child as ChildProcessWithoutNullStreams;
+  const exited = new Promise<void>((resolve) => worker.once("exit", () => resolve()));
+  let closing: Promise<void> | undefined;
+  const stop = (signal: NodeJS.Signals) => {
+    if (worker.pid === undefined) return;
+    try {
+      process.kill(-worker.pid, signal);
+    } catch (error: unknown) {
+      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+    }
+  };
+  return {
+    process: worker,
+    close: () =>
+      (closing ??= (async () => {
+        if (worker.exitCode !== null || worker.signalCode !== null) return;
+        stop("SIGTERM");
+        await Promise.race([exited, delay(500)]);
+        if (worker.exitCode === null && worker.signalCode === null) {
+          stop("SIGKILL");
+          await exited;
+        }
+      })()),
+  };
 }

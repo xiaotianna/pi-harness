@@ -1,7 +1,8 @@
+use crate::accessibility::window_matches_frame;
 use crate::protocol::{Action, AppError, Frame, KeyModifier, MouseButton, Point};
 use axuielement::prelude::*;
 use core_graphics::event::{
-    CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, KeyCode, ScrollEventUnit,
+    CGEvent, CGEventFlags, CGEventType, CGMouseButton, EventField, KeyCode, ScrollEventUnit,
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_graphics::geometry::CGPoint;
@@ -28,20 +29,25 @@ fn reject_secure_field(element: &AXUIElement) -> Result<(), AppError> {
     Ok(())
 }
 
-fn reject_focused_secure_field() -> Result<(), AppError> {
-    let focused = axuielement::system_wide()
-        .ok_or_else(|| AppError::new("ACTION_FAILED", "system accessibility element unavailable"))?
-        .focused_ui_element()
+fn reject_focused_secure_field(pid: i32) -> Result<(), AppError> {
+    let focused = AXUIElement::from_pid(pid)
+        .ok_or_else(|| AppError::new("ACTION_FAILED", "target accessibility element unavailable"))?
+        .element_attribute("AXFocusedUIElement")
         .map_err(|error| AppError::new("ACTION_FAILED", error.to_string()))?;
-    if let Some(element) = focused {
-        reject_secure_field(&element)?;
-    }
-    Ok(())
+    let element = focused.ok_or_else(|| {
+        AppError::new(
+            "ACTION_FAILED",
+            "cannot verify the target app's focused input",
+        )
+    })?;
+    reject_secure_field(&element)
 }
 
 pub(crate) fn perform_action(
     elements: &[AXUIElement],
     frame: Option<Frame>,
+    pid: i32,
+    window_id: Option<u32>,
     action: &Action,
 ) -> Result<(), AppError> {
     match action {
@@ -87,7 +93,8 @@ pub(crate) fn perform_action(
         }
         Action::Click { button, point } => {
             verify_point(frame, *point)?;
-            click(*point, button)
+            verify_target_input_window(pid, frame)?;
+            click(pid, window_id, *point, button)
         }
         Action::Drag {
             duration_ms,
@@ -96,11 +103,13 @@ pub(crate) fn perform_action(
         } => {
             verify_point(frame, *from)?;
             verify_point(frame, *to)?;
-            drag(*from, *to, (*duration_ms).min(5_000))
+            verify_target_input_window(pid, frame)?;
+            drag(pid, window_id, *from, *to, (*duration_ms).min(5_000))
         }
         Action::PressKey { key, modifiers } => {
-            reject_focused_secure_field()?;
-            press_key(key, modifiers)
+            verify_target_input_window(pid, frame)?;
+            reject_focused_secure_field(pid)?;
+            press_key(pid, key, modifiers)
         }
         Action::Scroll {
             delta_x,
@@ -108,13 +117,33 @@ pub(crate) fn perform_action(
             point,
         } => {
             verify_point(frame, *point)?;
-            scroll(*point, *delta_x, *delta_y)
+            verify_target_input_window(pid, frame)?;
+            scroll(pid, window_id, *point, *delta_x, *delta_y)
         }
         Action::TypeText { text } => {
-            reject_focused_secure_field()?;
-            type_text(text)
+            verify_target_input_window(pid, frame)?;
+            reject_focused_secure_field(pid)?;
+            type_text(pid, text)
         }
     }
+}
+
+fn verify_target_input_window(pid: i32, frame: Option<Frame>) -> Result<(), AppError> {
+    let frame = frame
+        .ok_or_else(|| AppError::new("SCREENSHOT_REQUIRED", "observe the target window first"))?;
+    let app = AXUIElement::from_pid(pid)
+        .ok_or_else(|| AppError::new("TARGET_CHANGED", "target application exited"))?;
+    let window = app
+        .element_attribute("AXFocusedWindow")
+        .map_err(|error| AppError::new("TARGET_CHANGED", error.to_string()))?
+        .ok_or_else(|| AppError::new("TARGET_CHANGED", "target app has no focused window"))?;
+    if !window_matches_frame(&window, frame) {
+        return Err(AppError::new(
+            "TARGET_CHANGED",
+            "target app focused window no longer matches the observation",
+        ));
+    }
+    Ok(())
 }
 
 fn verify_point(frame: Option<Frame>, point: Point) -> Result<(), AppError> {
@@ -141,23 +170,44 @@ fn verify_point(frame: Option<Frame>, point: Point) -> Result<(), AppError> {
 }
 
 fn event_source() -> Result<CGEventSource, AppError> {
-    CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+    CGEventSource::new(CGEventSourceStateID::Private)
         .map_err(|_| AppError::new("ACTION_FAILED", "cannot create event source"))
 }
 
-fn mouse_event(kind: CGEventType, point: Point, button: CGMouseButton) -> Result<(), AppError> {
-    CGEvent::new_mouse_event(
+fn mouse_event(
+    pid: i32,
+    window_id: Option<u32>,
+    kind: CGEventType,
+    point: Point,
+    button: CGMouseButton,
+) -> Result<(), AppError> {
+    let event = CGEvent::new_mouse_event(
         event_source()?,
         kind,
         CGPoint::new(point.x, point.y),
         button,
     )
-    .map_err(|_| AppError::new("ACTION_FAILED", "cannot create mouse event"))?
-    .post(CGEventTapLocation::HID);
+    .map_err(|_| AppError::new("ACTION_FAILED", "cannot create mouse event"))?;
+    if let Some(window_id) = window_id {
+        event.set_integer_value_field(
+            EventField::MOUSE_EVENT_WINDOW_UNDER_MOUSE_POINTER,
+            i64::from(window_id),
+        );
+        event.set_integer_value_field(
+            EventField::MOUSE_EVENT_WINDOW_UNDER_MOUSE_POINTER_THAT_CAN_HANDLE_THIS_EVENT,
+            i64::from(window_id),
+        );
+    }
+    event.post_to_pid(pid);
     Ok(())
 }
 
-fn click(point: Point, button: &MouseButton) -> Result<(), AppError> {
+fn click(
+    pid: i32,
+    window_id: Option<u32>,
+    point: Point,
+    button: &MouseButton,
+) -> Result<(), AppError> {
     let (button, down, up) = match button {
         MouseButton::Left => (
             CGMouseButton::Left,
@@ -170,12 +220,24 @@ fn click(point: Point, button: &MouseButton) -> Result<(), AppError> {
             CGEventType::RightMouseUp,
         ),
     };
-    mouse_event(down, point, button)?;
-    mouse_event(up, point, button)
+    mouse_event(pid, window_id, down, point, button)?;
+    mouse_event(pid, window_id, up, point, button)
 }
 
-fn drag(from: Point, to: Point, duration_ms: u64) -> Result<(), AppError> {
-    mouse_event(CGEventType::LeftMouseDown, from, CGMouseButton::Left)?;
+fn drag(
+    pid: i32,
+    window_id: Option<u32>,
+    from: Point,
+    to: Point,
+    duration_ms: u64,
+) -> Result<(), AppError> {
+    mouse_event(
+        pid,
+        window_id,
+        CGEventType::LeftMouseDown,
+        from,
+        CGMouseButton::Left,
+    )?;
     let steps = (duration_ms / 16).clamp(1, 120);
     for step in 1..=steps {
         let progress = step as f64 / steps as f64;
@@ -183,17 +245,41 @@ fn drag(from: Point, to: Point, duration_ms: u64) -> Result<(), AppError> {
             x: from.x + (to.x - from.x) * progress,
             y: from.y + (to.y - from.y) * progress,
         };
-        mouse_event(CGEventType::LeftMouseDragged, point, CGMouseButton::Left)?;
+        mouse_event(
+            pid,
+            window_id,
+            CGEventType::LeftMouseDragged,
+            point,
+            CGMouseButton::Left,
+        )?;
         if duration_ms > 0 {
             thread::sleep(Duration::from_millis(duration_ms / steps));
         }
     }
-    mouse_event(CGEventType::LeftMouseUp, to, CGMouseButton::Left)
+    mouse_event(
+        pid,
+        window_id,
+        CGEventType::LeftMouseUp,
+        to,
+        CGMouseButton::Left,
+    )
 }
 
-fn scroll(point: Point, delta_x: i32, delta_y: i32) -> Result<(), AppError> {
-    mouse_event(CGEventType::MouseMoved, point, CGMouseButton::Left)?;
-    CGEvent::new_scroll_event(
+fn scroll(
+    pid: i32,
+    window_id: Option<u32>,
+    point: Point,
+    delta_x: i32,
+    delta_y: i32,
+) -> Result<(), AppError> {
+    mouse_event(
+        pid,
+        window_id,
+        CGEventType::MouseMoved,
+        point,
+        CGMouseButton::Left,
+    )?;
+    let event = CGEvent::new_scroll_event(
         event_source()?,
         ScrollEventUnit::PIXEL,
         2,
@@ -201,23 +287,24 @@ fn scroll(point: Point, delta_x: i32, delta_y: i32) -> Result<(), AppError> {
         delta_x,
         0,
     )
-    .map_err(|_| AppError::new("ACTION_FAILED", "cannot create scroll event"))?
-    .post(CGEventTapLocation::HID);
+    .map_err(|_| AppError::new("ACTION_FAILED", "cannot create scroll event"))?;
+    event.set_location(CGPoint::new(point.x, point.y));
+    event.post_to_pid(pid);
     Ok(())
 }
 
-fn type_text(text: &str) -> Result<(), AppError> {
+fn type_text(pid: i32, text: &str) -> Result<(), AppError> {
     let down = CGEvent::new_keyboard_event(event_source()?, 0, true)
         .map_err(|_| AppError::new("ACTION_FAILED", "cannot create keyboard event"))?;
     down.set_string(text);
-    down.post(CGEventTapLocation::HID);
+    down.post_to_pid(pid);
     let up = CGEvent::new_keyboard_event(event_source()?, 0, false)
         .map_err(|_| AppError::new("ACTION_FAILED", "cannot create keyboard event"))?;
-    up.post(CGEventTapLocation::HID);
+    up.post_to_pid(pid);
     Ok(())
 }
 
-fn press_key(key: &str, modifiers: &[KeyModifier]) -> Result<(), AppError> {
+fn press_key(pid: i32, key: &str, modifiers: &[KeyModifier]) -> Result<(), AppError> {
     let keycode = keycode(key).ok_or_else(|| {
         AppError::new(
             "KEY_UNSUPPORTED",
@@ -239,7 +326,7 @@ fn press_key(key: &str, modifiers: &[KeyModifier]) -> Result<(), AppError> {
         let event = CGEvent::new_keyboard_event(event_source()?, keycode, down)
             .map_err(|_| AppError::new("ACTION_FAILED", "cannot create keyboard event"))?;
         event.set_flags(flags);
-        event.post(CGEventTapLocation::HID);
+        event.post_to_pid(pid);
     }
     Ok(())
 }

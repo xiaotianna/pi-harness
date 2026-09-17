@@ -1,9 +1,8 @@
-use crate::protocol::AppError;
+use crate::protocol::{AppError, Frame};
 use axuielement::prelude::*;
 
 const AX_DESCRIPTION: &str = "AXDescription";
 const AX_ENABLED: &str = "AXEnabled";
-const AX_FOCUSED_WINDOW: &str = "AXFocusedWindow";
 const AX_IDENTIFIER: &str = "AXIdentifier";
 const AX_POSITION: &str = "AXPosition";
 const AX_ROLE: &str = "AXRole";
@@ -13,6 +12,7 @@ const AX_SUBROLE: &str = "AXSubrole";
 const AX_TITLE: &str = "AXTitle";
 const AX_VALUE: &str = "AXValue";
 const AX_VALUE_DESCRIPTION: &str = "AXValueDescription";
+const AX_WINDOWS: &str = "AXWindows";
 const MAX_TREE_CHARS: usize = 200_000;
 
 pub(crate) struct AccessibilitySnapshot {
@@ -24,6 +24,7 @@ pub(crate) struct AccessibilitySnapshot {
 
 pub(crate) fn observe_accessibility(
     pid: i32,
+    frame: Frame,
     max_depth: usize,
     max_nodes: usize,
 ) -> Result<AccessibilitySnapshot, AppError> {
@@ -42,18 +43,22 @@ pub(crate) fn observe_accessibility(
     })?;
     app.set_timeout(2.0)
         .map_err(|error| ax_read_error("set accessibility timeout", error))?;
-    let (root, used_application_root) = match app.element_attribute(AX_FOCUSED_WINDOW) {
-        Ok(Some(window)) => (window, false),
-        Ok(None)
-        | Err(AXError::CannotComplete)
-        | Err(AXError::AttributeUnsupported(_))
-        | Err(AXError::NoValue) => (app, true),
-        Err(error) => return Err(ax_read_error("read focused window", error)),
-    };
+    let windows = app
+        .element_array_attribute(AX_WINDOWS)
+        .map_err(|error| ax_read_error("read target windows", error))?;
+    let root = windows
+        .into_iter()
+        .find(|window| window_matches_frame(window, frame))
+        .ok_or_else(|| {
+            AppError::new(
+                "TARGET_CHANGED",
+                "target window is not available through Accessibility",
+            )
+        })?;
 
     let mut elements = Vec::new();
     let mut tree = String::new();
-    let mut truncated = used_application_root;
+    let mut truncated = false;
     collect_tree(
         root,
         0,
@@ -71,6 +76,20 @@ pub(crate) fn observe_accessibility(
         tree,
         truncated,
     })
+}
+
+pub(crate) fn window_matches_frame(window: &AXUIElement, frame: Frame) -> bool {
+    let position = window.point_attribute(AX_POSITION).ok().flatten();
+    let size = window.size_attribute(AX_SIZE).ok().flatten();
+    match (position, size) {
+        (Some(position), Some(size)) => {
+            (position.x - frame.x).abs() < 5.0
+                && (position.y - frame.y).abs() < 5.0
+                && (size.width - frame.width).abs() < 5.0
+                && (size.height - frame.height).abs() < 5.0
+        }
+        _ => false,
+    }
 }
 
 fn collect_tree(

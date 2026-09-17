@@ -17,16 +17,18 @@ export function createMcpTransportFactory(
   protectedLocalPorts: readonly number[],
   globalRoot: string,
   protectedPaths: readonly string[],
+  isFullAccess: () => boolean,
 ): McpTransportFactory {
   return async (context, signal) => {
     signal.throwIfAborted();
     verifyContext(context);
     if (context.server.config.transport === McpTransport.STDIO) {
       const launch = await prepareMcpProcessLaunch(context, signal);
-      const sandboxPolicy = await readSandboxPolicy(globalRoot, signal);
+      const sandboxPolicy =
+        launch.hasHostAccess || isFullAccess() ? null : await readSandboxPolicy(globalRoot, signal);
       return new McpStdioTransport(
         launch,
-        launch.hasHostAccess
+        sandboxPolicy === null
           ? null
           : {
               allowedDomains: sandboxPolicy.network.allowedDomains,
@@ -70,7 +72,10 @@ export function createMcpTransportFactory(
       },
       headers,
       () => verifyContext(context),
-      async (requestSignal) => (await readSandboxPolicy(globalRoot, requestSignal)).network,
+      async (requestSignal) =>
+        isFullAccess()
+          ? { allowedDomains: [], deniedDomains: [] }
+          : (await readSandboxPolicy(globalRoot, requestSignal)).network,
     );
     const authProvider = createAuthProvider(context);
     if (config.transport === McpTransport.SSE)

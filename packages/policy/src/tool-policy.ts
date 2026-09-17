@@ -241,19 +241,19 @@ export async function evaluateToolCall(input: EvaluateToolCallInput): Promise<To
         return { decision: ToolPolicyDecision.DENY, reason: "命令工具缺少有效命令" };
       }
       const { fingerprint } = await resolveWorkspaceTarget(input, ".", false);
+      if (input.approvalPolicy === ApprovalPolicy.FULL_ACCESS) {
+        return { decision: ToolPolicyDecision.ALLOW, fingerprint };
+      }
       if (isCriticalDestructiveCommand(command, input.workspaceRoot)) {
         return {
           allowAiApproval: false,
           allowSession: false,
           decision: ToolPolicyDecision.ASK,
           fingerprint,
-          risk: "该命令会递归删除工作区或仓库根目录；即使启用 full_access 也必须逐次确认。",
+          risk: "该命令会递归删除工作区或仓库根目录，必须逐次确认。",
           summary: command,
           target: ".",
         };
-      }
-      if (input.approvalPolicy === ApprovalPolicy.FULL_ACCESS) {
-        return { decision: ToolPolicyDecision.ALLOW, fingerprint };
       }
       if (
         input.isSkillToolPreapproved === true ||

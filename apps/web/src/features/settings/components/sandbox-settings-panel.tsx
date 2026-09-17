@@ -117,7 +117,7 @@ export function SandboxSettingsPanel() {
   return (
     <section aria-label="沙箱设置" className="w-full max-w-[720px]">
       <SettingsPanelHeader
-        description="统一配置本地命令与 MCP 的文件访问和联网边界。"
+        description="在非完全访问模式下配置本地命令与 MCP 的文件访问和联网边界。"
         title="沙箱"
       />
 

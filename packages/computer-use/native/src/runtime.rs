@@ -1,9 +1,9 @@
 use crate::accessibility::{observe_accessibility, AccessibilitySnapshot};
 use crate::input::perform_action;
-use crate::protocol::{ActParams, Action, AppError, Frame, ObserveParams};
+use crate::overlay::{action_point, Overlay};
+use crate::protocol::{ActParams, Action, AppError, Frame, ObserveParams, Point};
 use crate::screenshot::{
-    activate_app, capture_frontmost_window, frontmost_application, list_apps, matches_app_target,
-    verify_frontmost_pid, verify_window_frame,
+    capture_window, frontmost_application, list_apps, resolve_app, verify_window_frame,
 };
 use axuielement::prelude::*;
 use serde_json::{json, Value};
@@ -77,10 +77,22 @@ struct ScopeState {
     window_id: Option<u32>,
 }
 
-#[derive(Default)]
 pub(crate) struct Runtime {
     next_observation: u64,
     scopes: HashMap<String, ScopeState>,
+    overlay: Option<Overlay>,
+    last_cursor: Option<(u32, Point)>,
+}
+
+impl Default for Runtime {
+    fn default() -> Self {
+        Self {
+            next_observation: 0,
+            scopes: HashMap::new(),
+            overlay: None,
+            last_cursor: None,
+        }
+    }
 }
 
 impl Runtime {
@@ -106,33 +118,24 @@ impl Runtime {
             ));
         }
 
-        if let Some(app) = params.app.as_deref() {
+        let application = if let Some(app) = params.app.as_deref() {
             reject_protected_target(app)?;
-            activate_app(app)?;
-        }
-
-        let screenshot = if params.include_screenshot {
-            Some(capture_frontmost_window()?)
+            resolve_app(app)?
         } else {
-            None
+            frontmost_application()?
         };
-        let (application_bundle_id, application_name, pid) = match screenshot.as_ref() {
-            Some(screenshot) => (
-                screenshot.bundle_id.clone(),
-                screenshot.application_name.clone(),
-                screenshot.pid,
-            ),
-            None => {
-                let application = frontmost_application()?;
-                (application.bundle_id, application.name, application.pid)
-            }
-        };
-        if params.app.as_deref().is_some_and(|target| {
-            !matches_app_target(&application_bundle_id, &application_name, target)
-        }) {
+        reject_protected_app(&application.bundle_id)?;
+
+        let screenshot = capture_window(application.pid)?;
+        let (application_bundle_id, application_name, pid) = (
+            screenshot.bundle_id.clone(),
+            screenshot.application_name.clone(),
+            screenshot.pid,
+        );
+        if pid != application.pid || application_bundle_id != application.bundle_id {
             return Err(AppError::new(
                 "TARGET_CHANGED",
-                "active app changed before observation",
+                "target app changed before observation",
             ));
         }
         reject_protected_app(&application_bundle_id)?;
@@ -141,12 +144,21 @@ impl Runtime {
             fallback_name,
             tree,
             truncated,
-        } = observe_accessibility(pid, params.max_depth, params.max_nodes)?;
+        } = observe_accessibility(pid, screenshot.frame, params.max_depth, params.max_nodes)?;
         self.next_observation += 1;
         let observation_id = format!("obs-{}-{}", std::process::id(), self.next_observation);
-        let frame = screenshot.as_ref().map(|value| value.frame);
-        let window_id = screenshot.as_ref().map(|value| value.window_id);
+        let frame = Some(screenshot.frame);
+        let window_id = Some(screenshot.window_id);
         let observed_at = now_ms();
+        if self.overlay.is_none() {
+            self.overlay = Some(Overlay::start()?);
+        }
+        if let Some(overlay) = self.overlay.as_mut() {
+            let cursor = self.last_cursor.and_then(|(window_id, point)| {
+                (window_id == screenshot.window_id).then_some(point)
+            });
+            overlay.show(screenshot.frame, cursor)?;
+        }
         if !self.scopes.contains_key(&params.scope_id) && self.scopes.len() >= MAX_SCOPES {
             if let Some(oldest) = self
                 .scopes
@@ -181,7 +193,7 @@ impl Runtime {
             "observationId": observation_id,
             "truncated": truncated,
         });
-        if let Some(screenshot) = screenshot {
+        if params.include_screenshot {
             result["screenshot"] = json!({
                 "data": screenshot.data,
                 "mimeType": "image/png",
@@ -234,11 +246,29 @@ impl Runtime {
                 "observation disappeared before action",
             )
         })?;
-        verify_frontmost_pid(state.pid)?;
+        let mut cursor_update = None;
         if let (Some(frame), Some(window_id)) = (state.frame, state.window_id) {
-            verify_window_frame(window_id, frame)?;
+            verify_window_frame(state.pid, window_id, frame)?;
+            let cursor = action_point(&params.action, &state.elements).or_else(|| {
+                self.last_cursor
+                    .and_then(|(last_window, point)| (last_window == window_id).then_some(point))
+            });
+            self.overlay
+                .as_mut()
+                .ok_or_else(|| {
+                    AppError::new("OVERLAY_UNAVAILABLE", "AI cursor overlay is unavailable")
+                })?
+                .show(frame, cursor)?;
+            cursor_update = cursor.map(|point| (window_id, point));
         }
-        perform_action(&state.elements, state.frame, &params.action)?;
+        perform_action(
+            &state.elements,
+            state.frame,
+            state.pid,
+            state.window_id,
+            &params.action,
+        )?;
+        self.last_cursor = cursor_update;
         thread::sleep(Duration::from_millis(75));
         Ok(json!({
             "observationId": params.observation_id,

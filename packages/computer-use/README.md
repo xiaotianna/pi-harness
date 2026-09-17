@@ -8,7 +8,7 @@ macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、受限 Java
 
 ## 给模型的数据
 
-`computer_list_apps` 可列出当前运行的应用；`computer_observe` 可用显示名称或 bundle ID 聚焦/启动目标应用，并返回两个 content block：
+`computer_list_apps` 可列出当前运行的应用；`computer_observe` 可用显示名称或 bundle ID 在后台找到/启动目标应用，并返回两个 content block：
 
 1. 可选的 PNG `ImageContent`；
 2. 一段 JSON 文本，其中 `accessibilityTree` 是可直接引用元素编号的缩进树。
@@ -25,19 +25,19 @@ macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、受限 Java
 }
 ```
 
-这不是屏幕共享或视频流。每次观察只通过 ScreenCaptureKit 获取当前前台窗口的一帧；模型执行动作后再次观察。AX 树负责语义和可操作元素，截图负责画布、自绘控件和布局判断。
+这不是屏幕共享或视频流。每次观察通过 ScreenCaptureKit 获取目标窗口的一帧；模型执行动作后再次观察。AX 树负责语义和可操作元素，截图负责画布、自绘控件和布局判断。动作位置显示独立绘制的 AI 光标，背景有柔和呼吸动效，停住后轻微左右摆动；它不接管用户的实体光标，闲置 12 秒后隐藏，并遵循系统的减少动态效果设置。
 
 ## 安全边界
 
 - 元素编号只在同一 `scopeId + observationId` 中有效；一次成功动作后立即失效。
-- 每个动作仍会校验前台应用 PID 和窗口尺寸，避免目标应用切换后误操作。
-- 观察超过 120 秒、前台应用改变、元素不存在或坐标落在观察窗口外时拒绝动作。
+- 每个动作仍会校验目标应用 PID、目标窗口 ID 和窗口尺寸；定向键鼠输入还会复查应用内的焦点窗口，不要求目标应用保持前台。
+- 观察超过 120 秒、目标窗口改变、元素不存在或坐标落在观察窗口外时拒绝动作。
 - 坐标是 macOS 全局逻辑坐标；`screenshotFrame.scale` 只描述截图像素与逻辑坐标的比例。
 - AX 树限制深度、节点数和字符数，截图最长边限制在 1920 × 1200 范围内，RPC 响应限制为 24 MiB。
 - secure text field 不回传值；截图 base64 只存在于 Tool content，不在 `details` 中重复保存。
-- `computer_exec` 在 SRT 隔离的持久化 JavaScript 子进程中运行，只暴露 `cua` 能力对象；禁用动态代码生成，不提供 Node、Shell、文件系统或网络对象，并限制为 25 个输入动作、50 个步骤和 30 秒。
-- `computer_observe` 和 `computer_act` 都是串行工具，并分别导出 `computerObservePolicy` / `computerActPolicy`。它们通过通用 `USER_APPROVAL` 策略自行定义审批信息，不因 `full_access` 自动放行。
-- 通过插件 MCP 接入时，daemon 只按稳定 bundle ID 保存应用观察授权；`computer_exec` 的一次批准只覆盖当前脚本，选择“本次会话允许”后，同一 Run 内针对该应用的后续脚本可继续执行。单步 `computer_act` 仍逐次审批。
+- `computer_exec` 在普通审批模式下使用 SRT 隔离的持久化 JavaScript 子进程，完全访问下直接启动宿主机子进程；两种模式都通过受限 JavaScript 上下文只暴露 `cua` 能力对象，禁用动态代码生成，不提供 Node、Shell、文件系统或网络对象，并限制为 25 个输入动作、50 个步骤和 30 秒。
+- `computer_observe` 和 `computer_act` 都是串行工具，并分别导出 `computerObservePolicy` / `computerActPolicy`。它们通过通用 `USER_APPROVAL` 策略自行定义审批信息，完全访问下自动放行。
+- 通过插件 MCP 接入时，daemon 只按稳定 bundle ID 保存应用观察授权；非完全访问模式下，`computer_exec` 的一次批准只覆盖当前脚本，选择“本次会话允许”后，同一 Run 内针对该应用的后续脚本可继续执行；请求批准模式下，单步 `computer_act` 仍逐次审批。
 
 ## 脚本执行
 
@@ -57,7 +57,7 @@ return before;
 
 ## 构建与使用
 
-要求 macOS 14+、Rust toolchain。构建命令同时生成命令行代理和独立的后台 `PI Harness Computer Use.app`；daemon 可独立运行，通过命令行代理用系统 Launch Services 启动后台 App，桌面端也使用同一后台 App。系统权限授予的是“PI Harness Computer Use”，不依赖浏览器、VS Code 或桌面窗口。
+要求 macOS 14+、Rust toolchain 和 Xcode Swift 编译器。构建命令同时生成命令行代理、独立的 `PI Harness Computer Use.app` 和不激活应用的 AI 光标浮层；daemon 可独立运行，通过命令行代理用系统 Launch Services 启动后台 App，桌面端也使用同一后台 App。系统权限授予的是“PI Harness Computer Use”，不依赖浏览器、VS Code 或桌面窗口。
 
 ```sh
 pnpm --filter @pi-harness/computer-use native:build

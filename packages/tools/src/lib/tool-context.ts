@@ -15,6 +15,7 @@ import type { FileChangeDetails } from "../utils/file.js";
 export interface WorkspaceToolContext {
   getRegisteredGlobalSkills?: () => readonly SkillDefinition[];
   getSandboxCredentials?: () => readonly SandboxCredential[];
+  isFullAccess?: () => boolean;
   globalRoot: string;
   isSkillEnabled?: (directory: string) => boolean;
   onContextCheckpointRestored?: ContextCheckpointRestoreHandler;

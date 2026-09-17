@@ -113,7 +113,7 @@ function runHostCommand(input: {
 /**
  * run_command 工具
  * 调度：串行（executionMode：sequential）
- * 实际执行：在固定 workspace 根目录用 Shell 执行命令，通过独立 SRT 进程限制文件与网络访问，支持取消、超时和 1MB 输出限制。
+ * 实际执行：在固定 workspace 根目录用 Shell 执行命令；完全访问时走宿主机，其余模式走 SRT。
  */
 export function createRunCommandTool(
   context: WorkspaceToolContext,
@@ -123,7 +123,7 @@ export function createRunCommandTool(
     name: "run_command",
     label: "Run command",
     description:
-      "在沙箱内以固定 workspace 根目录执行 Shell 命令；网络由用户策略控制，允许列表为空时放行未被拒绝的目标，HOME 和临时文件按调用隔离。支持取消、超时和输出限制；安全且适合复用审批的单条命令应同时提供 prefixRule。",
+      "在固定 workspace 根目录执行 Shell 命令；完全访问时直接使用宿主机权限，其余模式由沙箱限制文件和网络。支持取消、超时和输出限制；安全且适合复用审批的单条命令应同时提供 prefixRule。",
     parameters: RunCommandParameters,
     executionMode: "sequential",
     async execute(toolCallId, input, signal, onUpdate) {
@@ -151,38 +151,54 @@ export function createRunCommandTool(
         lastUpdateAt = Date.now();
         update("running", truncateTail(liveOutput).content || "命令已启动，等待输出…");
       };
-      const sandboxPolicy = await readSandboxPolicy(context.globalRoot, signal);
-      const sandboxResult = await runSandboxedCommand({
-        command: input.command,
-        commandId: toolCallId,
-        workspaceRoot,
-        protectedPaths: [...(context.protectedPaths ?? []), context.globalRoot],
-        allowedDomains: sandboxPolicy.network.allowedDomains,
-        deniedDomains: sandboxPolicy.network.deniedDomains,
-        credentials: context.getSandboxCredentials?.() ?? [],
-        isWorkspaceWritable: sandboxPolicy.profile === SandboxProfile.WORKSPACE_WRITE,
-        onNetworkApproval: ({ host, port }) =>
-          context.onNetworkAccessRequested?.(
-            { host, ...(port === undefined ? {} : { port }), toolCallId },
-            signal,
-          ) ?? Promise.resolve(false),
-        readPaths: getSkillReadPaths(),
-        timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        maxOutputBytes: MAX_CAPTURE_BYTES,
-        ...(signal === undefined ? {} : { signal }),
-        onOutput(chunk) {
-          liveOutput = (liveOutput + chunk).slice(-MAX_CAPTURE_BYTES);
-          const delay = UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
-          if (delay <= 0) emitOutput();
-          else updateTimer ??= setTimeout(emitOutput, delay);
-        },
-      }).finally(() => {
-        if (updateTimer) clearTimeout(updateTimer);
-      });
-      const sandboxViolations = sandboxResult.violations;
+      const onOutput = (chunk: string) => {
+        liveOutput = (liveOutput + chunk).slice(-MAX_CAPTURE_BYTES);
+        const delay = UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
+        if (delay <= 0) emitOutput();
+        else updateTimer ??= setTimeout(emitOutput, delay);
+      };
       let result:
         | Awaited<ReturnType<typeof runHostCommand>>
-        | Awaited<ReturnType<typeof runSandboxedCommand>> = sandboxResult;
+        | Awaited<ReturnType<typeof runSandboxedCommand>>;
+      let sandboxViolations: readonly string[] = [];
+      const isFullAccess = context.isFullAccess?.() === true;
+      if (isFullAccess) {
+        result = await runHostCommand({
+          command: input.command,
+          maxOutputBytes: MAX_CAPTURE_BYTES,
+          onOutput,
+          ...(signal === undefined ? {} : { signal }),
+          timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+          workspaceRoot,
+        }).finally(() => {
+          if (updateTimer) clearTimeout(updateTimer);
+        });
+      } else {
+        const sandboxPolicy = await readSandboxPolicy(context.globalRoot, signal);
+        result = await runSandboxedCommand({
+          command: input.command,
+          commandId: toolCallId,
+          workspaceRoot,
+          protectedPaths: [...(context.protectedPaths ?? []), context.globalRoot],
+          allowedDomains: sandboxPolicy.network.allowedDomains,
+          deniedDomains: sandboxPolicy.network.deniedDomains,
+          credentials: context.getSandboxCredentials?.() ?? [],
+          isWorkspaceWritable: sandboxPolicy.profile === SandboxProfile.WORKSPACE_WRITE,
+          onNetworkApproval: ({ host, port }) =>
+            context.onNetworkAccessRequested?.(
+              { host, ...(port === undefined ? {} : { port }), toolCallId },
+              signal,
+            ) ?? Promise.resolve(false),
+          readPaths: getSkillReadPaths(),
+          timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+          maxOutputBytes: MAX_CAPTURE_BYTES,
+          ...(signal === undefined ? {} : { signal }),
+          onOutput,
+        }).finally(() => {
+          if (updateTimer) clearTimeout(updateTimer);
+        });
+        sandboxViolations = result.violations;
+      }
       let output = truncateTail(result.all ?? "");
       let totalDurationMs = result.durationMs;
       let isElevated = false;
@@ -243,12 +259,7 @@ export function createRunCommandTool(
         result = await runHostCommand({
           command: input.command,
           maxOutputBytes: MAX_CAPTURE_BYTES,
-          onOutput(chunk) {
-            liveOutput = (liveOutput + chunk).slice(-MAX_CAPTURE_BYTES);
-            const delay = UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
-            if (delay <= 0) emitOutput();
-            else updateTimer ??= setTimeout(emitOutput, delay);
-          },
+          onOutput,
           ...(signal === undefined ? {} : { signal }),
           timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
           workspaceRoot: currentWorkspaceRoot,
@@ -299,9 +310,9 @@ export function createRunCommandTool(
           stage: "completed",
           sandbox: {
             elevated: isElevated,
-            level: isElevated ? "host" : "isolated",
+            level: isFullAccess || isElevated ? "host" : "isolated",
             target: ".",
-            network: isElevated ? "host" : "policy",
+            network: isFullAccess || isElevated ? "host" : "policy",
             outputBytes: Buffer.byteLength(result.all ?? ""),
             violations: sandboxViolations,
           },

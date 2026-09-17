@@ -37,7 +37,7 @@ export class AppSettingsService {
   public constructor(
     private readonly settings: AppSettingRepository,
     private readonly globalRoot: string,
-    private readonly onSandboxPolicyChanged: () => Promise<void>,
+    private readonly onExecutionPolicyChanged: () => Promise<void>,
   ) {}
 
   public async get(): Promise<AppSettings> {
@@ -63,7 +63,9 @@ export class AppSettingsService {
   public async update(input: UpdateAppSettingsDto): Promise<AppSettings> {
     const updatedAt = Date.now();
     if (input.approvalPolicy !== undefined) {
+      const changed = input.approvalPolicy !== this.settings.getApprovalPolicy();
       this.settings.setApprovalPolicy(input.approvalPolicy, updatedAt);
+      if (changed) await this.onExecutionPolicyChanged();
     }
     if (input.busySubmitBehavior !== undefined) {
       this.settings.setBusySubmitBehavior(input.busySubmitBehavior, updatedAt);
@@ -93,7 +95,7 @@ export class AppSettingsService {
         },
         profile: input.sandboxProfile ?? current.profile,
       });
-      await this.onSandboxPolicyChanged();
+      await this.onExecutionPolicyChanged();
     }
     return this.get();
   }

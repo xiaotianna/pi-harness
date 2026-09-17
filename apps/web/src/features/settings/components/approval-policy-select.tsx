@@ -36,7 +36,7 @@ const APPROVAL_POLICY_OPTIONS = [
     value: ApprovalPolicy.AUTO_APPROVE,
   },
   {
-    description: "自动批准工作区文件修改、命令和 MCP 工具调用",
+    description: "自动批准工具调用；命令和本地 MCP 不受沙箱限制",
     icon: ShieldAlert,
     label: "完全访问权限",
     value: ApprovalPolicy.FULL_ACCESS,
@@ -76,9 +76,9 @@ export function ApprovalPolicySelect({
           </AlertDialog.Header>
           <AlertDialog.Body>
             <p>
-              开启后，工作区文件修改、命令执行和 MCP
-              工具调用将自动批准，不再逐次询问。本地工作区边界、MCP
-              连接信任与账号授权等安全限制仍然生效，请确认你信任已连接的服务。
+              开启后，工作区文件修改、命令执行和 MCP 工具调用将自动批准，不再逐次询问；命令和本地
+              MCP 将以宿主机权限执行。 内置文件工具的工作区边界、MCP 连接信任与账号授权、macOS
+              系统权限仍然生效。
             </p>
           </AlertDialog.Body>
           <AlertDialog.Footer>

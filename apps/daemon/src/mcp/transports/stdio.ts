@@ -201,7 +201,7 @@ async function spawnTrustedHostProcess(launch: McpProcessLaunch): Promise<Sandbo
   const child = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
     detached: true,
-    env: launch.environment,
+    env: { ...launch.environment, ...launch.credentials },
     stdio: ["pipe", "pipe", "pipe"],
   });
   await new Promise<void>((resolve, reject) => {

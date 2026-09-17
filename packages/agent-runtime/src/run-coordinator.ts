@@ -1228,6 +1228,10 @@ export class RunCoordinator {
     return this.activeRun?.runId ?? null;
   }
 
+  public get isFullAccess(): boolean {
+    return this.activeRun?.approvalPolicy === ApprovalPolicy.FULL_ACCESS;
+  }
+
   public async start(input: StartRunInput): Promise<void> {
     if (this.activeRun !== null || this.agent.state.isStreaming) {
       throw new Error(`Session ${this.sessionId} already has an active run`);

@@ -164,6 +164,7 @@ function memoryMutationPolicy(
   isGranted = false,
 ): ToolPolicy {
   return {
+    allowInFullAccess: true,
     permission: ToolPermission.USER_APPROVAL,
     resolveGrant(args) {
       if (!Value.Check(parameters, args)) throw new Error("MEMORY_INVALID: 无效记忆参数");
@@ -201,6 +202,7 @@ export function createMemoryToolRegistrations(
     },
     {
       policy: {
+        allowInFullAccess: true,
         permission: ToolPermission.USER_APPROVAL,
         resolveGrant(args) {
           if (!Value.Check(CreateMemoryParameters, args)) {
