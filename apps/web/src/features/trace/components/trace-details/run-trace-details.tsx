@@ -1,6 +1,7 @@
 import { ErrorState } from "../../../../components/ai/error-state";
 import { AGENT_TRACE_DETAIL_STATUS_LABELS } from "../../constants/agent-trace";
 import { type AgentTraceRecord, AgentTraceStatus } from "../../types/agent-trace";
+import { TraceDetailCode, TraceDetailMarkdown } from "./trace-detail-content";
 
 export function RunTraceDetails({ record }: { record: AgentTraceRecord }) {
   const message = typeof record.raw.message === "string" ? record.raw.message : record.summary;
@@ -8,7 +9,12 @@ export function RunTraceDetails({ record }: { record: AgentTraceRecord }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
       {record.status === AgentTraceStatus.FAILED ? (
-        <ErrorState detail={message} title="回复生成失败" />
+        <ErrorState
+          detail={message}
+          title={record.source.startsWith("subagent.") ? "子 Agent 失败" : "回复生成失败"}
+        />
+      ) : record.source === "subagent.completed" ? (
+        <TraceDetailMarkdown>{message}</TraceDetailMarkdown>
       ) : (
         <p className="text-[13px] leading-5 text-foreground">{message}</p>
       )}
@@ -25,6 +31,15 @@ export function RunTraceDetails({ record }: { record: AgentTraceRecord }) {
         <dt className="text-muted">Source</dt>
         <dd className="font-mono [overflow-wrap:anywhere]">{record.source}</dd>
       </dl>
+      {record.raw.terminal !== undefined ? (
+        <div className="mt-4">
+          <TraceDetailCode
+            ariaLabel="复制子 Agent 结束事件"
+            code={record.raw.terminal}
+            name="结束事件"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

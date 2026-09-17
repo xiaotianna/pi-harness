@@ -7,7 +7,16 @@ import {
   Magnifier as Search,
   Wrench,
 } from "@gravity-ui/icons";
-import { Drawer, Input, ScrollShadow, TextField, useMediaQuery } from "@heroui/react";
+import {
+  Drawer,
+  Input,
+  Label,
+  ListBox,
+  ScrollShadow,
+  Select,
+  TextField,
+  useMediaQuery,
+} from "@heroui/react";
 import type { HarnessEvent } from "@pi-harness/agent-runtime/harness-event";
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { AGENT_TRACE_STATUS_LABELS } from "../constants/agent-trace";
@@ -19,7 +28,10 @@ import {
 } from "../types/agent-trace";
 import { formatTraceDuration } from "../utils/format-trace-duration";
 import { isTraceRecordInRange } from "../utils/is-trace-record-in-range";
-import { sessionEventsToAgentTraces } from "../utils/session-events-to-agent-traces";
+import {
+  sessionEventsToAgentTraces,
+  sessionEventsToSubAgentTraces,
+} from "../utils/session-events-to-agent-traces";
 import { TraceDetailPanel } from "./trace-detail-panel";
 import { TraceEventList } from "./trace-event-list";
 import { TraceTimeline } from "./trace-timeline";
@@ -28,6 +40,8 @@ export interface AgentTraceViewProps {
   events: readonly HarnessEvent[];
 }
 
+const ROOT_AGENT_TRACE_KEY = "root";
+
 export function AgentTraceView({ events }: AgentTraceViewProps) {
   const [range, setRange] = useState<AgentTraceRange | null>(null);
   const [search, setSearch] = useState("");
@@ -35,10 +49,22 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
   const [now, setNow] = useState(() => Date.now());
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [selectedRequestRecordId, setSelectedRequestRecordId] = useState<string | null>(null);
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
   const isMobile = useMediaQuery("(max-width: 767px)");
   const deferredSearch = useDeferredValue(search);
-  const trace = useMemo(() => sessionEventsToAgentTraces(events, now)[0] ?? null, [events, now]);
+  const rootTrace = useMemo(
+    () => sessionEventsToAgentTraces(events, now)[0] ?? null,
+    [events, now],
+  );
+  const subAgentTraces = useMemo(() => sessionEventsToSubAgentTraces(events, now), [events, now]);
+  const selectedSubAgent = selectedExecutionId
+    ? subAgentTraces.find((item) => item.executionId === selectedExecutionId)
+    : undefined;
+  const trace = selectedSubAgent ?? rootTrace;
+  const isSubAgent = selectedSubAgent !== undefined;
   const isTraceRunning = trace?.status === AgentTraceStatus.RUNNING;
+
+  useEffect(() => setSelectedExecutionId(null), [events[0]?.sessionId]);
 
   useEffect(() => {
     if (!isTraceRunning) return;
@@ -72,6 +98,14 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
   }, [deferredSearch, trace]);
 
   const selectedRecord = trace?.records.find((record) => record.id === selectedRecordId) ?? null;
+  const childTrace =
+    selectedRecord?.kind === AgentTraceRecordKind.TOOL
+      ? subAgentTraces.find(
+          (item) =>
+            item.parentToolCallId === selectedRecord.raw.toolCallId &&
+            (item.parentExecutionId ?? null) === selectedExecutionId,
+        )
+      : undefined;
   const selectedStep =
     selectedRecord && trace
       ? trace.records
@@ -175,10 +209,12 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
                   <Clock3 className="size-3" />
                   {formatTraceDuration(trace.durationMs)}
                 </span>
-                <span className="flex items-center gap-1 text-[11px] text-muted">
-                  <ListTree className="size-3" />
-                  {turnCount} 轮
-                </span>
+                {!isSubAgent ? (
+                  <span className="flex items-center gap-1 text-[11px] text-muted">
+                    <ListTree className="size-3" />
+                    {turnCount} 轮
+                  </span>
+                ) : null}
                 <span className="flex items-center gap-1 text-[11px] text-muted">
                   <Wrench className="size-3" />
                   {toolCallCount} 次调用
@@ -199,6 +235,49 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
               </div>
             </ScrollShadow>
           </div>
+          {subAgentTraces.length > 0 ? (
+            <Select
+              aria-label="切换 Agent 轨迹"
+              className="w-full min-w-0 sm:w-auto sm:min-w-40 sm:max-w-56 sm:shrink-0"
+              selectedKey={selectedSubAgent?.executionId ?? ROOT_AGENT_TRACE_KEY}
+              variant="secondary"
+              onSelectionChange={(key) =>
+                setSelectedExecutionId(key === ROOT_AGENT_TRACE_KEY ? null : String(key))
+              }
+            >
+              <Select.Trigger className="w-full items-center">
+                <Select.Value className="min-w-0 truncate text-xs">
+                  {selectedSubAgent?.name ?? "主 Agent"}
+                </Select.Value>
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover className="max-w-[calc(100vw-2rem)]">
+                <ListBox>
+                  <ListBox.Item className="text-xs" id={ROOT_AGENT_TRACE_KEY} textValue="主 Agent">
+                    <Label className="text-xs">主 Agent</Label>
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                  {subAgentTraces.map((item) => (
+                    <ListBox.Item
+                      className="pe-12! text-xs"
+                      id={item.executionId}
+                      key={item.executionId}
+                      textValue={`${item.parentExecutionId ? "子 Agent · " : ""}${item.name} · ${AGENT_TRACE_STATUS_LABELS[item.status]}`}
+                    >
+                      <Label className="min-w-0 flex-1 truncate text-xs">
+                        {item.parentExecutionId ? "↳ " : ""}
+                        {item.name}
+                      </Label>
+                      <span className="shrink-0 text-xs text-muted">
+                        {AGENT_TRACE_STATUS_LABELS[item.status]}
+                      </span>
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
+            </Select>
+          ) : null}
           <div className="relative w-full sm:ml-auto sm:min-w-40 sm:max-w-56 sm:flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-2 z-10 size-3.5 -translate-y-1/2 text-muted" />
             <TextField
@@ -225,6 +304,7 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
       <div className="flex min-h-0 flex-1">
         <div className="min-h-0 min-w-[280px] flex-1 overflow-hidden">
           <TraceEventList
+            isSubAgent={isSubAgent}
             range={range}
             records={records}
             selectedRecordId={selectedRecordId}
@@ -238,12 +318,16 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
           <div className="hidden min-h-0 min-w-0 w-[clamp(320px,32%,400px)] max-w-[calc(100%-280px)] flex-col border-l border-separator md:flex">
             <TraceDetailPanel
               isRequestSelected={selectedRequestRecordId === selectedRecord.id}
+              isSubAgent={isSubAgent}
               key={selectedRecord.id}
               record={selectedRecord}
               step={selectedStep}
               onClose={handleDetailClose}
               onOpenAssistant={handleAssistantOpen}
               onOpenRequest={handleRequestOpen}
+              {...(childTrace
+                ? { onOpenSubAgent: () => setSelectedExecutionId(childTrace.executionId) }
+                : {})}
               onOpenToolCall={handleToolCallOpen}
             />
           </div>
@@ -261,12 +345,16 @@ export function AgentTraceView({ events }: AgentTraceViewProps) {
               <Drawer.Body className="m-0! min-h-0 p-0!">
                 <TraceDetailPanel
                   isRequestSelected={selectedRequestRecordId === selectedRecord.id}
+                  isSubAgent={isSubAgent}
                   key={selectedRecord.id}
                   record={selectedRecord}
                   step={selectedStep}
                   onClose={() => setIsMobileDetailOpen(false)}
                   onOpenAssistant={handleAssistantOpen}
                   onOpenRequest={handleRequestOpen}
+                  {...(childTrace
+                    ? { onOpenSubAgent: () => setSelectedExecutionId(childTrace.executionId) }
+                    : {})}
                   onOpenToolCall={handleToolCallOpen}
                 />
               </Drawer.Body>

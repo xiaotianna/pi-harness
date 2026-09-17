@@ -59,9 +59,11 @@ function ToolTiming({ record }: { record: AgentTraceRecord }) {
 export function ToolTraceDetails({
   record,
   onOpenAssistant,
+  onOpenSubAgent,
 }: {
   record: AgentTraceRecord;
   onOpenAssistant: (recordId: string) => void;
+  onOpenSubAgent?: () => void;
 }) {
   const [selectedTab, setSelectedTab] = useState("summary");
   const parentAssistantRecordId =
@@ -106,6 +108,13 @@ export function ToolTraceDetails({
           <dt className="text-muted">Status</dt>
           <dd>{AGENT_TRACE_DETAIL_STATUS_LABELS[record.status]}</dd>
         </dl>
+
+        {onOpenSubAgent ? (
+          <Link className="mt-3 gap-0 text-[13px]" onPress={onOpenSubAgent}>
+            查看子 Agent 轨迹
+            <ChevronRight aria-hidden className="size-3.5 text-muted" />
+          </Link>
+        ) : null}
 
         <section className="mt-4">
           <Link

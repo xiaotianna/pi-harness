@@ -17,7 +17,9 @@ import {
   AgentTraceStatus,
   type AgentTraceTokenUsage,
   type AgentTraceToolDefinition,
+  type SubAgentTraceSession,
 } from "../types/agent-trace";
+import { visibleAssistantBlocks } from "./visible-assistant-blocks";
 
 const MAX_PREVIEW_LENGTH = 800;
 const EMPTY_USAGE: AgentTraceTokenUsage = {
@@ -327,6 +329,18 @@ function createTrace(
         const messageStarted = modelMessageStarts.shift();
         const content = readFullText(event.data.content);
         const preview = clip(content);
+        const blockPreview = Array.isArray(event.data.content)
+          ? visibleAssistantBlocks(event.data.content)
+              .flatMap((block, index) =>
+                isPlainObject(block) &&
+                typeof block.type === "string" &&
+                block.type !== "text" &&
+                block.type !== "thinking"
+                  ? [`Block #${index + 1} ${block.type === "toolCall" ? "tool-call" : block.type}`]
+                  : [],
+              )
+              .join(" · ")
+          : "";
         const stopReason =
           typeof event.data.stopReason === "string" ? event.data.stopReason : "stop";
         const status =
@@ -351,7 +365,7 @@ function createTrace(
           kind: AgentTraceRecordKind.ASSISTANT,
           label: `模型请求 ${pending.turn}`,
           lane: AgentTraceLane.MODEL,
-          preview: preview || "模型未返回可见文本",
+          preview: preview || clip(blockPreview) || "模型未返回可见文本",
           raw: {
             context: pending.event.data,
             eventId: event.id,
@@ -733,6 +747,11 @@ export function sessionEventsToAgentTraces(
   let currentToolDefinitions: AgentTraceToolDefinition[] = EMPTY_TOOL_DEFINITIONS;
   for (const event of events) {
     if (!event.runId) continue;
+    if (
+      event.type.startsWith("subagent.") ||
+      (isPlainObject(event.data) && typeof event.data.executionId === "string")
+    )
+      continue;
     const runEvents = byRunId.get(event.runId) ?? [];
     runEvents.push(event);
     byRunId.set(event.runId, runEvents);
@@ -1024,4 +1043,268 @@ export function sessionEventsToAgentTraces(
       traceId: events[0]?.sessionId ?? firstTrace.traceId,
     },
   ];
+}
+
+const SUB_AGENT_EVENT_TYPES: Partial<Record<string, HarnessEventType>> = {
+  [HarnessEventType.SUBAGENT_CONTEXT_USAGE_SNAPSHOT]: HarnessEventType.CONTEXT_USAGE_SNAPSHOT,
+  [HarnessEventType.SUBAGENT_CONTEXT_COMPACTED]: HarnessEventType.CONTEXT_COMPACTED,
+  [HarnessEventType.SUBAGENT_MESSAGE_STARTED]: HarnessEventType.MESSAGE_STARTED,
+  [HarnessEventType.SUBAGENT_MESSAGE_COMPLETED]: HarnessEventType.MESSAGE_COMPLETED,
+  [HarnessEventType.SUBAGENT_TOOL_STARTED]: HarnessEventType.TOOL_STARTED,
+  [HarnessEventType.SUBAGENT_TOOL_COMPLETED]: HarnessEventType.TOOL_COMPLETED,
+  [HarnessEventType.SUBAGENT_TOOL_FAILED]: HarnessEventType.TOOL_FAILED,
+  [HarnessEventType.SUBAGENT_TOOL_SKIPPED]: HarnessEventType.TOOL_FAILED,
+};
+
+function subAgentEventLabel(event: HarnessEvent): string {
+  if (event.type === HarnessEventType.SUBAGENT_STARTED) return "子 Agent 启动";
+  if (event.type === HarnessEventType.INPUT_REQUESTED) return "请求用户输入";
+  if (event.type === HarnessEventType.INPUT_RESOLVED) return "用户已回复";
+  if (event.type === HarnessEventType.INPUT_EXPIRED) return "用户输入已过期";
+  if (event.type === HarnessEventType.FILE_CHANGED) return "文件变更";
+  if (event.type === HarnessEventType.SUBAGENT_TOOL_SKIPPED) return "跳过工具";
+  if (event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA) return "流式消息";
+  if (event.type === HarnessEventType.SUBAGENT_TOOL_UPDATED) return "工具进度";
+  return event.type;
+}
+
+function withoutSubAgentIdentity(value: unknown): Readonly<Record<string, unknown>> {
+  if (!isPlainObject(value)) return {};
+  const data = { ...value };
+  delete data.executionId;
+  delete data.parentExecutionId;
+  return data;
+}
+
+const completedSubAgentTraces = new WeakMap<
+  HarnessEvent,
+  { terminal: HarnessEvent; trace: SubAgentTraceSession }
+>();
+
+/** Keep every execution in its own trace while reusing the root record projection. */
+export function sessionEventsToSubAgentTraces(
+  events: readonly HarnessEvent[],
+  now = Date.now(),
+): SubAgentTraceSession[] {
+  const eventsByExecutionId = new Map<string, HarnessEvent[]>();
+  for (const event of events) {
+    if (!isPlainObject(event.data) || typeof event.data.executionId !== "string") continue;
+    const owned = eventsByExecutionId.get(event.data.executionId) ?? [];
+    owned.push(event);
+    eventsByExecutionId.set(event.data.executionId, owned);
+  }
+  const starts = events.filter(
+    (event) =>
+      event.type === HarnessEventType.SUBAGENT_STARTED &&
+      isPlainObject(event.data) &&
+      typeof event.data.executionId === "string" &&
+      typeof event.data.name === "string" &&
+      typeof event.data.parentToolCallId === "string",
+  );
+  return starts.flatMap((started) => {
+    if (!isPlainObject(started.data)) return [];
+    const { executionId, name, parentExecutionId, parentToolCallId } = started.data;
+    if (
+      typeof executionId !== "string" ||
+      typeof name !== "string" ||
+      typeof parentToolCallId !== "string"
+    )
+      return [];
+    const owned = (eventsByExecutionId.get(executionId) ?? []).filter(
+      (event) => event.runId === started.runId && event.seq >= started.seq,
+    );
+    const terminal = owned.findLast(
+      (event) =>
+        event.type === HarnessEventType.SUBAGENT_COMPLETED ||
+        event.type === HarnessEventType.SUBAGENT_FAILED ||
+        event.type === HarnessEventType.SUBAGENT_ABORTED,
+    );
+    const cached = completedSubAgentTraces.get(started);
+    if (terminal && cached?.terminal === terminal) return [cached.trace];
+    const normalized: HarnessEvent[] = [
+      {
+        ...started,
+        runId: executionId,
+        sessionId: executionId,
+        type: HarnessEventType.RUN_STARTED,
+        data: withoutSubAgentIdentity(started.data),
+      },
+    ];
+    const hasUserMessage = owned.some(
+      (event) =>
+        event.type === HarnessEventType.SUBAGENT_MESSAGE_COMPLETED &&
+        isPlainObject(event.data) &&
+        isPlainObject(event.data.message) &&
+        event.data.message.role === "user",
+    );
+    if (!hasUserMessage && typeof started.data.task === "string") {
+      const task = { role: "user", content: started.data.task, displayText: started.data.task };
+      normalized.push(
+        {
+          ...started,
+          id: `${started.id}:task-started`,
+          runId: executionId,
+          sessionId: executionId,
+          type: HarnessEventType.MESSAGE_STARTED,
+          data: task,
+        },
+        {
+          ...started,
+          id: `${started.id}:task-completed`,
+          runId: executionId,
+          sessionId: executionId,
+          type: HarnessEventType.MESSAGE_COMPLETED,
+          data: task,
+        },
+      );
+    }
+    const extraEvents: HarnessEvent[] = [started];
+    for (const event of owned) {
+      if (event === started || event === terminal) continue;
+      const mappedType = SUB_AGENT_EVENT_TYPES[event.type];
+      const normalizedEvent = {
+        ...event,
+        data: withoutSubAgentIdentity(event.data),
+        runId: executionId,
+        sessionId: executionId,
+      };
+      if (mappedType) {
+        const message = isPlainObject(event.data) ? event.data.message : undefined;
+        const data =
+          (mappedType === HarnessEventType.MESSAGE_STARTED ||
+            mappedType === HarnessEventType.MESSAGE_COMPLETED) &&
+          isPlainObject(message)
+            ? message.role === "user"
+              ? { ...message, displayText: readFullText(message.content) }
+              : message
+            : normalizedEvent.data;
+        normalized.push({ ...normalizedEvent, type: mappedType, data });
+        if (
+          event.type === HarnessEventType.SUBAGENT_MESSAGE_COMPLETED &&
+          isPlainObject(message) &&
+          message.role !== "user" &&
+          message.role !== "assistant"
+        ) {
+          extraEvents.push(event);
+        }
+      } else if (
+        event.type === HarnessEventType.APPROVAL_REQUESTED ||
+        event.type === HarnessEventType.APPROVAL_RESOLVED
+      ) {
+        normalized.push(normalizedEvent);
+      } else {
+        extraEvents.push(event);
+      }
+    }
+    if (terminal) {
+      const data = isPlainObject(terminal.data) ? terminal.data : {};
+      normalized.push({
+        ...terminal,
+        runId: executionId,
+        sessionId: executionId,
+        type:
+          terminal.type === HarnessEventType.SUBAGENT_COMPLETED
+            ? HarnessEventType.RUN_COMPLETED
+            : terminal.type === HarnessEventType.SUBAGENT_FAILED
+              ? HarnessEventType.RUN_FAILED
+              : HarnessEventType.RUN_ABORTED,
+        data: { code: data.errorCode, message: data.resultSummary ?? data.errorCode },
+      });
+    }
+    const projected = sessionEventsToAgentTraces(normalized, now)[0];
+    if (!projected) return [];
+    const finalAssistant = normalized.findLast(
+      (event) =>
+        event.type === HarnessEventType.MESSAGE_COMPLETED &&
+        isPlainObject(event.data) &&
+        event.data.role === "assistant",
+    );
+    const finalContent = isPlainObject(finalAssistant?.data) ? finalAssistant.data.content : null;
+    const finalText = Array.isArray(finalContent)
+      ? finalContent
+          .flatMap((block) =>
+            isPlainObject(block) && block.type === "text" && typeof block.text === "string"
+              ? [block.text]
+              : [],
+          )
+          .join("\n")
+      : "";
+    const skippedEvents = new Map(
+      owned
+        .filter((event) => event.type === HarnessEventType.SUBAGENT_TOOL_SKIPPED)
+        .map((event) => [event.id, event]),
+    );
+    const records: AgentTraceRecord[] = projected.records.map((record) => {
+      if (record.id === terminal?.id && record.kind === AgentTraceRecordKind.RUN) {
+        return {
+          ...record,
+          label:
+            terminal.type === HarnessEventType.SUBAGENT_COMPLETED
+              ? "子 Agent 已完成"
+              : terminal.type === HarnessEventType.SUBAGENT_FAILED
+                ? "子 Agent 失败"
+                : "子 Agent 已中止",
+          source: terminal.type,
+          raw: {
+            ...record.raw,
+            ...(finalText.trim() ? { message: finalText } : {}),
+            terminal: terminal.data,
+          },
+        };
+      }
+      const skipped = skippedEvents.get(String(record.raw.eventId));
+      if (record.kind === AgentTraceRecordKind.TOOL && skipped) {
+        return {
+          ...record,
+          label: "跳过工具",
+          source: HarnessEventType.SUBAGENT_TOOL_SKIPPED,
+          status: AgentTraceStatus.ABORTED,
+          raw: { ...record.raw, skipped: skipped.data },
+        };
+      }
+      return record;
+    });
+    for (const event of extraEvents) {
+      const data = isPlainObject(event.data) ? event.data : {};
+      const preview =
+        event.type === HarnessEventType.SUBAGENT_STARTED && typeof data.task === "string"
+          ? clip(data.task)
+          : event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA && typeof data.delta === "string"
+            ? clip(data.delta)
+            : event.type === HarnessEventType.SUBAGENT_TOOL_UPDATED
+              ? readUnknown(data.partialResult)
+              : readUnknown(event.data);
+      records.push({
+        durationMs: 0,
+        id: event.id,
+        kind: AgentTraceRecordKind.EVENT,
+        label: subAgentEventLabel(event),
+        lane: AgentTraceLane.INPUT,
+        preview,
+        raw: { data: event.data, eventId: event.id, seq: event.seq, runId: executionId },
+        source: event.type,
+        startMs: eventOffset(event, started.timestamp),
+        status:
+          event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA ||
+          event.type === HarnessEventType.SUBAGENT_TOOL_UPDATED
+            ? AgentTraceStatus.RUNNING
+            : AgentTraceStatus.COMPLETED,
+        summary: subAgentEventLabel(event),
+        turn: 0,
+      });
+    }
+    records.sort(compareRecords);
+    for (const record of records) record.turn = 0;
+    const trace: SubAgentTraceSession = {
+      ...projected,
+      executionId,
+      name,
+      ...(typeof parentExecutionId === "string" ? { parentExecutionId } : {}),
+      parentToolCallId,
+      records,
+      traceId: executionId,
+    };
+    if (terminal) completedSubAgentTraces.set(started, { terminal, trace });
+    return [trace];
+  });
 }

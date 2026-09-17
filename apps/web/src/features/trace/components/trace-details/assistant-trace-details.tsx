@@ -7,6 +7,7 @@ import { useState } from "react";
 import { AGENT_TRACE_DETAIL_STATUS_LABELS } from "../../constants/agent-trace";
 import type { AgentTraceRecord } from "../../types/agent-trace";
 import { formatTraceDuration } from "../../utils/format-trace-duration";
+import { visibleAssistantBlocks } from "../../utils/visible-assistant-blocks";
 import { TraceDetailMarkdown } from "./trace-detail-content";
 
 type AssistantTraceBlock =
@@ -42,7 +43,7 @@ function readBlocks(record: AgentTraceRecord): AssistantTraceBlock[] {
     ];
   }
 
-  return content.map((block) => {
+  return visibleAssistantBlocks(content).map((block) => {
     if (!isPlainObject(block)) {
       return { content: stringify(block, 2), kind: "unknown", label: "unknown" };
     }
@@ -132,9 +133,9 @@ function AssistantRaw({
   onOpenToolCall: (toolCallId: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       {blocks.map((block, index) => (
-        <section key={`${index}-${block.kind}`}>
+        <section className="min-w-0 max-w-full" key={`${index}-${block.kind}`}>
           {block.kind === "tool-call" ? (
             <Link
               className="mb-1 gap-0 font-mono text-[11px] font-normal text-muted"
@@ -146,7 +147,7 @@ function AssistantRaw({
           ) : (
             <div className="mb-1 font-mono text-[11px] text-muted">{`Block #${index + 1} ${block.label}`}</div>
           )}
-          <pre className="m-0 whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[13px] leading-5 text-foreground">
+          <pre className="m-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-xs leading-[18px] text-foreground">
             {block.content}
           </pre>
         </section>
@@ -174,7 +175,7 @@ export function AssistantTraceDetails({
 
   return (
     <Tabs
-      className="flex min-h-0 flex-1 flex-col gap-0!"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0!"
       selectedKey={selectedTab}
       variant="secondary"
       onSelectionChange={(key) => setSelectedTab(String(key))}

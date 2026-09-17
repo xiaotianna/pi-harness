@@ -5,6 +5,9 @@ export function getTraceEventRowText(record: AgentTraceRecord): string {
     return record.label;
   }
   if (record.kind === AgentTraceRecordKind.SYSTEM) return record.label;
+  if (record.kind === AgentTraceRecordKind.EVENT) {
+    return `${record.label} · ${record.preview}`;
+  }
   if (record.kind === AgentTraceRecordKind.RUN) {
     return record.preview === record.label ? record.label : `${record.label} · ${record.preview}`;
   }

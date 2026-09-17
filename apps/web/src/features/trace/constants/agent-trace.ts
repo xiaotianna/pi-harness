@@ -15,6 +15,7 @@ export const AGENT_TRACE_KIND_LABELS = {
   [AgentTraceRecordKind.APPROVAL]: "APPROVAL",
   [AgentTraceRecordKind.ASSISTANT]: "ASSISTANT",
   [AgentTraceRecordKind.CONTEXT]: "CONTEXT",
+  [AgentTraceRecordKind.EVENT]: "EVENT",
   [AgentTraceRecordKind.RUN]: "RUN",
   [AgentTraceRecordKind.SYSTEM]: "SYSTEM",
   [AgentTraceRecordKind.TOOL]: "TOOL",
@@ -33,6 +34,10 @@ export const AGENT_TRACE_KIND_STYLES = {
   [AgentTraceRecordKind.CONTEXT]: {
     chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--success-soft)] [--chip-fg:var(--success-soft-foreground)]`,
     timelineClassName: "bg-success/65",
+  },
+  [AgentTraceRecordKind.EVENT]: {
+    chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--default)] [--chip-fg:var(--default-foreground)]`,
+    timelineClassName: "bg-muted/70",
   },
   [AgentTraceRecordKind.RUN]: {
     chipClassName: `${TRACE_KIND_CHIP_CLASS_NAME} [--chip-bg:var(--default)] [--chip-fg:var(--default-foreground)]`,

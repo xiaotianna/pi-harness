@@ -8,6 +8,7 @@ import { type AgentTraceRecord, AgentTraceRecordKind } from "../types/agent-trac
 import { ApprovalTraceDetails } from "./trace-details/approval-trace-details";
 import { AssistantTraceDetails } from "./trace-details/assistant-trace-details";
 import { ContextTraceDetails } from "./trace-details/context-trace-details";
+import { EventTraceDetails } from "./trace-details/event-trace-details";
 import { RequestTraceDetails } from "./trace-details/request-trace-details";
 import { RunTraceDetails } from "./trace-details/run-trace-details";
 import { SystemTraceDetails } from "./trace-details/system-trace-details";
@@ -22,11 +23,13 @@ const DETAIL_TRANSITION = {
 
 export interface TraceDetailPanelProps {
   isRequestSelected: boolean;
+  isSubAgent: boolean;
   record: AgentTraceRecord;
   step: number;
   onClose: () => void;
   onOpenAssistant: (recordId: string) => void;
   onOpenRequest: (recordId: string) => void;
+  onOpenSubAgent?: () => void;
   onOpenToolCall: (toolCallId: string) => void;
 }
 
@@ -35,12 +38,14 @@ function TraceDetails({
   record,
   onOpenAssistant,
   onOpenRequest,
+  onOpenSubAgent,
   onOpenToolCall,
 }: {
   isRequestSelected: boolean;
   record: AgentTraceRecord;
   onOpenAssistant: (recordId: string) => void;
   onOpenRequest: (recordId: string) => void;
+  onOpenSubAgent?: () => void;
   onOpenToolCall: (toolCallId: string) => void;
 }) {
   if (isRequestSelected) {
@@ -52,12 +57,20 @@ function TraceDetails({
       return <SystemTraceDetails record={record} />;
     case AgentTraceRecordKind.CONTEXT:
       return <ContextTraceDetails record={record} />;
+    case AgentTraceRecordKind.EVENT:
+      return <EventTraceDetails record={record} />;
     case AgentTraceRecordKind.RUN:
       return <RunTraceDetails record={record} />;
     case AgentTraceRecordKind.USER:
       return <UserTraceDetails record={record} />;
     case AgentTraceRecordKind.TOOL:
-      return <ToolTraceDetails record={record} onOpenAssistant={onOpenAssistant} />;
+      return (
+        <ToolTraceDetails
+          record={record}
+          onOpenAssistant={onOpenAssistant}
+          {...(onOpenSubAgent ? { onOpenSubAgent } : {})}
+        />
+      );
     case AgentTraceRecordKind.ASSISTANT:
       return (
         <AssistantTraceDetails
@@ -73,11 +86,13 @@ function TraceDetails({
 
 export const TraceDetailPanel = memo(function TraceDetailPanel({
   isRequestSelected,
+  isSubAgent,
   record,
   step,
   onClose,
   onOpenAssistant,
   onOpenRequest,
+  onOpenSubAgent,
   onOpenToolCall,
 }: TraceDetailPanelProps) {
   const shouldReduceMotion = useReducedMotion();
@@ -85,7 +100,7 @@ export const TraceDetailPanel = memo(function TraceDetailPanel({
   return (
     <motion.aside
       animate={{ opacity: 1, x: 0 }}
-      className="flex h-full min-h-0 flex-col bg-background [&_[role=tabpanel]]:pb-12!"
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background [&_[role=tabpanel]]:pb-12!"
       initial={shouldReduceMotion ? false : { opacity: 0, x: 16 }}
       transition={shouldReduceMotion ? { duration: 0 } : DETAIL_TRANSITION}
     >
@@ -98,13 +113,15 @@ export const TraceDetailPanel = memo(function TraceDetailPanel({
         <span className="min-w-0 flex-1 truncate text-xs font-medium">
           {isRequestSelected ? `Request #${record.request ?? "—"}` : record.label}
         </span>
-        <span className="shrink-0 text-[11px] text-muted">
-          {record.turn > 0
-            ? isRequestSelected
-              ? `Turn ${record.turn}`
-              : `Turn ${record.turn} · Step ${step}`
-            : "Session 事件"}
-        </span>
+        {!isSubAgent ? (
+          <span className="shrink-0 text-[11px] text-muted">
+            {record.turn > 0
+              ? isRequestSelected
+                ? `Turn ${record.turn}`
+                : `Turn ${record.turn} · Step ${step}`
+              : "Session 事件"}
+          </span>
+        ) : null}
         <Tooltip delay={0}>
           <Button
             isIconOnly
@@ -125,6 +142,7 @@ export const TraceDetailPanel = memo(function TraceDetailPanel({
         record={record}
         onOpenAssistant={onOpenAssistant}
         onOpenRequest={onOpenRequest}
+        {...(onOpenSubAgent ? { onOpenSubAgent } : {})}
         onOpenToolCall={onOpenToolCall}
       />
     </motion.aside>

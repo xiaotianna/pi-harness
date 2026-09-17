@@ -10,6 +10,7 @@ export const AgentTraceRecordKind = {
   APPROVAL: "approval",
   ASSISTANT: "assistant",
   CONTEXT: "context",
+  EVENT: "event",
   RUN: "run",
   SYSTEM: "system",
   TOOL: "tool",
@@ -76,6 +77,13 @@ export interface AgentTraceSession {
   status: AgentTraceStatus;
   tokenUsage: AgentTraceTokenUsage;
   traceId: string;
+}
+
+export interface SubAgentTraceSession extends AgentTraceSession {
+  executionId: string;
+  name: string;
+  parentExecutionId?: string;
+  parentToolCallId: string;
 }
 
 export interface AgentTraceRange {

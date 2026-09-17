@@ -29,18 +29,20 @@ function toTraceEventListItems(records: readonly AgentTraceRecord[]): TraceEvent
 }
 
 function TraceTurnRail({
+  isSubAgent,
   isRecordSelected,
   isTurnSelected,
   isTurnStart,
   turn,
 }: {
+  isSubAgent: boolean;
   isRecordSelected: boolean;
   isTurnSelected: boolean;
   isTurnStart: boolean;
   turn: number;
 }) {
   return (
-    <span className="relative w-10 shrink-0 self-stretch">
+    <span className={`relative shrink-0 self-stretch ${isSubAgent ? "w-6" : "w-10"}`}>
       {turn > 0 && isTurnStart ? (
         <span
           className={`absolute top-0 left-0 z-20 rounded-sm px-1 py-0.5 text-[9px] leading-none font-medium tabular-nums ${
@@ -64,6 +66,7 @@ const TRACE_EVENT_ROW_SELECTED_CLASS_NAME =
   "[--button-bg:color-mix(in_oklab,var(--accent)_10%,transparent)] [--button-bg-hover:color-mix(in_oklab,var(--accent)_10%,transparent)] [--button-bg-pressed:color-mix(in_oklab,var(--accent)_12%,transparent)]";
 
 export interface TraceEventListProps {
+  isSubAgent: boolean;
   range: AgentTraceRange | null;
   records: readonly AgentTraceRecord[];
   selectedRecordId: string | null;
@@ -73,6 +76,7 @@ export interface TraceEventListProps {
 }
 
 export const TraceEventList = memo(function TraceEventList({
+  isSubAgent,
   range,
   records,
   selectedRecordId,
@@ -182,6 +186,7 @@ export const TraceEventList = memo(function TraceEventList({
               >
                 <span className="flex h-full min-w-0 w-full items-stretch">
                   <TraceTurnRail
+                    isSubAgent={isSubAgent}
                     isRecordSelected={isSelected}
                     isTurnSelected={record.turn === selectedTurn}
                     isTurnStart={isTurnStart}

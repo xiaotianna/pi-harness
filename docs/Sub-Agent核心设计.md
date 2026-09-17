@@ -125,10 +125,10 @@ Pi 原始事件只在 `agent-runtime` 内转换；Web 和 daemon 只消费 `Harn
 
 | 事件 | 必需数据与用途 | JSONL |
 |---|---|---|
-| `subagent.started` | `executionId`、`parentExecutionId?`、`parentToolCallId`、角色、名称、任务、模型；创建条目 | 是 |
+| `subagent.started` | `executionId`、`parentExecutionId?`、`parentToolCallId`、角色、名称、任务、模型及实际 System Prompt/Tool 定义快照；创建条目和独立轨迹 | 是 |
 | `subagent.message.started/delta/completed` | 子消息身份、增量或完整 `AgentMessage`；展示过程 | `started`、`completed` |
 | `subagent.tool.started/updated/completed/failed/skipped` | `(executionId, toolCallId)`、工具名、受控参数/结果；展示工具轨迹 | 除 `updated` 外 |
-| `subagent.context.usage_snapshot/compacted` | 子 Agent 自己的上下文预算与压缩记录；恢复时不进入父 checkpoint | 是 |
+| `subagent.context.usage_snapshot/compacted` | 子 Agent 自己的上下文预算、每次模型请求的完整消息快照与压缩记录；恢复时不进入父 checkpoint | 是 |
 | `approval.requested/resolved`、`input.requested/resolved/expired`、`file.changed` | 现有事件增加可选 `executionId`，关联子 Agent；保留原有审批/文件审计 | 按现有规则 |
 | `subagent.completed/failed/aborted` | 唯一终态、短结果或安全错误码、用量、结束时间 | 是 |
 

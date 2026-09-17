@@ -342,8 +342,6 @@ export class SubAgentTree {
         task: input.task,
         ...(parentExecutionId === null ? {} : { parentExecutionId }),
       };
-      await this.options.emit({ type: HarnessEventType.SUBAGENT_STARTED, data: started });
-      startedPersisted = true;
       const sourceRegistry = parent?.registry ?? this.options.rootRegistry;
       const skillRegistry = (parent?.skillRegistry ?? this.options.skillRegistry)?.fork() ?? null;
       const raw: ToolRegistration[] = sourceRegistry.rawRegistrations
@@ -401,20 +399,33 @@ export class SubAgentTree {
         },
         ...createSubAgentToolRegistrations(this.handlers(executionId)),
       ]);
+      const systemPrompt = buildSubAgentPrompt(
+        this.options.systemPrompt,
+        input.agentType,
+        this.options.workspaceRoot,
+      );
+      const thinkingLevel = clampThinkingLevel(model, this.options.thinkingLevel);
+      await this.options.emit({
+        type: HarnessEventType.SUBAGENT_STARTED,
+        data: {
+          ...started,
+          maxTokens: model.maxTokens,
+          providerId: model.provider,
+          systemPrompt,
+          thinkingLevel,
+          tools: createRunToolSnapshot(registry),
+        },
+      });
+      startedPersisted = true;
       this.options.setExecutionHooks(registry, executionId, skillRegistry ?? undefined);
       const agent = createAgent({
         messages: [],
         model,
         sessionId: executionId,
-        systemPrompt: buildSubAgentPrompt(
-          this.options.systemPrompt,
-          input.agentType,
-          this.options.workspaceRoot,
-        ),
+        systemPrompt,
         streamFn: this.options.streamFn,
         tools: registry.tools,
       });
-      const thinkingLevel = clampThinkingLevel(model, this.options.thinkingLevel);
       agent.state.thinkingLevel = thinkingLevel;
       let requestCount = 0;
       agent.streamFunction = async (requestModel, context, streamOptions) => {
@@ -427,6 +438,8 @@ export class SubAgentTree {
             executionId,
             ...(parentExecutionId === null ? {} : { parentExecutionId }),
             ...estimateContextUsage(context, []),
+            messages: structuredClone(context.messages),
+            requestIndex: requestCount,
           },
         });
         return this.options.streamFn(requestModel, context, {
@@ -601,6 +614,7 @@ export class SubAgentTree {
       [HarnessEventType.TOOL_UPDATED]: HarnessEventType.SUBAGENT_TOOL_UPDATED,
       [HarnessEventType.TOOL_COMPLETED]: HarnessEventType.SUBAGENT_TOOL_COMPLETED,
       [HarnessEventType.TOOL_FAILED]: HarnessEventType.SUBAGENT_TOOL_FAILED,
+      [HarnessEventType.TOOL_SKIPPED]: HarnessEventType.SUBAGENT_TOOL_SKIPPED,
     };
     const childType = typeByRootType[draft.type];
     if (childType === undefined) return;

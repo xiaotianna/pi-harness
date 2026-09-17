@@ -626,11 +626,16 @@ export type SubAgentStatus = (typeof SubAgentStatus)[keyof typeof SubAgentStatus
 export interface SubAgentStartedData {
   agentType: SubAgentType;
   executionId: string;
+  maxTokens?: number;
   modelId: string;
   name: string;
   parentExecutionId?: string;
   parentToolCallId: string;
+  providerId?: string;
   task: string;
+  systemPrompt?: string;
+  thinkingLevel?: string;
+  tools?: readonly RunToolDefinition[];
 }
 
 export interface SubAgentMessageData {
@@ -659,6 +664,19 @@ export function isSubAgentStartedData(value: unknown): value is SubAgentStartedD
     typeof value.name === "string" &&
     typeof value.parentToolCallId === "string" &&
     typeof value.task === "string" &&
+    (value.maxTokens === undefined || (Number.isInteger(value.maxTokens) && value.maxTokens > 0)) &&
+    (value.providerId === undefined || typeof value.providerId === "string") &&
+    (value.systemPrompt === undefined || typeof value.systemPrompt === "string") &&
+    (value.thinkingLevel === undefined || typeof value.thinkingLevel === "string") &&
+    (value.tools === undefined ||
+      (Array.isArray(value.tools) &&
+        value.tools.every(
+          (tool) =>
+            isPlainObject(tool) &&
+            typeof tool.name === "string" &&
+            typeof tool.description === "string" &&
+            "parameters" in tool,
+        ))) &&
     (value.parentExecutionId === undefined || typeof value.parentExecutionId === "string")
   );
 }
