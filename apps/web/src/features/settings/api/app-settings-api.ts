@@ -96,6 +96,7 @@ const AppSettingsSchema = Type.Object({
     Type.Null(),
   ]),
   fileOpenMode: Type.Union([Type.Literal(FileOpenMode.ALWAYS), Type.Literal(FileOpenMode.ASK)]),
+  isSubAgentEnabled: Type.Boolean(),
   outputDetail: OutputDetailSchema,
   reasoningSummary: ReasoningSummarySchema,
   sandboxAllowedDomains: SandboxAllowedDomainsSchema,
@@ -109,6 +110,7 @@ const UpdateAppSettingsSchema = Type.Object({
     Type.Union([Type.Literal(BusySubmitBehavior.QUEUE), Type.Literal(BusySubmitBehavior.STEER)]),
   ),
   defaultModel: Type.Optional(DefaultModelSettingSchema),
+  isSubAgentEnabled: Type.Optional(Type.Boolean()),
   fileOpenMode: Type.Optional(
     Type.Union([Type.Literal(FileOpenMode.ALWAYS), Type.Literal(FileOpenMode.ASK)]),
   ),

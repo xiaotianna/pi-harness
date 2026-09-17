@@ -190,6 +190,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     () => sandboxCredentials,
     memories,
     mcpTools.prepare,
+    async (providerId, modelId) => (await providers.resolveRunModel(providerId, modelId)).model,
   );
   const workspaces = new WorkspaceService(
     database.workspaces,

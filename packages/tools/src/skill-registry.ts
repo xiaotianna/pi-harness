@@ -146,9 +146,18 @@ function toListItem({
 export class SkillRegistry {
   private readonly pendingGrants = new Map<string, string>();
   private readonly grants = new Map<string, SkillDetails & { fingerprint: string }>();
-  private readonly loadedDirectories = new Set<string>();
+  private readonly loadedDirectories: Set<string>;
 
-  public constructor(private readonly context: SkillRegistryContext) {}
+  public constructor(
+    private readonly context: SkillRegistryContext,
+    loadedDirectories?: Set<string>,
+  ) {
+    this.loadedDirectories = loadedDirectories ?? new Set<string>();
+  }
+
+  public fork(): SkillRegistry {
+    return new SkillRegistry(this.context, this.loadedDirectories);
+  }
 
   public clearGrants(): void {
     this.grants.clear();

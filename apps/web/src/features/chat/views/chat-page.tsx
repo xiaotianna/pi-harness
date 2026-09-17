@@ -15,6 +15,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   abortSessionRun,
+  abortSubAgent,
   followUpSessionRun,
   removeQueuedSessionRunInput,
   resolveToolApproval,
@@ -43,6 +44,7 @@ import { UserInputCard } from "../components/user-input-card";
 import { WorkingStatePanel } from "../components/working-state-panel";
 import { WorkspaceFilesView } from "../components/workspace-files-view";
 import { ChatPageView } from "../constants/chat-page-view";
+import { CHAT_AUTO_SCROLL_THRESHOLD_PX } from "../constants/chat-scroll";
 import { type ChatMessage, ChatMessageType } from "../data/chat";
 import { useSessionEvents } from "../hooks/use-session-events";
 import { useChatPageViewStore } from "../state/chat-page-view-store";
@@ -65,7 +67,6 @@ const CHAT_VIEW_TRANSITION = {
   duration: 0.18,
   ease: [0.22, 1, 0.36, 1],
 } as const;
-const CHAT_AUTO_SCROLL_THRESHOLD_PX = 1;
 const EMPTY_SESSION_EVENTS = [] as const;
 const EMPTY_SESSION_EVENT_METADATA: SessionSnapshotEventMetadata = {
   changedRunIds: new Set(),
@@ -211,6 +212,15 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   }, [messages]);
   const pendingApproval = pendingApprovalTool?.approval;
   const pendingUserInput = useMemo(() => findPendingUserInput(activeEvents), [activeEvents]);
+  const pendingInputAgent = pendingUserInput?.executionId
+    ? messages.find(
+        (message) =>
+          message.type === ChatMessageType.SUBAGENT &&
+          message.executionId === pendingUserInput.executionId,
+      )
+    : undefined;
+  const pendingInputAgentName =
+    pendingInputAgent?.type === ChatMessageType.SUBAGENT ? pendingInputAgent.name : undefined;
   const conversationRef = useRef<HTMLDivElement>(null);
   const [conversationElement, setConversationElement] = useState<HTMLDivElement | null>(null);
   const conversationContentRef = useRef<HTMLDivElement>(null);
@@ -248,6 +258,21 @@ export function ChatPage({ sessionId }: ChatPageProps) {
     let frameId = 0;
     let observer: ResizeObserver | undefined;
     const savedPosition = conversationScrollPositionRef.current;
+    const positionAtEnd = () => {
+      if (!shouldFollowConversationRef.current) return;
+      conversation.scrollTop = conversation.scrollHeight;
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        if (!shouldFollowConversationRef.current) return;
+        conversation.scrollTop = conversation.scrollHeight;
+        const isAtBottom =
+          conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight <= 1;
+        if (isAtBottom) {
+          setPositionedSessionId(sessionId);
+        }
+      });
+    };
+
     if (savedPosition?.sessionId === sessionId && !savedPosition.isAtBottom) {
       shouldFollowConversationRef.current = false;
       const restorePosition = () => {
@@ -256,29 +281,10 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       };
       restorePosition();
       frameId = window.requestAnimationFrame(restorePosition);
-      return () => window.cancelAnimationFrame(frameId);
+    } else {
+      shouldFollowConversationRef.current = true;
+      positionAtEnd();
     }
-
-    shouldFollowConversationRef.current = true;
-    const positionAtEnd = () => {
-      if (!shouldFollowConversationRef.current) return;
-      messageListRef.current?.scrollToEnd();
-      conversation.scrollTop = conversation.scrollHeight;
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(() => {
-        if (!shouldFollowConversationRef.current) return;
-        messageListRef.current?.scrollToEnd();
-        conversation.scrollTop = conversation.scrollHeight;
-        const isAtBottom =
-          conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight <= 1;
-        if (isAtBottom) {
-          setPositionedSessionId(sessionId);
-          observer?.disconnect();
-        }
-      });
-    };
-
-    positionAtEnd();
     observer = new ResizeObserver(positionAtEnd);
     observer.observe(content);
     return () => {
@@ -293,7 +299,9 @@ export function ChatPage({ sessionId }: ChatPageProps) {
       isSnapshotReady &&
       shouldFollowConversationRef.current
     ) {
-      messageListRef.current?.scrollToEnd();
+      if (conversationRef.current) {
+        conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
+      }
     }
   }, [activeView, isSnapshotReady, messages]);
 
@@ -532,7 +540,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                       conversation.scrollTop -
                       conversation.clientHeight;
                     conversationScrollPositionRef.current = {
-                      isAtBottom: distanceFromBottom <= 1,
+                      isAtBottom: distanceFromBottom <= CHAT_AUTO_SCROLL_THRESHOLD_PX,
                       scrollTop: conversation.scrollTop,
                       sessionId,
                     };
@@ -550,7 +558,7 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                       );
                     }
                     const isNearBottom = distanceFromBottom <= CHAT_AUTO_SCROLL_THRESHOLD_PX;
-                    if (isNearBottom) shouldFollowConversationRef.current = true;
+                    shouldFollowConversationRef.current = isNearBottom;
                   }}
                   onTouchMove={stopFollowingConversation}
                   onWheel={(event) => {
@@ -680,8 +688,15 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   >
                     <UserInputCard
                       key={pendingUserInput.inputId}
+                      {...(pendingInputAgentName === undefined
+                        ? {}
+                        : { agentName: pendingInputAgentName })}
                       request={pendingUserInput}
-                      onCancel={() => abortMutation.mutateAsync(activeRunId)}
+                      onCancel={() =>
+                        pendingUserInput.executionId
+                          ? abortSubAgent(sessionId, pendingUserInput.executionId)
+                          : abortMutation.mutateAsync(activeRunId)
+                      }
                       onResolve={(submission) =>
                         inputMutation.mutateAsync({
                           inputId: pendingUserInput.inputId,

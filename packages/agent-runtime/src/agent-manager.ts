@@ -3,6 +3,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { createMemoryToolRegistrations, type MemoryRuntime } from "@pi-harness/memory";
 import type { CommandPrefixRule, SandboxCredential } from "@pi-harness/policy";
 import {
+  createSubAgentToolRegistrations,
   createWorkspaceToolRegistry,
   type PlanUpdatedData,
   type SkillDefinition,
@@ -73,6 +74,7 @@ export type PrepareExternalTools = (
 // 核心：Map<SessionId, RunCoordinator>
 export class AgentManager {
   private readonly runtimes = new Map<SessionId, RunCoordinator>();
+  private activeSubAgents = 0;
 
   public constructor(
     private readonly onEvent: HarnessEventListener,
@@ -89,7 +91,19 @@ export class AgentManager {
     private readonly getSandboxCredentials: () => readonly SandboxCredential[],
     private readonly memory: MemoryRuntime,
     private readonly prepareExternalTools?: PrepareExternalTools,
+    private readonly resolveSubAgentModel?: (
+      providerId: string,
+      modelId: string,
+    ) => Promise<Model<Api>>,
   ) {}
+
+  private acquireSubAgentSlot = (): (() => void) | null => {
+    if (this.activeSubAgents >= 8) return null;
+    this.activeSubAgents += 1;
+    return () => {
+      this.activeSubAgents -= 1;
+    };
+  };
 
   public isProviderActive(providerId: string): boolean {
     return [...this.runtimes.values()].some((runtime) => runtime.activeProviderId === providerId);
@@ -126,6 +140,10 @@ export class AgentManager {
 
   public abort(sessionId: SessionId, runId: RunId): boolean {
     return this.runtimes.get(sessionId)?.abort(runId) ?? false;
+  }
+
+  public async abortSubAgent(sessionId: SessionId, executionId: string): Promise<boolean> {
+    return (await this.runtimes.get(sessionId)?.abortSubAgent(executionId)) ?? false;
   }
 
   public async steer(sessionId: SessionId, runId: RunId, input: RunUserInput): Promise<boolean> {
@@ -202,6 +220,24 @@ export class AgentManager {
       isSkillEnabled: this.isSkillEnabled,
       skillGatewayUrl: this.skillGatewayUrl,
     });
+    const subAgentTools = createSubAgentToolRegistrations({
+      spawn: (toolCallId, spawnInput, signal) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.spawnSubAgent(toolCallId, spawnInput, signal);
+      },
+      wait: (waitInput, signal) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.waitSubAgents(waitInput, signal);
+      },
+      send: (sendInput, signal) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.sendSubAgentMessage(sendInput, signal);
+      },
+      stop: (stopInput, signal) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.stopSubAgent(stopInput, signal);
+      },
+    });
     const toolRegistry = createWorkspaceToolRegistry(
       {
         getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
@@ -253,7 +289,10 @@ export class AgentManager {
         workspaceRoot: input.workspaceRoot,
       },
       skillRegistry,
-      createMemoryToolRegistrations(this.memory, input.sessionId, input.workspaceId),
+      [
+        ...createMemoryToolRegistrations(this.memory, input.sessionId, input.workspaceId),
+        ...subAgentTools,
+      ],
     );
     const agent = createAgent({ ...input, tools: toolRegistry.tools });
     runtime = new RunCoordinator(
@@ -278,6 +317,13 @@ export class AgentManager {
       this.getAllowedCommandPrefixes,
       skillRegistry,
       this.prepareExternalTools,
+      this.acquireSubAgentSlot,
+      (providerId, modelId) => {
+        if (this.resolveSubAgentModel === undefined)
+          throw new Error("SUBAGENT_MODEL_FAILED: 模型覆盖不可用");
+        return this.resolveSubAgentModel(providerId, modelId);
+      },
+      subAgentTools.map(({ tool }) => tool.name),
     );
     this.runtimes.set(input.sessionId, runtime);
     return runtime;

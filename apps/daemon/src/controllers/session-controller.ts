@@ -15,6 +15,8 @@ import type {
   SessionQueuedInputParamsDto,
   SessionRunParamsDto,
   SessionSearchQueryDto,
+  SessionSubAgentEventsQueryDto,
+  SessionSubAgentParamsDto,
   StartRunDto,
   UpdateQueuedInputDto,
   UpdateSessionDto,
@@ -35,6 +37,7 @@ import type {
   SessionSearchResultVo,
   SessionSnapshotVo,
   SessionVo,
+  SubAgentEventsVo,
 } from "../vo/session-vo.js";
 
 export class SessionController {
@@ -118,6 +121,39 @@ export class SessionController {
     try {
       const snapshot = await this.sessions.getConversationSnapshot(request.params.sessionId);
       return { events: [...snapshot.events], session: snapshot.session };
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public getSubAgentEvents = async (
+    request: FastifyRequest<{
+      Params: SessionSubAgentParamsDto;
+      Querystring: SessionSubAgentEventsQueryDto;
+    }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | SubAgentEventsVo> => {
+    try {
+      const result = await this.sessions.getSubAgentEvents(
+        request.params.sessionId,
+        request.params.executionId,
+        request.query.afterSeq,
+        request.query.limit,
+      );
+      return { events: [...result.events], hasMore: result.hasMore };
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public abortSubAgent = async (
+    request: FastifyRequest<{ Params: SessionSubAgentParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.sessions.abortSubAgent(request.params.sessionId, request.params.executionId);
+      return reply.status(204).send();
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     }

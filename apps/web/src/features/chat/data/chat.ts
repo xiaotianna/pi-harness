@@ -19,6 +19,7 @@ export type {
   ChatReasoningMessage,
   ChatSourcesMessage,
   ChatStreamingMessage,
+  ChatSubAgentMessage,
   ChatTaskListMessage,
   ChatToolGroupMessage,
   ChatToolMessage,

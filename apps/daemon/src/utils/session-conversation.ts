@@ -42,10 +42,33 @@ export function projectSessionConversationEvents(
   events: readonly HarnessEvent[],
 ): readonly HarnessEvent[] {
   return events.flatMap((event) => {
+    if (event.type.startsWith("subagent.")) {
+      if (
+        event.type === HarnessEventType.SUBAGENT_STARTED ||
+        event.type === HarnessEventType.SUBAGENT_COMPLETED ||
+        event.type === HarnessEventType.SUBAGENT_FAILED ||
+        event.type === HarnessEventType.SUBAGENT_ABORTED
+      )
+        return [event];
+      if (event.type === HarnessEventType.SUBAGENT_TOOL_STARTED && isPlainObject(event.data)) {
+        return [
+          {
+            ...event,
+            data: {
+              executionId: event.data.executionId,
+              toolCallId: event.data.toolCallId,
+              toolName: event.data.toolName,
+            },
+          },
+        ];
+      }
+      return [];
+    }
+
     if (
       event.type === HarnessEventType.MESSAGE_COMPLETED &&
       isPlainObject(event.data) &&
-      event.data.role === "toolResult"
+      (event.data.role === "toolResult" || event.data.isInternal === true)
     ) {
       return [];
     }

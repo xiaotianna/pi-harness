@@ -1,9 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import type {
   AfterToolCallContext,
   Agent,
   AgentEvent,
   AgentMessage,
+  AgentTool,
   BeforeToolCallContext,
   BeforeToolCallResult,
   StreamFn,
@@ -19,6 +21,7 @@ import {
   ApprovalPolicy,
   type ApprovalPolicyValue,
   evaluateToolCall,
+  resolveWorkspacePath,
   ToolPermission,
   ToolPolicyDecision,
 } from "@pi-harness/policy";
@@ -28,13 +31,17 @@ import {
   type PlanUpdatedData,
   type RequestUserInputData,
   readFileChangeDetails,
+  type SendAgentMessageInput,
   type SessionHistorySearchResult,
   type SkillRegistry,
+  type SpawnAgentInput,
+  type StopAgentInput,
   type TodoUpdatedData,
   type ToolRegistry,
   UserInputRequestKind,
   UserInputResponseAction,
   type UserInputToolResult,
+  type WaitAgentsInput,
 } from "@pi-harness/tools";
 import type { PreparedExternalTools, PrepareExternalTools } from "./agent-manager.js";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
@@ -83,6 +90,7 @@ import {
   parseToolApprovalResponse,
   TOOL_APPROVAL_SYSTEM_PROMPT,
 } from "./prompts/tool-approval-prompt.js";
+import { SubAgentTree } from "./sub-agent-tree.js";
 import { type ThinkingLevel, ThinkingLevel as ThinkingLevels } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
 import {
@@ -107,6 +115,7 @@ import {
 export interface StartRunInput {
   approvalPolicy: ApprovalPolicyValue;
   contexts: readonly RunContextData[];
+  isSubAgentEnabled: boolean;
   model: Model<Api>;
   modelId: string;
   userInput: RunUserInput;
@@ -232,6 +241,14 @@ export class RunCoordinator {
   private readonly sessionApprovedFingerprints = new Set<string>();
   private readonly sessionApprovedNetworkTargets = new Set<string>();
   private readonly unsubscribe: () => void;
+  private eventTail: Promise<void> = Promise.resolve();
+  private pendingRunOutcome: HarnessEventDraft | null = null;
+  private hasEmittedRunStart = false;
+  private subAgents: SubAgentTree | null = null;
+  private rootJoinAbortController: AbortController | null = null;
+  private readonly callFingerprints = new Map<string, string | undefined>();
+  private readonly readFingerprints = new Map<string, string | null>();
+  private readonly pendingReadFingerprints = new Map<string, string | null>();
 
   public constructor(
     private readonly sessionId: SessionId,
@@ -253,8 +270,17 @@ export class RunCoordinator {
     private readonly getAllowedCommandPrefixes: () => readonly (readonly string[])[] = () => [],
     private readonly skillRegistry?: SkillRegistry,
     private readonly prepareExternalTools?: PrepareExternalTools,
+    private readonly acquireSubAgentSlot: () => (() => void) | null = () => null,
+    private readonly resolveSubAgentModel: (
+      providerId: string,
+      modelId: string,
+    ) => Promise<Model<Api>> = async () => {
+      throw new Error("SUBAGENT_MODEL_FAILED: 模型覆盖不可用");
+    },
+    private readonly subAgentToolNames: readonly string[] = [],
   ) {
     this.executionGuard = toolRegistry.executionGuard;
+    this.setToolExecutionHooks(toolRegistry);
     for (const message of agent.state.messages) {
       if (message.role === "toolResult" && !message.isError) {
         this.successfulToolCallIds.add(message.toolCallId);
@@ -268,19 +294,162 @@ export class RunCoordinator {
     this.unsubscribe = agent.subscribe((event) => this.handleAgentEvent(event));
   }
 
+  private callKey(toolCallId: string, executionId?: string): string {
+    return `${executionId ?? "root"}:${toolCallId}`;
+  }
+
+  private async fileFingerprint(path: string, signal: AbortSignal): Promise<string | null> {
+    try {
+      const hash = createHash("sha256");
+      for await (const chunk of createReadStream(path, { signal })) hash.update(chunk);
+      return hash.digest("hex");
+    } catch (error: unknown) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+      throw error;
+    }
+  }
+
+  private async toolPath(params: unknown, allowMissing: boolean): Promise<string> {
+    if (
+      typeof params !== "object" ||
+      params === null ||
+      !("path" in params) ||
+      typeof params.path !== "string"
+    ) {
+      throw new Error("WORKSPACE_CHANGED: 文件工具缺少路径");
+    }
+    return resolveWorkspacePath({
+      path: params.path,
+      workspaceRoot: this.workspaceRoot,
+      protectedPaths: this.protectedPaths,
+      ...(allowMissing ? { allowMissing: true } : {}),
+    });
+  }
+
+  private setToolExecutionHooks(
+    registry: ToolRegistry,
+    executionId?: string,
+    skillRegistry = this.skillRegistry,
+  ): void {
+    registry.setExecutionHooks({
+      executionKey: async (toolName, params) =>
+        toolName === "edit_file" || toolName === "write_file"
+          ? this.toolPath(params, toolName === "write_file")
+          : undefined,
+      beforeExecute: async (toolName, toolCallId, params, signal) => {
+        const key = this.callKey(toolCallId, executionId);
+        if (toolName === "read_file") {
+          const path = await this.toolPath(params, false);
+          this.pendingReadFingerprints.set(key, await this.fileFingerprint(path, signal));
+          return;
+        }
+        const activeRun = this.activeRun;
+        const registration = registry.get(toolName);
+        if (
+          activeRun === null ||
+          registration === undefined ||
+          registration.policy.permission === ToolPermission.READ_ONLY
+        )
+          return;
+        const current = await evaluateToolCall({
+          approvalPolicy: activeRun.approvalPolicy,
+          allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
+          isSkillToolPreapproved:
+            (await skillRegistry?.isToolPreapproved(toolName, params, signal)) ?? false,
+          arguments: params,
+          policy: registration.policy,
+          protectedPaths: this.protectedPaths,
+          workspaceRoot: this.workspaceRoot,
+          signal,
+        });
+        if (
+          current.decision === ToolPolicyDecision.DENY ||
+          current.fingerprint !== this.callFingerprints.get(key)
+        ) {
+          throw new Error("WORKSPACE_CHANGED: 审批后目标发生变化，请重新读取后执行");
+        }
+        if (toolName === "edit_file" || toolName === "write_file") {
+          const path = await this.toolPath(params, toolName === "write_file");
+          const currentFingerprint = await this.fileFingerprint(path, signal);
+          const readKey = `${executionId ?? "root"}:${path}`;
+          const observed = this.readFingerprints.get(readKey);
+          if (
+            currentFingerprint !== null &&
+            (observed === undefined || observed !== currentFingerprint)
+          ) {
+            throw new Error("WORKSPACE_CHANGED: 文件已变化，请重新读取后修改");
+          }
+        }
+      },
+      afterExecute: async (toolName, toolCallId, params, signal) => {
+        const key = this.callKey(toolCallId, executionId);
+        if (toolName === "read_file") {
+          const path = await this.toolPath(params, false);
+          const current = await this.fileFingerprint(path, signal);
+          if (current !== this.pendingReadFingerprints.get(key)) {
+            throw new Error("WORKSPACE_CHANGED: 读取期间文件发生变化，请重新读取");
+          }
+          this.readFingerprints.set(`${executionId ?? "root"}:${path}`, current);
+          this.pendingReadFingerprints.delete(key);
+        } else if (toolName === "edit_file" || toolName === "write_file") {
+          const path = await this.toolPath(params, false);
+          this.readFingerprints.set(
+            `${executionId ?? "root"}:${path}`,
+            await this.fileFingerprint(path, signal),
+          );
+        } else if (toolName === "run_command") {
+          for (const readKey of this.readFingerprints.keys()) {
+            if (readKey.startsWith(`${executionId ?? "root"}:`))
+              this.readFingerprints.delete(readKey);
+          }
+        }
+        this.callFingerprints.delete(key);
+      },
+    });
+  }
+
   private async emit(draft: HarnessEventDraft, runId: RunId): Promise<HarnessEvent> {
-    const event: HarnessEvent = {
-      data: draft.data,
-      id: randomUUID(),
-      runId,
-      seq: this.nextSeq,
-      sessionId: this.sessionId,
-      timestamp: Date.now(),
-      type: draft.type,
+    const commit = async (): Promise<HarnessEvent> => {
+      const event: HarnessEvent = {
+        data: draft.data,
+        id: randomUUID(),
+        runId,
+        seq: this.nextSeq,
+        sessionId: this.sessionId,
+        timestamp: Date.now(),
+        type: draft.type,
+      };
+      await this.onEvent(event);
+      this.nextSeq += 1;
+      return event;
     };
-    this.nextSeq += 1;
-    await this.onEvent(event);
-    return event;
+    const result = this.eventTail.then(commit);
+    this.eventTail = result.then(() => undefined);
+    return result;
+  }
+
+  public spawnSubAgent(toolCallId: string, input: SpawnAgentInput, signal?: AbortSignal) {
+    if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");
+    return this.subAgents.spawn(null, toolCallId, input, signal);
+  }
+
+  public waitSubAgents(input: WaitAgentsInput, signal?: AbortSignal) {
+    if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");
+    return this.subAgents.wait(null, input, signal);
+  }
+
+  public sendSubAgentMessage(input: SendAgentMessageInput, signal?: AbortSignal) {
+    if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");
+    return this.subAgents.send(null, input, signal);
+  }
+
+  public stopSubAgent(input: StopAgentInput, signal?: AbortSignal) {
+    if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");
+    return this.subAgents.stop(null, input.executionId, signal);
+  }
+
+  public abortSubAgent(executionId: string): Promise<boolean> {
+    return this.subAgents?.stopById(executionId) ?? Promise.resolve(false);
   }
 
   // 每次模型请求前，根据当前 Session 状态生成“这一次真正发送给模型的消息数组”
@@ -408,12 +577,16 @@ export class RunCoordinator {
   public async requestUserInput(
     data: RequestUserInputData,
     signal?: AbortSignal,
+    executionId?: string,
   ): Promise<UserInputToolResult> {
     const activeRun = this.activeRun;
     if (activeRun === null) throw new Error("当前没有活动 Run");
     const kind = data.kind ?? UserInputRequestKind.QUESTION;
+    if (executionId !== undefined && kind !== UserInputRequestKind.QUESTION) {
+      throw new Error("SUBAGENT_INPUT_DENIED: 子 Agent 只能请求普通用户输入");
+    }
     const planMarkdown = data.planMarkdown?.trim();
-    if (activeRun.mode === RunMode.PLAN && activeRun.isPlanApproved) {
+    if (executionId === undefined && activeRun.mode === RunMode.PLAN && activeRun.isPlanApproved) {
       throw new Error("计划书已确认，请直接执行，不要再次请求用户输入");
     }
     if (kind === UserInputRequestKind.PLAN_REVIEW) {
@@ -425,6 +598,7 @@ export class RunCoordinator {
     const interaction = this.requestHumanInput(
       {
         inputId,
+        ...(executionId === undefined ? {} : { executionId }),
         kind,
         ...(planMarkdown === undefined ? {} : { planMarkdown }),
         questions: data.questions,
@@ -443,19 +617,23 @@ export class RunCoordinator {
         },
         activeRun.runId,
       );
-      await this.emit(
-        {
-          data: { interactionId: inputId, kind } satisfies RunInteractionData,
-          type: HarnessEventType.RUN_AWAITING_INPUT,
-        },
-        activeRun.runId,
-      );
+      if (executionId === undefined)
+        await this.emit(
+          {
+            data: { interactionId: inputId, kind } satisfies RunInteractionData,
+            type: HarnessEventType.RUN_AWAITING_INPUT,
+          },
+          activeRun.runId,
+        );
 
       const result = await interaction.result;
       if (result.status === "expired") {
         await this.emit(
           {
-            data: { inputId } satisfies InputExpiredData,
+            data: {
+              inputId,
+              ...(executionId === undefined ? {} : { executionId }),
+            } satisfies InputExpiredData,
             type: HarnessEventType.INPUT_EXPIRED,
           },
           activeRun.runId,
@@ -476,6 +654,7 @@ export class RunCoordinator {
               action: result.action,
               answers: result.answers,
               inputId,
+              ...(executionId === undefined ? {} : { executionId }),
               ...(resolvedPlanMarkdown === undefined ? {} : { planMarkdown: resolvedPlanMarkdown }),
             } satisfies InputResolvedData,
             type: HarnessEventType.INPUT_RESOLVED,
@@ -496,13 +675,14 @@ export class RunCoordinator {
           }
         }
       }
-      await this.emit(
-        {
-          data: { interactionId: inputId, kind } satisfies RunInteractionData,
-          type: HarnessEventType.RUN_RESUMED,
-        },
-        activeRun.runId,
-      );
+      if (executionId === undefined)
+        await this.emit(
+          {
+            data: { interactionId: inputId, kind } satisfies RunInteractionData,
+            type: HarnessEventType.RUN_RESUMED,
+          },
+          activeRun.runId,
+        );
       return result;
     } catch (error: unknown) {
       interaction.cancel();
@@ -659,11 +839,15 @@ export class RunCoordinator {
   private async handleBeforeToolCall(
     context: BeforeToolCallContext,
     signal?: AbortSignal,
+    registry: ToolRegistry = this.toolRegistry,
+    executionId?: string,
+    skillRegistry = this.skillRegistry,
   ): Promise<BeforeToolCallResult | undefined> {
     const activeRun = this.activeRun;
     if (activeRun === null) return { block: true, reason: "当前没有活动 Run" };
 
-    const registration = this.toolRegistry.get(context.toolCall.name);
+    const registration = registry.get(context.toolCall.name);
+    const executionGuard = registry.executionGuard;
     if (
       activeRun.mode === RunMode.PLAN &&
       !activeRun.isPlanApproved &&
@@ -683,17 +867,20 @@ export class RunCoordinator {
       approvalPolicy: activeRun.approvalPolicy,
       allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
       isSkillToolPreapproved:
-        (await this.skillRegistry?.isToolPreapproved(
-          context.toolCall.name,
-          context.args,
-          signal,
-        )) ?? false,
+        (await skillRegistry?.isToolPreapproved(context.toolCall.name, context.args, signal)) ??
+        false,
       ...(signal ? { signal } : {}),
       arguments: context.args, // 模型传给工具的参数
       policy: registration?.policy, // 工具权限
       protectedPaths: this.protectedPaths,
       workspaceRoot: this.workspaceRoot,
     });
+    if (
+      registration?.policy.permission !== ToolPermission.READ_ONLY &&
+      policy.decision !== ToolPolicyDecision.DENY
+    ) {
+      this.callFingerprints.set(this.callKey(context.toolCall.id, executionId), policy.fingerprint);
+    }
     const allowRepeatedCalls =
       registration?.policy.permission === ToolPermission.USER_APPROVAL &&
       registration.policy.allowRepeatedCalls === true;
@@ -704,22 +891,22 @@ export class RunCoordinator {
     // 自动允许副作用时仍执行重复调用保护；只读工具不需要指纹。
     if (policy.decision === ToolPolicyDecision.ALLOW) {
       if (policy.fingerprint === undefined) return undefined;
-      const toolCallFingerprint = this.executionGuard.createFingerprint(
+      const toolCallFingerprint = executionGuard.createFingerprint(
         context.toolCall.name,
         context.args,
         policy.fingerprint,
       );
-      const blockReason = this.executionGuard.getBlockReason(
+      const blockReason = executionGuard.getBlockReason(
         context.toolCall.id,
         toolCallFingerprint,
         allowRepeatedCalls,
       );
       if (blockReason !== null) return { block: true, reason: blockReason };
-      this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+      executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
       return undefined;
     }
 
-    const toolCallFingerprint = this.executionGuard.createFingerprint(
+    const toolCallFingerprint = executionGuard.createFingerprint(
       context.toolCall.name,
       context.args,
       policy.fingerprint,
@@ -727,19 +914,15 @@ export class RunCoordinator {
     const sessionApprovalFingerprint =
       policy.sessionFingerprint === undefined
         ? toolCallFingerprint
-        : this.executionGuard.createFingerprint(
-            context.toolCall.name,
-            null,
-            policy.sessionFingerprint,
-          );
-    const blockReason = this.executionGuard.getBlockReason(
+        : executionGuard.createFingerprint(context.toolCall.name, null, policy.sessionFingerprint);
+    const blockReason = executionGuard.getBlockReason(
       context.toolCall.id,
       toolCallFingerprint,
       allowRepeatedCalls,
     );
     if (blockReason !== null) return { block: true, reason: blockReason };
     if (this.sessionApprovedFingerprints.has(sessionApprovalFingerprint)) {
-      this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+      executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
       return undefined;
     }
 
@@ -763,11 +946,8 @@ export class RunCoordinator {
         approvalPolicy: activeRun.approvalPolicy,
         allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
         isSkillToolPreapproved:
-          (await this.skillRegistry?.isToolPreapproved(
-            context.toolCall.name,
-            context.args,
-            signal,
-          )) ?? false,
+          (await skillRegistry?.isToolPreapproved(context.toolCall.name, context.args, signal)) ??
+          false,
         ...(signal ? { signal } : {}),
         arguments: context.args,
         policy: registration?.policy,
@@ -783,13 +963,13 @@ export class RunCoordinator {
       ) {
         return { block: true, reason: "AI 审批期间工具目标已变化，请重新读取后再执行" };
       }
-      const currentBlockReason = this.executionGuard.getBlockReason(
+      const currentBlockReason = executionGuard.getBlockReason(
         context.toolCall.id,
         toolCallFingerprint,
         allowRepeatedCalls,
       );
       if (currentBlockReason !== null) return { block: true, reason: currentBlockReason };
-      this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+      executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
       return undefined;
     }
 
@@ -797,6 +977,7 @@ export class RunCoordinator {
     const commandPrefix = aiApproval === null ? policy.commandPrefix : aiApproval.commandPrefix;
     const request = {
       approvalId,
+      ...(executionId === undefined ? {} : { executionId }),
       ...(policy.allowSimilar === undefined ? {} : { allowSimilar: policy.allowSimilar }),
       ...(policy.allowSession === undefined ? {} : { allowSession: policy.allowSession }),
       ...(commandPrefix === undefined || commandPrefix === null ? {} : { commandPrefix }),
@@ -826,6 +1007,7 @@ export class RunCoordinator {
         {
           data: {
             approvalId,
+            ...(executionId === undefined ? {} : { executionId }),
             ...(request.allowSimilar === undefined ? {} : { allowSimilar: request.allowSimilar }),
             ...(request.allowSession === undefined ? {} : { allowSession: request.allowSession }),
             ...(request.commandPrefix === undefined
@@ -843,16 +1025,15 @@ export class RunCoordinator {
         activeRun.runId,
       );
       // 表示当前 Run 进入“等待用户输入”状态
-      await this.emit(
-        {
-          data: {
-            interactionId: approvalId,
-            kind: "tool_approval",
-          } satisfies RunInteractionData,
-          type: HarnessEventType.RUN_AWAITING_INPUT,
-        },
-        activeRun.runId,
-      );
+      if (executionId === undefined) {
+        await this.emit(
+          {
+            data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+            type: HarnessEventType.RUN_AWAITING_INPUT,
+          },
+          activeRun.runId,
+        );
+      }
 
       /**
        * 核心：真正让工具调用暂停的是这句，而不是 emit()
@@ -869,6 +1050,7 @@ export class RunCoordinator {
         {
           data: {
             approvalId,
+            ...(executionId === undefined ? {} : { executionId }),
             ...(decision === ApprovalDecision.APPROVED_SIMILAR &&
             request.commandPrefix !== undefined
               ? { commandPrefix: request.commandPrefix }
@@ -882,16 +1064,15 @@ export class RunCoordinator {
         activeRun.runId,
       );
       // 表示 Run 已经离开等待状态
-      await this.emit(
-        {
-          data: {
-            interactionId: approvalId,
-            kind: "tool_approval",
-          } satisfies RunInteractionData,
-          type: HarnessEventType.RUN_RESUMED,
-        },
-        activeRun.runId,
-      );
+      if (executionId === undefined) {
+        await this.emit(
+          {
+            data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+            type: HarnessEventType.RUN_RESUMED,
+          },
+          activeRun.runId,
+        );
+      }
 
       // 决定是否执行工具，返回 undefined，表示不阻止工具，继续执行。
       if (isApprovalGranted(decision)) {
@@ -906,14 +1087,11 @@ export class RunCoordinator {
           approvalPolicy: activeRun.approvalPolicy,
           allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
           isSkillToolPreapproved:
-            (await this.skillRegistry?.isToolPreapproved(
-              context.toolCall.name,
-              context.args,
-              signal,
-            )) ?? false,
+            (await skillRegistry?.isToolPreapproved(context.toolCall.name, context.args, signal)) ??
+            false,
           ...(signal ? { signal } : {}),
           arguments: context.args,
-          policy: this.toolRegistry.get(context.toolCall.name)?.policy,
+          policy: registry.get(context.toolCall.name)?.policy,
           protectedPaths: this.protectedPaths,
           workspaceRoot: this.workspaceRoot,
         });
@@ -940,7 +1118,7 @@ export class RunCoordinator {
             reason: "审批期间工具目标已变化，请重新读取后再修改",
           };
         }
-        const currentBlockReason = this.executionGuard.getBlockReason(
+        const currentBlockReason = executionGuard.getBlockReason(
           context.toolCall.id,
           toolCallFingerprint,
           allowRepeatedCalls,
@@ -948,7 +1126,7 @@ export class RunCoordinator {
         if (currentBlockReason !== null) {
           return { block: true, reason: currentBlockReason };
         }
-        this.executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
+        executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
         if (decision === ApprovalDecision.APPROVED_SESSION) {
           this.sessionApprovedFingerprints.add(sessionApprovalFingerprint);
         }
@@ -968,6 +1146,10 @@ export class RunCoordinator {
     input: { host: string; port?: number; toolCallId: string },
     signal?: AbortSignal,
   ): Promise<boolean> {
+    const delimiter = input.toolCallId.indexOf(":");
+    const executionId = delimiter > 0 ? input.toolCallId.slice(0, delimiter) : undefined;
+    const toolCallId =
+      executionId === undefined ? input.toolCallId : input.toolCallId.slice(delimiter + 1);
     const target = `${input.host}:${input.port ?? "*"}`;
     if (this.sessionApprovedNetworkTargets.has(target)) return true;
     const decision = await this.requestToolExecutionApproval(
@@ -976,7 +1158,8 @@ export class RunCoordinator {
         risk: "这是该域名或 IP 的首次访问；允许后，本次命令可向该目标发送工作区数据。",
         summary: `访问 ${target}`,
         target,
-        toolCallId: input.toolCallId,
+        toolCallId,
+        ...(executionId === undefined ? {} : { executionId }),
       },
       signal,
     );
@@ -995,6 +1178,10 @@ export class RunCoordinator {
     },
     signal?: AbortSignal,
   ): Promise<boolean> {
+    const delimiter = input.toolCallId.indexOf(":");
+    const executionId = delimiter > 0 ? input.toolCallId.slice(0, delimiter) : undefined;
+    const toolCallId =
+      executionId === undefined ? input.toolCallId : input.toolCallId.slice(delimiter + 1);
     const changedFilesRisk =
       input.changedFileCount === 0
         ? ""
@@ -1007,7 +1194,8 @@ export class RunCoordinator {
         risk: `提升后，原命令将不受文件系统和网络沙箱限制，并以 daemon 当前用户权限在宿主机执行。${changedFilesRisk}`,
         summary: input.command,
         target: "宿主机（当前用户权限）",
-        toolCallId: input.toolCallId,
+        toolCallId,
+        ...(executionId === undefined ? {} : { executionId }),
       },
       signal,
     );
@@ -1022,11 +1210,16 @@ export class RunCoordinator {
     toolCallId: string;
   }): void {
     if (input.changes.length === 0) return;
+    const delimiter = input.toolCallId.indexOf(":");
+    const executionId = delimiter > 0 ? input.toolCallId.slice(0, delimiter) : undefined;
+    const toolCallId =
+      executionId === undefined ? input.toolCallId : input.toolCallId.slice(delimiter + 1);
     this.pendingFileChanges.set(
       input.toolCallId,
       input.changes.map((fileChange) => ({
         ...fileChange,
-        toolCallId: input.toolCallId,
+        ...(executionId === undefined ? {} : { executionId }),
+        toolCallId,
         toolName: "run_command",
       })),
     );
@@ -1034,6 +1227,7 @@ export class RunCoordinator {
 
   private async requestToolExecutionApproval(
     input: {
+      executionId?: string;
       allowSession: boolean;
       kind?: ApprovalRequestKindValue;
       preview?: string;
@@ -1049,6 +1243,7 @@ export class RunCoordinator {
     const approvalId = randomUUID();
     const request = {
       approvalId,
+      ...(input.executionId === undefined ? {} : { executionId: input.executionId }),
       allowSession: input.allowSession,
       ...(input.kind === undefined ? {} : { kind: input.kind }),
       ...(input.preview === undefined ? {} : { preview: input.preview }),
@@ -1066,6 +1261,7 @@ export class RunCoordinator {
         {
           data: {
             approvalId,
+            ...(input.executionId === undefined ? {} : { executionId: input.executionId }),
             allowSession: input.allowSession,
             expiresAt: approval.expiresAt,
             ...(input.kind === undefined ? {} : { kind: input.kind }),
@@ -1080,18 +1276,20 @@ export class RunCoordinator {
         },
         activeRun.runId,
       );
-      await this.emit(
-        {
-          data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
-          type: HarnessEventType.RUN_AWAITING_INPUT,
-        },
-        activeRun.runId,
-      );
+      if (input.executionId === undefined)
+        await this.emit(
+          {
+            data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+            type: HarnessEventType.RUN_AWAITING_INPUT,
+          },
+          activeRun.runId,
+        );
       const decision = await approval.result;
       await this.emit(
         {
           data: {
             approvalId,
+            ...(input.executionId === undefined ? {} : { executionId: input.executionId }),
             decision,
             toolCallId: input.toolCallId,
             toolName: "run_command",
@@ -1100,13 +1298,14 @@ export class RunCoordinator {
         },
         activeRun.runId,
       );
-      await this.emit(
-        {
-          data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
-          type: HarnessEventType.RUN_RESUMED,
-        },
-        activeRun.runId,
-      );
+      if (input.executionId === undefined)
+        await this.emit(
+          {
+            data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
+            type: HarnessEventType.RUN_RESUMED,
+          },
+          activeRun.runId,
+        );
       return decision;
     } finally {
       approval.cancel();
@@ -1114,20 +1313,38 @@ export class RunCoordinator {
   }
 
   // 工具执行成功后捕获其一项或多项文件变更，等待对应 tool_execution_end 后顺序发出。
-  private async handleAfterToolCall(context: AfterToolCallContext): Promise<undefined> {
+  private async handleAfterToolCall(
+    context: AfterToolCallContext,
+    executionId?: string,
+  ): Promise<undefined> {
     if (context.isError) return undefined;
     this.successfulToolCallIds.add(context.toolCall.id);
     const fileChanges = readFileChangeDetails(context.result.details);
     if (fileChanges.length === 0) return undefined;
     this.pendingFileChanges.set(
-      context.toolCall.id,
+      executionId === undefined ? context.toolCall.id : `${executionId}:${context.toolCall.id}`,
       fileChanges.map((fileChange) => ({
         ...fileChange,
+        ...(executionId === undefined ? {} : { executionId }),
         toolCallId: context.toolCall.id,
         toolName: context.toolCall.name,
       })),
     );
     return undefined;
+  }
+
+  private async flushFileChanges(
+    toolCallId: string,
+    runId: RunId,
+    executionId?: string,
+  ): Promise<void> {
+    const key = executionId === undefined ? toolCallId : `${executionId}:${toolCallId}`;
+    const fileChanges = this.pendingFileChanges.get(key);
+    if (fileChanges === undefined) return;
+    this.pendingFileChanges.delete(key);
+    for (const fileChange of fileChanges) {
+      await this.emit({ data: fileChange, type: HarnessEventType.FILE_CHANGED }, runId);
+    }
   }
 
   /**
@@ -1141,7 +1358,7 @@ export class RunCoordinator {
   private async handleAgentEvent(event: AgentEvent): Promise<void> {
     const activeRun = this.activeRun;
     if (activeRun === null) return;
-    if (event.type === "agent_start" && this.isContinuingSteer) return;
+    if (event.type === "agent_start" && (this.isContinuingSteer || this.hasEmittedRunStart)) return;
     if (event.type === "agent_end" && this.pendingSteerInterrupts.length > 0) return;
     if (event.type === "agent_end" && activeRun.mode === RunMode.PLAN && canRetryPlanMode(event)) {
       if (!activeRun.isPlanApproved) {
@@ -1164,8 +1381,13 @@ export class RunCoordinator {
     }
     const draft = adaptAgentEvent(event, activeRun);
     if (draft === null) return;
+    if (event.type === "agent_end") {
+      this.pendingRunOutcome = draft;
+      return;
+    }
 
     await this.emit(draft, activeRun.runId);
+    if (event.type === "agent_start") this.hasEmittedRunStart = true;
     if (
       event.type === "message_end" &&
       event.message.role === "user" &&
@@ -1206,16 +1428,7 @@ export class RunCoordinator {
       }
     }
     if (event.type === "tool_execution_end") {
-      const fileChanges = this.pendingFileChanges.get(event.toolCallId);
-      if (fileChanges !== undefined) {
-        this.pendingFileChanges.delete(event.toolCallId);
-        for (const fileChange of fileChanges) {
-          await this.emit(
-            { data: fileChange, type: HarnessEventType.FILE_CHANGED },
-            activeRun.runId,
-          );
-        }
-      }
+      await this.flushFileChanges(event.toolCallId, activeRun.runId);
     }
     activeRun.handleAutoFollowUp(event);
   }
@@ -1230,6 +1443,20 @@ export class RunCoordinator {
 
   public get isFullAccess(): boolean {
     return this.activeRun?.approvalPolicy === ApprovalPolicy.FULL_ACCESS;
+  }
+
+  private async continuePendingSteers(): Promise<void> {
+    while (this.pendingSteerInterrupts.length > 0) {
+      for (const steerMessage of this.pendingSteerInterrupts.splice(0)) {
+        this.agent.steer(steerMessage);
+      }
+      this.isContinuingSteer = true;
+      try {
+        await this.agent.continue();
+      } finally {
+        this.isContinuingSteer = false;
+      }
+    }
   }
 
   public async start(input: StartRunInput): Promise<void> {
@@ -1249,6 +1476,10 @@ export class RunCoordinator {
     ]
       .filter(Boolean)
       .join("\n");
+    const runTools = (): AgentTool[] =>
+      input.isSubAgentEnabled
+        ? this.toolRegistry.tools
+        : this.toolRegistry.tools.filter((tool) => !this.subAgentToolNames.includes(tool.name));
     const runStartedData = {
       contexts: runContexts,
       maxTokens: input.model.maxTokens,
@@ -1257,7 +1488,7 @@ export class RunCoordinator {
       providerId: input.providerId,
       systemPrompt: input.systemPrompt,
       thinkingLevel,
-      tools: createRunToolSnapshot(this.toolRegistry),
+      tools: createRunToolSnapshot(this.toolRegistry, runTools()),
     } satisfies RunStartedData;
     let requestIndex = 0;
     this.agent.streamFunction = async (model, context, options) => {
@@ -1310,6 +1541,8 @@ export class RunCoordinator {
       streamFn: input.streamFn,
     };
     this.activeRun = activeRun;
+    this.pendingRunOutcome = null;
+    this.hasEmittedRunStart = false;
     this.pendingWorkingStateReset = shouldResetWorkingStateForNewRun(
       this.planState,
       this.todoState,
@@ -1335,9 +1568,47 @@ export class RunCoordinator {
           .filter(Boolean)
           .join("\n");
         this.toolRegistry.replaceExternal(externalTools?.registrations ?? []);
-        this.agent.state.tools = this.toolRegistry.tools;
-        runStartedData.tools = createRunToolSnapshot(this.toolRegistry);
+        this.agent.state.tools = runTools();
+        runStartedData.tools = createRunToolSnapshot(this.toolRegistry, this.agent.state.tools);
         activeRun.tools = runStartedData.tools;
+        this.subAgents = input.isSubAgentEnabled
+          ? new SubAgentTree({
+              rootAgent: this.agent,
+              rootRegistry: this.toolRegistry,
+              ...(this.skillRegistry === undefined ? {} : { skillRegistry: this.skillRegistry }),
+              runId: input.runId,
+              model: input.model,
+              modelId: input.modelId,
+              outputDetail: input.outputDetail,
+              reasoningSummary: input.reasoningSummary,
+              thinkingLevel: input.thinkingLevel,
+              streamFn: input.streamFn,
+              systemPrompt: [
+                input.systemPrompt,
+                ...runContexts
+                  .filter((context) => context.type !== "memory")
+                  .map((context) => context.content),
+              ].join("\n"),
+              workspaceRoot: this.workspaceRoot,
+              mode: activeRun.mode,
+              isPlanApproved: () => activeRun.isPlanApproved,
+              emit: async (draft) => {
+                await this.emit(draft, input.runId);
+              },
+              beforeToolCall: (context, registry, executionId, signal, skillRegistry) =>
+                this.handleBeforeToolCall(context, signal, registry, executionId, skillRegistry),
+              setExecutionHooks: (registry, executionId, skillRegistry) =>
+                this.setToolExecutionHooks(registry, executionId, skillRegistry),
+              afterToolCall: (context, executionId) =>
+                this.handleAfterToolCall(context, executionId),
+              flushToolChanges: (toolCallId, executionId) =>
+                this.flushFileChanges(toolCallId, input.runId, executionId),
+              requestUserInput: (executionId, data, signal) =>
+                this.requestUserInput(data, signal, executionId),
+              acquireSlot: this.acquireSubAgentSlot,
+              resolveModel: (modelId) => this.resolveSubAgentModel(input.providerId, modelId),
+            })
+          : null;
         hasPreparedTools = true;
         message = input.userMessage
           ? await expandExplicitSkills(
@@ -1407,6 +1678,8 @@ export class RunCoordinator {
       if (this.activeRun === activeRun && activeRun.planRetryPrompt !== null) {
         activeRun.planRetryPrompt = null;
         const isExecutionStalled = activeRun.isPlanApproved;
+        this.subAgents?.abortAll();
+        await this.subAgents?.waitForAll();
         await this.emit(
           {
             data: {
@@ -1421,23 +1694,68 @@ export class RunCoordinator {
         );
         return;
       }
-      while (this.pendingSteerInterrupts.length > 0) {
-        for (const steerMessage of this.pendingSteerInterrupts.splice(0)) {
-          this.agent.steer(steerMessage);
+      await this.continuePendingSteers();
+      if (preparationAbortController.signal.aborted) {
+        await this.subAgents?.waitForAll();
+        this.pendingRunOutcome = {
+          data: { code: "RUN_ABORTED", message: "运行已停止" },
+          type: HarnessEventType.RUN_ABORTED,
+        };
+      } else {
+        while (this.subAgents !== null) {
+          const joinAbortController = new AbortController();
+          this.rootJoinAbortController = joinAbortController;
+          if (this.pendingSteerInterrupts.length > 0) joinAbortController.abort();
+          try {
+            await this.subAgents.join(null, this.agent, joinAbortController.signal);
+          } catch (error: unknown) {
+            if (
+              !joinAbortController.signal.aborted ||
+              (!preparationAbortController.signal.aborted &&
+                this.pendingSteerInterrupts.length === 0)
+            )
+              throw error;
+          } finally {
+            this.rootJoinAbortController = null;
+          }
+          if (preparationAbortController.signal.aborted) break;
+          if (this.pendingSteerInterrupts.length === 0) break;
+          await this.continuePendingSteers();
         }
-        this.isContinuingSteer = true;
-        try {
-          await this.agent.continue();
-        } finally {
-          this.isContinuingSteer = false;
+        if (preparationAbortController.signal.aborted) {
+          await this.subAgents?.waitForAll();
+          this.pendingRunOutcome = {
+            data: { code: "RUN_ABORTED", message: "运行已停止" },
+            type: HarnessEventType.RUN_ABORTED,
+          };
         }
       }
+      if (this.activeRun === activeRun && this.pendingRunOutcome !== null) {
+        await this.emit(this.pendingRunOutcome, activeRun.runId);
+      }
+    } catch {
+      this.subAgents?.abortAll();
+      await this.subAgents?.waitForAll();
+      await this.emit(
+        {
+          data: {
+            code: "RUN_FAILED",
+            message: "子任务或事件提交失败，请检查 daemon 日志",
+          },
+          type: HarnessEventType.RUN_FAILED,
+        },
+        activeRun.runId,
+      );
     } finally {
+      this.subAgents?.abortAll();
       await externalTools?.release();
       this.toolRegistry.replaceExternal([]);
       this.agent.state.tools = this.toolRegistry.tools;
       this.executionGuard.reset();
       this.pendingFileChanges.clear();
+      this.callFingerprints.clear();
+      this.readFingerprints.clear();
+      this.pendingReadFingerprints.clear();
       this.pendingFollowUps.clear();
       this.agent.clearAllQueues();
       this.pendingContextError = null;
@@ -1445,6 +1763,9 @@ export class RunCoordinator {
       this.pendingSteerInterrupts.length = 0;
       this.pendingWorkingStateReset = false;
       this.activeRun = null;
+      this.subAgents = null;
+      this.rootJoinAbortController = null;
+      this.pendingRunOutcome = null;
     }
   }
 
@@ -1454,6 +1775,8 @@ export class RunCoordinator {
     this.pendingSteerInterrupts.length = 0;
     this.agent.clearSteeringQueue();
     this.agent.abort();
+    this.rootJoinAbortController?.abort();
+    this.subAgents?.abortAll();
     return true;
   }
 
@@ -1499,6 +1822,7 @@ export class RunCoordinator {
         busySubmitBehavior: BusySubmitBehavior.STEER,
       });
       this.agent.abort();
+      this.rootJoinAbortController?.abort();
       return true;
     });
   }
@@ -1620,7 +1944,9 @@ export class RunCoordinator {
 
   public async close(): Promise<void> {
     this.agent.abort();
+    this.subAgents?.abortAll();
     await this.agent.waitForIdle();
+    await this.subAgents?.waitForAll();
     this.unsubscribe();
   }
 }

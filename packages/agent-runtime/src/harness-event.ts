@@ -5,6 +5,7 @@ import type {
   UserInputAnswer,
   UserInputResponseAction,
 } from "@pi-harness/tools/request-user-input";
+import type { SubAgentType } from "@pi-harness/tools/sub-agent";
 import { isPlainObject } from "es-toolkit";
 import type { RunMode } from "./user-input.js";
 
@@ -101,6 +102,20 @@ export const HarnessEventType = {
   TOOL_FAILED: "tool.failed",
   // 工具调用被跳过，没有实际执行
   TOOL_SKIPPED: "tool.skipped",
+  SUBAGENT_STARTED: "subagent.started",
+  SUBAGENT_MESSAGE_STARTED: "subagent.message.started",
+  SUBAGENT_MESSAGE_DELTA: "subagent.message.delta",
+  SUBAGENT_MESSAGE_COMPLETED: "subagent.message.completed",
+  SUBAGENT_TOOL_STARTED: "subagent.tool.started",
+  SUBAGENT_TOOL_UPDATED: "subagent.tool.updated",
+  SUBAGENT_TOOL_COMPLETED: "subagent.tool.completed",
+  SUBAGENT_TOOL_FAILED: "subagent.tool.failed",
+  SUBAGENT_TOOL_SKIPPED: "subagent.tool.skipped",
+  SUBAGENT_CONTEXT_USAGE_SNAPSHOT: "subagent.context.usage_snapshot",
+  SUBAGENT_CONTEXT_COMPACTED: "subagent.context.compacted",
+  SUBAGENT_COMPLETED: "subagent.completed",
+  SUBAGENT_FAILED: "subagent.failed",
+  SUBAGENT_ABORTED: "subagent.aborted",
   /**
    * Approval 审批事件
    */
@@ -428,11 +443,13 @@ export interface RunInteractionData {
 }
 
 export interface InputRequestedData extends RequestUserInputData {
+  executionId?: string;
   expiresAt: number;
   inputId: string;
 }
 
 export interface InputResolvedData {
+  executionId?: string;
   action: UserInputResponseAction;
   answers: readonly UserInputAnswer[];
   inputId: string;
@@ -440,6 +457,7 @@ export interface InputResolvedData {
 }
 
 export interface InputExpiredData {
+  executionId?: string;
   inputId: string;
 }
 
@@ -487,6 +505,7 @@ export function isInputRequestedData(value: unknown): value is InputRequestedDat
     isPlainObject(value) &&
     typeof value.inputId === "string" &&
     value.inputId.length > 0 &&
+    (value.executionId === undefined || typeof value.executionId === "string") &&
     Number.isInteger(value.expiresAt) &&
     (value.kind === undefined || value.kind === "question" || value.kind === "plan_review") &&
     Array.isArray(value.questions) &&
@@ -502,6 +521,7 @@ export function isInputResolvedData(value: unknown): value is InputResolvedData 
     isPlainObject(value) &&
     typeof value.inputId === "string" &&
     value.inputId.length > 0 &&
+    (value.executionId === undefined || typeof value.executionId === "string") &&
     (value.action === "submit" || value.action === "confirm_plan") &&
     Array.isArray(value.answers) &&
     value.answers.every(isUserInputAnswer) &&
@@ -511,7 +531,12 @@ export function isInputResolvedData(value: unknown): value is InputResolvedData 
 }
 
 export function isInputExpiredData(value: unknown): value is InputExpiredData {
-  return isPlainObject(value) && typeof value.inputId === "string" && value.inputId.length > 0;
+  return (
+    isPlainObject(value) &&
+    typeof value.inputId === "string" &&
+    value.inputId.length > 0 &&
+    (value.executionId === undefined || typeof value.executionId === "string")
+  );
 }
 
 // message.delta
@@ -590,6 +615,69 @@ export interface ToolCompletedData {
   toolName: string;
 }
 
+export const SubAgentStatus = {
+  RUNNING: "running",
+  COMPLETED: "completed",
+  FAILED: "failed",
+  ABORTED: "aborted",
+} as const;
+export type SubAgentStatus = (typeof SubAgentStatus)[keyof typeof SubAgentStatus];
+
+export interface SubAgentStartedData {
+  agentType: SubAgentType;
+  executionId: string;
+  modelId: string;
+  name: string;
+  parentExecutionId?: string;
+  parentToolCallId: string;
+  task: string;
+}
+
+export interface SubAgentMessageData {
+  executionId: string;
+  parentExecutionId?: string;
+  message: AgentMessage;
+}
+
+export interface SubAgentTerminalData {
+  endedAt?: number;
+  errorCode?: string;
+  executionId: string;
+  parentExecutionId?: string;
+  requestCount?: number;
+  resultSummary?: string;
+  usage?: Usage;
+}
+
+export function isSubAgentStartedData(value: unknown): value is SubAgentStartedData {
+  return (
+    isPlainObject(value) &&
+    (value.agentType === "explorer" || value.agentType === "worker") &&
+    typeof value.executionId === "string" &&
+    value.executionId.length > 0 &&
+    typeof value.modelId === "string" &&
+    typeof value.name === "string" &&
+    typeof value.parentToolCallId === "string" &&
+    typeof value.task === "string" &&
+    (value.parentExecutionId === undefined || typeof value.parentExecutionId === "string")
+  );
+}
+
+export function isSubAgentTerminalData(value: unknown): value is SubAgentTerminalData {
+  return (
+    isPlainObject(value) &&
+    typeof value.executionId === "string" &&
+    value.executionId.length > 0 &&
+    (value.parentExecutionId === undefined || typeof value.parentExecutionId === "string") &&
+    (value.resultSummary === undefined || typeof value.resultSummary === "string") &&
+    (value.errorCode === undefined || typeof value.errorCode === "string") &&
+    (value.endedAt === undefined || (Number.isInteger(value.endedAt) && value.endedAt >= 0)) &&
+    (value.requestCount === undefined ||
+      (Number.isInteger(value.requestCount) && value.requestCount >= 0)) &&
+    (value.usage === undefined || isUsage(value.usage))
+  );
+}
+
 /**
  * 审批流程：
  *  ApprovalRequestedData
@@ -600,6 +688,7 @@ export interface ToolCompletedData {
  */
 // 工具执行前，需要用户审批时发送
 export interface ApprovalRequestedData {
+  executionId?: string;
   // 本次审批唯一id
   approvalId: string;
   // 审批用途；旧事件缺失时按普通工具审批处理。
@@ -628,6 +717,7 @@ export interface ApprovalRequestedData {
 
 // 审批得到结果后发送
 export interface ApprovalResolvedData {
+  executionId?: string;
   approvalId: string;
   // 审批结果，即批准一次、批准类似命令、拒绝或超时
   decision: ApprovalDecision;
@@ -639,6 +729,7 @@ export interface ApprovalResolvedData {
 
 // 文件被工具成功修改后发送
 export interface FileChangedData {
+  executionId?: string;
   // 修改前的完整文件内容；新建文件时为 null
   before: string | null;
   // 修改后的完整文件内容；文件被删除时为空字符串

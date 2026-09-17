@@ -9,6 +9,7 @@ import type { InputRequestedData, RunId, SessionId } from "./harness-event.js";
 
 // 要向用户询问什么
 export interface HumanInputRequest extends RequestUserInputData {
+  executionId?: string;
   inputId: string; // 本次提问的唯一 ID
   runId: RunId; // 哪一次执行发起的
   sessionId: SessionId; // 属于哪个会话

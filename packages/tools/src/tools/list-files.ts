@@ -39,7 +39,7 @@ function resolvePattern(pattern: string): string {
 /**
  * list_files 工具
  * 调度：并行（executionMode：parallel）
- * 实际执行：使用 Node 原生 fs.glob() 列举文件，忽略 .git、.pi-harness、node_modules，最多返回 500 项。
+ * 实际执行：使用 Node 原生 fs.glob() 列举文件，忽略 .git、.pi-harness、node_modules 和 target，最多返回 500 项。
  */
 export function createListFilesTool(
   context: WorkspaceToolContext,

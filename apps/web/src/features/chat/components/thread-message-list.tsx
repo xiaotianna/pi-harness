@@ -39,7 +39,6 @@ export interface ThreadMessageListProps {
 
 export interface ThreadMessageListHandle {
   getTurnIdAtOffset: (offset: number) => string | null;
-  scrollToEnd: () => void;
   scrollToTurn: (turnId: string) => void;
 }
 
@@ -250,7 +249,6 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
       directDomUpdates: true,
       enabled: isVirtualized,
       estimateSize,
-      followOnAppend: true,
       getItemKey,
       getScrollElement: () => scrollContainerRef?.current ?? null,
       initialOffset: () => items.reduce((total, item) => total + estimateItemSize(item), 80),
@@ -331,7 +329,6 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
           const item = virtualizer.getVirtualItemForOffset(offset);
           return item ? (turnIdByItemIndex[item.index] ?? null) : null;
         },
-        scrollToEnd: () => virtualizer.scrollToEnd(),
         scrollToTurn: (turnId) => {
           const index = turnItemIndexById.get(turnId);
           if (index !== undefined) {

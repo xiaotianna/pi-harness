@@ -42,6 +42,7 @@ import { ChatSearchDialog } from "./chat-search-dialog";
 import { ChatRenameDialog, type ChatRenameTarget } from "./chat-shell-dialogs";
 import { ChatSidebar } from "./chat-sidebar";
 import { FileOpenDialog } from "./file-open-dialog";
+import { SubAgentInspector } from "./sub-agent-inspector";
 import { WorkspaceInspector } from "./workspace-inspector";
 
 export interface ChatShellProps {
@@ -82,6 +83,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const inspectorFiles = useWorkspaceInspectorStore((state) => state.files);
   const inspectorSelectedPath = useWorkspaceInspectorStore((state) => state.selectedPath);
   const inspectorTurnId = useWorkspaceInspectorStore((state) => state.turnId);
+  const inspectorSubAgent = useWorkspaceInspectorStore((state) => state.subAgent);
   const closeInspector = useWorkspaceInspectorStore((state) => state.close);
   const threads = useMemo<ChatThread[]>(
     () => (sessionsQuery.data ?? []).map((session) => sessionToChatThread(session)),
@@ -147,7 +149,8 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   const currentWorkspaceId = isThreadPage
     ? activePage.thread.workspaceId
     : (newChatWorkspaceId ?? workspaces[0]?.id ?? null);
-  const isInspectorVisible = isThreadPage && inspectorTurnId !== null;
+  const isInspectorVisible =
+    isThreadPage && (inspectorTurnId !== null || inspectorSubAgent !== null);
 
   useEffect(() => {
     if (activeThreadId && unreadCompletedSessionIds.includes(activeThreadId)) {
@@ -363,7 +366,15 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
   return (
     <AppLayout
       aside={
-        isInspectorVisible && activePage.kind === "thread" ? (
+        isInspectorVisible && activePage.kind === "thread" && inspectorSubAgent ? (
+          <SubAgentInspector
+            key={`${inspectorSubAgent.sessionId}:${inspectorSubAgent.executionId}`}
+            sessionId={inspectorSubAgent.sessionId}
+            runId={inspectorSubAgent.runId}
+            executionId={inspectorSubAgent.executionId}
+            onClose={closeInspector}
+          />
+        ) : isInspectorVisible && activePage.kind === "thread" ? (
           <WorkspaceInspector
             files={inspectorFiles}
             key={`${activePage.thread.id}:${inspectorTurnId}`}
@@ -390,6 +401,7 @@ export function ChatShell({ basePath = "", children, disableNavigation = false }
       navbar={
         <ChatNavbar
           pageKind={activePage.kind}
+          {...(activePage.kind === "thread" ? { sessionTitle: activePage.thread.title } : {})}
           onSearch={disableNavigation ? undefined : handleSearchOpen}
         />
       }

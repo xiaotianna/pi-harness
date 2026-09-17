@@ -47,6 +47,18 @@ export const SessionRunParamsDtoSchema = Type.Object({
 
 export type SessionRunParamsDto = Static<typeof SessionRunParamsDtoSchema>;
 
+export const SessionSubAgentParamsDtoSchema = Type.Object({
+  executionId: Type.String({ format: "uuid" }),
+  sessionId: Type.String({ format: "uuid" }),
+});
+export type SessionSubAgentParamsDto = Static<typeof SessionSubAgentParamsDtoSchema>;
+
+export const SessionSubAgentEventsQueryDtoSchema = Type.Object({
+  afterSeq: Type.Optional(Type.Integer({ minimum: 0 })),
+  limit: Type.Optional(Type.Integer({ maximum: 200, minimum: 1 })),
+});
+export type SessionSubAgentEventsQueryDto = Static<typeof SessionSubAgentEventsQueryDtoSchema>;
+
 export const SessionQueuedInputParamsDtoSchema = Type.Object({
   queuedInputId: Type.String({ format: "uuid" }),
   runId: Type.String({ format: "uuid" }),

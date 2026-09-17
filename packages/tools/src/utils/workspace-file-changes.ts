@@ -5,7 +5,7 @@ import { createPatch } from "diff";
 import { resolveToolPath, type WorkspaceToolContext } from "../lib/tool-context.js";
 import { type FileChangeDetails, MAX_FILE_BYTES } from "./file.js";
 
-const IGNORED_DIRECTORY_NAMES = new Set([".git", ".pi-harness", "node_modules"]);
+const IGNORED_DIRECTORY_NAMES = new Set([".git", ".pi-harness", "node_modules", "target"]);
 const MAX_TRACKED_FILES = 10_000;
 const MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024;
 const MAX_REPORTED_FILES = 50;

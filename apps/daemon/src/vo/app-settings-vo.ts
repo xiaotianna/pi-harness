@@ -36,6 +36,7 @@ export const AppSettingsVoSchema = Type.Object({
   defaultModel: Type.Union([DefaultModelSettingDtoSchema, Type.Null()]),
   fileOpenApplication: Type.Union([FileOpenApplicationVoSchema, Type.Null()]),
   fileOpenMode: FileOpenModeDtoSchema,
+  isSubAgentEnabled: Type.Boolean(),
   outputDetail: OutputDetailDtoSchema,
   reasoningSummary: ReasoningSummaryDtoSchema,
   sandboxAllowedDomains: SandboxAllowedDomainsDtoSchema,

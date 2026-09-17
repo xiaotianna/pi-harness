@@ -71,67 +71,7 @@ Plan、Todo、审批、输入请求和文件变更仍以 Session JSONL 中的 `H
 
 ## 3. Sub Agent 的后续结构
 
-### 3.1 核心原则
-
-- BoardTask 表达用户要交付的结果，AgentExecution 表达由谁、以什么上下文执行其中一部分。
-- Sub Agent 默认作为父任务的子执行记录展示，不因为并发执行就占据独立看板卡片。
-- 只有用户显式“提升为独立任务”时，子执行目标才生成新的 BoardTask，并通过依赖关系连接原任务。
-- Sub Agent 不得绕过父任务的 `workspaceId`、Policy、审批策略、固定 cwd、凭据脱敏或输出限制。
-- 父任务只有在主执行和所有必需子执行进入终态后，才允许自动进入 `confirmation`；其中任意必需分支需要用户处理时，父任务进入 `waiting`。
-
-### 3.2 建议新增实体
-
-后续多 Agent 阶段建议新增 `task_executions`，不把执行树塞进 `board_tasks`：
-
-| 字段 | 含义 |
-|---|---|
-| `id` | 执行记录 ID |
-| `task_id` | 所属 BoardTask |
-| `parent_execution_id` | 父执行；主 Agent 为 `null` |
-| `agent_kind` | `primary`、`subagent` 或后续明确支持的自动执行类型 |
-| `session_id` / `run_id` | 对应 Harness 执行上下文 |
-| `status` | `queued`、`running`、`waiting`、`completed`、`failed`、`aborted` |
-| `assigned_objective` | 父执行分派给该分支的明确目标 |
-| `result_summary` | 完成后用于父执行汇总的结果摘要 |
-| `required` | 是否阻止父任务进入待确认 |
-| 时间字段 | 创建、开始、更新、结束时间 |
-
-跨任务依赖另用 `task_dependencies(task_id, depends_on_task_id, kind)` 表达，避免把执行树和产品任务依赖混为一谈。
-
-### 3.3 事件协议
-
-未来新增项目自己的事件，而不是向 Web 暴露底层 Agent SDK 事件：
-
-- `subagent.started`
-- `subagent.progress`
-- `subagent.awaiting_input`
-- `subagent.completed`
-- `subagent.failed`
-- `subagent.aborted`
-
-事件至少包含 `taskId`、`executionId`、`parentExecutionId`、`sessionId`、`runId`、时间与安全裁剪后的摘要。执行详情继续进入所属 Session JSONL；SQLite 仅保存需要结构化查询的执行索引。
-
-### 3.4 状态聚合
-
-父任务状态由以下优先级聚合：
-
-1. 任一必需执行等待审批或输入：`waiting`。
-2. 任一必需执行仍在排队或运行：`in_progress`。
-3. 必需执行失败且需要用户决策：`waiting`。
-4. 全部必需执行完成：`confirmation`。
-5. 用户确认：`completed`。
-
-可选子执行失败可以保留告警，但不能静默阻止主任务；具体是否重试、忽略或提升为独立任务由用户或 Primary Agent 明确决定。
-
-### 3.5 页面演进
-
-保持五个业务状态列不变。Sub Agent 能力加入后：
-
-- 卡片增加紧凑的执行摘要，例如“1 主执行 · 3 子执行 · 2 完成”。
-- 任务详情展示可折叠执行树，每个节点显示目标、状态、耗时和结果摘要。
-- 需处理的卡片优先说明具体是哪个执行分支需要输入、审批或决策。
-- 同一任务并行分支使用执行树和时间线表达，不新增“Sub Agent”“Agent A”等看板列。
-- 只有独立提升的子任务才产生新卡片，并显示与父任务的依赖关系。
+对话中的子 Agent 运行与查看方式见 [对话中的 Sub Agent 设计](./对话Sub-Agent设计.md)。看板目前仍只以顶层 Run 投影任务状态；会话能力稳定后，再确定看板需要展示的执行摘要。
 
 ## 4. 实施进度
 
@@ -147,7 +87,4 @@ Plan、Todo、审批、输入请求和文件变更仍以 Session JSONL 中的 `H
 ### 后续阶段
 
 - [ ] 增加任务归档、批量操作和列内排序持久化。
-- [ ] 引入 `task_executions` 与 Sub Agent 执行树。
-- [ ] 增加 Sub Agent HarnessEvent 适配、父任务状态聚合与恢复机制。
-- [ ] 在任务详情加入执行树、分支结果和依赖关系。
-- [ ] 增加并发上限、取消传播、失败重试和子任务提升流程。
+- [ ] 根据已落地的会话子 Agent 事件，确定任务详情所需的执行摘要。

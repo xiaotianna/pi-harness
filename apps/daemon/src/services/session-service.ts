@@ -35,6 +35,7 @@ import {
   getSupportedThinkingLevels,
   type Model,
 } from "@pi-harness/providers";
+import { isPlainObject } from "es-toolkit";
 import {
   buildSessionTitlePrompt,
   SESSION_TITLE_SYSTEM_PROMPT,
@@ -400,6 +401,36 @@ export class SessionService {
   public async getConversationSnapshot(sessionId: SessionId): Promise<SessionSnapshot> {
     const snapshot = await this.getSnapshot(sessionId);
     return { ...snapshot, events: projectSessionConversationEvents(snapshot.events) };
+  }
+
+  public async getSubAgentEvents(
+    sessionId: SessionId,
+    executionId: string,
+    afterSeq = 0,
+    limit = 100,
+  ): Promise<{ events: readonly HarnessEvent[]; hasMore: boolean }> {
+    const snapshot = await this.getSnapshot(sessionId);
+    const active = selectActiveSessionEvents(snapshot.events);
+    const started = active.find(
+      (event) =>
+        event.type === HarnessEventType.SUBAGENT_STARTED &&
+        isPlainObject(event.data) &&
+        event.data.executionId === executionId,
+    );
+    if (started === undefined)
+      throw new SessionServiceError(SessionErrorCode.NOT_FOUND, "子 Agent 不存在");
+    const matching = active.filter(
+      (event) =>
+        event.seq > afterSeq && isPlainObject(event.data) && event.data.executionId === executionId,
+    );
+    return { events: matching.slice(0, limit), hasMore: matching.length > limit };
+  }
+
+  public async abortSubAgent(sessionId: SessionId, executionId: string): Promise<void> {
+    this.getRequiredSession(sessionId);
+    if (!(await this.agents.abortSubAgent(sessionId, executionId))) {
+      throw new SessionServiceError(SessionErrorCode.NOT_FOUND, "活动子 Agent 不存在");
+    }
   }
 
   public async restoreContextCheckpoint(sessionId: SessionId, eventSeq: number): Promise<void> {
@@ -961,6 +992,7 @@ export class SessionService {
     const task = this.agents.startRun({
       approvalPolicy: this.settings.getApprovalPolicy(),
       initialSeq: Math.max(session.lastSeq, snapshot.lastPersistedSeq),
+      isSubAgentEnabled: this.settings.isSubAgentEnabled(),
       contextCheckpoint: snapshot.contextCheckpoint,
       contextCheckpointEventSeq: snapshot.contextCheckpointEventSeq,
       contextCheckpointHistory: snapshot.contextCheckpointHistory,

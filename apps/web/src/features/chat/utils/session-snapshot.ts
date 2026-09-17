@@ -71,15 +71,19 @@ export function selectSessionEvents(snapshot: SessionSnapshot): readonly Harness
 
 function isTransient(event: HarnessEvent): boolean {
   return (
-    event.type === HarnessEventType.MESSAGE_DELTA || event.type === HarnessEventType.TOOL_UPDATED
+    event.type === HarnessEventType.MESSAGE_DELTA ||
+    event.type === HarnessEventType.TOOL_UPDATED ||
+    event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA ||
+    event.type === HarnessEventType.SUBAGENT_TOOL_UPDATED
   );
 }
 
 function transientKey(event: HarnessEvent): string {
   const data = isPlainObject(event.data) ? event.data : {};
-  return event.type === HarnessEventType.MESSAGE_DELTA
-    ? `${event.runId}:message:${data.contentIndex}:${data.kind}:${data.toolCallId ?? ""}`
-    : `${event.runId}:tool:${data.toolCallId}`;
+  return event.type === HarnessEventType.MESSAGE_DELTA ||
+    event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA
+    ? `${event.runId}:${data.executionId ?? "root"}:message:${data.contentIndex}:${data.kind}:${data.toolCallId ?? ""}`
+    : `${event.runId}:${data.executionId ?? "root"}:tool:${data.toolCallId}`;
 }
 
 /** Cache contains one accumulated delta per content block, never a token log. */
@@ -106,8 +110,19 @@ export function updateSnapshotWithEvents(
       TERMINAL_RUN_EVENTS.has(event.type) || event.type === HarnessEventType.MESSAGE_BRANCH_STARTED;
     const isAssistantEnd =
       event.type === HarnessEventType.MESSAGE_COMPLETED && data.role === "assistant";
+    const isChildAssistantEnd =
+      event.type === HarnessEventType.SUBAGENT_MESSAGE_COMPLETED &&
+      isPlainObject(data.message) &&
+      data.message.role === "assistant";
     const isToolEnd =
       event.type === HarnessEventType.TOOL_COMPLETED || event.type === HarnessEventType.TOOL_FAILED;
+    const isChildToolEnd =
+      event.type === HarnessEventType.SUBAGENT_TOOL_COMPLETED ||
+      event.type === HarnessEventType.SUBAGENT_TOOL_FAILED;
+    const isChildTerminal =
+      event.type === HarnessEventType.SUBAGENT_COMPLETED ||
+      event.type === HarnessEventType.SUBAGENT_FAILED ||
+      event.type === HarnessEventType.SUBAGENT_ABORTED;
     const isInputReady =
       event.type === HarnessEventType.INPUT_REQUESTED &&
       isInputRequestedData(data) &&
@@ -125,9 +140,17 @@ export function updateSnapshotWithEvents(
       if (
         isTerminal ||
         (isAssistantEnd && currentEvent.type === HarnessEventType.MESSAGE_DELTA && !isInputDelta) ||
+        (isChildAssistantEnd &&
+          currentEvent.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA &&
+          currentEvent.data.executionId === data.executionId) ||
         (isToolEnd &&
           currentEvent.type === HarnessEventType.TOOL_UPDATED &&
           currentEvent.data.toolCallId === data.toolCallId) ||
+        (isChildToolEnd &&
+          currentEvent.type === HarnessEventType.SUBAGENT_TOOL_UPDATED &&
+          currentEvent.data.executionId === data.executionId &&
+          currentEvent.data.toolCallId === data.toolCallId) ||
+        (isChildTerminal && currentEvent.data.executionId === data.executionId) ||
         (isInputReady && isInputDelta)
       )
         transientByKey.delete(key);
@@ -143,7 +166,8 @@ export function updateSnapshotWithEvents(
     const key = transientKey(event);
     const previous = transientByKey.get(key);
     if (
-      event.type === HarnessEventType.MESSAGE_DELTA &&
+      (event.type === HarnessEventType.MESSAGE_DELTA ||
+        event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA) &&
       previous &&
       isPlainObject(previous.data) &&
       isPlainObject(event.data) &&

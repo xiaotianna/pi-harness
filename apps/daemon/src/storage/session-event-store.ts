@@ -14,6 +14,8 @@ import {
   isInputResolvedData,
   isMessageBranchStartedData,
   isPlanUpdatedData,
+  isSubAgentStartedData,
+  isSubAgentTerminalData,
   isTodoUpdatedData,
   type PlanUpdatedData,
   type SessionId,
@@ -30,6 +32,8 @@ const HARNESS_EVENT_TYPES = new Set<string>(Object.values(HarnessEventType));
 const TRANSIENT_EVENT_TYPES = new Set<string>([
   HarnessEventType.MESSAGE_DELTA,
   HarnessEventType.TOOL_UPDATED,
+  HarnessEventType.SUBAGENT_MESSAGE_DELTA,
+  HarnessEventType.SUBAGENT_TOOL_UPDATED,
 ]);
 const StoredHarnessEventSchema = Type.Object({
   data: Type.Unknown(),
@@ -127,6 +131,49 @@ function parseHarnessEvent(value: unknown, expectedSessionId: SessionId): Harnes
   }
   if (event.type === HarnessEventType.INPUT_EXPIRED && !isInputExpiredData(event.data)) {
     throw new Error("Session input expiration event is invalid");
+  }
+  if (event.type === HarnessEventType.SUBAGENT_STARTED && !isSubAgentStartedData(event.data)) {
+    throw new Error("Session subagent start event is invalid");
+  }
+  if (
+    (event.type === HarnessEventType.SUBAGENT_COMPLETED ||
+      event.type === HarnessEventType.SUBAGENT_FAILED ||
+      event.type === HarnessEventType.SUBAGENT_ABORTED) &&
+    !isSubAgentTerminalData(event.data)
+  ) {
+    throw new Error("Session subagent terminal event is invalid");
+  }
+  if (
+    (event.type === HarnessEventType.SUBAGENT_MESSAGE_STARTED ||
+      event.type === HarnessEventType.SUBAGENT_MESSAGE_COMPLETED) &&
+    (!isPlainObject(event.data) ||
+      typeof event.data.executionId !== "string" ||
+      !isAgentMessage(event.data.message))
+  ) {
+    throw new Error("Session subagent message event is invalid");
+  }
+  if (
+    event.type.startsWith("subagent.") &&
+    (!isPlainObject(event.data) || typeof event.data.executionId !== "string")
+  ) {
+    throw new Error("Session subagent event is invalid");
+  }
+  if (
+    event.type === HarnessEventType.SUBAGENT_CONTEXT_COMPACTED &&
+    !isContextCompactedData(event.data)
+  ) {
+    throw new Error("Session subagent context checkpoint event is invalid");
+  }
+  if (
+    (event.type === HarnessEventType.SUBAGENT_TOOL_STARTED ||
+      event.type === HarnessEventType.SUBAGENT_TOOL_COMPLETED ||
+      event.type === HarnessEventType.SUBAGENT_TOOL_FAILED ||
+      event.type === HarnessEventType.SUBAGENT_TOOL_SKIPPED) &&
+    (!isPlainObject(event.data) ||
+      typeof event.data.toolCallId !== "string" ||
+      typeof event.data.toolName !== "string")
+  ) {
+    throw new Error("Session subagent tool event is invalid");
   }
 
   return event as unknown as HarnessEvent;

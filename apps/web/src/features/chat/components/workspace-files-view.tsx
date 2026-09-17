@@ -22,20 +22,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { resolveCodeLanguage } from "../../../components/ai/code-diff";
 import { FileIconRender } from "../../../components/ui/file-icon-render";
-import type { WorkspaceFileList } from "../api/workspace-api";
 import { workspaceFileQueryOptions, workspaceFilesQueryOptions } from "../api/workspace-queries";
 import { useOpenWorkspacePath } from "../hooks/use-open-workspace-path";
-
-interface FileTreeNode {
-  children: FileTreeNode[];
-  kind: WorkspaceFileList["items"][number]["kind"];
-  name: string;
-  path: string;
-}
-
-interface VisibleFileTreeNode extends FileTreeNode {
-  depth: number;
-}
+import { buildFileTree, flattenFileTree } from "../utils/workspace-file-tree";
 
 function WorkspaceFileEmptyState({
   description,
@@ -55,49 +44,6 @@ function WorkspaceFileEmptyState({
       </EmptyState.Header>
     </EmptyState>
   );
-}
-
-function buildFileTree(items: WorkspaceFileList["items"]): FileTreeNode[] {
-  const nodes = new Map<string, FileTreeNode>();
-  for (const item of items) {
-    nodes.set(item.path, {
-      children: [],
-      kind: item.kind,
-      name: item.path.split("/").at(-1) ?? item.path,
-      path: item.path,
-    });
-  }
-
-  const roots: FileTreeNode[] = [];
-  for (const node of nodes.values()) {
-    const parentPath = node.path.split("/").slice(0, -1).join("/");
-    const parent = nodes.get(parentPath);
-    if (parent) parent.children.push(node);
-    else roots.push(node);
-  }
-
-  const sort = (left: FileTreeNode, right: FileTreeNode) => {
-    const leftFolder = left.kind === UserContextReferenceKind.FOLDER;
-    const rightFolder = right.kind === UserContextReferenceKind.FOLDER;
-    return Number(rightFolder) - Number(leftFolder) || left.name.localeCompare(right.name);
-  };
-  for (const node of nodes.values()) node.children.sort(sort);
-  return roots.sort(sort);
-}
-
-function flattenFileTree(
-  nodes: readonly FileTreeNode[],
-  expandedPaths: ReadonlySet<string>,
-  depth = 0,
-  output: VisibleFileTreeNode[] = [],
-): VisibleFileTreeNode[] {
-  for (const node of nodes) {
-    output.push({ ...node, depth });
-    if (expandedPaths.has(node.path)) {
-      flattenFileTree(node.children, expandedPaths, depth + 1, output);
-    }
-  }
-  return output;
 }
 
 function WorkspaceFilePreview({

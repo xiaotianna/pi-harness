@@ -22,6 +22,7 @@ import {
   Select,
   Separator,
   Skeleton,
+  Switch,
   ToggleButton,
   ToggleButtonGroup,
   toast,
@@ -158,6 +159,7 @@ function GeneralSettingsPanel() {
   const busySubmitBehavior = settings?.busySubmitBehavior;
   const fileOpenApplication = settings?.fileOpenApplication;
   const fileOpenMode = settings?.fileOpenMode;
+  const isSubAgentEnabled = settings?.isSubAgentEnabled;
   const outputDetail = settings?.outputDetail;
   const reasoningSummary = settings?.reasoningSummary;
 
@@ -449,6 +451,35 @@ function GeneralSettingsPanel() {
               </ListBox>
             </Select.Popover>
           </Select>
+        )}
+      </SettingsRow>
+
+      <Separator />
+
+      <SettingsRow
+        description="允许 Agent 在新一轮运行中委派子任务；切换不会中断正在运行的任务。"
+        title="启用子 Agent"
+      >
+        {isSubAgentEnabled === undefined ? (
+          <Skeleton aria-hidden className="h-6 w-10 rounded-full" />
+        ) : (
+          <Switch
+            aria-label="启用子 Agent"
+            className="justify-self-start @xl/settings:justify-self-end"
+            isDisabled={isSaving("isSubAgentEnabled")}
+            isSelected={isSubAgentEnabled}
+            onChange={(isSubAgentEnabled) => {
+              void updateSettings({ isSubAgentEnabled }).catch((error: unknown) => {
+                toast.danger(error instanceof Error ? error.message : "保存子 Agent 设置失败");
+              });
+            }}
+          >
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
+          </Switch>
         )}
       </SettingsRow>
     </section>

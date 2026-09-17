@@ -56,6 +56,12 @@ export const SessionSnapshotVoSchema = Type.Object({
 
 export type SessionSnapshotVo = Static<typeof SessionSnapshotVoSchema>;
 
+export const SubAgentEventsVoSchema = Type.Object({
+  events: Type.Array(HarnessEventVoSchema),
+  hasMore: Type.Boolean(),
+});
+export type SubAgentEventsVo = Static<typeof SubAgentEventsVoSchema>;
+
 export const RunAcceptedVoSchema = Type.Object({
   runId: Type.String({ format: "uuid" }),
   title: Type.String({ maxLength: 200, minLength: 1 }),

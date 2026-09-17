@@ -12,6 +12,7 @@ import { PlanReviewThreadMessage } from "./plan-review-thread-message";
 import { ReasoningThreadMessage } from "./reasoning-thread-message";
 import { SourcesThreadMessage } from "./sources-thread-message";
 import { StreamingThreadMessage } from "./streaming-thread-message";
+import { SubAgentThreadMessage } from "./sub-agent-thread-message";
 import { TaskListThreadMessage } from "./task-list-thread-message";
 import { ToolGroupThreadMessage } from "./tool-group-thread-message";
 import { ToolThreadMessage } from "./tool-thread-message";
@@ -78,6 +79,9 @@ export const MESSAGE_RENDER_STRATEGIES = {
   )),
   [ChatMessageType.SOURCES]: createMessageRenderStrategy(ChatMessageType.SOURCES, (message) => (
     <SourcesThreadMessage message={message} />
+  )),
+  [ChatMessageType.SUBAGENT]: createMessageRenderStrategy(ChatMessageType.SUBAGENT, (message) => (
+    <SubAgentThreadMessage message={message} />
   )),
   [ChatMessageType.STREAMING]: createMessageRenderStrategy(ChatMessageType.STREAMING, (message) => (
     <StreamingThreadMessage message={message} />

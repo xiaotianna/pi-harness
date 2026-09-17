@@ -91,7 +91,9 @@ export function useSessionEvents(
         events.some(
           (event) =>
             event.type !== HarnessEventType.MESSAGE_DELTA &&
-            event.type !== HarnessEventType.TOOL_UPDATED,
+            event.type !== HarnessEventType.TOOL_UPDATED &&
+            event.type !== HarnessEventType.SUBAGENT_MESSAGE_DELTA &&
+            event.type !== HarnessEventType.SUBAGENT_TOOL_UPDATED,
         )
       ) {
         queryClient.setQueryData<readonly Session[]>(sessionQueryKeys.list(), (sessions) =>
@@ -152,14 +154,23 @@ export function useSessionEvents(
         const lastReceivedSeq = Math.max(lastSeqRef.current, pendingEvents.at(-1)?.seq ?? 0);
         if (event.sessionId !== sessionId || event.seq <= lastReceivedSeq) return;
         // Trace uses completed model messages; token deltas do not change any trace record.
-        if (isTrace && event.type === HarnessEventType.MESSAGE_DELTA) {
+        if (
+          isTrace &&
+          (event.type === HarnessEventType.MESSAGE_DELTA ||
+            event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA)
+        ) {
           lastSeqRef.current = event.seq;
           return;
         }
         pendingEvents.push(event);
+        if (event.type === HarnessEventType.MESSAGE_DELTA) {
+          flush();
+          return;
+        }
         if (
-          event.type === HarnessEventType.MESSAGE_DELTA ||
-          event.type === HarnessEventType.TOOL_UPDATED
+          event.type === HarnessEventType.TOOL_UPDATED ||
+          event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA ||
+          event.type === HarnessEventType.SUBAGENT_TOOL_UPDATED
         ) {
           flushTimer ??= window.setTimeout(
             flush,

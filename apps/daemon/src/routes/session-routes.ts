@@ -34,6 +34,10 @@ import {
   SessionRunParamsDtoSchema,
   type SessionSearchQueryDto,
   SessionSearchQueryDtoSchema,
+  type SessionSubAgentEventsQueryDto,
+  SessionSubAgentEventsQueryDtoSchema,
+  type SessionSubAgentParamsDto,
+  SessionSubAgentParamsDtoSchema,
   type StartRunDto,
   StartRunDtoSchema,
   type UpdateQueuedInputDto,
@@ -58,6 +62,7 @@ import {
   SessionSearchResultListVoSchema,
   SessionSnapshotVoSchema,
   SessionVoSchema,
+  SubAgentEventsVoSchema,
 } from "../vo/session-vo.js";
 
 export async function registerSessionRoutes(
@@ -141,6 +146,29 @@ export async function registerSessionRoutes(
       },
     },
     controller.getConversation,
+  );
+
+  server.get<{ Params: SessionSubAgentParamsDto; Querystring: SessionSubAgentEventsQueryDto }>(
+    "/api/sessions/:sessionId/subagents/:executionId/events",
+    {
+      schema: {
+        params: SessionSubAgentParamsDtoSchema,
+        querystring: SessionSubAgentEventsQueryDtoSchema,
+        response: { 200: SubAgentEventsVoSchema, ...errors },
+      },
+    },
+    controller.getSubAgentEvents,
+  );
+
+  server.post<{ Params: SessionSubAgentParamsDto }>(
+    "/api/sessions/:sessionId/subagents/:executionId/abort",
+    {
+      schema: {
+        params: SessionSubAgentParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.abortSubAgent,
   );
 
   server.get<{ Params: SessionParamsDto }>(

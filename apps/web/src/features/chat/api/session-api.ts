@@ -53,6 +53,10 @@ const SessionSnapshotSchema = Type.Object({
   events: Type.Array(HarnessEventSchema),
   session: SessionSchema,
 });
+const SubAgentEventsSchema = Type.Object({
+  events: Type.Array(HarnessEventSchema),
+  hasMore: Type.Boolean(),
+});
 const SessionSearchResultSchema = Type.Object({
   description: Type.String({ maxLength: 160 }),
   excerpt: Type.String({ maxLength: 502 }),
@@ -263,6 +267,29 @@ export async function abortSessionRun(sessionId: string, runId: string): Promise
   await apiRequest(
     `/api/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}`,
     { method: "DELETE" },
+  );
+}
+
+export async function getSubAgentEvents(
+  sessionId: string,
+  executionId: string,
+  afterSeq = 0,
+  signal?: AbortSignal,
+): Promise<{ events: readonly HarnessEvent[]; hasMore: boolean }> {
+  const body: unknown = await (
+    await apiRequest(
+      `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(executionId)}/events?afterSeq=${afterSeq}&limit=200`,
+      signal ? { signal } : undefined,
+    )
+  ).json();
+  if (!Value.Check(SubAgentEventsSchema, body)) throw new Error("daemon 返回了无效的子 Agent 事件");
+  return { events: body.events.map(parseEvent), hasMore: body.hasMore };
+}
+
+export async function abortSubAgent(sessionId: string, executionId: string): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(executionId)}/abort`,
+    { method: "POST" },
   );
 }
 

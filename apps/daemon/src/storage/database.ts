@@ -91,6 +91,7 @@ export interface ComputerUseAllowedApp {
 export interface AppSettingRepository {
   getApprovalPolicy(): ApprovalPolicyValue;
   getBusySubmitBehavior(): BusySubmitBehaviorValue;
+  isSubAgentEnabled(): boolean;
   getDefaultModel(): DefaultModelSetting | null;
   getDisabledSkillCollectionSkillIds(): readonly string[];
   getDisabledSkillDirectories(): readonly string[];
@@ -105,6 +106,7 @@ export interface AppSettingRepository {
   revokeComputerUseApp(bundleId: string): boolean;
   setApprovalPolicy(approvalPolicy: ApprovalPolicyValue, updatedAt: number): void;
   setBusySubmitBehavior(behavior: BusySubmitBehaviorValue, updatedAt: number): void;
+  setSubAgentEnabled(enabled: boolean, updatedAt: number): void;
   setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void;
   setDisabledSkillCollectionSkillIds(skillIds: readonly string[], updatedAt: number): void;
   setDisabledSkillDirectories(directories: readonly string[], updatedAt: number): void;
@@ -546,6 +548,7 @@ class SqliteProviderSettingRepository implements ProviderSettingRepository {
 
 const APPROVAL_POLICY_KEY = "approval_policy";
 const BUSY_SUBMIT_BEHAVIOR_KEY = "busy_submit_behavior";
+const SUB_AGENT_ENABLED_KEY = "sub_agent_enabled";
 const DEFAULT_MODEL_KEY = "default_model";
 const DISABLED_SKILL_COLLECTION_SKILLS_KEY = "disabled_skill_collection_skills";
 const DISABLED_SKILL_DIRECTORIES_KEY = "disabled_skill_directories";
@@ -583,6 +586,18 @@ class SqliteAppSettingRepository implements AppSettingRepository {
       throw new Error("Invalid database value for busy submit behavior");
     }
     return value;
+  }
+
+  public isSubAgentEnabled(): boolean {
+    const row = this.database
+      .prepare("SELECT value FROM app_settings WHERE key = ?")
+      .get(SUB_AGENT_ENABLED_KEY) as DatabaseRow | undefined;
+    if (!row) return true;
+    const value = readRequiredString(row, "value");
+    if (value !== "true" && value !== "false") {
+      throw new Error("Invalid database value for sub agent enabled");
+    }
+    return value === "true";
   }
 
   public getDefaultModel(): DefaultModelSetting | null {
@@ -763,6 +778,15 @@ class SqliteAppSettingRepository implements AppSettingRepository {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       )
       .run(BUSY_SUBMIT_BEHAVIOR_KEY, behavior, updatedAt);
+  }
+
+  public setSubAgentEnabled(enabled: boolean, updatedAt: number): void {
+    this.database
+      .prepare(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(SUB_AGENT_ENABLED_KEY, String(enabled), updatedAt);
   }
 
   public setDefaultModel(defaultModel: DefaultModelSetting, updatedAt: number): void {

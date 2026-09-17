@@ -13,6 +13,7 @@ const MAX_PARALLEL_TOOL_CALLS = 4;
     - 错误统一显示为“超时、重复调用、路径越界”等明确原因。
  */
 export class ToolExecutionGuard {
+  private static readonly fileTails = new Map<string, Promise<void>>();
   private activeToolCalls = 0;
   private readonly approvedToolCallIds = new Set<string>();
   private readonly fingerprints = new Set<string>();
@@ -21,12 +22,25 @@ export class ToolExecutionGuard {
   public guard<TParameters extends TSchema, TDetails>(
     tool: AgentTool<TParameters, TDetails>,
     timeoutMs: number,
+    executionKey?: (params: unknown, signal: AbortSignal) => Promise<string | undefined>,
+    beforeExecute?: (toolCallId: string, params: unknown, signal: AbortSignal) => Promise<void>,
+    afterExecute?: (toolCallId: string, params: unknown, signal: AbortSignal) => Promise<void>,
   ): AgentTool<TParameters, TDetails> {
     return {
       ...tool,
       execute: (toolCallId, params, signal, onUpdate) =>
-        this.execute(tool.name, timeoutMs, signal, (executionSignal) =>
-          tool.execute(toolCallId, params, executionSignal, onUpdate),
+        this.execute(
+          tool.name,
+          timeoutMs,
+          signal,
+          (executionSignal) =>
+            executionKey?.(params, executionSignal) ?? Promise.resolve(undefined),
+          async (executionSignal) => {
+            await beforeExecute?.(toolCallId, params, executionSignal);
+            const result = await tool.execute(toolCallId, params, executionSignal, onUpdate);
+            await afterExecute?.(toolCallId, params, executionSignal);
+            return result;
+          },
         ),
     };
   }
@@ -91,6 +105,7 @@ export class ToolExecutionGuard {
     toolName: string,
     timeoutMs: number,
     signal: AbortSignal | undefined,
+    executionKey: (signal: AbortSignal) => Promise<string | undefined>,
     operation: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -100,7 +115,35 @@ export class ToolExecutionGuard {
     try {
       await this.acquire(executionSignal);
       acquired = true;
-      return await operation(executionSignal);
+      const key = await executionKey(executionSignal);
+      if (key === undefined) return await operation(executionSignal);
+      const previous = ToolExecutionGuard.fileTails.get(key) ?? Promise.resolve();
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      // 已取消的等待者也要留在队列中，直到前一个操作退出。
+      const tail = previous
+        .then(() => gate)
+        .then(() => {
+          if (ToolExecutionGuard.fileTails.get(key) === tail)
+            ToolExecutionGuard.fileTails.delete(key);
+        });
+      ToolExecutionGuard.fileTails.set(key, tail);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => reject(executionSignal.reason);
+          if (executionSignal.aborted) return abort();
+          executionSignal.addEventListener("abort", abort, { once: true });
+          previous
+            .then(resolve, reject)
+            .finally(() => executionSignal.removeEventListener("abort", abort));
+        });
+        executionSignal.throwIfAborted();
+        return await operation(executionSignal);
+      } finally {
+        release();
+      }
     } catch (error: unknown) {
       if (timeoutSignal.aborted) {
         throw new Error(`TOOL_TIMEOUT: ${toolName} 执行超过 ${timeoutMs}ms`);

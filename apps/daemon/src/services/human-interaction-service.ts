@@ -139,6 +139,7 @@ export class HumanInteractionService {
     const eventRequest = {
       expiresAt,
       inputId: request.inputId,
+      ...(request.executionId === undefined ? {} : { executionId: request.executionId }),
       ...(request.kind === undefined ? {} : { kind: request.kind }),
       ...(request.planMarkdown === undefined ? {} : { planMarkdown: request.planMarkdown }),
       questions: request.questions,

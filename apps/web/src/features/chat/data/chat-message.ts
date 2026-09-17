@@ -1,6 +1,8 @@
 import type {
   ApprovalRequestKind,
   ApprovalResponseDecision,
+  SubAgentStartedData,
+  SubAgentStatus,
 } from "@pi-harness/agent-runtime/harness-event";
 import type { RunMode } from "@pi-harness/agent-runtime/user-input";
 
@@ -16,6 +18,7 @@ export const ChatMessageType = {
   PLAN_REVIEW: "plan-review",
   REASONING: "reasoning",
   SOURCES: "sources",
+  SUBAGENT: "subagent",
   STREAMING: "streaming",
   TASK_LIST: "task-list",
   TOOL: "tool",
@@ -70,6 +73,7 @@ export type ChatMessageTool = {
   activeLabel?: string;
   approval?: {
     approvalId: string;
+    agentName?: string;
     allowSimilar?: boolean;
     allowSession?: boolean;
     commandPrefix?: readonly string[];
@@ -266,6 +270,18 @@ export type ChatTaskListMessage = ChatMessageBase & {
   type: typeof ChatMessageType.TASK_LIST;
 };
 
+export type ChatSubAgentMessage = ChatMessageBase & {
+  agentType: SubAgentStartedData["agentType"];
+  endedAt?: number;
+  executionId: string;
+  name: string;
+  parentExecutionId?: string;
+  latestActivity?: string;
+  resultSummary?: string;
+  status: SubAgentStatus;
+  type: typeof ChatMessageType.SUBAGENT;
+};
+
 export type ChatMessage =
   | ChatAssistantMessage
   | ChatCodeMessage
@@ -278,6 +294,7 @@ export type ChatMessage =
   | ChatPlanReviewMessage
   | ChatReasoningMessage
   | ChatSourcesMessage
+  | ChatSubAgentMessage
   | ChatStreamingMessage
   | ChatTaskListMessage
   | ChatToolGroupMessage

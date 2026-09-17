@@ -45,7 +45,7 @@ export function ToolApprovalCard({
       <Card.Header className="shrink-0 flex-row items-center gap-2">
         <SquareTerminal className="size-4 text-muted" />
         <Card.Title id={titleId} className="text-sm font-normal text-muted">
-          {toolName}
+          {approval.agentName ? `${approval.agentName} · ${toolName}` : toolName}
         </Card.Title>
       </Card.Header>
       <Card.Content className="min-h-0 gap-2 overflow-y-auto">

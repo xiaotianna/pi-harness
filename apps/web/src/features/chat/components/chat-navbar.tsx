@@ -18,10 +18,15 @@ const NAV_TITLES: Record<Exclude<ChatPageKind, "thread">, { title: string; subti
 
 export interface ChatNavbarProps {
   pageKind: ChatPageKind;
+  sessionTitle?: string;
   onSearch?: (() => void) | undefined;
 }
 
-export const ChatNavbar = memo(function ChatNavbar({ pageKind, onSearch }: ChatNavbarProps) {
+export const ChatNavbar = memo(function ChatNavbar({
+  pageKind,
+  sessionTitle,
+  onSearch,
+}: ChatNavbarProps) {
   const isThread = pageKind === "thread";
   const navTitle = isThread ? null : NAV_TITLES[pageKind];
 
@@ -38,6 +43,14 @@ export const ChatNavbar = memo(function ChatNavbar({ pageKind, onSearch }: ChatN
               </h1>
               <span className="truncate text-xs text-muted">{navTitle.subtitle}</span>
             </div>
+          ) : null}
+          {isThread && sessionTitle ? (
+            <h1
+              className="hidden min-w-0 truncate text-sm font-semibold text-foreground sm:block sm:text-base"
+              title={sessionTitle}
+            >
+              {sessionTitle}
+            </h1>
           ) : null}
           {isThread ? <ChatViewToggle /> : null}
         </div>

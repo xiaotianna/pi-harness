@@ -26,6 +26,7 @@ export interface AppSettings {
   defaultModel: DefaultModelSetting | null;
   fileOpenApplication: Omit<FileOpenApplicationSetting, "path"> | null;
   fileOpenMode: FileOpenMode;
+  isSubAgentEnabled: boolean;
   outputDetail: OutputDetail;
   reasoningSummary: ReasoningSummary;
   sandboxAllowedDomains: string[];
@@ -52,6 +53,7 @@ export class AppSettingsService {
         ? { iconDataUrl: fileOpenApplication.iconDataUrl, name: fileOpenApplication.name }
         : null,
       fileOpenMode: this.settings.getFileOpenMode(),
+      isSubAgentEnabled: this.settings.isSubAgentEnabled(),
       outputDetail: this.settings.getOutputDetail(),
       reasoningSummary: this.settings.getReasoningSummary(),
       sandboxAllowedDomains: sandboxPolicy.network.allowedDomains,
@@ -69,6 +71,9 @@ export class AppSettingsService {
     }
     if (input.busySubmitBehavior !== undefined) {
       this.settings.setBusySubmitBehavior(input.busySubmitBehavior, updatedAt);
+    }
+    if (input.isSubAgentEnabled !== undefined) {
+      this.settings.setSubAgentEnabled(input.isSubAgentEnabled, updatedAt);
     }
     if (input.defaultModel !== undefined) {
       this.settings.setDefaultModel(input.defaultModel, updatedAt);

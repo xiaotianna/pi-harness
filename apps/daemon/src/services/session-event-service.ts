@@ -175,6 +175,7 @@ export class SessionEventService {
         await this.handle({
           data: {
             approvalId: approval.approvalId,
+            ...(approval.executionId === undefined ? {} : { executionId: approval.executionId }),
             decision: ApprovalDecision.EXPIRED,
             toolCallId: approval.toolCallId,
             toolName: approval.toolName,
@@ -190,13 +191,28 @@ export class SessionEventService {
       }
       for (const input of interrupted.pendingInputs) {
         await this.handle({
-          data: { inputId: input.inputId } satisfies InputExpiredData,
+          data: {
+            inputId: input.inputId,
+            ...(input.executionId === undefined ? {} : { executionId: input.executionId }),
+          } satisfies InputExpiredData,
           id: randomUUID(),
           runId: interrupted.runId,
           seq: nextSeq,
           sessionId: session.id,
           timestamp,
           type: HarnessEventType.INPUT_EXPIRED,
+        });
+        nextSeq += 1;
+      }
+      for (const executionId of interrupted.pendingSubAgents) {
+        await this.handle({
+          data: { executionId, errorCode: "SUBAGENT_ABORTED" },
+          id: randomUUID(),
+          runId: interrupted.runId,
+          seq: nextSeq,
+          sessionId: session.id,
+          timestamp,
+          type: HarnessEventType.SUBAGENT_ABORTED,
         });
         nextSeq += 1;
       }

@@ -69,6 +69,7 @@ export const UpdateAppSettingsDtoSchema = Type.Object(
   {
     approvalPolicy: Type.Optional(ApprovalPolicyDtoSchema),
     busySubmitBehavior: Type.Optional(BusySubmitBehaviorDtoSchema),
+    isSubAgentEnabled: Type.Optional(Type.Boolean()),
     defaultModel: Type.Optional(DefaultModelSettingDtoSchema),
     fileOpenMode: Type.Optional(FileOpenModeDtoSchema),
     outputDetail: Type.Optional(OutputDetailDtoSchema),

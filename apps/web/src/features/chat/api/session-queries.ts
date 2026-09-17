@@ -4,6 +4,7 @@ import {
   getSessionRunFileChanges,
   getSessionSnapshot,
   getSessionTraceSnapshot,
+  getSubAgentEvents,
   listQueuedSessionRunInputs,
   listSessions,
   searchSessions,
@@ -22,6 +23,8 @@ export const sessionQueryKeys = {
     [...sessionQueryKeys.all, "queued-inputs", sessionId, runId] as const,
   search: (query: string) => [...sessionQueryKeys.all, "search", query] as const,
   trace: (sessionId: string) => [...sessionQueryKeys.all, "trace", sessionId] as const,
+  subAgent: (sessionId: string, executionId: string) =>
+    [...sessionQueryKeys.all, "subagent", sessionId, executionId] as const,
 };
 
 export const sessionListQueryOptions = () =>
@@ -93,4 +96,11 @@ export const sessionEventQueryOptions = (source: { sessionId: string; seq: numbe
       if (!source) throw new Error("无法确定工具结果所属会话");
       return getSessionEvent(source.sessionId, source.seq, signal);
     },
+  });
+
+export const subAgentEventsQueryOptions = (sessionId: string, executionId: string, afterSeq = 0) =>
+  queryOptions({
+    queryKey: [...sessionQueryKeys.subAgent(sessionId, executionId), afterSeq] as const,
+    queryFn: ({ signal }) => getSubAgentEvents(sessionId, executionId, afterSeq, signal),
+    staleTime: Number.POSITIVE_INFINITY,
   });

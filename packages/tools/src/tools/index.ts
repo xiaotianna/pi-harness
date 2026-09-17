@@ -37,6 +37,17 @@ export {
 export { createRunCommandTool } from "./run-command.js";
 export { createSearchTextTool } from "./search-text.js";
 export {
+  createSubAgentToolRegistrations,
+  type SendAgentMessageInput,
+  type SpawnAgentInput,
+  type StopAgentInput,
+  SubAgentDelivery,
+  type SubAgentToolHandlers,
+  SubAgentType,
+  SubAgentWaitReturn,
+  type WaitAgentsInput,
+} from "./sub-agent.js";
+export {
   attachSuccessfulTodoEvidence,
   createUpdateTodosTool,
   isTodoUpdatedData,

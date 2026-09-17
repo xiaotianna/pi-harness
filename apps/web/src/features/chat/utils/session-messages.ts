@@ -7,7 +7,10 @@ import {
   isApprovalGranted,
   isInputRequestedData,
   isInputResolvedData,
+  isSubAgentStartedData,
+  isSubAgentTerminalData,
   MessageDeltaKind,
+  SubAgentStatus,
   selectActiveSessionEvents,
 } from "@pi-harness/agent-runtime/harness-event";
 import {
@@ -36,6 +39,7 @@ import {
   ChatMessageType,
   type ChatPlanReviewMessage,
   ChatPlanReviewStatus,
+  type ChatSubAgentMessage,
   type ChatThread,
   type ChatToolGroupMessage,
   ChatToolState,
@@ -50,6 +54,10 @@ const INTERACTION_TOOL_NAMES = new Set<string>([
   UpdatePlanToolName,
   UpdateTodosToolName,
   RequestUserInputToolName,
+  "spawn_agent",
+  "wait_agents",
+  "send_agent_message",
+  "stop_agent",
 ]);
 const messagesByEventState = new WeakMap<
   readonly HarnessEvent[],
@@ -473,6 +481,7 @@ function readRunMessageProjection(
       isPlainObject(event.data) &&
       event.data.role === "assistant",
   );
+  const pendingInput = findPendingUserInput(stable);
   const projection = {
     activeRunId,
     events: baseEvents,
@@ -482,10 +491,12 @@ function readRunMessageProjection(
     ),
     canShowStream:
       activeRunId !== null &&
-      findPendingUserInput(stable) === null &&
+      (pendingInput === null || pendingInput.executionId !== undefined) &&
       !baseMessages.some(
         (message) =>
-          (message.type === ChatMessageType.TOOL && isToolActive(message.tool)) ||
+          (message.type === ChatMessageType.TOOL &&
+            !message.id.startsWith("subagent-approval-") &&
+            isToolActive(message.tool)) ||
           (message.type === ChatMessageType.TOOL_GROUP && message.tools.some(isToolActive)) ||
           (message.type === ChatMessageType.CONTEXT_COMPACTION && message.isActive),
       ),
@@ -627,6 +638,7 @@ function projectRunMessages(
   const streamingContentByRunId = new Map<string, Map<number, StreamingContent>>();
   const toolsByCallId = new Map<string, ChatMessageTool>();
   const toolGroupsByCallId = new Map<string, ChatToolGroupMessage>();
+  const subAgentsById = new Map<string, ChatSubAgentMessage>();
 
   const pushMessage = (message: ChatMessage) => {
     messages.push(message);
@@ -665,6 +677,109 @@ function projectRunMessages(
   };
 
   for (const event of events) {
+    if (
+      event.type === HarnessEventType.SUBAGENT_STARTED &&
+      event.runId &&
+      isSubAgentStartedData(event.data)
+    ) {
+      const message: ChatSubAgentMessage = {
+        agentType: event.data.agentType,
+        executionId: event.data.executionId,
+        id: `subagent-${event.data.executionId}`,
+        name: event.data.name,
+        ...(event.data.parentExecutionId === undefined
+          ? {}
+          : { parentExecutionId: event.data.parentExecutionId }),
+        sessionId: event.sessionId,
+        status: SubAgentStatus.RUNNING,
+        timestamp: event.timestamp,
+        turnId: event.runId,
+        type: ChatMessageType.SUBAGENT,
+      };
+      subAgentsById.set(event.data.executionId, message);
+      pushMessage(message);
+      continue;
+    }
+    if (
+      event.type === HarnessEventType.SUBAGENT_TOOL_STARTED &&
+      isPlainObject(event.data) &&
+      typeof event.data.executionId === "string"
+    ) {
+      const message = subAgentsById.get(event.data.executionId);
+      if (message && typeof event.data.toolName === "string")
+        message.latestActivity = `正在调用 ${event.data.toolName}`;
+      continue;
+    }
+    if (
+      event.type === HarnessEventType.TOOL_STARTED &&
+      isPlainObject(event.data) &&
+      isPlainObject(event.data.arguments) &&
+      typeof event.data.toolName === "string"
+    ) {
+      const ids =
+        typeof event.data.arguments.executionId === "string"
+          ? [event.data.arguments.executionId]
+          : Array.isArray(event.data.arguments.executionIds)
+            ? event.data.arguments.executionIds.filter((id): id is string => typeof id === "string")
+            : [];
+      const activity =
+        event.data.toolName === "wait_agents"
+          ? "正在等待结果"
+          : event.data.toolName === "send_agent_message"
+            ? "已发送补充指令"
+            : event.data.toolName === "stop_agent"
+              ? "正在停止"
+              : null;
+      if (activity)
+        for (const id of ids) {
+          const message = subAgentsById.get(id);
+          if (message && message.status === SubAgentStatus.RUNNING)
+            message.latestActivity = activity;
+        }
+    }
+    if (
+      event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA &&
+      isPlainObject(event.data) &&
+      typeof event.data.executionId === "string"
+    ) {
+      const message = subAgentsById.get(event.data.executionId);
+      if (message && event.data.kind === MessageDeltaKind.TEXT)
+        message.latestActivity = "正在整理结果";
+      continue;
+    }
+    if (
+      (event.type === HarnessEventType.SUBAGENT_COMPLETED ||
+        event.type === HarnessEventType.SUBAGENT_FAILED ||
+        event.type === HarnessEventType.SUBAGENT_ABORTED) &&
+      isSubAgentTerminalData(event.data)
+    ) {
+      const message = subAgentsById.get(event.data.executionId);
+      if (message) {
+        message.status =
+          event.type === HarnessEventType.SUBAGENT_COMPLETED
+            ? SubAgentStatus.COMPLETED
+            : event.type === HarnessEventType.SUBAGENT_FAILED
+              ? SubAgentStatus.FAILED
+              : SubAgentStatus.ABORTED;
+        message.latestActivity =
+          message.status === SubAgentStatus.COMPLETED
+            ? "已完成"
+            : message.status === SubAgentStatus.FAILED
+              ? "执行失败"
+              : "已中止";
+        message.endedAt = event.data.endedAt ?? event.timestamp;
+        if (event.data.resultSummary) message.resultSummary = event.data.resultSummary;
+      }
+      continue;
+    }
+    if (
+      event.type === HarnessEventType.APPROVAL_REQUESTED &&
+      isPlainObject(event.data) &&
+      typeof event.data.executionId === "string"
+    ) {
+      const message = subAgentsById.get(event.data.executionId);
+      if (message) message.latestActivity = "等待审批";
+    }
     if (event.type === HarnessEventType.RUN_STARTED && event.runId) {
       runStartedAtById.set(event.runId, event.timestamp);
       if (isPlainObject(event.data) && event.data.mode === RunMode.PLAN) {
@@ -835,7 +950,27 @@ function projectRunMessages(
       typeof event.data.target === "string" &&
       typeof event.data.toolCallId === "string"
     ) {
-      const tool = toolsByCallId.get(event.data.toolCallId);
+      const approvalToolKey =
+        typeof event.data.executionId === "string"
+          ? `${event.data.executionId}:${event.data.toolCallId}`
+          : event.data.toolCallId;
+      let tool = toolsByCallId.get(approvalToolKey);
+      if (!tool && typeof event.data.executionId === "string") {
+        tool = {
+          input: {},
+          state: ChatToolState.INPUT_AVAILABLE,
+          toolCallId: event.data.toolCallId,
+          toolName: typeof event.data.toolName === "string" ? event.data.toolName : "subagent_tool",
+        };
+        toolsByCallId.set(approvalToolKey, tool);
+        pushMessage({
+          id: `subagent-approval-${event.data.approvalId}`,
+          sessionId: event.sessionId,
+          tool,
+          type: ChatMessageType.TOOL,
+          turnId: event.runId,
+        });
+      }
       if (tool) {
         const preview =
           typeof event.data.preview === "string" && event.data.preview
@@ -845,8 +980,13 @@ function projectRunMessages(
           event.data.kind === ApprovalRequestKind.HOST_EXECUTION
             ? ApprovalRequestKind.HOST_EXECUTION
             : undefined;
+        const childAgent =
+          typeof event.data.executionId === "string"
+            ? subAgentsById.get(event.data.executionId)
+            : undefined;
         tool.approval = {
           approvalId: event.data.approvalId,
+          ...(childAgent === undefined ? {} : { agentName: childAgent.name }),
           ...(event.data.allowSession === false ? { allowSession: false } : {}),
           ...(event.data.allowSimilar === true ? { allowSimilar: true } : {}),
           ...(isCommandPrefixRule(event.data.commandPrefix)
@@ -869,7 +1009,11 @@ function projectRunMessages(
       isPlainObject(event.data) &&
       typeof event.data.toolCallId === "string"
     ) {
-      const tool = toolsByCallId.get(event.data.toolCallId);
+      const tool = toolsByCallId.get(
+        typeof event.data.executionId === "string"
+          ? `${event.data.executionId}:${event.data.toolCallId}`
+          : event.data.toolCallId,
+      );
       if (tool) {
         delete tool.activeLabel;
         delete tool.approval;

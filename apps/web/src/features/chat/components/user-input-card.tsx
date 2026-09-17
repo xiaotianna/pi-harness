@@ -37,6 +37,7 @@ interface AnswerDraft {
 }
 
 type UserInputCardProps = {
+  agentName?: string;
   onCancel: () => Promise<void>;
   onResolve: (submission: UserInputSubmission) => Promise<void>;
   request: InputRequestedData;
@@ -149,7 +150,7 @@ function PlanReviewInputCard({ onCancel, onResolve, request }: UserInputCardProp
   );
 }
 
-function QuestionInputCard({ onCancel, onResolve, request }: UserInputCardProps) {
+function QuestionInputCard({ agentName, onCancel, onResolve, request }: UserInputCardProps) {
   const titleId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [answers, setAnswers] = useState<Record<string, AnswerDraft>>({});
@@ -205,7 +206,7 @@ function QuestionInputCard({ onCancel, onResolve, request }: UserInputCardProps)
         <div className="flex min-w-0 items-center gap-2">
           <CircleQuestion className="size-4 text-accent" />
           <Card.Title id={titleId} className="text-sm font-medium">
-            需要你的补充
+            {agentName ? `${agentName} 需要你的补充` : "需要你的补充"}
           </Card.Title>
         </div>
         {request.questions.length > 1 ? (

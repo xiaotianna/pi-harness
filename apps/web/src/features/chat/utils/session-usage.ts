@@ -310,6 +310,31 @@ export function summarizeSessionUsage(events: readonly HarnessEvent[]): SessionU
       todos = readTodos(event.data);
     }
 
+    if (
+      (event.type === HarnessEventType.SUBAGENT_COMPLETED ||
+        event.type === HarnessEventType.SUBAGENT_FAILED ||
+        event.type === HarnessEventType.SUBAGENT_ABORTED) &&
+      isPlainObject(event.data) &&
+      isPlainObject(event.data.usage)
+    ) {
+      const childUsage = readTokenUsage(event.data.usage);
+      const childRequests = readNonNegativeNumber(event.data.requestCount);
+      requestCount += childRequests;
+      usage = addUsage(usage, childUsage);
+      if (event.runId) {
+        const currentRun = runUsageById.get(event.runId) ?? {
+          requestCount: 0,
+          usage: createEmptyUsage(),
+        };
+        runUsageById.set(event.runId, {
+          requestCount: currentRun.requestCount + childRequests,
+          usage: addUsage(currentRun.usage, childUsage),
+        });
+        latestRunId = event.runId;
+      }
+      continue;
+    }
+
     const nextContextSnapshot = readContextUsageSnapshot(event);
     if (nextContextSnapshot !== null) {
       contextSnapshotState = nextContextSnapshot;

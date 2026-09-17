@@ -4,12 +4,15 @@ import {
   HarnessEventType,
   type InputRequestedData,
   isInputRequestedData,
+  isSubAgentStartedData,
+  isSubAgentTerminalData,
   type RunId,
 } from "@pi-harness/agent-runtime";
 import { isCommandPrefixRule } from "@pi-harness/policy/command-policy";
 import { isPlainObject } from "es-toolkit";
 
 export interface InterruptedRun {
+  pendingSubAgents: readonly string[];
   pendingApprovals: readonly ApprovalRequestedData[];
   pendingInputs: readonly InputRequestedData[];
   runId: RunId;
@@ -37,15 +40,31 @@ export function findInterruptedRun(events: readonly HarnessEvent[]): Interrupted
   let runId: RunId | null = null;
   const pendingApprovals = new Map<string, ApprovalRequestedData>();
   const pendingInputs = new Map<string, InputRequestedData>();
+  const pendingSubAgents = new Set<string>();
 
   for (const event of events) {
     if (event.type === HarnessEventType.RUN_STARTED && event.runId) {
       runId = event.runId;
       pendingApprovals.clear();
       pendingInputs.clear();
+      pendingSubAgents.clear();
       continue;
     }
     if (runId === null || event.runId !== runId) continue;
+
+    if (event.type === HarnessEventType.SUBAGENT_STARTED && isSubAgentStartedData(event.data)) {
+      pendingSubAgents.add(event.data.executionId);
+      continue;
+    }
+    if (
+      (event.type === HarnessEventType.SUBAGENT_COMPLETED ||
+        event.type === HarnessEventType.SUBAGENT_FAILED ||
+        event.type === HarnessEventType.SUBAGENT_ABORTED) &&
+      isSubAgentTerminalData(event.data)
+    ) {
+      pendingSubAgents.delete(event.data.executionId);
+      continue;
+    }
 
     if (event.type === HarnessEventType.APPROVAL_REQUESTED) {
       const request = readApprovalRequest(event);
@@ -90,6 +109,7 @@ export function findInterruptedRun(events: readonly HarnessEvent[]): Interrupted
       runId = null;
       pendingApprovals.clear();
       pendingInputs.clear();
+      pendingSubAgents.clear();
     }
   }
 
@@ -98,6 +118,7 @@ export function findInterruptedRun(events: readonly HarnessEvent[]): Interrupted
     : {
         pendingApprovals: [...pendingApprovals.values()],
         pendingInputs: [...pendingInputs.values()],
+        pendingSubAgents: [...pendingSubAgents],
         runId,
       };
 }
