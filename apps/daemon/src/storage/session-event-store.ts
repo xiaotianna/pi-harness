@@ -1,5 +1,7 @@
+import { createReadStream } from "node:fs";
 import { mkdir, open, readFile, stat, truncate } from "node:fs/promises";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import {
   type AgentMessage,
   type ContextCheckpointRecord,
@@ -207,6 +209,52 @@ export class SessionEventStore {
     if (pendingWrite !== undefined) await pendingWrite;
 
     return this.readSnapshot(sessionId);
+  }
+
+  public async loadRunEvents(
+    sessionId: SessionId,
+    runIds: ReadonlySet<string>,
+    eventTypes: ReadonlySet<string>,
+    signal: AbortSignal = AbortSignal.timeout(30_000),
+  ): Promise<ReadonlyMap<string, readonly HarnessEvent[]>> {
+    const pendingWrite = this.writeTails.get(sessionId);
+    if (pendingWrite !== undefined) await pendingWrite;
+
+    const eventsByRunId = new Map<string, HarnessEvent[]>();
+    if (runIds.size === 0) return eventsByRunId;
+
+    const stream = createReadStream(join(this.directory, sessionFileName(sessionId)), {
+      encoding: "utf8",
+      signal,
+    });
+    try {
+      for await (const line of createInterface({ input: stream, crlfDelay: Infinity })) {
+        // Appended event metadata fits in the tail; skip large message payloads before JSON.parse.
+        const metadata =
+          /,"runId":"([^"]+)","seq":\d+,"sessionId":"[^"]+","timestamp":\d+,"type":"([^"]+)"}$/.exec(
+            line.slice(-256),
+          );
+        const runId = metadata?.[1];
+        const type = metadata?.[2];
+        if (
+          runId === undefined ||
+          type === undefined ||
+          !runIds.has(runId) ||
+          !eventTypes.has(type)
+        )
+          continue;
+        const event = parseHarnessEvent(JSON.parse(line) as unknown, sessionId);
+        if (event.runId !== runId || event.type !== type) continue;
+        const events = eventsByRunId.get(runId) ?? [];
+        events.push(event);
+        eventsByRunId.set(runId, events);
+      }
+    } catch (error: unknown) {
+      if (!isError(error) || !("code" in error) || error.code !== "ENOENT") throw error;
+    } finally {
+      stream.destroy();
+    }
+    return eventsByRunId;
   }
 
   public getRevision(sessionId: SessionId): number {

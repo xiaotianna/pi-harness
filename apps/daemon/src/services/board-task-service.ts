@@ -31,6 +31,20 @@ const BOARD_TASK_STATUS_ORDER = [
   BoardTaskStatus.COMPLETED,
 ] as const;
 
+const BOARD_TASK_EVENT_TYPES = new Set<string>([
+  HarnessEventType.APPROVAL_REQUESTED,
+  HarnessEventType.APPROVAL_RESOLVED,
+  HarnessEventType.INPUT_REQUESTED,
+  HarnessEventType.INPUT_RESOLVED,
+  HarnessEventType.INPUT_EXPIRED,
+  HarnessEventType.RUN_FAILED,
+  HarnessEventType.RUN_ABORTED,
+  HarnessEventType.RUN_COMPLETED,
+  HarnessEventType.TODO_UPDATED,
+  HarnessEventType.PLAN_UPDATED,
+  HarnessEventType.FILE_CHANGED,
+]);
+
 export const BoardTaskErrorCode = {
   INVALID_INPUT: "BOARD_TASK_INVALID",
   NOT_FOUND: "BOARD_TASK_NOT_FOUND",
@@ -187,7 +201,21 @@ export class BoardTaskService {
           (rank.get(left.status) ?? 0) - (rank.get(right.status) ?? 0) ||
           left.position - right.position,
       );
-    return Promise.all(tasks.map((task) => this.toView(task)));
+    const runsBySession = new Map<string, Set<string>>();
+    for (const task of tasks) {
+      if (!task.sessionId || !task.rootRunId) continue;
+      const runIds = runsBySession.get(task.sessionId) ?? new Set<string>();
+      runIds.add(task.rootRunId);
+      runsBySession.set(task.sessionId, runIds);
+    }
+    const eventsByRunId = new Map<string, readonly HarnessEvent[]>();
+    for (const [sessionId, runIds] of runsBySession) {
+      const events = await this.eventStore.loadRunEvents(sessionId, runIds, BOARD_TASK_EVENT_TYPES);
+      for (const [runId, runEvents] of events) eventsByRunId.set(runId, runEvents);
+    }
+    return Promise.all(
+      tasks.map((task) => this.toView(task, eventsByRunId.get(task.rootRunId ?? "") ?? [])),
+    );
   }
 
   public async create(input: CreateBoardTaskInput): Promise<BoardTaskView> {
@@ -334,12 +362,22 @@ export class BoardTaskService {
     return task;
   }
 
-  private async toView(task: BoardTaskRecord): Promise<BoardTaskView> {
+  private async toView(
+    task: BoardTaskRecord,
+    loadedEvents?: readonly HarnessEvent[],
+  ): Promise<BoardTaskView> {
     const workspace = this.workspaces.find(task.workspaceId);
-    const events = task.sessionId ? (await this.eventStore.load(task.sessionId)).events : [];
-    const runEvents = task.rootRunId
-      ? events.filter((event) => event.runId === task.rootRunId)
-      : [];
+    const runEvents =
+      loadedEvents ??
+      (task.sessionId && task.rootRunId
+        ? ((
+            await this.eventStore.loadRunEvents(
+              task.sessionId,
+              new Set([task.rootRunId]),
+              BOARD_TASK_EVENT_TYPES,
+            )
+          ).get(task.rootRunId) ?? [])
+        : []);
     const { currentStep, progress } = task.rootRunId
       ? deriveProgress(runEvents, task.rootRunId)
       : { currentStep: null, progress: null };
