@@ -2,11 +2,12 @@
 
 本文档只记录 Agent Runtime 的实施顺序、执行过程、完成进度和验证结果。稳定的模块职责、数据协议、安全边界与演进原则以 [`架构设计.md`](./架构设计.md) 为准。
 
-最后按实际代码核对：2026-09-15。
+最后按实际代码核对：2026-09-18（只读核对；未重新运行验证命令）。
 
 ## 进度说明
 
 - `已完成`：代码已落地，并通过对应静态检查或冒烟验证。
+- `代码已接入，待验收`：主要链路已在代码中接通，但尚无覆盖关键真实场景的验收记录。
 - `进行中`：已经开始实现，但尚未形成完整闭环。
 - `待开始`：保持在架构计划中，尚未进入实现。
 
@@ -19,14 +20,16 @@
 | AGENTS.md、Skill Registry、插件 Skill、附件与 `@` 上下文 | 已完成 | 每次 Run 重新发现上下文，Skill 正文按需加载 |
 | Plan 模式、Planner、Todos、用户提问、排队追加与调整方向 | 已完成 | 状态进入 Session JSONL，并支持活动 Run 内挂起与恢复 |
 | Context 预算、裁剪、结构化压缩、Checkpoint 回滚与用量 | 已完成 | 确定性 eval 已落地；真实 Provider burn-in 仍是发布验收项 |
-| Trace 与 Session 搜索 | 已完成基础闭环 | Trace 使用真实事件；Session 列表搜索已有 SQLite FTS |
+| Trace 与 Session 搜索 | 已完成基础闭环 | Trace 使用真实事件；Session 列表搜索已有 SQLite FTS，子 Agent 轨迹已接入但随子 Agent 一起待验收 |
 | 当前 Session 历史取回 | 已完成基础闭环 | Agent 的 `search_session_history` 仍对当前 Agent 消息做倒序线性扫描，不等同于长期记忆 |
 | MCP Host Tools 闭环 | 已完成 | 配置、连接、发现、Run 工具冻结、Policy、调用与 UI 已接通；Resources、Prompts 等完整协议扩展继续由 MCP 专项台账跟踪 |
 | Long-term Memory | 已完成 | 独立 `@pi-harness/memory`、SQLite/FTS5、派生用户画像、HTTP API、Web 管理、自动学习与 Runtime 注入已闭环 |
 | RAG / Tool Selector | 待开始 | 尚无 `tool-selector.ts` 或通用 Retrieval 实现 |
 | Computer Use Runtime 接入 | 已完成 | 内置插件提供独立 MCP 与 Skill 开关；原生 helper 随桌面端打包并接入 MCP Host、Policy 与图片结果链路 |
+| 任务看板 | 代码已接入，待验收 | 顶层 Run 关联 BoardTask；SQLite、API、事件状态投影和 `/board` 页面已接通 |
+| Sub Agent | 代码已接入，待验收 | 委派/等待/消息/停止、父子执行树、权限与并发边界、JSONL 恢复、对话详情和独立 Trace 已接通 |
 
-当前 Runtime 核心执行链与 Long-term Memory 已经可用。剩余工作按独立能力推进；Context burn-in 属于发布验收，不再作为唯一“下一步”。
+当前单 Agent Runtime 核心执行链与 Long-term Memory 已经可用；新接入的任务看板和 Sub Agent 尚需真实场景验收。Context burn-in 属于发布验收，RAG / Tool Selector 与 MCP 扩展协议按独立能力推进。
 
 ## 2026-08-24：无工具 Runtime 后端闭环
 
@@ -239,8 +242,16 @@
 
 验证：`@pi-harness/memory`、`@pi-harness/tools`、`@pi-harness/agent-runtime`、`@pi-harness/daemon` 和 `@pi-harness/web` typecheck 通过；SQLite migration、旧数据升级、画像分组与改类、创建、FTS 检索、Context 投影和删除通过一次性冒烟断言；本地真实模型链路完成无审批保存、跨 Session 召回、无审批更新、旧值消失及用户画像展示验证。未执行 dev、build 或 git；验证环境为 Node.js 22，项目目标仍是 Node.js 24 LTS。
 
+## 2026-09-18：新增能力代码核对
+
+状态：`代码已接入，待验收`
+
+- 任务看板：`BoardTaskService`、SQLite repository、路由与 `/board` 页面已接通；新顶层 Run 自动关联任务，Run/审批/人工输入事件更新状态，进度和文件变化从 JSONL 投影。归档、批量操作、列内排序持久化和子 Agent 执行摘要仍是看板后续项。
+- Sub Agent：`SubAgentTree` 和四个控制工具已接入 `RunCoordinator`；父子事件共用串行 `seq` 提交，终态在子树收束后发出。daemon 提供子事件分页、单执行停止和重启中断恢复；Web 已有子任务思考链、详情、停止入口及独立 Trace。此次仅核对代码，未发现覆盖设计文档验收矩阵的真实对话验证记录。
+- 通用 Tool Selector / RAG 尚未落地；Memory 的混合检索和当前 Session 历史搜索是已有的两条具体链路，不等同于通用 Retrieval。
+
 ## 下一步
 
-状态：`待开始`
-
-真实 Provider burn-in 保留为发布前验收，覆盖长会话、Memory 注入、Tool/MCP 审批、Context 压缩、停止与失败恢复。Memory 的本地向量链路需覆盖首次下载、缓存复用、索引重建与关键词降级；通用 Retrieval package 等 Tool/Skill 成为第二个稳定消费者后再提取。
+1. 先用真实 Provider 验收 Sub Agent：并行与嵌套、父 Run 收束、worker 审批与同目标写入冲突、单独/整体停止、超时、重启恢复和 SSE 重连；同时确认看板状态与子轨迹正确投影。
+2. 发布前继续做长会话 burn-in：Memory 注入、Tool/MCP 审批、Context 压缩与回滚、停止及失败恢复；Memory 本地向量链路还需覆盖首次下载、缓存复用、索引重建和关键词降级。
+3. 真实场景发现缺陷后再补对应评估；通用 Tool Selector / RAG、MCP 完整协议扩展和看板增强作为独立后续能力，不作为核心 Runtime 收尾的前置条件。

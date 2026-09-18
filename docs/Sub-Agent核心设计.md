@@ -134,9 +134,9 @@ Pi 原始事件只在 `agent-runtime` 内转换；Web 和 daemon 只消费 `Harn
 
 子 Agent 的审批或输入等待只改变该子任务的活动状态；父 Run 可继续执行其他分支，不因一个子任务等待而整体进入 `run.awaiting_input`。SSE 增量仅用于实时显示，`subagent.message.delta` 与 `subagent.tool.updated` 不写 JSONL。完整消息、工具结果、审批和文件变化按现有 Session JSONL 规则顺序追加，SQLite 只更新 Session 轻量索引，不建子消息副本表。
 
-父子事件共用**同一个串行提交入口**：按入队顺序分配 `seq`，等待 `SessionEventService` 完成该条提交后再处理下一条。现有 `RunCoordinator.emit()` 在异步 `onEvent` 前递增 `seq`，接入并行子 Agent 时必须在这里串行化，避免后发事件先落盘。SSE 断线与重连仍以同一 Session 的 `seq` 去重和补齐。
+父子事件共用**同一个串行提交入口**：`RunCoordinator.emit()` 按入队顺序分配 `seq`，等待 `SessionEventService` 完成该条提交后再处理下一条，避免后发事件先落盘。SSE 断线与重连仍以同一 Session 的 `seq` 去重和补齐。
 
-当前 `event-adapter.ts` 在根 `agent_end` 就生成 `run.completed/failed/aborted`。接入子执行后，`RunCoordinator` 必须先执行第 3.1 节的收束逻辑，再决定根 Run 终态；子 Agent 的 `agent_end` 只映射为子终态，不触发顶层 Run 终态。现有 Plan 模式和顶层 `steer` 的续轮判断仍在根 Run 上执行。
+`event-adapter.ts` 将根 `agent_end` 映射为 `run.completed/failed/aborted` 草稿；`RunCoordinator` 先执行第 3.1 节的收束逻辑，再提交根 Run 终态。子 Agent 的 `agent_end` 只映射为子终态，不触发顶层 Run 终态。Plan 模式和顶层 `steer` 的续轮判断仍在根 Run 上执行。
 
 `SessionEventStore.load()` 只从根 `message.completed` 恢复父 Agent 消息。`subagent.message.completed` 单独读取，绝不进入父 `Agent.state.messages`、父上下文压缩或会话主消息链。当前分支由现有 `selectActiveSessionEvents` 确定；分支回退后，旧分支的子事件仍在 JSONL，但不出现在当前对话及子详情中。`GET /api/sessions/:sessionId/subagents/:executionId/events?afterSeq=<seq>&limit=<count>` 按 Session `seq` 分页返回该执行在当前分支的事件，`POST /api/sessions/:sessionId/subagents/:executionId/abort` 只允许停止该 Session 当前 Run 的活动执行。两条 API 均沿用本地来源、同源和输入校验。对话快照仅给出身份、状态和简短活动摘要。
 

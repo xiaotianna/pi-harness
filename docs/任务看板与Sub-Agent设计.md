@@ -10,7 +10,7 @@
 
 任务中心只有一个全局看板，始终聚合所有 Workspace 的任务，不按项目分组、分栏，也不提供 Workspace 筛选或搜索。Workspace 仍是任务执行与安全边界，必须在每张任务卡片和任务详情中明确标注。
 
-顶层 `BoardTask` 是长期可管理的工作对象；`Session` 是对话上下文；顶层 `Run` 是一次任务执行边界；Plan 和 Todo 是该 Run 内的临时工作状态。未来的 Sub Agent 是任务下的执行单元，不直接成为新的看板列。
+顶层 `BoardTask` 是长期可管理的工作对象；`Session` 是对话上下文；顶层 `Run` 是一次任务执行边界；Plan 和 Todo 是该 Run 内的临时工作状态。已接入的 Sub Agent 是任务下的执行单元，不直接成为新的看板列。
 
 ```text
 BoardTask
@@ -18,7 +18,7 @@ BoardTask
     └── Root Run（当前主执行）
         ├── Plan / Todos
         ├── Primary Agent execution
-        └── Sub Agent executions（未来）
+        └── Sub Agent executions
 ```
 
 ## 2. 当前实现
@@ -69,9 +69,9 @@ Plan、Todo、审批、输入请求和文件变更仍以 Session JSONL 中的 `H
 
 所有写操作继续经过 daemon 的同源与桌面授权检查。Web 不直接访问 SQLite、JSONL 或 Runtime 对象。
 
-## 3. Sub Agent 的后续结构
+## 3. Sub Agent 与看板
 
-对话中的子 Agent 运行与查看方式见 [对话中的 Sub Agent 设计](./对话Sub-Agent设计.md)。看板目前仍只以顶层 Run 投影任务状态；会话能力稳定后，再确定看板需要展示的执行摘要。
+对话中的子 Agent 运行与查看方式见 [对话中的 Sub Agent 设计](./对话Sub-Agent设计.md)。Sub Agent 已接入会话执行链；看板目前仍只以顶层 Run 投影任务状态，任务详情中的子执行摘要尚未接入。
 
 ## 4. 实施进度
 
