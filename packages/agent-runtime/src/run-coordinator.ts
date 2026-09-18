@@ -1,13 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { randomUUID } from "node:crypto";
 import type {
-  AfterToolCallContext,
   Agent,
   AgentEvent,
   AgentMessage,
   AgentTool,
-  BeforeToolCallContext,
-  BeforeToolCallResult,
   StreamFn,
 } from "@earendil-works/pi-agent-core";
 import {
@@ -17,22 +13,12 @@ import {
   createAssistantMessageEventStream,
   type Model,
 } from "@earendil-works/pi-ai";
+import { ApprovalPolicy, type ApprovalPolicyValue } from "@pi-harness/policy";
 import {
-  ApprovalPolicy,
-  type ApprovalPolicyValue,
-  evaluateToolCall,
-  resolveWorkspacePath,
-  ToolPermission,
-  ToolPolicyDecision,
-} from "@pi-harness/policy";
-import {
-  attachSuccessfulTodoEvidence,
   type FileChangeDetails,
   type PlanUpdatedData,
   type RequestUserInputData,
-  readFileChangeDetails,
   type SendAgentMessageInput,
-  type SessionHistorySearchResult,
   type SkillRegistry,
   type SpawnAgentInput,
   type StopAgentInput,
@@ -45,27 +31,18 @@ import {
 } from "@pi-harness/tools";
 import type { PreparedExternalTools, PrepareExternalTools } from "./agent-manager.js";
 import { createAutoFollowUpHandler } from "./auto-follow-up.js";
-import { CONTEXT_WINDOW_EXCEEDED_ERROR_CODE, projectContext } from "./context/context-pipeline.js";
+import { CONTEXT_WINDOW_EXCEEDED_ERROR_CODE } from "./context/context-pipeline.js";
 import { type AgentEventAdapterContext, adaptAgentEvent } from "./event-adapter.js";
 import {
-  ApprovalDecision,
-  type ApprovalRequestedData,
-  ApprovalRequestKind,
-  type ApprovalRequestKind as ApprovalRequestKindValue,
-  type ApprovalResolvedData,
   type ContextCheckpointRecord,
-  type ContextCheckpointRestoredData,
   type ContextCompactedData,
   type ContextUsageSnapshotData,
-  type ContextWorkingStateResetData,
-  type FileChangedData,
   type HarnessEvent,
   type HarnessEventDraft,
   HarnessEventType,
   type InputExpiredData,
   type InputRequestedData,
   type InputResolvedData,
-  isApprovalGranted,
   type RunContextData,
   type RunId,
   type RunInteractionData,
@@ -85,16 +62,13 @@ import {
   PLAN_MODE_RETRY_PROMPT,
   PLAN_MODE_REVISION_RETRY_PROMPT,
 } from "./prompts/plan-mode-prompt.js";
-import {
-  buildToolApprovalPrompt,
-  parseToolApprovalResponse,
-  TOOL_APPROVAL_SYSTEM_PROMPT,
-} from "./prompts/tool-approval-prompt.js";
+import { RunContextHooks } from "./run-context-hooks.js";
+import { RunInputQueue } from "./run-input-queue.js";
+import { RunToolHooks } from "./run-tool-hooks.js";
 import { SubAgentTree } from "./sub-agent-tree.js";
 import { type ThinkingLevel, ThinkingLevel as ThinkingLevels } from "./thinking-level.js";
 import type { ToolApprovalRequester } from "./tool-approval.js";
 import {
-  BusySubmitBehavior,
   type HarnessUserMessage,
   isHarnessUserMessage,
   type QueuedRunInput,
@@ -106,11 +80,7 @@ import { isPlanExecutionAcknowledgement } from "./utils/agent-message.js";
 import { estimateContextUsage } from "./utils/context-usage.js";
 import { createRunToolSnapshot } from "./utils/run-tool-snapshot.js";
 import { expandExplicitSkills } from "./utils/skill-context.js";
-import {
-  createHarnessUserMessage,
-  createHarnessUserMessageRecord,
-  limitUserInputContext,
-} from "./utils/user-input.js";
+import { createHarnessUserMessage, createHarnessUserMessageRecord } from "./utils/user-input.js";
 
 export interface StartRunInput {
   approvalPolicy: ApprovalPolicyValue;
@@ -157,15 +127,7 @@ interface ActiveRun extends AgentEventAdapterContext {
   streamFn: StreamFn;
 }
 
-interface PendingFollowUp {
-  input: RunUserInput;
-  message: HarnessUserMessage;
-  queued: QueuedRunInput;
-}
-
 const MAX_PLAN_MODE_RETRY_COUNT = 8;
-const TOOL_APPROVAL_MAX_TOKENS = 64;
-const TOOL_APPROVAL_TIMEOUT_MS = 20_000;
 
 interface PlanModeRetryMessage {
   content: string;
@@ -174,6 +136,7 @@ interface PlanModeRetryMessage {
   timestamp: number;
 }
 
+/** 把 Plan 模式的续轮提示包装成 Agent 可接收的内部用户消息。 */
 function createPlanModeRetryMessage(content: string): PlanModeRetryMessage {
   return {
     content,
@@ -183,6 +146,7 @@ function createPlanModeRetryMessage(content: string): PlanModeRetryMessage {
   };
 }
 
+/** 模型正常停下时才尝试续轮；中止或出错时不能继续追问它。 */
 function canRetryPlanMode(event: Extract<AgentEvent, { type: "agent_end" }>): boolean {
   const lastMessage = event.messages.at(-1);
   return !(
@@ -191,13 +155,7 @@ function canRetryPlanMode(event: Extract<AgentEvent, { type: "agent_end" }>): bo
   );
 }
 
-export function shouldResetWorkingStateForNewRun(
-  plan: PlanUpdatedData | null,
-  todos: TodoUpdatedData | null,
-): boolean {
-  return plan !== null || todos !== null;
-}
-
+/** 上下文准备失败时返回一个标准模型错误流，让 Agent 按原有错误路径收尾。 */
 function createContextWindowErrorStream(model: Model<Api>, message: string) {
   const stream = createAssistantMessageEventStream();
   const error: AssistantMessage = {
@@ -228,28 +186,21 @@ function createContextWindowErrorStream(model: Model<Api>, message: string) {
 // 一个 Session 对应一个 RunCoordinator，它管理 run 的生命周期、事件转换与发布
 export class RunCoordinator {
   private activeRun: ActiveRun | null = null;
-  private readonly executionGuard: ToolRegistry["executionGuard"];
+  private readonly toolHooks: RunToolHooks;
+  private readonly contextHooks: RunContextHooks;
+  private readonly inputQueue: RunInputQueue;
   private nextSeq: number;
-  private pendingContextError: string | null = null;
-  private readonly pendingFileChanges = new Map<string, readonly FileChangedData[]>();
-  private readonly pendingFollowUps = new Map<string, PendingFollowUp>();
-  private isContinuingSteer = false;
-  private readonly pendingSteerInterrupts: HarnessUserMessage[] = [];
-  private queueMutationTail: Promise<void> = Promise.resolve();
-  private pendingWorkingStateReset = false;
-  private readonly successfulToolCallIds = new Set<string>();
-  private readonly sessionApprovedFingerprints = new Set<string>();
-  private readonly sessionApprovedNetworkTargets = new Set<string>();
   private readonly unsubscribe: () => void;
   private eventTail: Promise<void> = Promise.resolve();
   private pendingRunOutcome: HarnessEventDraft | null = null;
   private hasEmittedRunStart = false;
   private subAgents: SubAgentTree | null = null;
   private rootJoinAbortController: AbortController | null = null;
-  private readonly callFingerprints = new Map<string, string | undefined>();
-  private readonly readFingerprints = new Map<string, string | null>();
-  private readonly pendingReadFingerprints = new Map<string, string | null>();
 
+  /**
+   * 为一个 Session 接好三类协作者：上下文、工具安全检查和用户消息队列。
+   * 最后订阅 Agent 事件；之后 Agent 的消息、工具和模型请求都会回到这里进入统一 Run 流程。
+   */
   public constructor(
     private readonly sessionId: SessionId,
     private readonly agent: Agent,
@@ -258,16 +209,16 @@ export class RunCoordinator {
     private readonly onEvent: HarnessEventListener,
     private readonly workspaceRoot: string,
     private readonly protectedPaths: readonly string[],
-    private readonly requestToolApproval: ToolApprovalRequester,
+    requestToolApproval: ToolApprovalRequester,
     private readonly requestHumanInput: HumanInputRequester,
     private readonly setSupportsImageInput: (supportsImageInput: boolean) => void,
-    private contextCheckpoint: ContextCompactedData | null,
-    private contextCheckpointEventSeq: number | null,
-    private contextCheckpointTailStartMessageIndex: number | null,
-    private readonly contextCheckpointHistory: ContextCheckpointRecord[],
-    private planState: PlanUpdatedData | null,
-    private todoState: TodoUpdatedData | null,
-    private readonly getAllowedCommandPrefixes: () => readonly (readonly string[])[] = () => [],
+    contextCheckpoint: ContextCompactedData | null,
+    contextCheckpointEventSeq: number | null,
+    contextCheckpointTailStartMessageIndex: number | null,
+    contextCheckpointHistory: ContextCheckpointRecord[],
+    planState: PlanUpdatedData | null,
+    todoState: TodoUpdatedData | null,
+    getAllowedCommandPrefixes: () => readonly (readonly string[])[] = () => [],
     private readonly skillRegistry?: SkillRegistry,
     private readonly prepareExternalTools?: PrepareExternalTools,
     private readonly acquireSubAgentSlot: () => (() => void) | null = () => null,
@@ -279,135 +230,58 @@ export class RunCoordinator {
     },
     private readonly subAgentToolNames: readonly string[] = [],
   ) {
-    this.executionGuard = toolRegistry.executionGuard;
-    this.setToolExecutionHooks(toolRegistry);
-    for (const message of agent.state.messages) {
-      if (message.role === "toolResult" && !message.isError) {
-        this.successfulToolCallIds.add(message.toolCallId);
-      }
-    }
+    this.toolHooks = new RunToolHooks({
+      agent,
+      emit: (draft, runId) => this.emit(draft, runId),
+      getActiveRun: () => this.activeRun,
+      getAllowedCommandPrefixes,
+      protectedPaths,
+      requestToolApproval,
+      sessionId,
+      ...(skillRegistry === undefined ? {} : { skillRegistry }),
+      toolRegistry,
+      workspaceRoot,
+    });
+    this.toolHooks.restoreSuccessfulCalls(agent.state.messages);
+    this.contextHooks = new RunContextHooks(
+      {
+        agent,
+        emit: (draft, runId) => this.emit(draft, runId),
+        getActiveRun: () => this.activeRun,
+        sessionId,
+        successfulToolCallIds: this.toolHooks.successfulToolCallIds,
+      },
+      {
+        contextCheckpoint,
+        contextCheckpointEventSeq,
+        contextCheckpointHistory,
+        contextCheckpointTailStartMessageIndex,
+        plan: planState,
+        todos: todoState,
+      },
+    );
+    this.inputQueue = new RunInputQueue({
+      abortJoin: () => this.rootJoinAbortController?.abort(),
+      agent,
+      getActiveRun: () => this.activeRun,
+      protectedPaths,
+      ...(skillRegistry === undefined ? {} : { skillRegistry }),
+      workspaceRoot,
+    });
     this.nextSeq = initialSeq + 1;
-    this.agent.beforeToolCall = (context, signal) => this.handleBeforeToolCall(context, signal);
-    this.agent.afterToolCall = (context) => this.handleAfterToolCall(context);
-    this.agent.transformContext = (messages, signal) => this.transformContext(messages, signal);
+    this.agent.beforeToolCall = (context, signal) =>
+      this.toolHooks.handleBeforeToolCall(context, signal);
+    this.agent.afterToolCall = (context) => this.toolHooks.handleAfterToolCall(context);
+    this.agent.transformContext = (messages, signal) =>
+      this.contextHooks.transformContext(messages, signal);
     // 构造时会订阅 pi Agent 事件
     this.unsubscribe = agent.subscribe((event) => this.handleAgentEvent(event));
   }
 
-  private callKey(toolCallId: string, executionId?: string): string {
-    return `${executionId ?? "root"}:${toolCallId}`;
-  }
-
-  private async fileFingerprint(path: string, signal: AbortSignal): Promise<string | null> {
-    try {
-      const hash = createHash("sha256");
-      for await (const chunk of createReadStream(path, { signal })) hash.update(chunk);
-      return hash.digest("hex");
-    } catch (error: unknown) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
-      throw error;
-    }
-  }
-
-  private async toolPath(params: unknown, allowMissing: boolean): Promise<string> {
-    if (
-      typeof params !== "object" ||
-      params === null ||
-      !("path" in params) ||
-      typeof params.path !== "string"
-    ) {
-      throw new Error("WORKSPACE_CHANGED: 文件工具缺少路径");
-    }
-    return resolveWorkspacePath({
-      path: params.path,
-      workspaceRoot: this.workspaceRoot,
-      protectedPaths: this.protectedPaths,
-      ...(allowMissing ? { allowMissing: true } : {}),
-    });
-  }
-
-  private setToolExecutionHooks(
-    registry: ToolRegistry,
-    executionId?: string,
-    skillRegistry = this.skillRegistry,
-  ): void {
-    registry.setExecutionHooks({
-      executionKey: async (toolName, params) =>
-        toolName === "edit_file" || toolName === "write_file"
-          ? this.toolPath(params, toolName === "write_file")
-          : undefined,
-      beforeExecute: async (toolName, toolCallId, params, signal) => {
-        const key = this.callKey(toolCallId, executionId);
-        if (toolName === "read_file") {
-          const path = await this.toolPath(params, false);
-          this.pendingReadFingerprints.set(key, await this.fileFingerprint(path, signal));
-          return;
-        }
-        const activeRun = this.activeRun;
-        const registration = registry.get(toolName);
-        if (
-          activeRun === null ||
-          registration === undefined ||
-          registration.policy.permission === ToolPermission.READ_ONLY
-        )
-          return;
-        const current = await evaluateToolCall({
-          approvalPolicy: activeRun.approvalPolicy,
-          allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
-          isSkillToolPreapproved:
-            (await skillRegistry?.isToolPreapproved(toolName, params, signal)) ?? false,
-          arguments: params,
-          policy: registration.policy,
-          protectedPaths: this.protectedPaths,
-          workspaceRoot: this.workspaceRoot,
-          signal,
-        });
-        if (
-          current.decision === ToolPolicyDecision.DENY ||
-          current.fingerprint !== this.callFingerprints.get(key)
-        ) {
-          throw new Error("WORKSPACE_CHANGED: 审批后目标发生变化，请重新读取后执行");
-        }
-        if (toolName === "edit_file" || toolName === "write_file") {
-          const path = await this.toolPath(params, toolName === "write_file");
-          const currentFingerprint = await this.fileFingerprint(path, signal);
-          const readKey = `${executionId ?? "root"}:${path}`;
-          const observed = this.readFingerprints.get(readKey);
-          if (
-            currentFingerprint !== null &&
-            (observed === undefined || observed !== currentFingerprint)
-          ) {
-            throw new Error("WORKSPACE_CHANGED: 文件已变化，请重新读取后修改");
-          }
-        }
-      },
-      afterExecute: async (toolName, toolCallId, params, signal) => {
-        const key = this.callKey(toolCallId, executionId);
-        if (toolName === "read_file") {
-          const path = await this.toolPath(params, false);
-          const current = await this.fileFingerprint(path, signal);
-          if (current !== this.pendingReadFingerprints.get(key)) {
-            throw new Error("WORKSPACE_CHANGED: 读取期间文件发生变化，请重新读取");
-          }
-          this.readFingerprints.set(`${executionId ?? "root"}:${path}`, current);
-          this.pendingReadFingerprints.delete(key);
-        } else if (toolName === "edit_file" || toolName === "write_file") {
-          const path = await this.toolPath(params, false);
-          this.readFingerprints.set(
-            `${executionId ?? "root"}:${path}`,
-            await this.fileFingerprint(path, signal),
-          );
-        } else if (toolName === "run_command") {
-          for (const readKey of this.readFingerprints.keys()) {
-            if (readKey.startsWith(`${executionId ?? "root"}:`))
-              this.readFingerprints.delete(readKey);
-          }
-        }
-        this.callFingerprints.delete(key);
-      },
-    });
-  }
-
+  /**
+   * 把草稿补成带 Session、Run 和递增序号的事件，再按顺序交给持久化/广播方。
+   * 像给每封信盖流水号：上一封提交成功后才轮到下一封，避免同一 Session 的事件乱序。
+   */
   private async emit(draft: HarnessEventDraft, runId: RunId): Promise<HarnessEvent> {
     const commit = async (): Promise<HarnessEvent> => {
       const event: HarnessEvent = {
@@ -428,152 +302,94 @@ export class RunCoordinator {
     return result;
   }
 
+  /** 在当前 Run 的子任务树中创建子 Agent；没有活动子任务树时拒绝。 */
   public spawnSubAgent(toolCallId: string, input: SpawnAgentInput, signal?: AbortSignal) {
     if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");
     return this.subAgents.spawn(null, toolCallId, input, signal);
   }
 
+  /** 等待当前 Run 中指定的子 Agent 完成，等待过程可取消。 */
   public waitSubAgents(input: WaitAgentsInput, signal?: AbortSignal) {
     if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");
     return this.subAgents.wait(null, input, signal);
   }
 
+  /** 把消息送到当前 Run 的子 Agent；没有活动子任务树时拒绝。 */
   public sendSubAgentMessage(input: SendAgentMessageInput, signal?: AbortSignal) {
     if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");
     return this.subAgents.send(null, input, signal);
   }
 
+  /** 按执行 ID 停止当前 Run 中的一个子 Agent。 */
   public stopSubAgent(input: StopAgentInput, signal?: AbortSignal) {
     if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");
     return this.subAgents.stop(null, input.executionId, signal);
   }
 
+  /** 供外部中止子 Agent；当前没有子任务树时返回 false。 */
   public abortSubAgent(executionId: string): Promise<boolean> {
     return this.subAgents?.stopById(executionId) ?? Promise.resolve(false);
   }
 
-  // 每次模型请求前，根据当前 Session 状态生成“这一次真正发送给模型的消息数组”
-  // 返回的新消息数组：仅用于当前模型请求，不会直接删除 agent.state.messages 中的完整历史。
-  private async transformContext(
-    messages: AgentMessage[],
+  /** Shell 运行时需要访问新网络目标时，交由工具钩子执行独立审批。 */
+  public requestNetworkAccess(
+    input: { host: string; port?: number; toolCallId: string },
     signal?: AbortSignal,
-  ): Promise<AgentMessage[]> {
-    /**
-     *  有 activeRun：当前正在执行任务，可以做完整上下文压缩、生成 checkpoint，并将事件关联到当前 runId。
-        没有 activeRun：Session 空闲，没有可关联的任务，只做基础附件/引用裁剪，不执行压缩和 checkpoint 持久化。
-     */
-    const activeRun = this.activeRun;
-    if (activeRun === null) {
-      return limitUserInputContext(messages, this.agent.state.model.contextWindow);
-    }
-
-    try {
-      /**
-       * 清理上一任务的plan/todos
-       * 表示新的run已经开始，但 Session 里还保留着上一个 Run 的 Plan 或 Todos。
-       * 如果不清理，可能后续的任务会错误的继承到之前的plan/todos
-       */
-      if (this.pendingWorkingStateReset) {
-        await this.clearWorkingState(
-          "新的顶层 Run 是任务边界，Runtime 自动清理上一 Run 的 Plan/Todos",
-          activeRun.runId,
-        );
-        this.pendingWorkingStateReset = false;
-      }
-      // 调用真正的 Context Pipeline（真正的 Token 计算、裁剪和压缩都在这里）
-      const projected = await projectContext({
-        /**
-         * 当前 Run 开始时，Agent 已有消息的长度
-         * 假设：
-         *  0..99：之前 Session 的消息
-            100：当前 Run 的用户请求
-            101：Assistant
-            102：Tool Result
-           如果activeRun.startMessageIndex==100，那么压缩旧消息时，即使消息 100 落入被压缩区域，也会重新把它注入模型：
-            [当前 Run 的原始任务契约]
-            用户最初的请求
-           目的是为了防止长任务压缩几轮后，模型忘记用户最初要求做什么
-         */
-        activeRunStartMessageIndex: activeRun.startMessageIndex,
-        // 当前的checkpoint
-        checkpoint: this.contextCheckpoint,
-        /**
-         * 这里的判断是因为checkpoint是可以回退的
-         * 如果用户恢复到旧 checkpoint，就不能继续自动携带恢复前的后续分支。
-         * 例如：
-         *  checkpoint A
-            → 消息 50
-            → checkpoint B
-            → 消息 80
-            → 用户恢复 checkpoint A
-            → 新消息 100
-           恢复后主模型应该看到：
-            checkpoint A
-            + 新消息 100 之后的内容
-           不应该自动看到被放弃的 50..99 分支。
-         */
-        ...(this.contextCheckpointTailStartMessageIndex === null
-          ? {}
-          : {
-              checkpointTailStartMessageIndex: this.contextCheckpointTailStartMessageIndex,
-            }),
-        // 完整消息，Context Pipeline 根据 contextWindow 和 maxTokens 算出真正的输入预算
-        messages,
-        model: this.agent.state.model,
-        // 压缩开始事件，projectContext() 只有确认确实需要压缩后，才调用它
-        // 主要用于展示压缩状态的（web ui）
-        onCompactionStarted: async () => {
-          await this.emit(
-            { data: null, type: HarnessEventType.CONTEXT_COMPACTION_STARTED },
-            activeRun.runId,
-          );
-        },
-        // Plan/Todos 作为摘要输入；普通请求继续从原有 Tool Result 读取其最新状态。
-        // 这样 checkpoint 前缀在两次压缩之间保持稳定，不因更新时间变化而破坏缓存。
-        plan: this.planState,
-        planContract: activeRun.approvedPlanMarkdown,
-        todos: this.todoState,
-        sessionId: this.sessionId,
-        // 取消信号，当用户中止 Run 时，不需要继续等待最长 120 秒的 checkpoint 生成请求。
-        ...(signal === undefined ? {} : { signal }),
-        streamFn: activeRun.streamFn,
-        /**
-         * systemPrompt和tools用于 Token 预算计算，如果只计算 messages，工具很多时会严重低估上下文占用。
-         */
-        systemPrompt: this.agent.state.systemPrompt,
-        tools: this.agent.state.tools,
-      });
-      if (projected.compacted !== undefined) {
-        const event = await this.emit(
-          {
-            data: projected.compacted,
-            type: HarnessEventType.CONTEXT_COMPACTED,
-          },
-          activeRun.runId,
-        );
-        this.contextCheckpoint = projected.compacted;
-        this.contextCheckpointEventSeq = event.seq;
-        this.contextCheckpointTailStartMessageIndex = null;
-        this.contextCheckpointHistory.push({
-          data: projected.compacted,
-          eventSeq: event.seq,
-        });
-      }
-      this.pendingContextError = projected.error ?? null;
-      return projected.messages;
-    } catch {
-      this.pendingContextError = "上下文 checkpoint 无法安全生成或持久化";
-      return limitUserInputContext(messages, this.agent.state.model.contextWindow);
-    }
+  ): Promise<boolean> {
+    return this.toolHooks.requestNetworkAccess(input, signal);
   }
 
-  public async updatePlan(data: PlanUpdatedData): Promise<void> {
-    const activeRun = this.activeRun;
-    if (activeRun === null) throw new Error("当前没有活动 Run");
-    await this.emit({ data, type: HarnessEventType.PLAN_UPDATED }, activeRun.runId);
-    this.planState = data;
+  /** Shell 请求脱离沙箱执行时，交由工具钩子展示风险并等待审批。 */
+  public requestHostExecution(
+    input: { command: string; changedFileCount: number; reason: string; toolCallId: string },
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return this.toolHooks.requestHostExecution(input, signal);
   }
 
+  /** 暂存命令造成的文件变化，等工具结束事件后再按顺序发布。 */
+  public recordCommandFileChanges(input: {
+    changes: readonly FileChangeDetails[];
+    toolCallId: string;
+  }): void {
+    this.toolHooks.recordCommandFileChanges(input);
+  }
+
+  /** 记录当前 Plan，供后续上下文投影和历史恢复使用。 */
+  public updatePlan(data: PlanUpdatedData): Promise<void> {
+    return this.contextHooks.updatePlan(data);
+  }
+
+  /** 更新 Todos，并由上下文钩子附上已成功工具调用的证据。 */
+  public updateTodos(data: TodoUpdatedData): Promise<TodoUpdatedData> {
+    return this.contextHooks.updateTodos(data);
+  }
+
+  /** 请求回退若干个上下文 checkpoint，返回目标事件序号。 */
+  public restoreContextCheckpoint(steps: number): Promise<number> {
+    return this.contextHooks.restoreContextCheckpoint(steps);
+  }
+
+  /** 清空当前 Plan/Todos，同时留下带原因的状态重置事件。 */
+  public resetWorkingState(reason: string): Promise<void> {
+    return this.contextHooks.resetWorkingState(reason);
+  }
+
+  /** Session 空闲时应用一条已记录的 checkpoint 恢复事件。 */
+  public applyContextCheckpointRestore(eventSeq: number): boolean {
+    return this.contextHooks.applyContextCheckpointRestore(eventSeq);
+  }
+
+  /** 在完整会话消息中检索旧内容，即使旧内容已从模型热上下文压缩掉也能找到。 */
+  public searchSessionHistory(input: { maxResults?: number; query: string }) {
+    return this.contextHooks.searchSessionHistory(input);
+  }
+
+  /**
+   * 让 Agent 暂停等待用户回答，并把请求、回答或超时依次记录为事件。
+   * 例如 Plan 模式提交计划书后，用户确认才解锁执行；若用户提出修改，回答会进入 Agent 下一轮。
+   * 子 Agent 只能问普通问题，且它的等待状态由外层管理，不重复发送根 Run 的等待/恢复事件。
+   */
   public async requestUserInput(
     data: RequestUserInputData,
     signal?: AbortSignal,
@@ -690,663 +506,6 @@ export class RunCoordinator {
     }
   }
 
-  public async updateTodos(data: TodoUpdatedData): Promise<TodoUpdatedData> {
-    const activeRun = this.activeRun;
-    if (activeRun === null) throw new Error("当前没有活动 Run");
-    const updated = attachSuccessfulTodoEvidence(data, [...this.successfulToolCallIds]);
-    await this.emit({ data: updated, type: HarnessEventType.TODO_UPDATED }, activeRun.runId);
-    this.todoState = updated;
-    return updated;
-  }
-
-  public async restoreContextCheckpoint(steps: number): Promise<number> {
-    const activeRun = this.activeRun;
-    if (activeRun === null) throw new Error("当前没有活动 Run");
-    let target =
-      this.contextCheckpointHistory.find(
-        (record) => record.eventSeq === this.contextCheckpointEventSeq,
-      ) ?? null;
-    for (let remaining = steps; remaining > 0; remaining -= 1) {
-      const parentId = target?.data.previousCompactionId;
-      const parent =
-        parentId === undefined
-          ? this.contextCheckpointHistory
-              .filter((record) => record.eventSeq < (target?.eventSeq ?? Number.POSITIVE_INFINITY))
-              .at(-1)
-          : this.contextCheckpointHistory.find((record) => record.data.compactionId === parentId);
-      target = parent ?? null;
-      if (target === null) break;
-    }
-    if (target === null) throw new Error("没有可恢复的更早 checkpoint");
-    await this.emit(
-      {
-        data: {
-          sourceEventSeq: target.eventSeq,
-        } satisfies ContextCheckpointRestoredData,
-        type: HarnessEventType.CONTEXT_CHECKPOINT_RESTORED,
-      },
-      activeRun.runId,
-    );
-    this.contextCheckpoint = target.data;
-    this.contextCheckpointEventSeq = target.eventSeq;
-    this.contextCheckpointTailStartMessageIndex = this.agent.state.messages.length;
-    return target.eventSeq;
-  }
-
-  public async resetWorkingState(reason: string): Promise<void> {
-    const activeRun = this.activeRun;
-    if (activeRun === null) throw new Error("当前没有活动 Run");
-    await this.clearWorkingState(reason, activeRun.runId);
-  }
-
-  private async clearWorkingState(reason: string, runId: RunId): Promise<void> {
-    await this.emit(
-      {
-        data: { reason } satisfies ContextWorkingStateResetData,
-        type: HarnessEventType.CONTEXT_WORKING_STATE_RESET,
-      },
-      runId,
-    );
-    this.planState = null;
-    this.todoState = null;
-    this.pendingWorkingStateReset = false;
-  }
-
-  public applyContextCheckpointRestore(eventSeq: number): boolean {
-    if (this.activeRun !== null) return false;
-    const target = this.contextCheckpointHistory.find((record) => record.eventSeq === eventSeq);
-    if (target === undefined) return false;
-    this.contextCheckpoint = target.data;
-    this.contextCheckpointEventSeq = target.eventSeq;
-    this.contextCheckpointTailStartMessageIndex = this.agent.state.messages.length;
-    return true;
-  }
-
-  public searchSessionHistory(input: {
-    maxResults?: number;
-    query: string;
-  }): SessionHistorySearchResult {
-    const query = input.query.trim().toLocaleLowerCase();
-    if (!query) throw new Error("历史检索关键词不能为空");
-    const matches: SessionHistorySearchResult["matches"] = [];
-    const messages = this.agent.state.messages;
-    // ponytail: 先线性扫描完整 Session；历史达到万级消息并出现延迟后再加可重建索引。
-    for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-      const message = messages[messageIndex];
-      if (
-        message === undefined ||
-        (message.role !== "user" && message.role !== "assistant" && message.role !== "toolResult")
-      ) {
-        continue;
-      }
-      const text = JSON.stringify(message.content);
-      const matchIndex = text.toLocaleLowerCase().indexOf(query);
-      if (matchIndex < 0) continue;
-      const excerptStart = Math.max(0, matchIndex - 240);
-      matches.push({
-        excerpt: text.slice(excerptStart, excerptStart + 800),
-        messageIndex,
-        role: message.role,
-      });
-      if (matches.length >= (input.maxResults ?? 8)) break;
-    }
-    return { matches, query: input.query.trim() };
-  }
-
-  private async requestAiToolApproval(
-    input: { risk: string; summary: string; target: string; toolName: string },
-    signal?: AbortSignal,
-  ): Promise<{ commandPrefix: readonly string[] | null; isAllowed: boolean }> {
-    const activeRun = this.activeRun;
-    if (activeRun === null) return { commandPrefix: null, isAllowed: false };
-    const timeoutSignal = AbortSignal.timeout(TOOL_APPROVAL_TIMEOUT_MS);
-    const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-    try {
-      const stream = await activeRun.streamFn(
-        this.agent.state.model,
-        {
-          messages: [
-            {
-              content: buildToolApprovalPrompt(input),
-              role: "user",
-              timestamp: Date.now(),
-            },
-          ],
-          systemPrompt: TOOL_APPROVAL_SYSTEM_PROMPT,
-        },
-        {
-          maxRetries: 0,
-          maxTokens: TOOL_APPROVAL_MAX_TOKENS,
-          signal: requestSignal,
-          timeoutMs: TOOL_APPROVAL_TIMEOUT_MS,
-        },
-      );
-      const response = await stream.result();
-      if (response.stopReason === "aborted" || response.stopReason === "error") {
-        return { commandPrefix: null, isAllowed: false };
-      }
-      return parseToolApprovalResponse(
-        response.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
-        input.toolName === "run_command" ? input.summary : "",
-      );
-    } catch {
-      signal?.throwIfAborted();
-      return { commandPrefix: null, isAllowed: false };
-    }
-  }
-
-  // 工具调用前
-  private async handleBeforeToolCall(
-    context: BeforeToolCallContext,
-    signal?: AbortSignal,
-    registry: ToolRegistry = this.toolRegistry,
-    executionId?: string,
-    skillRegistry = this.skillRegistry,
-  ): Promise<BeforeToolCallResult | undefined> {
-    const activeRun = this.activeRun;
-    if (activeRun === null) return { block: true, reason: "当前没有活动 Run" };
-
-    const registration = registry.get(context.toolCall.name);
-    const executionGuard = registry.executionGuard;
-    if (
-      activeRun.mode === RunMode.PLAN &&
-      !activeRun.isPlanApproved &&
-      registration?.policy.permission !== ToolPermission.READ_ONLY &&
-      !(
-        registration?.policy.permission === ToolPermission.SKILL_ACTIVATION &&
-        typeof context.args === "object" &&
-        context.args !== null &&
-        (!("approveTools" in context.args) || context.args.approveTools !== true)
-      )
-    ) {
-      return { block: true, reason: "Plan 尚未由用户确认，当前只允许读取和规划" };
-    }
-
-    // 在工具真正执行前，根据工具权限和参数，决定“直接允许、直接拒绝，还是请求用户审批”
-    const policy = await evaluateToolCall({
-      approvalPolicy: activeRun.approvalPolicy,
-      allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
-      isSkillToolPreapproved:
-        (await skillRegistry?.isToolPreapproved(context.toolCall.name, context.args, signal)) ??
-        false,
-      ...(signal ? { signal } : {}),
-      arguments: context.args, // 模型传给工具的参数
-      policy: registration?.policy, // 工具权限
-      protectedPaths: this.protectedPaths,
-      workspaceRoot: this.workspaceRoot,
-    });
-    if (
-      registration?.policy.permission !== ToolPermission.READ_ONLY &&
-      policy.decision !== ToolPolicyDecision.DENY
-    ) {
-      this.callFingerprints.set(this.callKey(context.toolCall.id, executionId), policy.fingerprint);
-    }
-    const allowRepeatedCalls =
-      registration?.policy.permission === ToolPermission.USER_APPROVAL &&
-      registration.policy.allowRepeatedCalls === true;
-    // 阻止工具
-    if (policy.decision === ToolPolicyDecision.DENY) {
-      return { block: true, reason: policy.reason };
-    }
-    // 自动允许副作用时仍执行重复调用保护；只读工具不需要指纹。
-    if (policy.decision === ToolPolicyDecision.ALLOW) {
-      if (policy.fingerprint === undefined) return undefined;
-      const toolCallFingerprint = executionGuard.createFingerprint(
-        context.toolCall.name,
-        context.args,
-        policy.fingerprint,
-      );
-      const blockReason = executionGuard.getBlockReason(
-        context.toolCall.id,
-        toolCallFingerprint,
-        allowRepeatedCalls,
-      );
-      if (blockReason !== null) return { block: true, reason: blockReason };
-      executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
-      return undefined;
-    }
-
-    const toolCallFingerprint = executionGuard.createFingerprint(
-      context.toolCall.name,
-      context.args,
-      policy.fingerprint,
-    );
-    const sessionApprovalFingerprint =
-      policy.sessionFingerprint === undefined
-        ? toolCallFingerprint
-        : executionGuard.createFingerprint(context.toolCall.name, null, policy.sessionFingerprint);
-    const blockReason = executionGuard.getBlockReason(
-      context.toolCall.id,
-      toolCallFingerprint,
-      allowRepeatedCalls,
-    );
-    if (blockReason !== null) return { block: true, reason: blockReason };
-    if (this.sessionApprovedFingerprints.has(sessionApprovalFingerprint)) {
-      executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
-      return undefined;
-    }
-
-    const aiApproval =
-      activeRun.approvalPolicy === ApprovalPolicy.AUTO_APPROVE &&
-      (registration?.policy.permission === ToolPermission.SHELL ||
-        policy.allowAiApproval === true) &&
-      policy.allowAiApproval !== false
-        ? await this.requestAiToolApproval(
-            {
-              risk: policy.risk,
-              summary: policy.summary,
-              target: policy.target,
-              toolName: context.toolCall.name,
-            },
-            signal,
-          )
-        : null;
-    if (aiApproval?.isAllowed === true) {
-      const currentPolicy = await evaluateToolCall({
-        approvalPolicy: activeRun.approvalPolicy,
-        allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
-        isSkillToolPreapproved:
-          (await skillRegistry?.isToolPreapproved(context.toolCall.name, context.args, signal)) ??
-          false,
-        ...(signal ? { signal } : {}),
-        arguments: context.args,
-        policy: registration?.policy,
-        protectedPaths: this.protectedPaths,
-        workspaceRoot: this.workspaceRoot,
-      });
-      if (
-        currentPolicy.decision !== ToolPolicyDecision.ASK ||
-        currentPolicy.allowAiApproval !== policy.allowAiApproval ||
-        currentPolicy.fingerprint !== policy.fingerprint ||
-        currentPolicy.summary !== policy.summary ||
-        currentPolicy.target !== policy.target
-      ) {
-        return { block: true, reason: "AI 审批期间工具目标已变化，请重新读取后再执行" };
-      }
-      const currentBlockReason = executionGuard.getBlockReason(
-        context.toolCall.id,
-        toolCallFingerprint,
-        allowRepeatedCalls,
-      );
-      if (currentBlockReason !== null) return { block: true, reason: currentBlockReason };
-      executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
-      return undefined;
-    }
-
-    const approvalId = randomUUID();
-    const commandPrefix = aiApproval === null ? policy.commandPrefix : aiApproval.commandPrefix;
-    const request = {
-      approvalId,
-      ...(executionId === undefined ? {} : { executionId }),
-      ...(policy.allowSimilar === undefined ? {} : { allowSimilar: policy.allowSimilar }),
-      ...(policy.allowSession === undefined ? {} : { allowSession: policy.allowSession }),
-      ...(commandPrefix === undefined || commandPrefix === null ? {} : { commandPrefix }),
-      risk: policy.risk,
-      runId: activeRun.runId,
-      sessionId: this.sessionId,
-      summary: policy.summary,
-      target: policy.target,
-      toolCallId: context.toolCall.id,
-      toolName: context.toolCall.name,
-    };
-    const approval = this.requestToolApproval(request, signal);
-
-    try {
-      /**
-       * 这些emit的作用：记录并通知“Run 正在等待审批，以及审批已经结束”，根据emit的type参数来区分
-       * 执行时间线：
-       *  发送 approval.requested
-          发送 run.awaiting_input
-          等待 approval.result
-          发送 approval.resolved
-          发送 run.resumed
-          继续或阻止工具
-       */
-      // 表示产生了一项待处理审批，数据用于 Web 展示审批卡片
-      await this.emit(
-        {
-          data: {
-            approvalId,
-            ...(executionId === undefined ? {} : { executionId }),
-            ...(request.allowSimilar === undefined ? {} : { allowSimilar: request.allowSimilar }),
-            ...(request.allowSession === undefined ? {} : { allowSession: request.allowSession }),
-            ...(request.commandPrefix === undefined
-              ? {}
-              : { commandPrefix: request.commandPrefix }),
-            expiresAt: approval.expiresAt,
-            risk: request.risk,
-            summary: request.summary,
-            target: request.target,
-            toolCallId: request.toolCallId,
-            toolName: request.toolName,
-          } satisfies ApprovalRequestedData,
-          type: HarnessEventType.APPROVAL_REQUESTED,
-        },
-        activeRun.runId,
-      );
-      // 表示当前 Run 进入“等待用户输入”状态
-      if (executionId === undefined) {
-        await this.emit(
-          {
-            data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
-            type: HarnessEventType.RUN_AWAITING_INPUT,
-          },
-          activeRun.runId,
-        );
-      }
-
-      /**
-       * 核心：真正让工具调用暂停的是这句，而不是 emit()
-       * 原理：后端通过创建一个未完成的Promise（apps/daemon/src/services/human-interaction-service.ts）
-       *  const result = new Promise<ApprovalDecisionValue>((resolve, reject) => {
-            resolveResult = resolve;
-            rejectResult = reject;
-          });
-       *  当前runtime的状态不变，只有当后端的Proimise结束后，改变的状态传入到runtime中才能继续执行
-       */
-      const decision = await approval.result;
-      // 记录审批最终结果
-      await this.emit(
-        {
-          data: {
-            approvalId,
-            ...(executionId === undefined ? {} : { executionId }),
-            ...(decision === ApprovalDecision.APPROVED_SIMILAR &&
-            request.commandPrefix !== undefined
-              ? { commandPrefix: request.commandPrefix }
-              : {}),
-            decision,
-            toolCallId: context.toolCall.id,
-            toolName: context.toolCall.name,
-          } satisfies ApprovalResolvedData,
-          type: HarnessEventType.APPROVAL_RESOLVED,
-        },
-        activeRun.runId,
-      );
-      // 表示 Run 已经离开等待状态
-      if (executionId === undefined) {
-        await this.emit(
-          {
-            data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
-            type: HarnessEventType.RUN_RESUMED,
-          },
-          activeRun.runId,
-        );
-      }
-
-      // 决定是否执行工具，返回 undefined，表示不阻止工具，继续执行。
-      if (isApprovalGranted(decision)) {
-        if (
-          decision === ApprovalDecision.APPROVED_SIMILAR &&
-          registration?.policy.permission === ToolPermission.USER_APPROVAL &&
-          registration.policy.storeGrant !== undefined
-        ) {
-          await registration.policy.storeGrant(context.args, signal);
-        }
-        const currentPolicy = await evaluateToolCall({
-          approvalPolicy: activeRun.approvalPolicy,
-          allowedCommandPrefixes: this.getAllowedCommandPrefixes(),
-          isSkillToolPreapproved:
-            (await skillRegistry?.isToolPreapproved(context.toolCall.name, context.args, signal)) ??
-            false,
-          ...(signal ? { signal } : {}),
-          arguments: context.args,
-          policy: registry.get(context.toolCall.name)?.policy,
-          protectedPaths: this.protectedPaths,
-          workspaceRoot: this.workspaceRoot,
-        });
-        const isUnchangedOneTimeApproval =
-          (decision === ApprovalDecision.APPROVED ||
-            decision === ApprovalDecision.APPROVED_SESSION) &&
-          currentPolicy.decision === ToolPolicyDecision.ASK &&
-          currentPolicy.fingerprint === policy.fingerprint &&
-          currentPolicy.summary === policy.summary &&
-          currentPolicy.target === policy.target;
-        const isValidSessionApproval =
-          decision !== ApprovalDecision.APPROVED_SESSION ||
-          (policy.allowSession !== false &&
-            currentPolicy.decision === ToolPolicyDecision.ASK &&
-            currentPolicy.allowSession !== false &&
-            currentPolicy.sessionFingerprint === policy.sessionFingerprint);
-        const isStoredSimilarApproval =
-          decision === ApprovalDecision.APPROVED_SIMILAR &&
-          currentPolicy.decision === ToolPolicyDecision.ALLOW &&
-          currentPolicy.fingerprint === policy.fingerprint;
-        if ((!isUnchangedOneTimeApproval && !isStoredSimilarApproval) || !isValidSessionApproval) {
-          return {
-            block: true,
-            reason: "审批期间工具目标已变化，请重新读取后再修改",
-          };
-        }
-        const currentBlockReason = executionGuard.getBlockReason(
-          context.toolCall.id,
-          toolCallFingerprint,
-          allowRepeatedCalls,
-        );
-        if (currentBlockReason !== null) {
-          return { block: true, reason: currentBlockReason };
-        }
-        executionGuard.recordApproved(context.toolCall.id, toolCallFingerprint);
-        if (decision === ApprovalDecision.APPROVED_SESSION) {
-          this.sessionApprovedFingerprints.add(sessionApprovalFingerprint);
-        }
-        return undefined;
-      }
-      return {
-        block: true,
-        reason: decision === ApprovalDecision.EXPIRED ? "工具审批已超时" : "用户拒绝了工具审批",
-      };
-    } catch (error: unknown) {
-      approval.cancel();
-      throw error;
-    }
-  }
-
-  public async requestNetworkAccess(
-    input: { host: string; port?: number; toolCallId: string },
-    signal?: AbortSignal,
-  ): Promise<boolean> {
-    const delimiter = input.toolCallId.indexOf(":");
-    const executionId = delimiter > 0 ? input.toolCallId.slice(0, delimiter) : undefined;
-    const toolCallId =
-      executionId === undefined ? input.toolCallId : input.toolCallId.slice(delimiter + 1);
-    const target = `${input.host}:${input.port ?? "*"}`;
-    if (this.sessionApprovedNetworkTargets.has(target)) return true;
-    const decision = await this.requestToolExecutionApproval(
-      {
-        allowSession: true,
-        risk: "这是该域名或 IP 的首次访问；允许后，本次命令可向该目标发送工作区数据。",
-        summary: `访问 ${target}`,
-        target,
-        toolCallId,
-        ...(executionId === undefined ? {} : { executionId }),
-      },
-      signal,
-    );
-    if (decision === ApprovalDecision.APPROVED_SESSION) {
-      this.sessionApprovedNetworkTargets.add(target);
-    }
-    return isApprovalGranted(decision);
-  }
-
-  public async requestHostExecution(
-    input: {
-      command: string;
-      changedFileCount: number;
-      reason: string;
-      toolCallId: string;
-    },
-    signal?: AbortSignal,
-  ): Promise<boolean> {
-    const delimiter = input.toolCallId.indexOf(":");
-    const executionId = delimiter > 0 ? input.toolCallId.slice(0, delimiter) : undefined;
-    const toolCallId =
-      executionId === undefined ? input.toolCallId : input.toolCallId.slice(delimiter + 1);
-    const changedFilesRisk =
-      input.changedFileCount === 0
-        ? ""
-        : ` 沙箱内的首次执行已修改 ${input.changedFileCount} 个可追踪文件，重跑可能重复产生副作用。`;
-    const decision = await this.requestToolExecutionApproval(
-      {
-        allowSession: false,
-        kind: ApprovalRequestKind.HOST_EXECUTION,
-        preview: input.reason,
-        risk: `提升后，原命令将不受文件系统和网络沙箱限制，并以 daemon 当前用户权限在宿主机执行。${changedFilesRisk}`,
-        summary: input.command,
-        target: "宿主机（当前用户权限）",
-        toolCallId,
-        ...(executionId === undefined ? {} : { executionId }),
-      },
-      signal,
-    );
-    if (decision === ApprovalDecision.EXPIRED) {
-      throw new Error("HOST_EXECUTION_APPROVAL_EXPIRED: 宿主机执行审批已超时");
-    }
-    return isApprovalGranted(decision);
-  }
-
-  public recordCommandFileChanges(input: {
-    changes: readonly FileChangeDetails[];
-    toolCallId: string;
-  }): void {
-    if (input.changes.length === 0) return;
-    const delimiter = input.toolCallId.indexOf(":");
-    const executionId = delimiter > 0 ? input.toolCallId.slice(0, delimiter) : undefined;
-    const toolCallId =
-      executionId === undefined ? input.toolCallId : input.toolCallId.slice(delimiter + 1);
-    this.pendingFileChanges.set(
-      input.toolCallId,
-      input.changes.map((fileChange) => ({
-        ...fileChange,
-        ...(executionId === undefined ? {} : { executionId }),
-        toolCallId,
-        toolName: "run_command",
-      })),
-    );
-  }
-
-  private async requestToolExecutionApproval(
-    input: {
-      executionId?: string;
-      allowSession: boolean;
-      kind?: ApprovalRequestKindValue;
-      preview?: string;
-      risk: string;
-      summary: string;
-      target: string;
-      toolCallId: string;
-    },
-    signal?: AbortSignal,
-  ): Promise<ApprovalDecision> {
-    const activeRun = this.activeRun;
-    if (activeRun === null) return ApprovalDecision.REJECTED;
-    const approvalId = randomUUID();
-    const request = {
-      approvalId,
-      ...(input.executionId === undefined ? {} : { executionId: input.executionId }),
-      allowSession: input.allowSession,
-      ...(input.kind === undefined ? {} : { kind: input.kind }),
-      ...(input.preview === undefined ? {} : { preview: input.preview }),
-      risk: input.risk,
-      runId: activeRun.runId,
-      sessionId: this.sessionId,
-      summary: input.summary,
-      target: input.target,
-      toolCallId: input.toolCallId,
-      toolName: "run_command",
-    };
-    const approval = this.requestToolApproval(request, signal);
-    try {
-      await this.emit(
-        {
-          data: {
-            approvalId,
-            ...(input.executionId === undefined ? {} : { executionId: input.executionId }),
-            allowSession: input.allowSession,
-            expiresAt: approval.expiresAt,
-            ...(input.kind === undefined ? {} : { kind: input.kind }),
-            ...(input.preview === undefined ? {} : { preview: input.preview }),
-            risk: input.risk,
-            summary: input.summary,
-            target: input.target,
-            toolCallId: input.toolCallId,
-            toolName: "run_command",
-          } satisfies ApprovalRequestedData,
-          type: HarnessEventType.APPROVAL_REQUESTED,
-        },
-        activeRun.runId,
-      );
-      if (input.executionId === undefined)
-        await this.emit(
-          {
-            data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
-            type: HarnessEventType.RUN_AWAITING_INPUT,
-          },
-          activeRun.runId,
-        );
-      const decision = await approval.result;
-      await this.emit(
-        {
-          data: {
-            approvalId,
-            ...(input.executionId === undefined ? {} : { executionId: input.executionId }),
-            decision,
-            toolCallId: input.toolCallId,
-            toolName: "run_command",
-          } satisfies ApprovalResolvedData,
-          type: HarnessEventType.APPROVAL_RESOLVED,
-        },
-        activeRun.runId,
-      );
-      if (input.executionId === undefined)
-        await this.emit(
-          {
-            data: { interactionId: approvalId, kind: "tool_approval" } satisfies RunInteractionData,
-            type: HarnessEventType.RUN_RESUMED,
-          },
-          activeRun.runId,
-        );
-      return decision;
-    } finally {
-      approval.cancel();
-    }
-  }
-
-  // 工具执行成功后捕获其一项或多项文件变更，等待对应 tool_execution_end 后顺序发出。
-  private async handleAfterToolCall(
-    context: AfterToolCallContext,
-    executionId?: string,
-  ): Promise<undefined> {
-    if (context.isError) return undefined;
-    this.successfulToolCallIds.add(context.toolCall.id);
-    const fileChanges = readFileChangeDetails(context.result.details);
-    if (fileChanges.length === 0) return undefined;
-    this.pendingFileChanges.set(
-      executionId === undefined ? context.toolCall.id : `${executionId}:${context.toolCall.id}`,
-      fileChanges.map((fileChange) => ({
-        ...fileChange,
-        ...(executionId === undefined ? {} : { executionId }),
-        toolCallId: context.toolCall.id,
-        toolName: context.toolCall.name,
-      })),
-    );
-    return undefined;
-  }
-
-  private async flushFileChanges(
-    toolCallId: string,
-    runId: RunId,
-    executionId?: string,
-  ): Promise<void> {
-    const key = executionId === undefined ? toolCallId : `${executionId}:${toolCallId}`;
-    const fileChanges = this.pendingFileChanges.get(key);
-    if (fileChanges === undefined) return;
-    this.pendingFileChanges.delete(key);
-    for (const fileChange of fileChanges) {
-      await this.emit({ data: fileChange, type: HarnessEventType.FILE_CHANGED }, runId);
-    }
-  }
-
   /**
    * 是 RunCoordinator 接收单个 Pi Agent 事件的统一入口，按顺序完成：
    *  1. 获取当前活动 run。
@@ -1358,8 +517,9 @@ export class RunCoordinator {
   private async handleAgentEvent(event: AgentEvent): Promise<void> {
     const activeRun = this.activeRun;
     if (activeRun === null) return;
-    if (event.type === "agent_start" && (this.isContinuingSteer || this.hasEmittedRunStart)) return;
-    if (event.type === "agent_end" && this.pendingSteerInterrupts.length > 0) return;
+    if (event.type === "agent_start" && (this.inputQueue.isContinuing || this.hasEmittedRunStart))
+      return;
+    if (event.type === "agent_end" && this.inputQueue.hasPendingSteers) return;
     if (event.type === "agent_end" && activeRun.mode === RunMode.PLAN && canRetryPlanMode(event)) {
       if (!activeRun.isPlanApproved) {
         activeRun.planRetryPrompt = activeRun.hasPresentedPlanReview
@@ -1377,7 +537,7 @@ export class RunCoordinator {
       isHarnessUserMessage(event.message) &&
       event.message.queuedInputId !== undefined
     ) {
-      this.pendingFollowUps.delete(event.message.queuedInputId);
+      this.inputQueue.onMessageStarted(event.message.queuedInputId);
     }
     const draft = adaptAgentEvent(event, activeRun);
     if (draft === null) return;
@@ -1428,37 +588,108 @@ export class RunCoordinator {
       }
     }
     if (event.type === "tool_execution_end") {
-      await this.flushFileChanges(event.toolCallId, activeRun.runId);
+      await this.toolHooks.flushFileChanges(event.toolCallId, activeRun.runId);
     }
     activeRun.handleAutoFollowUp(event);
   }
 
+  /** 返回当前 Run 的 Provider ID；空闲时返回 null。 */
   public get activeProviderId(): string | null {
     return this.activeRun?.providerId ?? null;
   }
 
+  /** 返回当前 Run ID；Session 没有运行任务时返回 null。 */
   public get activeRunId(): RunId | null {
     return this.activeRun?.runId ?? null;
   }
 
+  /** 当前 Run 是否选择 full_access 审批策略；空闲时视为否。 */
   public get isFullAccess(): boolean {
     return this.activeRun?.approvalPolicy === ApprovalPolicy.FULL_ACCESS;
   }
 
-  private async continuePendingSteers(): Promise<void> {
-    while (this.pendingSteerInterrupts.length > 0) {
-      for (const steerMessage of this.pendingSteerInterrupts.splice(0)) {
-        this.agent.steer(steerMessage);
+  /**
+   * 根 Agent 停下后，先处理 Plan 模式必须完成的有界续轮，再接住用户转向和子 Agent 结果。
+   * 例如模型只说“计划已确认，稍后执行”，这里会催它在同一个 Run 中继续，而不是误报完成。
+   * 所有需要继续的工作结束后，才发布最终的完成、失败或中止事件。
+   */
+  private async settleRun(activeRun: ActiveRun): Promise<void> {
+    const preparationAbortController = activeRun.preparationAbortController;
+    let planRetryCount = 0;
+    while (
+      this.activeRun === activeRun &&
+      activeRun.planRetryPrompt !== null &&
+      planRetryCount < MAX_PLAN_MODE_RETRY_COUNT
+    ) {
+      const retryPrompt = activeRun.planRetryPrompt;
+      activeRun.planRetryPrompt = null;
+      planRetryCount += 1;
+      await this.agent.prompt(createPlanModeRetryMessage(retryPrompt));
+    }
+    if (this.activeRun === activeRun && activeRun.planRetryPrompt !== null) {
+      activeRun.planRetryPrompt = null;
+      const isExecutionStalled = activeRun.isPlanApproved;
+      this.subAgents?.abortAll();
+      await this.subAgents?.waitForAll();
+      await this.emit(
+        {
+          data: {
+            code: isExecutionStalled ? "PLAN_EXECUTION_STALLED" : "PLAN_REVIEW_REQUIRED",
+            message: isExecutionStalled
+              ? "模型确认计划后仍未开始执行，请重试本次 Plan 请求"
+              : "模型未能生成可确认的 Markdown 计划书，请重试本次 Plan 请求",
+          },
+          type: HarnessEventType.RUN_FAILED,
+        },
+        activeRun.runId,
+      );
+      return;
+    }
+    await this.inputQueue.continuePendingSteers();
+    if (preparationAbortController.signal.aborted) {
+      await this.subAgents?.waitForAll();
+      this.pendingRunOutcome = {
+        data: { code: "RUN_ABORTED", message: "运行已停止" },
+        type: HarnessEventType.RUN_ABORTED,
+      };
+    } else {
+      while (this.subAgents !== null) {
+        const joinAbortController = new AbortController();
+        this.rootJoinAbortController = joinAbortController;
+        if (this.inputQueue.hasPendingSteers) joinAbortController.abort();
+        try {
+          await this.subAgents.join(null, this.agent, joinAbortController.signal);
+        } catch (error: unknown) {
+          if (
+            !joinAbortController.signal.aborted ||
+            (!preparationAbortController.signal.aborted && !this.inputQueue.hasPendingSteers)
+          )
+            throw error;
+        } finally {
+          this.rootJoinAbortController = null;
+        }
+        if (preparationAbortController.signal.aborted) break;
+        if (!this.inputQueue.hasPendingSteers) break;
+        await this.inputQueue.continuePendingSteers();
       }
-      this.isContinuingSteer = true;
-      try {
-        await this.agent.continue();
-      } finally {
-        this.isContinuingSteer = false;
+      if (preparationAbortController.signal.aborted) {
+        await this.subAgents?.waitForAll();
+        this.pendingRunOutcome = {
+          data: { code: "RUN_ABORTED", message: "运行已停止" },
+          type: HarnessEventType.RUN_ABORTED,
+        };
       }
+    }
+    if (this.activeRun === activeRun && this.pendingRunOutcome !== null) {
+      await this.emit(this.pendingRunOutcome, activeRun.runId);
     }
   }
 
+  /**
+   * 开始一个 Run：检查 Session 是否空闲，设置模型和工具，准备外部工具及用户消息，
+   * 再让 Agent 执行并由 settleRun 等待所有续轮与子任务收尾。
+   * 准备阶段失败也会留下开始、用户消息和失败事件；退出时进入工具释放与本次 Run 状态清理。
+   */
   public async start(input: StartRunInput): Promise<void> {
     if (this.activeRun !== null || this.agent.state.isStreaming) {
       throw new Error(`Session ${this.sessionId} already has an active run`);
@@ -1505,8 +736,7 @@ export class RunCoordinator {
         },
         input.runId,
       );
-      const contextError = this.pendingContextError;
-      this.pendingContextError = null;
+      const contextError = this.contextHooks.takeContextError();
       if (contextError !== null) return createContextWindowErrorStream(model, contextError);
       return input.streamFn(model, context, {
         ...options,
@@ -1524,7 +754,7 @@ export class RunCoordinator {
         sessionId: this.sessionId,
       });
     };
-    this.executionGuard.reset();
+    this.toolHooks.resetForRun();
     const preparationAbortController = new AbortController();
     const activeRun: ActiveRun = {
       approvalPolicy: input.approvalPolicy,
@@ -1543,10 +773,7 @@ export class RunCoordinator {
     this.activeRun = activeRun;
     this.pendingRunOutcome = null;
     this.hasEmittedRunStart = false;
-    this.pendingWorkingStateReset = shouldResetWorkingStateForNewRun(
-      this.planState,
-      this.todoState,
-    );
+    this.contextHooks.beginRun();
 
     let externalTools: PreparedExternalTools | undefined;
     let hasPreparedTools = false;
@@ -1596,13 +823,19 @@ export class RunCoordinator {
                 await this.emit(draft, input.runId);
               },
               beforeToolCall: (context, registry, executionId, signal, skillRegistry) =>
-                this.handleBeforeToolCall(context, signal, registry, executionId, skillRegistry),
+                this.toolHooks.handleBeforeToolCall(
+                  context,
+                  signal,
+                  registry,
+                  executionId,
+                  skillRegistry,
+                ),
               setExecutionHooks: (registry, executionId, skillRegistry) =>
-                this.setToolExecutionHooks(registry, executionId, skillRegistry),
+                this.toolHooks.setToolExecutionHooks(registry, executionId, skillRegistry),
               afterToolCall: (context, executionId) =>
-                this.handleAfterToolCall(context, executionId),
+                this.toolHooks.handleAfterToolCall(context, executionId),
               flushToolChanges: (toolCallId, executionId) =>
-                this.flushFileChanges(toolCallId, input.runId, executionId),
+                this.toolHooks.flushFileChanges(toolCallId, input.runId, executionId),
               requestUserInput: (executionId, data, signal) =>
                 this.requestUserInput(data, signal, executionId),
               acquireSlot: this.acquireSubAgentSlot,
@@ -1662,77 +895,9 @@ export class RunCoordinator {
         return;
       }
       const initialPrompt = this.agent.prompt(message);
-      if (this.pendingSteerInterrupts.length > 0) this.agent.abort();
+      if (this.inputQueue.hasPendingSteers) this.agent.abort();
       await initialPrompt;
-      let planRetryCount = 0;
-      while (
-        this.activeRun === activeRun &&
-        activeRun.planRetryPrompt !== null &&
-        planRetryCount < MAX_PLAN_MODE_RETRY_COUNT
-      ) {
-        const retryPrompt = activeRun.planRetryPrompt;
-        activeRun.planRetryPrompt = null;
-        planRetryCount += 1;
-        await this.agent.prompt(createPlanModeRetryMessage(retryPrompt));
-      }
-      if (this.activeRun === activeRun && activeRun.planRetryPrompt !== null) {
-        activeRun.planRetryPrompt = null;
-        const isExecutionStalled = activeRun.isPlanApproved;
-        this.subAgents?.abortAll();
-        await this.subAgents?.waitForAll();
-        await this.emit(
-          {
-            data: {
-              code: isExecutionStalled ? "PLAN_EXECUTION_STALLED" : "PLAN_REVIEW_REQUIRED",
-              message: isExecutionStalled
-                ? "模型确认计划后仍未开始执行，请重试本次 Plan 请求"
-                : "模型未能生成可确认的 Markdown 计划书，请重试本次 Plan 请求",
-            },
-            type: HarnessEventType.RUN_FAILED,
-          },
-          activeRun.runId,
-        );
-        return;
-      }
-      await this.continuePendingSteers();
-      if (preparationAbortController.signal.aborted) {
-        await this.subAgents?.waitForAll();
-        this.pendingRunOutcome = {
-          data: { code: "RUN_ABORTED", message: "运行已停止" },
-          type: HarnessEventType.RUN_ABORTED,
-        };
-      } else {
-        while (this.subAgents !== null) {
-          const joinAbortController = new AbortController();
-          this.rootJoinAbortController = joinAbortController;
-          if (this.pendingSteerInterrupts.length > 0) joinAbortController.abort();
-          try {
-            await this.subAgents.join(null, this.agent, joinAbortController.signal);
-          } catch (error: unknown) {
-            if (
-              !joinAbortController.signal.aborted ||
-              (!preparationAbortController.signal.aborted &&
-                this.pendingSteerInterrupts.length === 0)
-            )
-              throw error;
-          } finally {
-            this.rootJoinAbortController = null;
-          }
-          if (preparationAbortController.signal.aborted) break;
-          if (this.pendingSteerInterrupts.length === 0) break;
-          await this.continuePendingSteers();
-        }
-        if (preparationAbortController.signal.aborted) {
-          await this.subAgents?.waitForAll();
-          this.pendingRunOutcome = {
-            data: { code: "RUN_ABORTED", message: "运行已停止" },
-            type: HarnessEventType.RUN_ABORTED,
-          };
-        }
-      }
-      if (this.activeRun === activeRun && this.pendingRunOutcome !== null) {
-        await this.emit(this.pendingRunOutcome, activeRun.runId);
-      }
+      await this.settleRun(activeRun);
     } catch {
       this.subAgents?.abortAll();
       await this.subAgents?.waitForAll();
@@ -1751,17 +916,9 @@ export class RunCoordinator {
       await externalTools?.release();
       this.toolRegistry.replaceExternal([]);
       this.agent.state.tools = this.toolRegistry.tools;
-      this.executionGuard.reset();
-      this.pendingFileChanges.clear();
-      this.callFingerprints.clear();
-      this.readFingerprints.clear();
-      this.pendingReadFingerprints.clear();
-      this.pendingFollowUps.clear();
-      this.agent.clearAllQueues();
-      this.pendingContextError = null;
-      this.isContinuingSteer = false;
-      this.pendingSteerInterrupts.length = 0;
-      this.pendingWorkingStateReset = false;
+      this.toolHooks.finishRun();
+      this.inputQueue.finishRun();
+      this.contextHooks.finishRun();
       this.activeRun = null;
       this.subAgents = null;
       this.rootJoinAbortController = null;
@@ -1769,179 +926,62 @@ export class RunCoordinator {
     }
   }
 
+  /** 只中止匹配的活动 Run，同时取消准备、根 Agent、排队转向和子 Agent。 */
   public abort(runId: RunId): boolean {
     if (this.activeRun?.runId !== runId) return false;
     this.activeRun.preparationAbortController.abort();
-    this.pendingSteerInterrupts.length = 0;
-    this.agent.clearSteeringQueue();
+    this.inputQueue.abort();
     this.agent.abort();
     this.rootJoinAbortController?.abort();
     this.subAgents?.abortAll();
     return true;
   }
 
+  /** Session 空闲时装回消息、checkpoint、事件序号和成功工具记录；运行中拒绝恢复。 */
   public restoreHistory(input: RestoreRunHistoryInput): boolean {
     if (this.activeRun !== null || this.agent.state.isStreaming) return false;
     this.agent.state.messages = [...input.messages];
-    this.contextCheckpoint = input.contextCheckpoint;
-    this.contextCheckpointEventSeq = input.contextCheckpointEventSeq;
-    this.contextCheckpointTailStartMessageIndex = input.contextCheckpointTailStartMessageIndex;
-    this.contextCheckpointHistory.splice(
-      0,
-      this.contextCheckpointHistory.length,
-      ...input.contextCheckpointHistory,
-    );
-    this.planState = input.plan;
-    this.todoState = input.todos;
+    this.contextHooks.restoreHistory(input);
     this.nextSeq = input.initialSeq + 1;
-    this.pendingWorkingStateReset = false;
-    this.successfulToolCallIds.clear();
-    for (const message of input.messages) {
-      if (message.role === "toolResult" && !message.isError) {
-        this.successfulToolCallIds.add(message.toolCallId);
-      }
-    }
+    this.toolHooks.restoreSuccessfulCalls(input.messages);
     return true;
   }
 
-  public async steer(runId: RunId, input: RunUserInput): Promise<boolean> {
-    return this.runQueueMutation(async () => {
-      const activeRun = this.activeRun;
-      if (activeRun?.runId !== runId) return false;
-      const message = await createHarnessUserMessage({
-        input,
-        skillRegistry: this.skillRegistry,
-        model: this.agent.state.model,
-        protectedPaths: this.protectedPaths,
-        signal: activeRun.preparationAbortController.signal,
-        workspaceRoot: this.workspaceRoot,
-      });
-      if (this.activeRun?.runId !== runId) return false;
-      this.pendingSteerInterrupts.push({
-        ...message,
-        busySubmitBehavior: BusySubmitBehavior.STEER,
-      });
-      this.agent.abort();
-      this.rootJoinAbortController?.abort();
-      return true;
-    });
+  /** 把新指令转向当前 Run，尽快中断眼前回答并继续处理它。 */
+  public steer(runId: RunId, input: RunUserInput): Promise<boolean> {
+    return this.inputQueue.steer(runId, input);
   }
 
+  /** 列出当前 Run 中尚未开始、仍可编辑的后续消息。 */
   public listQueuedFollowUps(runId: RunId): readonly QueuedRunInput[] {
-    return this.activeRun?.runId === runId
-      ? [...this.pendingFollowUps.values()].map((item) => item.queued)
-      : [];
+    return this.inputQueue.listQueuedFollowUps(runId);
   }
 
-  // 将当前活动 run 的消息追加到 Agent 的 follow-up 队列。
-  public async followUp(runId: RunId, input: RunUserInput): Promise<QueuedRunInput | null> {
-    return this.runQueueMutation(async () => {
-      const activeRun = this.activeRun;
-      if (activeRun?.runId !== runId) return null;
-      const message = await createHarnessUserMessage({
-        input,
-        skillRegistry: this.skillRegistry,
-        model: this.agent.state.model,
-        protectedPaths: this.protectedPaths,
-        signal: activeRun.preparationAbortController.signal,
-        workspaceRoot: this.workspaceRoot,
-      });
-      if (this.activeRun?.runId !== runId) return null;
-      const id = randomUUID();
-      const queued = {
-        attachments: message.attachments ?? [],
-        createdAt: message.timestamp,
-        id,
-        prompt: input.prompt,
-        references: input.references,
-      } satisfies QueuedRunInput;
-      const queuedMessage = {
-        ...message,
-        busySubmitBehavior: BusySubmitBehavior.QUEUE,
-        queuedInputId: id,
-      };
-      this.pendingFollowUps.set(id, { input, message: queuedMessage, queued });
-      this.agent.followUp(queuedMessage);
-      return queued;
-    });
+  /** 把新消息排到当前 Run 后面，不打断正在生成的回答。 */
+  public followUp(runId: RunId, input: RunUserInput): Promise<QueuedRunInput | null> {
+    return this.inputQueue.followUp(runId, input);
   }
 
-  public async updateFollowUp(
+  /** 按队列 ID 修改尚未开始的后续消息，并同步 Agent 队列。 */
+  public updateFollowUp(
     runId: RunId,
     queuedInputId: string,
     prompt: string,
   ): Promise<QueuedRunInput | null> {
-    return this.runQueueMutation(async () => {
-      const activeRun = this.activeRun;
-      const current = this.pendingFollowUps.get(queuedInputId);
-      if (activeRun?.runId !== runId || current === undefined) return null;
-      const input = { ...current.input, prompt };
-      const message = await createHarnessUserMessage({
-        input,
-        skillRegistry: this.skillRegistry,
-        model: this.agent.state.model,
-        protectedPaths: this.protectedPaths,
-        signal: activeRun.preparationAbortController.signal,
-        workspaceRoot: this.workspaceRoot,
-      });
-      if (this.activeRun?.runId !== runId || !this.pendingFollowUps.has(queuedInputId)) {
-        return null;
-      }
-      const queued = {
-        ...current.queued,
-        prompt,
-      } satisfies QueuedRunInput;
-      this.pendingFollowUps.set(queuedInputId, {
-        input,
-        message: {
-          ...message,
-          busySubmitBehavior: BusySubmitBehavior.QUEUE,
-          queuedInputId,
-        },
-        queued,
-      });
-      this.syncFollowUpQueue();
-      return queued;
-    });
+    return this.inputQueue.updateFollowUp(runId, queuedInputId, prompt);
   }
 
-  public async removeFollowUp(runId: RunId, queuedInputId: string): Promise<boolean> {
-    return this.runQueueMutation(async () => {
-      if (this.activeRun?.runId !== runId || !this.pendingFollowUps.delete(queuedInputId)) {
-        return false;
-      }
-      this.syncFollowUpQueue();
-      return true;
-    });
+  /** 从当前 Run 删除尚未开始的后续消息。 */
+  public removeFollowUp(runId: RunId, queuedInputId: string): Promise<boolean> {
+    return this.inputQueue.removeFollowUp(runId, queuedInputId);
   }
 
-  public async steerFollowUp(runId: RunId, queuedInputId: string): Promise<boolean> {
-    const current = this.pendingFollowUps.get(queuedInputId);
-    if (this.activeRun?.runId !== runId || current === undefined) return false;
-    this.pendingFollowUps.delete(queuedInputId);
-    this.syncFollowUpQueue();
-    this.pendingSteerInterrupts.push({
-      ...current.message,
-      busySubmitBehavior: BusySubmitBehavior.STEER,
-    });
-    this.agent.abort();
-    return true;
+  /** 把已排队的后续消息改为立即转向当前回答。 */
+  public steerFollowUp(runId: RunId, queuedInputId: string): Promise<boolean> {
+    return this.inputQueue.steerFollowUp(runId, queuedInputId);
   }
 
-  private syncFollowUpQueue(): void {
-    this.agent.clearFollowUpQueue();
-    for (const item of this.pendingFollowUps.values()) this.agent.followUp(item.message);
-  }
-
-  private runQueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const result = this.queueMutationTail.then(mutation, mutation);
-    this.queueMutationTail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
-  }
-
+  /** 关闭协调器：中止 Agent 与子任务，等待退出后取消事件订阅。 */
   public async close(): Promise<void> {
     this.agent.abort();
     this.subAgents?.abortAll();

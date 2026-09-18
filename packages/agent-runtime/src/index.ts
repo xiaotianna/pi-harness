@@ -102,12 +102,12 @@ export {
   type ReasoningSummary as ReasoningSummaryValue,
 } from "./model-response-preferences.js";
 export { buildSystemPrompts } from "./prompts/system-prompt.js";
+export { shouldResetWorkingStateForNewRun } from "./run-context-hooks.js";
 export type {
   HarnessEventListener,
   RestoreRunHistoryInput,
   StartRunInput,
 } from "./run-coordinator.js";
-export { shouldResetWorkingStateForNewRun } from "./run-coordinator.js";
 export {
   DEFAULT_THINKING_LEVEL,
   isThinkingLevel,
