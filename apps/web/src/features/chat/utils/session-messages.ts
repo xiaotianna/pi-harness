@@ -712,6 +712,9 @@ function projectRunMessages(
       event.runId &&
       isSubAgentStartedData(event.data)
     ) {
+      const parentName = event.data.parentExecutionId
+        ? subAgentsById.get(event.data.parentExecutionId)?.name
+        : undefined;
       const message: ChatSubAgentMessage = {
         agentType: event.data.agentType,
         executionId: event.data.executionId,
@@ -720,6 +723,7 @@ function projectRunMessages(
         ...(event.data.parentExecutionId === undefined
           ? {}
           : { parentExecutionId: event.data.parentExecutionId }),
+        ...(parentName ? { parentName } : {}),
         sessionId: event.sessionId,
         status: SubAgentStatus.RUNNING,
         timestamp: event.timestamp,

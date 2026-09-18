@@ -28,21 +28,30 @@ export function SubAgentThreadMessage({ message }: { message: ChatSubAgentMessag
     <ChatMessagePrimitive.Assistant className="!py-0">
       <ChatMessagePrimitive.Body>
         <Button
-          className={`w-full justify-start ${message.parentExecutionId ? "ps-5" : ""}`}
+          className="h-auto w-full justify-start py-1"
           size="sm"
           variant="ghost"
-          aria-label={`查看子 Agent ${message.name}，${message.status === SubAgentStatus.RUNNING ? (message.latestActivity ?? "正在处理") : SUB_AGENT_STATUS_LABEL[message.status]}`}
+          aria-label={`查看${message.parentExecutionId ? "孙" : "子"} Agent ${message.name}${message.parentName ? `，由 ${message.parentName} 委派` : ""}，${message.status === SubAgentStatus.RUNNING ? (message.latestActivity ?? "正在处理") : SUB_AGENT_STATUS_LABEL[message.status]}`}
           onPress={() =>
             openSubAgent(message.sessionId ?? "", message.turnId ?? "", message.executionId)
           }
         >
           <SubAgentAvatar executionId={message.executionId} className="size-5" />
-          <span className="min-w-0 flex-1 truncate text-start">{message.name}</span>
-          {message.status === SubAgentStatus.COMPLETED ? (
-            <Check aria-hidden className="size-4 shrink-0 text-success" />
-          ) : message.status === SubAgentStatus.FAILED ? (
-            <Xmark aria-hidden className="size-4 shrink-0 text-danger" />
-          ) : null}
+          <span className="flex min-w-0 flex-1 flex-col items-start text-start">
+            <span className="flex w-full min-w-0 items-center gap-1.5">
+              <span className="truncate">{message.name}</span>
+              {message.status === SubAgentStatus.COMPLETED ? (
+                <Check aria-hidden className="size-4 shrink-0 text-success" />
+              ) : message.status === SubAgentStatus.FAILED ? (
+                <Xmark aria-hidden className="size-4 shrink-0 text-danger" />
+              ) : null}
+            </span>
+            {message.parentExecutionId ? (
+              <span className="w-full truncate text-xs text-muted">
+                由 {message.parentName ?? "上级 Agent"} 委派
+              </span>
+            ) : null}
+          </span>
           <span className="shrink-0 text-xs text-muted">
             {message.status === SubAgentStatus.RUNNING ? (
               <TextShimmer>{message.latestActivity ?? "正在处理…"}</TextShimmer>

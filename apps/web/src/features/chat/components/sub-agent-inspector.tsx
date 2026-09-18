@@ -1,13 +1,14 @@
 "use client";
 
-import { ArrowLeft, ChevronRight, Xmark as X } from "@gravity-ui/icons";
-import { Button, ScrollShadow, Spinner, Tooltip, toast } from "@heroui/react";
+import { ArrowLeft, ChevronDown, ChevronRight, Xmark as X } from "@gravity-ui/icons";
+import { Button, Disclosure, ScrollShadow, Spinner, Tooltip, toast } from "@heroui/react";
 import {
   type HarnessEvent,
   HarnessEventType,
   isSubAgentStartedData,
   isSubAgentTerminalData,
   MessageDeltaKind,
+  type SubAgentStartedData,
   SubAgentStatus,
   selectActiveSessionEvents,
 } from "@pi-harness/agent-runtime/harness-event";
@@ -28,6 +29,7 @@ import { type ChatMessageTool, ChatToolState } from "../data/chat";
 import { useWorkspaceInspectorStore } from "../state/workspace-inspector-store";
 import { readToolResult } from "../utils/session-messages";
 import { SUB_AGENT_STATUS_LABEL, subAgentStatusFromTerminal } from "../utils/sub-agent-status";
+import { buildSubAgentTree, type SubAgentTreeNode } from "../utils/sub-agent-tree";
 import { SubAgentAvatar } from "./sub-agent-avatar";
 import { ToolCall } from "./thread-message/tool-call";
 
@@ -125,6 +127,93 @@ function useLiveSubAgentEvents(sessionId: string, executionId: string, initialSe
   return { events, isDisconnected };
 }
 
+function SubAgentListRow({
+  agent,
+  childCount = 0,
+  isNested = false,
+  onOpen,
+}: {
+  agent: SubAgentStartedData & { status: SubAgentStatus };
+  childCount?: number;
+  isNested?: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <Button
+      className="h-auto w-full min-w-0 flex-1 justify-start gap-2 py-1.5"
+      size="sm"
+      variant="ghost"
+      aria-label={`查看${isNested ? "孙" : "子"} Agent ${agent.name}，${SUB_AGENT_STATUS_LABEL[agent.status]}`}
+      onPress={onOpen}
+    >
+      <SubAgentAvatar executionId={agent.executionId} className="size-5" />
+      <span className="flex min-w-0 flex-1 flex-col items-start">
+        <span className="w-full truncate text-start text-sm font-medium">{agent.name}</span>
+        <span className="w-full truncate text-start text-xs text-muted">
+          {agent.agentType === "worker" ? "执行" : "探索"} · {SUB_AGENT_STATUS_LABEL[agent.status]}
+          {childCount ? ` · ${childCount} 个子任务` : ""}
+        </span>
+      </span>
+      {childCount === 0 ? (
+        <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted" />
+      ) : null}
+    </Button>
+  );
+}
+
+function SubAgentTreeGroup({
+  node,
+  onOpen,
+}: {
+  node: SubAgentTreeNode;
+  onOpen: (executionId: string) => void;
+}) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const { agent, children } = node;
+  if (children.length === 0)
+    return <SubAgentListRow agent={agent} onOpen={() => onOpen(agent.executionId)} />;
+
+  return (
+    <Disclosure isExpanded={isExpanded} onExpandedChange={setIsExpanded} className="w-full">
+      <Disclosure.Heading className="flex min-w-0 items-center gap-1">
+        <SubAgentListRow
+          agent={agent}
+          childCount={children.length}
+          onOpen={() => onOpen(agent.executionId)}
+        />
+        <Tooltip delay={0}>
+          <Disclosure.Trigger
+            className="flex size-8 shrink-0 items-center justify-center p-0 text-muted"
+            aria-label={`${isExpanded ? "收起" : "展开"} ${agent.name} 的 ${children.length} 个子任务`}
+          >
+            <ChevronDown
+              aria-hidden
+              className={`size-4 transition-transform duration-200 motion-reduce:transition-none ${isExpanded ? "" : "-rotate-90"}`}
+            />
+          </Disclosure.Trigger>
+          <Tooltip.Content placement="bottom">
+            {isExpanded ? "收起子任务" : "展开子任务"}
+          </Tooltip.Content>
+        </Tooltip>
+      </Disclosure.Heading>
+      <Disclosure.Content>
+        <Disclosure.Body style={{ padding: 0 }}>
+          <div className="flex flex-col gap-0.5">
+            {children.map((child) => (
+              <SubAgentListRow
+                key={child.agent.executionId}
+                agent={child.agent}
+                isNested
+                onOpen={() => onOpen(child.agent.executionId)}
+              />
+            ))}
+          </div>
+        </Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
+  );
+}
+
 export function SubAgentInspector({
   sessionId,
   runId,
@@ -166,6 +255,7 @@ export function SubAgentInspector({
       }),
     [activeEvents, runId],
   );
+  const agentTree = useMemo(() => buildSubAgentTree(agents), [agents]);
 
   if (executionId)
     return (
@@ -183,7 +273,9 @@ export function SubAgentInspector({
       <header className="flex min-h-14 items-center gap-2 border-b border-separator px-4">
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-medium">子 Agent</h2>
-          <p className="text-xs text-muted">本次运行 · {agents.length} 个任务</p>
+          <p className="text-xs text-muted">
+            本次运行 · {agentTree.length} 组 / {agents.length} 个任务
+          </p>
         </div>
         <Tooltip delay={0}>
           <Button
@@ -209,25 +301,12 @@ export function SubAgentInspector({
           {agents.length === 0 && !snapshotQuery.isPending && !snapshotQuery.isError ? (
             <p className="px-2 text-sm text-muted">暂无子 Agent</p>
           ) : null}
-          {agents.map((agent) => (
-            <Button
-              key={agent.executionId}
-              className={`h-auto w-full justify-start gap-2 py-1 ${agent.parentExecutionId ? "ps-6" : ""}`}
-              size="sm"
-              variant="ghost"
-              aria-label={`查看子 Agent ${agent.name}，${SUB_AGENT_STATUS_LABEL[agent.status]}`}
-              onPress={() => openSubAgent(sessionId, runId, agent.executionId)}
-            >
-              <SubAgentAvatar executionId={agent.executionId} className="size-5" />
-              <span className="flex min-w-0 flex-1 flex-col items-start">
-                <span className="w-full truncate text-start text-sm font-medium">{agent.name}</span>
-                <span className="text-xs text-muted">
-                  {agent.agentType === "worker" ? "执行" : "探索"} ·{" "}
-                  {SUB_AGENT_STATUS_LABEL[agent.status]}
-                </span>
-              </span>
-              <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted" />
-            </Button>
+          {agentTree.map((node) => (
+            <SubAgentTreeGroup
+              key={node.agent.executionId}
+              node={node}
+              onOpen={(id) => openSubAgent(sessionId, runId, id)}
+            />
           ))}
         </nav>
       </ScrollShadow>
@@ -301,6 +380,16 @@ function SubAgentDetail({
         event.data.executionId === executionId,
     );
   const startData = started && isSubAgentStartedData(started.data) ? started.data : null;
+  const parentStarted = startData?.parentExecutionId
+    ? activeSnapshotEvents.find(
+        (event) =>
+          event.type === HarnessEventType.SUBAGENT_STARTED &&
+          isSubAgentStartedData(event.data) &&
+          event.data.executionId === startData.parentExecutionId,
+      )
+    : undefined;
+  const parentName =
+    parentStarted && isSubAgentStartedData(parentStarted.data) ? parentStarted.data.name : null;
   const terminal =
     events.findLast(
       (event) =>
@@ -355,7 +444,7 @@ function SubAgentDetail({
 
   return (
     <aside className="flex h-full min-h-0 flex-col bg-background" aria-label="子 Agent 详情">
-      <header className="flex min-h-12 items-center gap-2 border-b border-separator px-3">
+      <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-separator px-3 py-3">
         <Tooltip delay={0}>
           <Button
             isIconOnly
@@ -369,9 +458,11 @@ function SubAgentDetail({
           <Tooltip.Content placement="bottom">返回子 Agent 列表</Tooltip.Content>
         </Tooltip>
         <SubAgentAvatar executionId={executionId} className="size-6" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{startData?.name ?? "子 Agent"}</p>
-          <p className="flex items-center gap-1.5 text-xs text-muted">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h2 className="truncate text-sm leading-5 font-medium" title={startData?.name}>
+            {startData?.name ?? "子 Agent"}
+          </h2>
+          <p className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted">
             <span
               aria-hidden
               className={`size-1.5 shrink-0 rounded-full ${
@@ -384,9 +475,21 @@ function SubAgentDetail({
                       : "bg-muted"
               }`}
             />
-            <span>{SUB_AGENT_STATUS_LABEL[status]}</span>
-            <span>·</span>
-            <span>{startData?.agentType === "worker" ? "执行" : "探索"}</span>
+            <span className="shrink-0">{SUB_AGENT_STATUS_LABEL[status]}</span>
+            <span aria-hidden className="shrink-0">
+              ·
+            </span>
+            <span className="shrink-0">{startData?.agentType === "worker" ? "执行" : "探索"}</span>
+            {parentName ? (
+              <>
+                <span aria-hidden className="shrink-0">
+                  ·
+                </span>
+                <span className="min-w-0 truncate" title={`来自 ${parentName}`}>
+                  来自 {parentName}
+                </span>
+              </>
+            ) : null}
           </p>
         </div>
         {status === SubAgentStatus.RUNNING && startData ? (

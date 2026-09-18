@@ -276,6 +276,7 @@ export type ChatSubAgentMessage = ChatMessageBase & {
   executionId: string;
   name: string;
   parentExecutionId?: string;
+  parentName?: string;
   latestActivity?: string;
   resultSummary?: string;
   status: SubAgentStatus;
