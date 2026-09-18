@@ -15,15 +15,15 @@
 ### 2.1 思考链
 
 - 父 Agent 调用 `spawn_agent({ name, task, agentType })` 后，在当前 Run 的思考链出现子 Agent 条目。`name` 是可读的短任务名，`executionId` 是稳定身份；多个同批调用在现有工具组位置形成一组条目。子 Agent 再委派时，在所属条目下展示子级。
-- 每个条目前方显示由 `executionId` 确定的圆形像素头像；同一次执行在思考链、列表和详情中使用同一图案与主色。任务名之后显示完成或失败图标，右侧显示状态、耗时和最近一步，例如“正在搜索文件”。状态变化通过 SSE 原位更新。点击条目打开对应子 Agent 的右侧详情。
+- 每个条目前方显示由 `executionId` 确定的圆形像素头像；同一次执行在思考链、列表和详情中使用同一图案与主色。任务名之后显示完成或失败图标，右侧显示状态、耗时和最近一步，例如“正在搜索文件”。模型思考、回复与工具调用分别显示对应活动；父 Run 仍在执行子任务时，末尾状态显示运行中的子 Agent 数量。状态变化通过 SSE 原位更新。点击条目打开对应子 Agent 的右侧详情。
 - 运行中的条目保持可见；Run 结束后沿用现有 `IntermediateTurn` 的“已处理”折叠规则。展开后仍能找到每个子 Agent，不在最终回答中重复展示它们的完整过程。
-- `spawn_agent` 的普通 ToolCall 展示由子 Agent 条目承接，避免同一次委派出现两张卡片。`wait_agents` 和消息投递作为该条目的活动记录展示；父 Agent 的最终回答保留在主消息链中。
+- `spawn_agent` 的普通 ToolCall 展示由子 Agent 条目承接，避免同一次委派出现两张卡片。`wait_agents` 和消息投递不覆盖子 Agent 自身的活动状态；父 Agent 的最终回答保留在主消息链中。
 
 ### 2.2 右侧面板
 
 - 复用 `ChatShell` 的 `AppLayout.aside`、可调整宽度和移动端 sheet。文件变更检查器与子 Agent 详情共用这个位置；打开新内容时切换面板内容。
 - 面板分为本次 Run 的子 Agent 列表和单个子 Agent 详情，两个视图不同时展示。思考链条目直接打开对应详情；点击详情头部的返回按钮进入列表，再从列表选择其他子 Agent。列表使用与文字行高协调的小头像，展示任务名、角色与状态，并按父子关系缩进。详情头部将返回按钮、头像、任务名、状态和角色紧凑排列，状态使用内联标记；运行中提供“停止该子任务”。关闭面板返回原对话位置，不切换“对话 / 轨迹 / 文件”视图。
-- 详情按时间顺序展示任务说明、子 Agent 消息、工具调用、完整最终回复或错误。`resultSummary` 只交给父 Agent 综合，不在详情底部重复渲染；它有长度上限，不能代替完整回复。复用现有消息、Markdown、ToolCall 和状态展示组件；只为子 Agent 的列表与详情组合增加业务组件。
+- 详情按时间顺序展示任务说明、子 Agent 消息、工具调用、完整最终回复或错误。运行中在过程末尾持续显示处理状态，终态后移除。`resultSummary` 只交给父 Agent 综合，不在详情底部重复渲染；它有长度上限，不能代替完整回复。复用现有消息、Markdown、ToolCall 和状态展示组件；只为子 Agent 的列表与详情组合增加业务组件。
 - 打开面板时按 `executionId` 加载完整历史；运行中根据同一条 Session SSE 的 `seq` 增量刷新。明确呈现加载、空记录、运行、失败、中止和断线恢复状态。移动端通过已有 sheet 交互查看。
 
 示意：
@@ -45,7 +45,7 @@
 
 `spawn_agent` 的父工具调用和 `subagent.started` 通过 `parentToolCallId` 关联；嵌套执行再用 `parentExecutionId` 组成树。对话投影用 `executionId` 维护每个条目的名称、状态、最近活动与耗时；`subagent.completed`、`subagent.failed`、`subagent.aborted` 分别结束对应条目。完整事件种类、顺序和恢复规则见[核心设计](./Sub-Agent核心设计.md)。
 
-现有 `/api/sessions/:sessionId/conversation` 继续提供轻量数据，只保留子 Agent 身份、状态和简短活动信息。新增 `GET /api/sessions/:sessionId/subagents/:executionId/events?afterSeq=<seq>&limit=<count>`，打开侧边面板时按 `seq` 分页读取该执行在当前会话分支的事件。运行中沿用 Session SSE 的 `seq` 去重、排序和增量刷新；断线重连后重新读取快照。
+现有 `/api/sessions/:sessionId/conversation` 继续提供轻量数据，只保留子 Agent 身份、状态和简短活动信息；模型增量只传内容类型，工具进度只传阶段，不携带子消息正文或工具结果。新增 `GET /api/sessions/:sessionId/subagents/:executionId/events?afterSeq=<seq>&limit=<count>`，打开侧边面板时按 `seq` 分页读取该执行在当前会话分支的事件。运行中沿用 Session SSE 的 `seq` 去重、排序和增量刷新；断线重连后重新读取快照。
 
 ## 4. Web 接点与验收
 
