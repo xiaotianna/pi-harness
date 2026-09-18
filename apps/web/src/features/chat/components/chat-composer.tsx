@@ -51,7 +51,7 @@ import {
 import type { ApprovalPolicy } from "@pi-harness/policy/approval-policy";
 import { useQuery } from "@tanstack/react-query";
 import type { ChangeEvent, ClipboardEvent } from "react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   createModelSelectionKey,
   ModelPicker,
@@ -191,7 +191,7 @@ function getSkillOptionLabel(name: string, scope: keyof typeof SKILL_SCOPE_LABEL
     .join(" ");
 }
 
-export function ChatComposer({
+export const ChatComposer = memo(function ChatComposer({
   className,
   conversationId,
   events,
@@ -1258,4 +1258,4 @@ export function ChatComposer({
       )}
     </PromptInput>
   );
-}
+});

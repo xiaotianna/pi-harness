@@ -35,7 +35,7 @@ import {
   sessionQueryKeys,
   sessionSnapshotQueryOptions,
 } from "../api/session-queries";
-import { ChatComposer } from "../components/chat-composer";
+import { ChatComposer, type ChatComposerProps } from "../components/chat-composer";
 import { ChatTraceView } from "../components/chat-trace-view";
 import { ConversationTurnToc } from "../components/conversation-turn-toc";
 import { ThreadMessageList, type ThreadMessageListHandle } from "../components/thread-message-list";
@@ -68,6 +68,7 @@ const CHAT_VIEW_TRANSITION = {
   ease: [0.22, 1, 0.36, 1],
 } as const;
 const EMPTY_SESSION_EVENTS = [] as const;
+const EMPTY_QUEUED_INPUTS: readonly QueuedRunInput[] = [];
 const EMPTY_SESSION_EVENT_METADATA: SessionSnapshotEventMetadata = {
   changedRunIds: new Set(),
   stableEvents: EMPTY_SESSION_EVENTS,
@@ -491,6 +492,59 @@ export function ChatPage({ sessionId }: ChatPageProps) {
         ? "ready"
         : "streaming";
   const isSessionRunning = status !== "ready";
+  const composerActions = useMemo<
+    Pick<
+      ChatComposerProps,
+      | "onModelChange"
+      | "onStopRun"
+      | "onRemoveQueuedInput"
+      | "onSteerQueuedInput"
+      | "onSubmitMessage"
+      | "onUpdateQueuedInput"
+    >
+  >(
+    () => ({
+      onModelChange: (selection) => modelMutation.mutateAsync(selection).then(() => undefined),
+      onStopRun: () =>
+        activeRunId
+          ? abortMutation.mutateAsync(activeRunId)
+          : Promise.reject(new Error("活动 Run 不存在")),
+      onRemoveQueuedInput: (queuedInputId) =>
+        activeRunId
+          ? removeQueuedInputMutation.mutateAsync({ queuedInputId, runId: activeRunId })
+          : Promise.reject(new Error("活动 Run 不存在")),
+      onSteerQueuedInput: (queuedInputId) =>
+        activeRunId
+          ? steerQueuedInputMutation.mutateAsync({ queuedInputId, runId: activeRunId })
+          : Promise.reject(new Error("活动 Run 不存在")),
+      onSubmitMessage: ({ busySubmitBehavior, ...input }) => {
+        if (!activeRunId) {
+          return startMutation.mutateAsync({ input, sessionId }).then(() => undefined);
+        }
+        return busySubmitBehavior === BusySubmitBehavior.STEER
+          ? steerMutation.mutateAsync({ input, runId: activeRunId })
+          : followUpMutation.mutateAsync({ input, runId: activeRunId }).then(() => undefined);
+      },
+      onUpdateQueuedInput: (queuedInputId, prompt) =>
+        activeRunId
+          ? updateQueuedInputMutation
+              .mutateAsync({ prompt, queuedInputId, runId: activeRunId })
+              .then(() => undefined)
+          : Promise.reject(new Error("活动 Run 不存在")),
+    }),
+    [
+      activeRunId,
+      abortMutation.mutateAsync,
+      followUpMutation.mutateAsync,
+      modelMutation.mutateAsync,
+      removeQueuedInputMutation.mutateAsync,
+      sessionId,
+      startMutation.mutateAsync,
+      steerMutation.mutateAsync,
+      steerQueuedInputMutation.mutateAsync,
+      updateQueuedInputMutation.mutateAsync,
+    ],
+  );
 
   useEffect(() => {
     if (!isSnapshotReady) return;
@@ -631,50 +685,12 @@ export function ChatPage({ sessionId }: ChatPageProps) {
                   events={events}
                   modelId={snapshot.session.modelId}
                   providerId={snapshot.session.providerId}
-                  queuedInputs={queuedInputsQuery.data ?? []}
+                  queuedInputs={queuedInputsQuery.data ?? EMPTY_QUEUED_INPUTS}
                   status={status}
                   thinkingLevel={snapshot.session.thinkingLevel}
                   usage={usage}
                   workspaceId={snapshot.session.workspaceId}
-                  onModelChange={(selection) =>
-                    modelMutation.mutateAsync(selection).then(() => undefined)
-                  }
-                  onStopRun={() =>
-                    activeRunId
-                      ? abortMutation.mutateAsync(activeRunId)
-                      : Promise.reject(new Error("活动 Run 不存在"))
-                  }
-                  onRemoveQueuedInput={(queuedInputId) =>
-                    activeRunId
-                      ? removeQueuedInputMutation.mutateAsync({ queuedInputId, runId: activeRunId })
-                      : Promise.reject(new Error("活动 Run 不存在"))
-                  }
-                  onSteerQueuedInput={(queuedInputId) =>
-                    activeRunId
-                      ? steerQueuedInputMutation.mutateAsync({ queuedInputId, runId: activeRunId })
-                      : Promise.reject(new Error("活动 Run 不存在"))
-                  }
-                  onSubmitMessage={({ busySubmitBehavior, ...input }) => {
-                    if (!activeRunId) {
-                      return startMutation.mutateAsync({ input, sessionId }).then(() => undefined);
-                    }
-                    return busySubmitBehavior === BusySubmitBehavior.STEER
-                      ? steerMutation.mutateAsync({ input, runId: activeRunId })
-                      : followUpMutation
-                          .mutateAsync({ input, runId: activeRunId })
-                          .then(() => undefined);
-                  }}
-                  onUpdateQueuedInput={(queuedInputId, prompt) =>
-                    activeRunId
-                      ? updateQueuedInputMutation
-                          .mutateAsync({
-                            prompt,
-                            queuedInputId,
-                            runId: activeRunId,
-                          })
-                          .then(() => undefined)
-                      : Promise.reject(new Error("活动 Run 不存在"))
-                  }
+                  {...composerActions}
                 />
               </div>
               <AnimatePresence initial={false}>

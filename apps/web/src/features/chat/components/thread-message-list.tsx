@@ -46,6 +46,11 @@ type ThreadMessageListItem =
   | { id: string; kind: "intermediate"; messages: readonly ChatMessage[] }
   | { id: string; kind: "message"; message: ChatMessage };
 
+const intermediateItemsByFirstMessage = new WeakMap<
+  ChatMessage,
+  Extract<ThreadMessageListItem, { kind: "intermediate" }>
+>();
+
 function groupIntermediateMessages(messages: readonly ChatMessage[]): ThreadMessageListItem[] {
   const items: ThreadMessageListItem[] = [];
   for (let index = 0; index < messages.length; ) {
@@ -67,11 +72,22 @@ function groupIntermediateMessages(messages: readonly ChatMessage[]): ThreadMess
       intermediateMessages.push(intermediateMessage);
       index += 1;
     }
-    items.push({
-      id: `intermediate-${message.turnId}-${message.id}`,
-      kind: "intermediate",
-      messages: intermediateMessages,
-    });
+    const previous = intermediateItemsByFirstMessage.get(message);
+    if (
+      previous &&
+      previous.messages.length === intermediateMessages.length &&
+      previous.messages.every((item, index) => item === intermediateMessages[index])
+    ) {
+      items.push(previous);
+    } else {
+      const item = {
+        id: `intermediate-${message.turnId}-${message.id}`,
+        kind: "intermediate" as const,
+        messages: intermediateMessages,
+      };
+      intermediateItemsByFirstMessage.set(message, item);
+      items.push(item);
+    }
   }
   return items;
 }
