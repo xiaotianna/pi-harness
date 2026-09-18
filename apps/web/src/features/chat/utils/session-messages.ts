@@ -591,10 +591,40 @@ export function sessionEventsToMessages({
   appendProjectedMessages(messages, projection, streamed);
   messages.push(...stableProjection.messagesAfterActiveRun);
 
+  const childActivity = new Map<string, string>();
+  for (const event of live) {
+    if (!isPlainObject(event.data) || typeof event.data.executionId !== "string") continue;
+    if (event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA) {
+      const activity =
+        event.data.kind === MessageDeltaKind.THINKING
+          ? "正在思考…"
+          : event.data.kind === MessageDeltaKind.TEXT
+            ? "正在回复…"
+            : "正在准备工具…";
+      childActivity.set(event.data.executionId, activity);
+    } else if (event.type === HarnessEventType.SUBAGENT_TOOL_UPDATED) {
+      const activity = readToolActiveLabel(event.data.partialResult);
+      if (activity) childActivity.set(event.data.executionId, activity);
+    }
+  }
+  const currentMessages = childActivity.size
+    ? messages.map((message) => {
+        const activity =
+          message.type === ChatMessageType.SUBAGENT
+            ? childActivity.get(message.executionId)
+            : undefined;
+        return message.type === ChatMessageType.SUBAGENT &&
+          message.status === SubAgentStatus.RUNNING &&
+          activity
+          ? { ...message, latestActivity: activity }
+          : message;
+      })
+    : messages;
+
   const cache = messagesByTransient ?? new WeakMap();
-  cache.set(transientByKey, messages);
+  cache.set(transientByKey, currentMessages);
   if (!messagesByTransient) messagesByEventState.set(stableEvents, cache);
-  return messages;
+  return currentMessages;
 }
 
 export function optimisticUserInputToMessage({
@@ -701,50 +731,34 @@ function projectRunMessages(
       continue;
     }
     if (
+      event.type === HarnessEventType.SUBAGENT_MESSAGE_STARTED &&
+      isPlainObject(event.data) &&
+      typeof event.data.executionId === "string"
+    ) {
+      const message = subAgentsById.get(event.data.executionId);
+      if (message?.status === SubAgentStatus.RUNNING) message.latestActivity = "正在处理…";
+      continue;
+    }
+    if (
       event.type === HarnessEventType.SUBAGENT_TOOL_STARTED &&
       isPlainObject(event.data) &&
       typeof event.data.executionId === "string"
     ) {
       const message = subAgentsById.get(event.data.executionId);
-      if (message && typeof event.data.toolName === "string")
-        message.latestActivity = `正在调用 ${event.data.toolName}`;
+      if (message?.status === SubAgentStatus.RUNNING && typeof event.data.toolName === "string")
+        message.latestActivity = `正在调用 ${typeof event.data.displayName === "string" ? event.data.displayName : event.data.toolName}`;
       continue;
     }
     if (
-      event.type === HarnessEventType.TOOL_STARTED &&
-      isPlainObject(event.data) &&
-      isPlainObject(event.data.arguments) &&
-      typeof event.data.toolName === "string"
-    ) {
-      const ids =
-        typeof event.data.arguments.executionId === "string"
-          ? [event.data.arguments.executionId]
-          : Array.isArray(event.data.arguments.executionIds)
-            ? event.data.arguments.executionIds.filter((id): id is string => typeof id === "string")
-            : [];
-      const activity =
-        event.data.toolName === "wait_agents"
-          ? "正在等待结果"
-          : event.data.toolName === "send_agent_message"
-            ? "已发送补充指令"
-            : event.data.toolName === "stop_agent"
-              ? "正在停止"
-              : null;
-      if (activity)
-        for (const id of ids) {
-          const message = subAgentsById.get(id);
-          if (message && message.status === SubAgentStatus.RUNNING)
-            message.latestActivity = activity;
-        }
-    }
-    if (
-      event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA &&
+      (event.type === HarnessEventType.SUBAGENT_TOOL_COMPLETED ||
+        event.type === HarnessEventType.SUBAGENT_TOOL_FAILED ||
+        event.type === HarnessEventType.SUBAGENT_TOOL_SKIPPED ||
+        event.type === HarnessEventType.SUBAGENT_MESSAGE_COMPLETED) &&
       isPlainObject(event.data) &&
       typeof event.data.executionId === "string"
     ) {
       const message = subAgentsById.get(event.data.executionId);
-      if (message && event.data.kind === MessageDeltaKind.TEXT)
-        message.latestActivity = "正在整理结果";
+      if (message?.status === SubAgentStatus.RUNNING) message.latestActivity = "正在处理…";
       continue;
     }
     if (
@@ -779,6 +793,24 @@ function projectRunMessages(
     ) {
       const message = subAgentsById.get(event.data.executionId);
       if (message) message.latestActivity = "等待审批";
+    }
+    if (
+      event.type === HarnessEventType.INPUT_REQUESTED &&
+      isPlainObject(event.data) &&
+      typeof event.data.executionId === "string"
+    ) {
+      const message = subAgentsById.get(event.data.executionId);
+      if (message?.status === SubAgentStatus.RUNNING) message.latestActivity = "等待回复";
+    }
+    if (
+      (event.type === HarnessEventType.APPROVAL_RESOLVED ||
+        event.type === HarnessEventType.INPUT_RESOLVED ||
+        event.type === HarnessEventType.INPUT_EXPIRED) &&
+      isPlainObject(event.data) &&
+      typeof event.data.executionId === "string"
+    ) {
+      const message = subAgentsById.get(event.data.executionId);
+      if (message?.status === SubAgentStatus.RUNNING) message.latestActivity = "正在处理…";
     }
     if (event.type === HarnessEventType.RUN_STARTED && event.runId) {
       runStartedAtById.set(event.runId, event.timestamp);
@@ -1266,9 +1298,12 @@ function projectRunMessages(
   }
 
   if (activeRunId) {
+    const runningSubAgentCount = [...subAgentsById.values()].filter(
+      (message) => message.status === SubAgentStatus.RUNNING,
+    ).length;
     pushMessage({
       id: `loading-${activeRunId}`,
-      label: "正在处理…",
+      label: runningSubAgentCount ? `${runningSubAgentCount} 个子 Agent 正在执行…` : "正在处理…",
       turnId: activeRunId,
       type: ChatMessageType.LOADING,
     });

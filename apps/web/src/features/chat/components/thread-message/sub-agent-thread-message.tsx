@@ -31,7 +31,7 @@ export function SubAgentThreadMessage({ message }: { message: ChatSubAgentMessag
           className={`w-full justify-start ${message.parentExecutionId ? "ps-5" : ""}`}
           size="sm"
           variant="ghost"
-          aria-label={`查看子 Agent ${message.name}，${SUB_AGENT_STATUS_LABEL[message.status]}`}
+          aria-label={`查看子 Agent ${message.name}，${message.status === SubAgentStatus.RUNNING ? (message.latestActivity ?? "正在处理") : SUB_AGENT_STATUS_LABEL[message.status]}`}
           onPress={() =>
             openSubAgent(message.sessionId ?? "", message.turnId ?? "", message.executionId)
           }
@@ -45,9 +45,7 @@ export function SubAgentThreadMessage({ message }: { message: ChatSubAgentMessag
           ) : null}
           <span className="shrink-0 text-xs text-muted">
             {message.status === SubAgentStatus.RUNNING ? (
-              <TextShimmer>
-                {message.latestActivity ?? SUB_AGENT_STATUS_LABEL[message.status]}
-              </TextShimmer>
+              <TextShimmer>{message.latestActivity ?? "正在处理…"}</TextShimmer>
             ) : (
               SUB_AGENT_STATUS_LABEL[message.status]
             )}

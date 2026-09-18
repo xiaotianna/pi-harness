@@ -58,9 +58,70 @@ export function projectSessionConversationEvents(
               executionId: event.data.executionId,
               toolCallId: event.data.toolCallId,
               toolName: event.data.toolName,
+              ...(typeof event.data.displayName === "string"
+                ? { displayName: event.data.displayName }
+                : {}),
             },
           },
         ];
+      }
+      if (
+        (event.type === HarnessEventType.SUBAGENT_MESSAGE_STARTED ||
+          event.type === HarnessEventType.SUBAGENT_MESSAGE_COMPLETED) &&
+        isPlainObject(event.data)
+      ) {
+        const message = event.data.message;
+        return [
+          {
+            ...event,
+            data: {
+              executionId: event.data.executionId,
+              ...(isPlainObject(message) && typeof message.role === "string"
+                ? { role: message.role }
+                : {}),
+            },
+          },
+        ];
+      }
+      if (
+        (event.type === HarnessEventType.SUBAGENT_TOOL_COMPLETED ||
+          event.type === HarnessEventType.SUBAGENT_TOOL_FAILED ||
+          event.type === HarnessEventType.SUBAGENT_TOOL_SKIPPED) &&
+        isPlainObject(event.data)
+      )
+        return [
+          {
+            ...event,
+            data: { executionId: event.data.executionId, toolCallId: event.data.toolCallId },
+          },
+        ];
+      if (event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA && isPlainObject(event.data))
+        return [
+          {
+            ...event,
+            data: {
+              executionId: event.data.executionId,
+              contentIndex: event.data.contentIndex,
+              kind: event.data.kind,
+            },
+          },
+        ];
+      if (event.type === HarnessEventType.SUBAGENT_TOOL_UPDATED && isPlainObject(event.data)) {
+        const partialResult = event.data.partialResult;
+        const details = isPlainObject(partialResult) ? partialResult.details : null;
+        const stage = isPlainObject(details) ? details.stage : null;
+        return typeof stage === "string"
+          ? [
+              {
+                ...event,
+                data: {
+                  executionId: event.data.executionId,
+                  toolCallId: event.data.toolCallId,
+                  partialResult: { details: { stage } },
+                },
+              },
+            ]
+          : [];
       }
       return [];
     }

@@ -112,13 +112,14 @@ export function updateSnapshotWithEvents(
       event.type === HarnessEventType.MESSAGE_COMPLETED && data.role === "assistant";
     const isChildAssistantEnd =
       event.type === HarnessEventType.SUBAGENT_MESSAGE_COMPLETED &&
-      isPlainObject(data.message) &&
-      data.message.role === "assistant";
+      (data.role === "assistant" ||
+        (isPlainObject(data.message) && data.message.role === "assistant"));
     const isToolEnd =
       event.type === HarnessEventType.TOOL_COMPLETED || event.type === HarnessEventType.TOOL_FAILED;
     const isChildToolEnd =
       event.type === HarnessEventType.SUBAGENT_TOOL_COMPLETED ||
-      event.type === HarnessEventType.SUBAGENT_TOOL_FAILED;
+      event.type === HarnessEventType.SUBAGENT_TOOL_FAILED ||
+      event.type === HarnessEventType.SUBAGENT_TOOL_SKIPPED;
     const isChildTerminal =
       event.type === HarnessEventType.SUBAGENT_COMPLETED ||
       event.type === HarnessEventType.SUBAGENT_FAILED ||

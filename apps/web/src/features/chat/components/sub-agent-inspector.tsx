@@ -15,6 +15,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { isPlainObject } from "es-toolkit";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AssistantMarkdown } from "../../../components/ai/assistant-markdown";
+import { ThinkingIndicator } from "../../../components/ai/thinking-indicator";
 import {
   abortSubAgent,
   getSubAgentEvents,
@@ -509,6 +510,9 @@ function SubAgentDetail({
             <div className="text-sm">
               <AssistantMarkdown isStreaming>{streamingText}</AssistantMarkdown>
             </div>
+          ) : null}
+          {status === SubAgentStatus.RUNNING && !historyQuery.isPending && !live.isDisconnected ? (
+            <ThinkingIndicator label="正在处理…" />
           ) : null}
           {terminalData?.errorCode ? (
             <p role="status" className="text-sm text-danger">
