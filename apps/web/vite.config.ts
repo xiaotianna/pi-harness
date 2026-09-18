@@ -4,6 +4,12 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const resolvePackageFile = (path: string) => fileURLToPath(new URL(path, import.meta.url));
+const apiProxy = {
+  "/api": {
+    target: "http://127.0.0.1:4310",
+    changeOrigin: false,
+  },
+};
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -19,11 +25,12 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 5173,
-    proxy: {
-      "/api": {
-        target: "http://127.0.0.1:4310",
-        changeOrigin: false,
-      },
-    },
+    proxy: apiProxy,
+  },
+  preview: {
+    host: "127.0.0.1",
+    port: 5173,
+    strictPort: true,
+    proxy: apiProxy,
   },
 });
