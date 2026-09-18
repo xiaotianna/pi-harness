@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(not(debug_assertions))]
-use std::{fs, io::Read, net::TcpListener};
+use std::{io::Read, net::TcpListener};
 use std::{
     io::Write,
     net::{SocketAddr, TcpStream},
@@ -85,13 +85,11 @@ fn start_daemon(app: &tauri::AppHandle) -> Result<ManagedDaemon, Box<dyn std::er
     let resource_dir = app.path().resource_dir()?;
     let daemon_dir = resource_dir.join("daemon");
     let web_dir = resource_dir.join("web");
-    let data_dir = app.path().app_data_dir()?;
+    let data_dir = app.path().home_dir()?.join(".pi-harness");
     let helper_path = std::env::current_exe()?
         .parent()
         .ok_or("PI Harness executable has no parent directory")?
         .join("pi-computer-use-helper");
-    fs::create_dir_all(&data_dir)?;
-
     let (mut events, mut child) = app
         .shell()
         .sidecar("pi-harness-node")?
