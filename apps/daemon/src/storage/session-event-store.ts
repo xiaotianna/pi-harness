@@ -37,6 +37,14 @@ const TRANSIENT_EVENT_TYPES = new Set<string>([
   HarnessEventType.SUBAGENT_MESSAGE_DELTA,
   HarnessEventType.SUBAGENT_TOOL_UPDATED,
 ]);
+const USAGE_EVENT_TYPES = new Set<string>([
+  HarnessEventType.RUN_STARTED,
+  HarnessEventType.SUBAGENT_STARTED,
+  HarnessEventType.MESSAGE_COMPLETED,
+  HarnessEventType.SUBAGENT_MESSAGE_COMPLETED,
+  HarnessEventType.CONTEXT_COMPACTED,
+  HarnessEventType.SUBAGENT_CONTEXT_COMPACTED,
+]);
 const StoredHarnessEventSchema = Type.Object({
   data: Type.Unknown(),
   id: Type.String({ minLength: 1 }),
@@ -204,11 +212,13 @@ export class SessionEventStore {
     await mkdir(this.directory, { mode: 0o700, recursive: true });
   }
 
-  public async load(sessionId: SessionId): Promise<SessionEventSnapshot> {
+  public async load(sessionId: SessionId, signal?: AbortSignal): Promise<SessionEventSnapshot> {
+    signal?.throwIfAborted();
     const pendingWrite = this.writeTails.get(sessionId);
     if (pendingWrite !== undefined) await pendingWrite;
 
-    return this.readSnapshot(sessionId);
+    signal?.throwIfAborted();
+    return this.readSnapshot(sessionId, signal);
   }
 
   public async loadRunEvents(
@@ -257,6 +267,57 @@ export class SessionEventStore {
     return eventsByRunId;
   }
 
+  public async loadUsageEvents(
+    sessionId: SessionId,
+    since: number,
+    signal: AbortSignal,
+  ): Promise<readonly HarnessEvent[]> {
+    const pendingWrite = this.writeTails.get(sessionId);
+    if (pendingWrite !== undefined) await pendingWrite;
+    signal.throwIfAborted();
+
+    const events: HarnessEvent[] = [];
+    const stream = createReadStream(join(this.directory, sessionFileName(sessionId)), {
+      encoding: "utf8",
+      signal,
+    });
+    try {
+      for await (const line of createInterface({ input: stream, crlfDelay: Infinity })) {
+        const metadata = /,"timestamp":(\d+),"type":"([^"]+)"}$/.exec(line.slice(-128));
+        if (metadata) {
+          const type = metadata[2];
+          if (!type || !USAGE_EVENT_TYPES.has(type)) continue;
+          if (
+            type !== HarnessEventType.RUN_STARTED &&
+            type !== HarnessEventType.SUBAGENT_STARTED &&
+            Number(metadata[1]) < since
+          )
+            continue;
+        }
+        const event = parseHarnessEvent(JSON.parse(line) as unknown, sessionId);
+        if (
+          USAGE_EVENT_TYPES.has(event.type) &&
+          (event.type === HarnessEventType.RUN_STARTED ||
+            event.type === HarnessEventType.SUBAGENT_STARTED ||
+            event.timestamp >= since)
+        ) {
+          events.push(event);
+        }
+      }
+    } catch (error: unknown) {
+      if (error instanceof SyntaxError) {
+        stream.destroy();
+        // 复用会话加载时对崩溃留下的不完整末行的修复，正常读取不构建完整快照。
+        await this.load(sessionId, signal);
+        return this.loadUsageEvents(sessionId, since, signal);
+      }
+      if (!isError(error) || !("code" in error) || error.code !== "ENOENT") throw error;
+    } finally {
+      stream.destroy();
+    }
+    return events;
+  }
+
   public getRevision(sessionId: SessionId): number {
     return this.revisions.get(sessionId) ?? 0;
   }
@@ -272,11 +333,14 @@ export class SessionEventStore {
     }
   }
 
-  private async readSnapshot(sessionId: SessionId): Promise<SessionEventSnapshot> {
+  private async readSnapshot(
+    sessionId: SessionId,
+    signal?: AbortSignal,
+  ): Promise<SessionEventSnapshot> {
     const path = join(this.directory, sessionFileName(sessionId));
     let source: string;
     try {
-      source = await readFile(path, "utf8");
+      source = await readFile(path, { encoding: "utf8", signal });
     } catch (error: unknown) {
       if (isError(error) && "code" in error && error.code === "ENOENT") {
         if (!this.lastSeqBySession.has(sessionId)) this.lastSeqBySession.set(sessionId, 0);
@@ -302,6 +366,7 @@ export class SessionEventStore {
     let previousSeq = 0;
 
     for (const [index, line] of lines.entries()) {
+      signal?.throwIfAborted();
       if (line.length === 0) throw new Error("Session JSONL contains an empty middle line");
       try {
         const event = parseHarnessEvent(JSON.parse(line) as unknown, sessionId);

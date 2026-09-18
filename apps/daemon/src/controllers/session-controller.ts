@@ -50,6 +50,14 @@ export class SessionController {
     request: FastifyRequest<{ Querystring: SessionListQueryDto }>,
   ): Promise<readonly SessionVo[]> => this.sessions.list(request.query.archived ?? false);
 
+  public usage = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      return await this.sessions.getUsageStatistics(AbortSignal.timeout(30_000));
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
   public search = async (
     request: FastifyRequest<{ Querystring: SessionSearchQueryDto }>,
     reply: FastifyReply,

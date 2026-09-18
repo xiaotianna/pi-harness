@@ -61,6 +61,7 @@ import {
   SessionListVoSchema,
   SessionSearchResultListVoSchema,
   SessionSnapshotVoSchema,
+  SessionUsageStatisticsVoSchema,
   SessionVoSchema,
   SubAgentEventsVoSchema,
 } from "../vo/session-vo.js";
@@ -90,6 +91,12 @@ export async function registerSessionRoutes(
       },
     },
     controller.list,
+  );
+
+  server.get(
+    "/api/sessions/usage",
+    { schema: { response: { 200: SessionUsageStatisticsVoSchema, ...errors } } },
+    controller.usage,
   );
 
   server.get<{ Querystring: SessionSearchQueryDto }>(

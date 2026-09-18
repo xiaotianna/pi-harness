@@ -36,6 +36,7 @@
     "clsx": "catalog:",
     "diff": "catalog:",
     "es-toolkit": "catalog:",
+    "heat-graph": "catalog:",
     "icons": "link:@lobehub/ui/icons",
     "katex": "catalog:",
     "lucide-react": "catalog:",

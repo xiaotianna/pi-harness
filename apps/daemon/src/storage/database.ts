@@ -184,6 +184,7 @@ export interface SessionRepository {
   create(session: CreateSessionRecord): SessionRecord;
   find(sessionId: string): SessionRecord | null;
   list(archived?: boolean): readonly SessionRecord[];
+  listIds(): readonly string[];
   listSearchDocuments(): readonly SessionSearchDocumentRecord[];
   replaceSearchDocument(
     sessionId: string,
@@ -912,6 +913,11 @@ class SqliteSessionRepository implements SessionRepository {
       )
       .all() as DatabaseRow[];
     return rows.map(mapSession);
+  }
+
+  public listIds(): readonly string[] {
+    const rows = this.database.prepare("SELECT id FROM sessions").all() as DatabaseRow[];
+    return rows.map((row) => readRequiredString(row, "id"));
   }
 
   public listSearchDocuments(): readonly SessionSearchDocumentRecord[] {

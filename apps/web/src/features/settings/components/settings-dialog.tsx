@@ -4,6 +4,7 @@ import {
   Archive,
   Shapes4 as Blocks,
   FaceRobot as Bot,
+  ChartBar,
   File,
   Folder,
   Display as Monitor,
@@ -38,6 +39,7 @@ import { type ComponentType, type SVGProps, useState } from "react";
 import { FileOpenMode } from "../../../shared/constants/file-open";
 import { cn } from "../../../shared/utils/cn";
 import { formatChatTimestamp } from "../../../shared/utils/format-chat-timestamp";
+import { UsageSettingsPanel } from "../../usage";
 import { useAppSettings } from "../hooks/use-app-settings";
 import { useAppTheme } from "../theme-provider";
 import { ApprovalPolicySelect } from "./approval-policy-select";
@@ -94,6 +96,12 @@ const SETTINGS_SECTIONS = [
     label: "模型",
     description: "管理模型 Provider、凭据与默认模型。",
     icon: Bot,
+  },
+  {
+    id: "usage",
+    label: "用量统计",
+    description: "查看 Token、模型请求与费用估算。",
+    icon: ChartBar,
   },
   {
     id: "memory",
@@ -681,6 +689,8 @@ export function SettingsDialog({
                   <ComputerUseSettingsPanel />
                 ) : activeSectionId === "models" ? (
                   <ModelSettingsPanel />
+                ) : activeSectionId === "usage" ? (
+                  <UsageSettingsPanel />
                 ) : activeSectionId === "memory" ? (
                   <MemorySettingsPanel workspaces={workspaces} />
                 ) : activeSectionId === "plugins" ? (

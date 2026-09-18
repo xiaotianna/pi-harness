@@ -38,6 +38,22 @@ export type SessionVo = Static<typeof SessionVoSchema>;
 
 export const SessionListVoSchema = Type.Array(SessionVoSchema);
 
+export const SessionUsageStatisticsVoSchema = Type.Array(
+  Type.Object({
+    date: Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
+    providerId: Type.String({ minLength: 1 }),
+    modelId: Type.String({ minLength: 1 }),
+    requests: Type.Integer({ minimum: 0 }),
+    input: Type.Number({ minimum: 0 }),
+    output: Type.Number({ minimum: 0 }),
+    cacheRead: Type.Number({ minimum: 0 }),
+    cacheWrite: Type.Number({ minimum: 0 }),
+    reasoning: Type.Number({ minimum: 0 }),
+    totalTokens: Type.Number({ minimum: 0 }),
+    cost: Type.Number({ minimum: 0 }),
+  }),
+);
+
 export const SessionSearchResultVoSchema = Type.Object({
   description: Type.String({ maxLength: 160 }),
   excerpt: Type.String({ maxLength: 502 }),

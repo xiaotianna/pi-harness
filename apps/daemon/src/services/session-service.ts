@@ -60,6 +60,10 @@ import {
   createFallbackSessionTitle,
   normalizeGeneratedSessionTitle,
 } from "../utils/session-title.js";
+import {
+  summarizeUsageStatistics,
+  type UsageStatistic,
+} from "../utils/session-usage-statistics.js";
 import { type BoardTaskService, BoardTaskServiceError } from "./board-task-service.js";
 import type {
   HumanInteractionService,
@@ -232,6 +236,10 @@ export class SessionService {
     SessionId,
     { promise: Promise<void>; revision: number }
   >();
+  private readonly usageBySession = new Map<
+    SessionId,
+    { since: number; size: number; rows: readonly UsageStatistic[] }
+  >();
 
   public constructor(
     private readonly sessions: SessionRepository,
@@ -271,6 +279,55 @@ export class SessionService {
       ...session,
       isRunning: this.activeSessionIds.has(session.id) || this.agents.isSessionActive(session.id),
     }));
+  }
+
+  public async getUsageStatistics(signal: AbortSignal): Promise<readonly UsageStatistic[]> {
+    const today = new Date();
+    const since = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 364).getTime();
+    const until = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime();
+    const totals = new Map<string, UsageStatistic>();
+    const sessionIds = this.sessions.listIds();
+    for (let index = 0; index < sessionIds.length; index += 4) {
+      const batches = await Promise.all(
+        sessionIds.slice(index, index + 4).map(async (sessionId) => {
+          signal.throwIfAborted();
+          const size = await this.eventStore.getSize(sessionId);
+          const cached = this.usageBySession.get(sessionId);
+          if (cached?.since === since && cached.size === size) return cached.rows;
+          const events =
+            size > 0 ? await this.eventStore.loadUsageEvents(sessionId, since, signal) : [];
+          const sessionTotals = new Map<string, UsageStatistic>();
+          summarizeUsageStatistics(events, since, until, sessionTotals);
+          const rows = [...sessionTotals.values()];
+          this.usageBySession.set(sessionId, { since, size, rows });
+          return rows;
+        }),
+      );
+      for (const rows of batches) {
+        for (const row of rows) {
+          const key = JSON.stringify([row.date, row.providerId, row.modelId]);
+          const current = totals.get(key);
+          if (!current) {
+            totals.set(key, { ...row });
+            continue;
+          }
+          for (const field of [
+            "requests",
+            "input",
+            "output",
+            "cacheRead",
+            "cacheWrite",
+            "reasoning",
+            "totalTokens",
+            "cost",
+          ] as const) {
+            current[field] += row[field];
+          }
+        }
+      }
+    }
+    signal.throwIfAborted();
+    return [...totals.values()].sort((a, b) => a.date.localeCompare(b.date));
   }
 
   public async initializeSearchIndex(): Promise<void> {
