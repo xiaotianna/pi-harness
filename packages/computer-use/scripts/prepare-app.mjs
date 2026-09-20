@@ -13,6 +13,8 @@ const executable = join(contents, "MacOS", "pi-computer-use-helper");
 const overlay = join(contents, "Helpers", "pi-computer-use-overlay");
 const resources = join(contents, "Resources");
 const localSigningName = "PI Harness Local Code Signing";
+const isDistribution = process.env.PI_HARNESS_RELEASE === "1";
+const appVersion = process.env.PI_HARNESS_APP_VERSION || "0.1.0";
 
 function findLocalSigningIdentity() {
   try {
@@ -68,23 +70,29 @@ writeFileSync(
 <key>CFBundleExecutable</key><string>pi-computer-use-helper</string>
 <key>CFBundleIconFile</key><string>icon.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>${appVersion}</string>
+<key>CFBundleVersion</key><string>${appVersion}</string>
 <key>LSUIElement</key><true/>
 <key>NSScreenCaptureUsageDescription</key><string>PI Harness 需要截取当前目标窗口，以便在你确认后执行电脑操作。</string>
 </dict></plist>
 `,
 );
-const signingIdentity =
-  process.env.COMPUTER_USE_CODESIGN_IDENTITY ||
-  process.env.APPLE_SIGNING_IDENTITY ||
-  findLocalSigningIdentity();
+const signingIdentity = isDistribution
+  ? process.env.APPLE_SIGNING_IDENTITY
+  : process.env.COMPUTER_USE_CODESIGN_IDENTITY ||
+    process.env.APPLE_SIGNING_IDENTITY ||
+    findLocalSigningIdentity();
+if (isDistribution && (!signingIdentity || signingIdentity === "-")) {
+  throw new Error("正式发布必须使用 APPLE_SIGNING_IDENTITY 签名 Computer Use");
+}
 if (!signingIdentity) {
   console.warn("Computer Use 使用临时签名；重建后 macOS 可能要求重置并重新授予权限。");
 }
-execFileSync("/usr/bin/codesign", ["--force", "--sign", signingIdentity || "-", overlay], {
-  stdio: "inherit",
-});
-execFileSync("/usr/bin/codesign", ["--force", "--sign", signingIdentity || "-", app], {
-  stdio: "inherit",
-});
+const signingArgs = isDistribution ? ["--options", "runtime", "--timestamp"] : [];
+for (const target of [overlay, app]) {
+  execFileSync(
+    "/usr/bin/codesign",
+    ["--force", ...signingArgs, "--sign", signingIdentity || "-", target],
+    { stdio: "inherit" },
+  );
+}

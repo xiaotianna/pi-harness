@@ -24,6 +24,7 @@
     "@pi-harness/memory": "workspace:*",
     "@pi-harness/policy": "workspace:*",
     "@react-aria/utils": "catalog:",
+    "@tauri-apps/api": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-virtual": "catalog:",

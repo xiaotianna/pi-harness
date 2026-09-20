@@ -11,6 +11,7 @@ import {
   Tabs,
   TextField,
   Tooltip,
+  toast,
 } from "@heroui/react";
 import { useEffect, useState } from "react";
 import {
@@ -30,13 +31,28 @@ export type ProviderAuthenticationMethod =
 
 const PROVIDER_OAUTH_WINDOW_NAME = "pi-harness-provider-oauth";
 
-function openProviderOAuthWindow(url: string): void {
+function isDesktopShell(): boolean {
+  return "__TAURI_INTERNALS__" in window;
+}
+
+async function openProviderOAuthWindow(url: string): Promise<void> {
+  if (isDesktopShell()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("open_external_url", { url });
+    return;
+  }
+
   const oauthWindow = window.open(url, PROVIDER_OAUTH_WINDOW_NAME);
-  if (oauthWindow) oauthWindow.opener = null;
+  if (!oauthWindow) throw new Error("OAuth popup was blocked");
+  oauthWindow.opener = null;
+}
+
+function showProviderOAuthWindow(url: string): void {
+  void openProviderOAuthWindow(url).catch(() => toast.danger("无法打开授权页面"));
 }
 
 function prepareProviderOAuthWindow(): void {
-  openProviderOAuthWindow("about:blank");
+  if (!isDesktopShell()) showProviderOAuthWindow("about:blank");
 }
 
 export function getStoredProviderAuthenticationMethod(
@@ -195,7 +211,7 @@ function ProviderOAuthPrompt({
   const authorizationUrl = state.authorizationUrl;
 
   useEffect(() => {
-    if (authorizationUrl) openProviderOAuthWindow(authorizationUrl);
+    if (authorizationUrl) showProviderOAuthWindow(authorizationUrl);
   }, [authorizationUrl]);
 
   return (
@@ -258,7 +274,7 @@ function ProviderOAuthPrompt({
           <Button
             type="button"
             variant="secondary"
-            onPress={() => openProviderOAuthWindow(authorizationUrl)}
+            onPress={() => showProviderOAuthWindow(authorizationUrl)}
           >
             <ExternalLink className="size-4" />
             打开授权页面
@@ -342,10 +358,7 @@ function ProviderOAuthPanel({
             取消登录
           </Button>
           {authorizationUrl ? (
-            <Button
-              type="button"
-              onPress={() => window.open(authorizationUrl, "_blank", "noopener,noreferrer")}
-            >
+            <Button type="button" onPress={() => showProviderOAuthWindow(authorizationUrl)}>
               <ExternalLink className="size-4" />
               打开授权页面
             </Button>

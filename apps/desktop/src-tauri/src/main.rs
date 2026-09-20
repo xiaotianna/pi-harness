@@ -13,7 +13,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{Manager, RunEvent};
-#[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 
@@ -26,9 +25,23 @@ struct ManagedDaemon {
 
 type DaemonProcess = Mutex<Option<ManagedDaemon>>;
 
+#[tauri::command]
+fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let url = tauri::Url::parse(&url).map_err(|_| "Invalid authorization URL")?;
+    if url.scheme() != "https" {
+        return Err("Authorization URL must use HTTPS".into());
+    }
+
+    #[allow(deprecated)]
+    app.shell()
+        .open(url.as_str(), None)
+        .map_err(|_| "Failed to open the system browser".into())
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![open_external_url])
         .manage(DaemonProcess::default())
         .setup(|app| {
             let window = app
@@ -93,7 +106,12 @@ fn start_daemon(app: &tauri::AppHandle) -> Result<ManagedDaemon, Box<dyn std::er
     let (mut events, mut child) = app
         .shell()
         .sidecar("pi-harness-node")?
-        .args(["--import", "tsx", "src/bootstrap.ts"])
+        .args([
+            "--import",
+            "tsx",
+            "--env-file=desktop-oauth.env",
+            "src/bootstrap.ts",
+        ])
         .current_dir(&daemon_dir)
         .env("PI_HARNESS_HOST", "127.0.0.1")
         .env("PI_HARNESS_PORT", port.to_string())

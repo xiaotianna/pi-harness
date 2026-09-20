@@ -1,9 +1,10 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { HarnessConfig } from "../config/index.js";
-import type { GitHubCallbackDto } from "../dto/auth-dto.js";
+import type { GitHubCallbackDto, GitHubDeviceDto } from "../dto/auth-dto.js";
 import {
   AuthService,
   type AuthSessionResponse,
+  type DesktopOAuthAuthorizationRequest,
   GitHubOAuthError,
 } from "../services/auth-service.js";
 import type { FileOpenService } from "../services/file-open-service.js";
@@ -25,6 +26,34 @@ const AuthErrorCode = {
   OAUTH_FAILED: "oauth_failed",
 } as const;
 
+function renderDesktopDevicePage(userCode: string, verificationUri: string): string {
+  return `<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub 授权 · PI Harness</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: Canvas; color: CanvasText; }
+  main { width: min(360px, calc(100vw - 48px)); text-align: center; }
+  code { display: block; margin: 24px 0; font: 700 32px ui-monospace, monospace; letter-spacing: .12em; }
+  a { display: block; padding: 12px 16px; border-radius: 999px; background: CanvasText; color: Canvas; text-decoration: none; }
+  p { color: GrayText; line-height: 1.5; }
+</style>
+<main>
+  <h1>连接 GitHub</h1>
+  <p>复制验证码，然后前往 GitHub 完成授权。</p>
+  <code id="device-code">${userCode}</code>
+  <a href="${verificationUri}" rel="noreferrer" target="_blank">复制验证码并继续</a>
+</main>
+<script>
+  document.querySelector("a").addEventListener("click", () => {
+    void navigator.clipboard?.writeText(document.querySelector("#device-code").textContent);
+  });
+</script>
+</html>`;
+}
+
 /** 处理认证相关的 HTTP 请求，业务流程交由 AuthService 执行。 */
 export class AuthController {
   private readonly authService: AuthService | null;
@@ -43,7 +72,7 @@ export class AuthController {
     _request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<FastifyReply | undefined> => {
-    if (this.authService === null) {
+    if (this.authService === null || !this.authService.supportsWebLogin) {
       this.redirectToLogin(reply, AuthErrorCode.NOT_CONFIGURED);
       return;
     }
@@ -76,17 +105,22 @@ export class AuthController {
       });
     }
 
-    const authorization = this.authService.createDesktopGitHubAuthorizationRequest();
+    let authorization: DesktopOAuthAuthorizationRequest | null = null;
     try {
-      await this.fileOpen.openSystem(authorization.authorizationUrl, AbortSignal.timeout(10_000));
+      authorization = await this.authService.createDesktopGitHubAuthorizationRequest();
+      const authorizationState = authorization.state;
+      const devicePageUrl = new URL("/api/auth/github/device", this.config.webUrl);
+      devicePageUrl.searchParams.set("state", authorizationState);
+      await this.fileOpen.openSystem(devicePageUrl.toString(), AbortSignal.timeout(10_000));
       if (request.raw.aborted) {
-        this.authService.cancelDesktopGitHubLogin(authorization.state);
+        this.authService.cancelDesktopGitHubLogin(authorizationState);
+        await authorization.result.catch(() => undefined);
         return;
       }
 
       const handleAbort = () => {
         this.authService?.cancelDesktopGitHubLogin(
-          authorization.state,
+          authorizationState,
           new GitHubOAuthError("GitHub desktop authorization was cancelled"),
         );
       };
@@ -97,13 +131,38 @@ export class AuthController {
       reply.header("Set-Cookie", createSessionCookie(session.token, this.isSecure));
       return reply.status(204).send();
     } catch (error: unknown) {
-      this.authService.cancelDesktopGitHubLogin(authorization.state);
+      if (authorization) {
+        this.authService.cancelDesktopGitHubLogin(authorization.state);
+        await authorization.result.catch(() => undefined);
+      }
       request.log.warn({ err: error }, "Desktop GitHub OAuth failed");
       return reply.status(400).send({
         code: "DESKTOP_OAUTH_FAILED",
-        message: "GitHub 授权未完成，请重试",
+        message:
+          error instanceof GitHubOAuthError && error.message.includes("device_flow_disabled")
+            ? "请先在 GitHub OAuth App 中启用 Device Flow"
+            : "GitHub 授权未完成，请重试",
       });
     }
+  };
+
+  public showDesktopGitHubLogin = async (
+    request: FastifyRequest<{ Querystring: GitHubDeviceDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    const login = this.authService?.getDesktopGitHubLogin(request.query.state);
+    if (!login) {
+      return reply.status(404).type("text/plain; charset=utf-8").send("授权请求不存在或已过期");
+    }
+    return reply
+      .headers({
+        "Cache-Control": "no-store",
+        "Content-Security-Policy":
+          "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+        "Referrer-Policy": "no-referrer",
+      })
+      .type("text/html; charset=utf-8")
+      .send(renderDesktopDevicePage(login.userCode, login.verificationUri));
   };
 
   public completeGitHubLogin = async (
@@ -116,46 +175,14 @@ export class AuthController {
       this.redirectToLogin(reply, AuthErrorCode.NOT_CONFIGURED);
       return;
     }
-    const callbackState = request.query.state;
     if (request.query.error !== undefined) {
-      if (
-        callbackState &&
-        this.authService.cancelDesktopGitHubLogin(
-          callbackState,
-          new GitHubOAuthError("GitHub desktop authorization was denied"),
-        )
-      ) {
-        this.redirectToDesktopLoginResult(reply, "error", AuthErrorCode.ACCESS_DENIED);
-        return;
-      }
       this.redirectToLogin(reply, AuthErrorCode.ACCESS_DENIED);
       return;
     }
 
     const { code, state } = request.query;
     if (code === undefined || state === undefined) {
-      if (
-        state &&
-        this.authService.cancelDesktopGitHubLogin(
-          state,
-          new GitHubOAuthError("GitHub desktop authorization callback was invalid"),
-        )
-      ) {
-        this.redirectToDesktopLoginResult(reply, "error", AuthErrorCode.INVALID_STATE);
-        return;
-      }
       this.redirectToLogin(reply, AuthErrorCode.INVALID_STATE);
-      return;
-    }
-
-    if (this.authService.hasPendingDesktopLogin(state)) {
-      try {
-        await this.authService.completeDesktopGitHubLogin(code, state);
-        this.redirectToDesktopLoginResult(reply, "success");
-      } catch (error: unknown) {
-        request.log.warn({ err: error }, "Desktop GitHub OAuth callback failed");
-        this.redirectToDesktopLoginResult(reply, "error", AuthErrorCode.OAUTH_FAILED);
-      }
       return;
     }
 
@@ -206,17 +233,6 @@ export class AuthController {
   private redirectToLogin(reply: FastifyReply, errorCode: string): void {
     const redirectUrl = new URL("/login", this.config.webUrl);
     redirectUrl.searchParams.set("authError", errorCode);
-    void reply.redirect(redirectUrl.toString());
-  }
-
-  private redirectToDesktopLoginResult(
-    reply: FastifyReply,
-    status: "error" | "success",
-    errorCode?: string,
-  ): void {
-    const redirectUrl = new URL("/login", this.config.webUrl);
-    redirectUrl.searchParams.set("desktopAuth", status);
-    if (errorCode) redirectUrl.searchParams.set("authError", errorCode);
     void reply.redirect(redirectUrl.toString());
   }
 }

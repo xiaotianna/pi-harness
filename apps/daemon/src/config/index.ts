@@ -38,7 +38,7 @@ type HarnessEnvironment = Static<typeof EnvironmentSchema>;
 export interface GitHubOAuthConfig {
   callbackUrl: string;
   clientId: string;
-  clientSecret: string;
+  clientSecret: string | null;
 }
 
 export interface SkillOAuthClientConfig {
@@ -104,10 +104,8 @@ function resolveGitHubOAuth(env: HarnessEnvironment, port: number): GitHubOAuthC
     return null;
   }
 
-  if (clientId === undefined || clientSecret === undefined) {
-    throw new Error(
-      "PI_HARNESS_GITHUB_CLIENT_ID and PI_HARNESS_GITHUB_CLIENT_SECRET must be configured together",
-    );
+  if (clientId === undefined) {
+    throw new Error("PI_HARNESS_GITHUB_CLIENT_ID is required when GitHub OAuth is configured");
   }
 
   const callbackUrl = parseLoopbackUrl(
@@ -115,7 +113,7 @@ function resolveGitHubOAuth(env: HarnessEnvironment, port: number): GitHubOAuthC
     env.PI_HARNESS_GITHUB_CALLBACK_URL ?? `http://127.0.0.1:${port}/api/auth/github/callback`,
   );
 
-  return { callbackUrl, clientId, clientSecret };
+  return { callbackUrl, clientId, clientSecret: clientSecret ?? null };
 }
 
 function resolveSkillOAuthClients(

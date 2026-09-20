@@ -2,7 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { Type } from "typebox";
 import type { HarnessConfig } from "../config/index.js";
 import { AuthController } from "../controllers/auth-controller.js";
-import { type GitHubCallbackDto, GitHubCallbackDtoSchema } from "../dto/auth-dto.js";
+import {
+  type GitHubCallbackDto,
+  GitHubCallbackDtoSchema,
+  type GitHubDeviceDto,
+  GitHubDeviceDtoSchema,
+} from "../dto/auth-dto.js";
 import type { FileOpenService } from "../services/file-open-service.js";
 import type { AuthSessionRepository } from "../storage/database.js";
 import { ApiErrorVoSchema, AuthSessionVoSchema } from "../vo/auth-vo.js";
@@ -31,6 +36,12 @@ export async function registerAuthRoutes(
       },
     },
     controller.startDesktopGitHubLogin,
+  );
+
+  server.get<{ Querystring: GitHubDeviceDto }>(
+    "/api/auth/github/device",
+    { schema: { querystring: GitHubDeviceDtoSchema } },
+    controller.showDesktopGitHubLogin,
   );
 
   server.get<{ Querystring: GitHubCallbackDto }>(

@@ -11,3 +11,8 @@ export type SkillOAuthCallbackDto = Static<typeof SkillOAuthCallbackDtoSchema>;
 
 export const GitHubCallbackDtoSchema = SkillOAuthCallbackDtoSchema;
 export type GitHubCallbackDto = SkillOAuthCallbackDto;
+
+export const GitHubDeviceDtoSchema = Type.Object({
+  state: Type.String({ minLength: 43, maxLength: 43 }),
+});
+export type GitHubDeviceDto = Static<typeof GitHubDeviceDtoSchema>;

@@ -1,12 +1,12 @@
 [package]
 name = "pi-harness-desktop"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-getrandom = "0.3"
+getrandom = { version = "0.3", features = ["std"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"

@@ -1,10 +1,11 @@
 {
   "name": "@pi-harness/desktop",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "desktop:build": "tauri build --config src-tauri/tauri.bundle.conf.json",
+    "desktop:release": "node scripts/release.mjs",
     "tauri": "tauri",
     "prepare:bundle": "pnpm --dir ../.. --filter @pi-harness/web build && node scripts/prepare-bundle.mjs"
   },

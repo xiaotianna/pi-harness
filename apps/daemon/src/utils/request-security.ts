@@ -6,6 +6,7 @@ import { readDesktopAuthCookie } from "./auth-cookies.js";
 const DESKTOP_AUTH_EXEMPT_PATHS = [
   /^\/api\/health$/,
   /^\/api\/auth\/github\/callback$/,
+  /^\/api\/auth\/github\/device$/,
   /^\/api\/mcp-servers\/[^/]+\/authorizations\/callback$/,
   /^\/api\/skill-connections\/[^/]+\/oauth\/callback$/,
 ] as const;

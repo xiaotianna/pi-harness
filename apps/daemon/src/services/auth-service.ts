@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { GitHubOAuthConfig } from "../config/index.js";
@@ -6,6 +7,7 @@ import type { AuthSessionRepository, AuthUser, GitHubIdentity } from "../storage
 
 const GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
 const GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
+const GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code";
 const GITHUB_USER_URL = "https://api.github.com/user";
 const GITHUB_API_VERSION = "2026-03-10";
 const GITHUB_REQUEST_TIMEOUT_MS = 10_000;
@@ -15,6 +17,14 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 const GitHubTokenResponseSchema = Type.Object({
   access_token: Type.String({ minLength: 1 }),
   token_type: Type.String({ minLength: 1 }),
+});
+
+const GitHubDeviceResponseSchema = Type.Object({
+  device_code: Type.String({ minLength: 1 }),
+  expires_in: Type.Integer({ minimum: 1 }),
+  interval: Type.Integer({ minimum: 1 }),
+  user_code: Type.String({ pattern: "^[A-Z0-9-]+$" }),
+  verification_uri: Type.String({ format: "uri" }),
 });
 
 const GitHubOAuthErrorSchema = Type.Object({
@@ -49,15 +59,15 @@ export interface CreatedAuthSession {
   user: AuthUser;
 }
 
-export interface DesktopOAuthAuthorizationRequest extends OAuthAuthorizationRequest {
+export interface DesktopOAuthAuthorizationRequest {
   result: Promise<CreatedAuthSession>;
+  state: string;
 }
 
 interface PendingDesktopLogin {
-  codeVerifier: string;
-  reject: (reason: unknown) => void;
-  resolve: (session: CreatedAuthSession) => void;
-  timeout: ReturnType<typeof setTimeout>;
+  abort: AbortController;
+  userCode: string;
+  verificationUri: string;
 }
 
 export type AuthSessionResponse =
@@ -92,6 +102,10 @@ export class AuthService {
     private readonly sessions: AuthSessionRepository,
   ) {}
 
+  public get supportsWebLogin(): boolean {
+    return this.githubConfig.clientSecret !== null;
+  }
+
   public createGitHubAuthorizationRequest(): OAuthAuthorizationRequest {
     const state = createRandomValue();
     const codeVerifier = createRandomValue();
@@ -109,55 +123,59 @@ export class AuthService {
     return { authorizationUrl: authorizationUrl.toString(), codeVerifier, state };
   }
 
-  public createDesktopGitHubAuthorizationRequest(): DesktopOAuthAuthorizationRequest {
-    const authorization = this.createGitHubAuthorizationRequest();
-    let resolve!: (session: CreatedAuthSession) => void;
-    let reject!: (reason: unknown) => void;
-    const result = new Promise<CreatedAuthSession>((resolveResult, rejectResult) => {
-      resolve = resolveResult;
-      reject = rejectResult;
+  public async createDesktopGitHubAuthorizationRequest(): Promise<DesktopOAuthAuthorizationRequest> {
+    const response = await fetch(GITHUB_DEVICE_CODE_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ client_id: this.githubConfig.clientId }),
+      signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
     });
-    const timeout = setTimeout(() => {
-      if (!this.pendingDesktopLogins.delete(authorization.state)) return;
-      reject(new GitHubOAuthError("GitHub desktop authorization timed out"));
-    }, DESKTOP_LOGIN_TIMEOUT_MS);
-
-    this.pendingDesktopLogins.set(authorization.state, {
-      codeVerifier: authorization.codeVerifier,
-      reject,
-      resolve,
-      timeout,
-    });
-    return { ...authorization, result };
-  }
-
-  public hasPendingDesktopLogin(state: string): boolean {
-    return this.pendingDesktopLogins.has(state);
-  }
-
-  public async completeDesktopGitHubLogin(code: string, state: string): Promise<boolean> {
-    const pending = this.pendingDesktopLogins.get(state);
-    if (!pending) return false;
-
-    try {
-      const session = await this.completeGitHubLogin(code, pending.codeVerifier);
-      pending.resolve(session);
-      return true;
-    } catch (error: unknown) {
-      pending.reject(error);
-      throw error;
-    } finally {
-      clearTimeout(pending.timeout);
-      this.pendingDesktopLogins.delete(state);
+    const body = await readJson(response);
+    if (Value.Check(GitHubOAuthErrorSchema, body)) {
+      throw new GitHubOAuthError(`GitHub rejected device authorization: ${body.error}`);
     }
+    if (!response.ok || !Value.Check(GitHubDeviceResponseSchema, body)) {
+      throw new GitHubOAuthError("GitHub device authorization failed");
+    }
+
+    const verificationUri = new URL(body.verification_uri);
+    if (verificationUri.protocol !== "https:" || verificationUri.hostname !== "github.com") {
+      throw new GitHubOAuthError("GitHub returned an invalid device verification URL");
+    }
+
+    const state = createRandomValue();
+    const abort = new AbortController();
+    this.pendingDesktopLogins.set(state, {
+      abort,
+      userCode: body.user_code,
+      verificationUri: verificationUri.toString(),
+    });
+    const result = this.pollDesktopGitHubLogin(
+      body.device_code,
+      body.interval,
+      body.expires_in,
+      abort.signal,
+    ).finally(() => this.pendingDesktopLogins.delete(state));
+    return { result, state };
+  }
+
+  public getDesktopGitHubLogin(
+    state: string,
+  ): { userCode: string; verificationUri: string } | null {
+    const pending = this.pendingDesktopLogins.get(state);
+    return pending
+      ? { userCode: pending.userCode, verificationUri: pending.verificationUri }
+      : null;
   }
 
   public cancelDesktopGitHubLogin(state: string, error?: Error): boolean {
     const pending = this.pendingDesktopLogins.get(state);
     if (!pending) return false;
-    clearTimeout(pending.timeout);
     this.pendingDesktopLogins.delete(state);
-    if (error) pending.reject(error);
+    pending.abort.abort(error);
     return true;
   }
 
@@ -167,14 +185,9 @@ export class AuthService {
   ): Promise<CreatedAuthSession> {
     const accessToken = await this.exchangeCode(code, codeVerifier);
     const identity = await this.fetchGitHubIdentity(accessToken);
-    const token = createRandomValue();
-    const createdAt = Date.now();
-    const expiresAt = createdAt + SESSION_TTL_MS;
-
     // 只持久化本地会话令牌的哈希。登录不需要持续访问 GitHub API，
     // 因此 GitHub 令牌在完成身份校验后立即丢弃。
-    const user = this.sessions.createSession(identity, hash(token), createdAt, expiresAt);
-    return { expiresAt, token, user };
+    return this.createSession(identity);
   }
 
   public deleteSession(token: string): void {
@@ -191,6 +204,9 @@ export class AuthService {
   }
 
   private async exchangeCode(code: string, codeVerifier: string): Promise<string> {
+    if (this.githubConfig.clientSecret === null) {
+      throw new GitHubOAuthError("GitHub web authorization is not configured");
+    }
     const response = await fetch(GITHUB_ACCESS_TOKEN_URL, {
       method: "POST",
       headers: {
@@ -217,6 +233,58 @@ export class AuthService {
     }
 
     return body.access_token;
+  }
+
+  private async pollDesktopGitHubLogin(
+    deviceCode: string,
+    initialIntervalSeconds: number,
+    expiresInSeconds: number,
+    signal: AbortSignal,
+  ): Promise<CreatedAuthSession> {
+    const expiresAt = Date.now() + Math.min(expiresInSeconds * 1_000, DESKTOP_LOGIN_TIMEOUT_MS);
+    let intervalMs = initialIntervalSeconds * 1_000;
+
+    while (Date.now() < expiresAt) {
+      await delay(intervalMs, undefined, { signal });
+      const response = await fetch(GITHUB_ACCESS_TOKEN_URL, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          client_id: this.githubConfig.clientId,
+          device_code: deviceCode,
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        }),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS)]),
+      });
+      const body = await readJson(response);
+
+      if (response.ok && Value.Check(GitHubTokenResponseSchema, body)) {
+        const identity = await this.fetchGitHubIdentity(body.access_token);
+        return this.createSession(identity);
+      }
+      if (!Value.Check(GitHubOAuthErrorSchema, body)) {
+        throw new GitHubOAuthError("GitHub device authorization returned an invalid response");
+      }
+      if (body.error === "authorization_pending") continue;
+      if (body.error === "slow_down") {
+        intervalMs += 5_000;
+        continue;
+      }
+      throw new GitHubOAuthError(`GitHub rejected device authorization: ${body.error}`);
+    }
+
+    throw new GitHubOAuthError("GitHub desktop authorization timed out");
+  }
+
+  private createSession(identity: GitHubIdentity): CreatedAuthSession {
+    const token = createRandomValue();
+    const createdAt = Date.now();
+    const expiresAt = createdAt + SESSION_TTL_MS;
+    const user = this.sessions.createSession(identity, hash(token), createdAt, expiresAt);
+    return { expiresAt, token, user };
   }
 
   private async fetchGitHubIdentity(accessToken: string): Promise<GitHubIdentity> {

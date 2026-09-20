@@ -19,6 +19,7 @@
     "dev:web": "pnpm --filter @pi-harness/web dev",
     "start": "pnpm --parallel --filter @pi-harness/daemon --filter @pi-harness/web start",
     "build:desktop": "pnpm --filter @pi-harness/desktop desktop:build",
+    "release:desktop": "pnpm --filter @pi-harness/desktop desktop:release",
     "eval:context": "pnpm --filter @pi-harness/evals eval:context",
     "eval:context:live": "pnpm --filter @pi-harness/evals eval:context:live",
     "dev:docker": "docker compose -f docker-compose.dev.yml up -d",
