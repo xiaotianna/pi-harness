@@ -1,5 +1,5 @@
 import { type Static, Type } from "typebox";
-import { McpCredentialSchema } from "../mcp/credential.js";
+import { McpCredentialSchema, McpStaticCredentialMaterialSchema } from "../mcp/credential.js";
 import {
   McpAuthMode,
   McpAuthRequirement,
@@ -35,6 +35,11 @@ export const McpServerVoSchema = Type.Object(
 );
 export type McpServerVo = Static<typeof McpServerVoSchema>;
 export const McpServerListVoSchema = Type.Array(McpServerVoSchema);
+
+export const McpStaticCredentialVoSchema = Type.Union([
+  McpStaticCredentialMaterialSchema,
+  Type.Null(),
+]);
 
 export const McpOAuthStartVoSchema = Type.Object(
   { authorizationUrl: Type.String({ minLength: 1, maxLength: 8_192 }) },

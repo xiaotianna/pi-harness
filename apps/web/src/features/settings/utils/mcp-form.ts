@@ -31,28 +31,29 @@ export const MCP_TRANSPORT_OPTIONS = [
     description: "兼容仅支持 HTTP+SSE transport 的服务器。",
   },
 ];
-export const MCP_AUTH_OPTIONS = [
-  { id: McpAuthMode.NONE, label: "自动检测" },
-  { id: McpAuthMode.STATIC, label: "Token / API Key" },
-  { id: McpAuthMode.OAUTH, label: "OAuth" },
-];
 export interface McpFormDraft {
   name: string;
   transport: McpConfig["transport"];
   endpoint: string;
   args: string;
   environment: string;
+  headers: McpHeaderDraft[];
+  hasHeaderInput: boolean;
   timeout: string;
-  authMode: typeof McpAuthMode.NONE | typeof McpAuthMode.STATIC | typeof McpAuthMode.OAUTH;
   allowPrivateNetwork: boolean;
+}
+export interface McpHeaderDraft {
+  id: string;
+  name: string;
+  value: string;
 }
 export const MCP_JSON_PLACEHOLDER = `{
   "mcpServers": {
-    "everything": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-everything"],
-      "env": { "DEBUG": "1" }
+    "basil": {
+      "url": "https://example.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
     }
   }
 }`;
@@ -87,8 +88,38 @@ function readEnvironment(text: string): Record<string, string> {
   }
   return environment;
 }
+
+export function createMcpHeaderDraft(name = "", value = ""): McpHeaderDraft {
+  return { id: crypto.randomUUID(), name, value };
+}
+
+function writeHeaders(headers: Readonly<Record<string, string>>): McpHeaderDraft[] {
+  return Object.entries(headers).map(([name, value]) => createMcpHeaderDraft(name, value));
+}
+
+function readHeaders(draft: Pick<McpFormDraft, "hasHeaderInput" | "headers">) {
+  if (!draft.hasHeaderInput) return undefined;
+  if (draft.headers.length > 32) throw new Error("自定义 Headers 最多 32 项");
+  const headers: Record<string, string> = {};
+  const normalizedNames = new Set<string>();
+  for (const header of draft.headers) {
+    const name = header.name.trim();
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$/u.test(name)) {
+      throw new Error("Header 名称不能为空，且只能使用标准 HTTP Header 字符");
+    }
+    if (!header.value || header.value.length > 16384 || /[\0\r\n]/u.test(header.value)) {
+      throw new Error(`Header“${name}”的值无效`);
+    }
+    const normalizedName = name.toLowerCase();
+    if (normalizedNames.has(normalizedName)) throw new Error(`Header“${name}”重复`);
+    normalizedNames.add(normalizedName);
+    headers[name] = header.value;
+  }
+  return headers;
+}
+
 export function createMcpFormDraft(
-  server?: Pick<McpServerInput, "name" | "config" | "environment">,
+  server?: Pick<McpServerInput, "name" | "config" | "environment" | "headers">,
 ): McpFormDraft {
   const config = server?.config;
   return {
@@ -97,9 +128,9 @@ export function createMcpFormDraft(
     endpoint: config ? (config.transport === McpTransport.STDIO ? config.command : config.url) : "",
     args: config?.transport === McpTransport.STDIO ? writeLines(config.args) : "",
     environment: writeEnvironment(server?.environment ?? {}),
+    headers: writeHeaders(server?.headers ?? {}),
+    hasHeaderInput: server?.headers !== undefined,
     timeout: String((config?.requestTimeoutMs ?? 30000) / 1000),
-    authMode:
-      config && config.transport !== McpTransport.STDIO ? config.authMode : McpAuthMode.NONE,
     allowPrivateNetwork:
       config?.transport !== McpTransport.STDIO && (config?.allowPrivateNetwork ?? false),
   };
@@ -149,16 +180,25 @@ export function readMcpForm(draft: McpFormDraft, current?: McpServer): McpServer
   )
     throw new Error("地址必须使用 HTTP(S)，且不能含账号、密码、查询参数或片段");
   const old = current?.config;
+  const headers = readHeaders(draft);
   return {
     name,
     config: {
       ...common,
       transport: draft.transport,
       url: url.href,
-      authMode: draft.authMode,
+      authMode:
+        headers === undefined
+          ? old && old.transport !== McpTransport.STDIO
+            ? old.authMode
+            : McpAuthMode.NONE
+          : Object.keys(headers).length > 0
+            ? McpAuthMode.STATIC
+            : McpAuthMode.NONE,
       allowedOrigins: old && old.transport !== McpTransport.STDIO ? old.allowedOrigins : [],
       allowPrivateNetwork: draft.allowPrivateNetwork,
     },
+    ...(headers === undefined ? {} : { headers }),
   };
 }
 export function readMcpJson(
@@ -175,13 +215,8 @@ export function readMcpJson(
   if (!isPlainObject(value) || !isPlainObject(value.mcpServers)) {
     throw new Error("JSON 顶层必须包含 mcpServers 对象");
   }
-  for (const [name, server] of Object.entries(value.mcpServers)) {
-    if (isPlainObject(server) && "headers" in server) {
-      throw new Error(`服务器“${name}”的凭据请保存配置后通过独立凭据入口设置`);
-    }
-  }
   if (!Value.Check(McpJsonSchema, value)) {
-    throw new Error('mcpServers 配置无效；type 请使用 "http"、"stdio" 或 "sse"');
+    throw new Error('mcpServers 配置无效；type 可省略或使用 "http"、"stdio"、"sse"');
   }
   const servers = Object.entries(value.mcpServers);
   const existing = current && servers.length === 1 ? current : undefined;
@@ -199,6 +234,8 @@ export function readMcpJson(
         endpoint: "command" in server ? server.command : server.url,
         args: "command" in server ? writeLines(server.args ?? []) : "",
         environment: "command" in server ? writeEnvironment(server.env ?? {}) : "",
+        headers: "command" in server ? [] : writeHeaders(server.headers ?? {}),
+        hasHeaderInput: "command" in server ? false : server.headers !== undefined,
       },
       existing,
     ),
@@ -207,6 +244,7 @@ export function readMcpJson(
 export function writeMcpJson(draft: McpFormDraft): string {
   const args = readArgs(draft.args);
   const environment = readEnvironment(draft.environment);
+  const headers = readHeaders(draft);
   return JSON.stringify(
     {
       mcpServers: {
@@ -219,11 +257,9 @@ export function writeMcpJson(draft: McpFormDraft): string {
                 ...(Object.keys(environment).length > 0 ? { env: environment } : {}),
               }
             : {
-                type:
-                  draft.transport === McpTransport.SSE
-                    ? McpJsonTransport.SSE
-                    : McpJsonTransport.HTTP,
+                ...(draft.transport === McpTransport.SSE ? { type: McpJsonTransport.SSE } : {}),
                 url: draft.endpoint.trim(),
+                ...(headers === undefined ? {} : { headers }),
               },
       },
     } satisfies McpJson,

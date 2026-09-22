@@ -36,6 +36,11 @@ export class McpController {
     );
   public get = (request: FastifyRequest<{ Params: McpServerParamsDto }>, reply: FastifyReply) =>
     this.respond(request, reply, () => this.servers.get(request.params.serverId));
+  public getCredential = (
+    request: FastifyRequest<{ Params: McpServerParamsDto }>,
+    reply: FastifyReply,
+  ) =>
+    this.respond(request, reply, () => this.servers.getStaticCredential(request.params.serverId));
   public getCatalog = (
     request: FastifyRequest<{ Params: McpServerParamsDto }>,
     reply: FastifyReply,

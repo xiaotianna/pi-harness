@@ -33,6 +33,7 @@ import {
   McpOAuthStartVoSchema,
   McpServerListVoSchema,
   McpServerVoSchema,
+  McpStaticCredentialVoSchema,
 } from "../vo/mcp-vo.js";
 
 export async function registerMcpRoutes(
@@ -101,6 +102,11 @@ export async function registerMcpRoutes(
     "/api/mcp-servers/:serverId/credentials",
     { schema: { params, body: PutMcpCredentialDtoSchema, response: recordResponse } },
     controller.putCredential,
+  );
+  server.get<{ Params: McpServerParamsDto }>(
+    "/api/mcp-servers/:serverId/credentials",
+    { schema: { params, response: { 200: McpStaticCredentialVoSchema, ...errors } } },
+    controller.getCredential,
   );
   server.delete<{ Params: McpServerParamsDto; Body: McpRevisionDto }>(
     "/api/mcp-servers/:serverId/credentials",

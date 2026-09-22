@@ -10,7 +10,7 @@ import type {
   UpdateMcpToolDto,
 } from "../dto/mcp-dto.js";
 import type { McpConnectionContext } from "../mcp/client-manager.js";
-import type { McpCredential } from "../mcp/credential.js";
+import type { McpCredential, McpStaticCredentialMaterial } from "../mcp/credential.js";
 import { McpError, McpErrorCode } from "../mcp/errors.js";
 import { isComputerUseMcpServer } from "../mcp/utils/computer-use-server.js";
 import { createMcpServerRecord } from "../mcp/utils/create-server-record.js";
@@ -29,6 +29,20 @@ import type { McpServerRepository } from "../storage/mcp-server-repository.js";
 import type { McpDiagnosticsVo, McpServerVo } from "../vo/mcp-vo.js";
 
 const MAX_MCP_SERVERS = 1_000;
+
+function canPreserveCredential(
+  previous: McpServerRecord["config"],
+  next: McpServerRecord["config"],
+): boolean {
+  if (previous.transport !== next.transport) return false;
+  if (previous.transport === McpTransport.STDIO && next.transport === McpTransport.STDIO) {
+    return previous.command === next.command && isEqual(previous.args, next.args);
+  }
+  if (previous.transport === McpTransport.STDIO || next.transport === McpTransport.STDIO) {
+    return false;
+  }
+  return previous.url === next.url && previous.authMode === next.authMode;
+}
 
 export type McpCredentialResolver = (server: McpServerRecord) => McpCredential | null | undefined;
 export type McpCredentialRefresher = (
@@ -68,6 +82,15 @@ export class McpServerService {
 
   public get(serverId: string): McpServerVo {
     return this.toVo(this.requireServer(serverId));
+  }
+
+  public getStaticCredential(serverId: string): McpStaticCredentialMaterial | null {
+    const server = this.requireServer(serverId);
+    const credential = this.credentials.read(serverId);
+    return credential?.configRevision === server.revision &&
+      credential.material.mode === McpAuthMode.STATIC
+      ? credential.material
+      : null;
   }
 
   public getToolSetting(serverId: string, toolName: string, definitionFingerprint: string) {
@@ -252,9 +275,11 @@ export class McpServerService {
       this.repository.revokeTrust(serverId);
       await this.invalidateServer(serverId);
       this.authRequirements.delete(serverId);
-      // 先撤销敏感状态再提交新地址，存储失败时不会把旧 Token 发给新服务。
       const hasConfigChanged = !isEqual(current.config, config);
-      if (hasConfigChanged) await this.credentials.delete(serverId);
+      const shouldPreserveCredential =
+        !hasConfigChanged || canPreserveCredential(current.config, config);
+      // 地址、命令或鉴权类型改变时先清理敏感材料，避免把旧凭据发给新目标。
+      if (!shouldPreserveCredential) await this.credentials.delete(serverId);
       const next = {
         ...current,
         name,
@@ -263,7 +288,7 @@ export class McpServerService {
         revision: current.revision + 1,
         updatedAt: Date.now(),
       };
-      if (!hasConfigChanged) {
+      if (shouldPreserveCredential) {
         await this.credentials.modify(serverId, async (credential) =>
           credential === undefined
             ? undefined

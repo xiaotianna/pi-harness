@@ -31,7 +31,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getMcpOAuthLaunchUrl, type McpServer } from "../api/mcp-api";
 import { McpAction, useMcpServers } from "../hooks/use-mcp-servers";
 import { needsMcpCredential } from "../utils/mcp-auth";
-import { McpCredentialEditor } from "./mcp-credential-editor";
 import { McpServerDetail } from "./mcp-server-detail";
 import { McpServerEditor } from "./mcp-server-editor";
 import { McpServerIcon } from "./mcp-server-icon";
@@ -42,7 +41,7 @@ const SERVERS_PER_PAGE = 25;
 
 type Dialog =
   | { kind: "create" }
-  | { kind: "edit" | "credentials"; server: McpServer }
+  | { kind: "edit"; server: McpServer }
   | {
       kind: "confirm";
       action: typeof McpAction.CONNECT | typeof McpAction.DELETE;
@@ -163,7 +162,6 @@ export function McpSettingsPanel() {
             cancelTest(selectedServer.id);
           }}
           onEdit={() => setDialog({ kind: "edit", server: selectedServer })}
-          onCredentials={() => setDialog({ kind: "credentials", server: selectedServer })}
           onEnabledChange={(isEnabled) => {
             if (!isEnabled) {
               run(selectedServer, McpAction.DISABLE);
@@ -248,9 +246,6 @@ export function McpSettingsPanel() {
                   const needsOAuth =
                     !server.hasCredential && server.authRequirement === McpAuthRequirement.OAUTH;
                   const needsConnection = server.enabled && !server.isTrusted && !needsOAuth;
-                  const canEditCredential =
-                    server.config.transport === McpTransport.STDIO ||
-                    server.config.authMode !== McpAuthMode.OAUTH;
                   const canManageOAuth =
                     server.enabled &&
                     server.config.transport !== McpTransport.STDIO &&
@@ -264,7 +259,7 @@ export function McpSettingsPanel() {
                         : needsOAuth
                           ? "oauth"
                           : needsCredential
-                            ? "credentials"
+                            ? "configure"
                             : needsConnection
                               ? "connect"
                               : "test";
@@ -275,8 +270,8 @@ export function McpSettingsPanel() {
                         ? "取消连接"
                         : mainAction === "oauth"
                           ? "OAuth 授权"
-                          : mainAction === "credentials"
-                            ? "设置凭据"
+                          : mainAction === "configure"
+                            ? "配置请求头"
                             : mainAction === "connect"
                               ? "连接服务器"
                               : "测试连接";
@@ -304,7 +299,7 @@ export function McpSettingsPanel() {
                               isDisabled={
                                 mainAction === "loading" ||
                                 (mainAction !== "cancel" &&
-                                  (isBusy || (mainAction !== "credentials" && !server.enabled)))
+                                  (isBusy || (mainAction !== "configure" && !server.enabled)))
                               }
                               onPress={() => {
                                 if (mainAction === "loading") return;
@@ -316,8 +311,8 @@ export function McpSettingsPanel() {
                                   authorize(server);
                                   return;
                                 }
-                                if (mainAction === "credentials") {
-                                  setDialog({ kind: "credentials", server });
+                                if (mainAction === "configure") {
+                                  setDialog({ kind: "edit", server });
                                   return;
                                 }
                                 if (mainAction === "connect") {
@@ -344,8 +339,10 @@ export function McpSettingsPanel() {
                                     className="hidden size-4 group-hover:block group-focus-visible:block group-data-[focus-visible]:block group-data-[hovered]:block"
                                   />
                                 </>
-                              ) : mainAction === "oauth" || mainAction === "credentials" ? (
+                              ) : mainAction === "oauth" ? (
                                 <Key aria-hidden className="size-4" />
+                              ) : mainAction === "configure" ? (
+                                <Pencil aria-hidden className="size-4" />
                               ) : mainAction === "test" ? (
                                 <Flask aria-hidden className="size-4" />
                               ) : null}
@@ -411,8 +408,6 @@ export function McpSettingsPanel() {
                                   if (key === "edit") setDialog({ kind: "edit", server });
                                   if (key === McpAction.DISCOVER) run(server, McpAction.DISCOVER);
                                   if (key === "test") run(server, McpAction.TEST);
-                                  if (key === "credentials")
-                                    setDialog({ kind: "credentials", server });
                                   if (key === "oauth") authorize(server);
                                   if (key === McpAction.REVOKE) run(server, McpAction.REVOKE);
                                   if (key === McpAction.DELETE)
@@ -441,12 +436,6 @@ export function McpSettingsPanel() {
                                   <Dropdown.Item id="test" textValue="测试连接">
                                     <Flask aria-hidden className="size-4 text-muted" />
                                     测试连接
-                                  </Dropdown.Item>
-                                ) : null}
-                                {canEditCredential ? (
-                                  <Dropdown.Item id="credentials" textValue="设置凭据">
-                                    <Key aria-hidden className="size-4 text-muted" />
-                                    {server.hasCredential ? "替换凭据" : "设置凭据"}
                                   </Dropdown.Item>
                                 ) : null}
                                 {canManageOAuth ? (
@@ -540,13 +529,6 @@ export function McpSettingsPanel() {
             }
             setDialog(null);
           }}
-        />
-      ) : null}
-      {dialog?.kind === "credentials" ? (
-        <McpCredentialEditor
-          server={dialog.server}
-          onClose={() => setDialog(null)}
-          onSaved={refreshServers}
         />
       ) : null}
       <AlertDialog.Backdrop

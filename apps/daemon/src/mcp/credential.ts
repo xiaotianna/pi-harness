@@ -17,7 +17,7 @@ const HeadersSchema = Type.Record(
   { maxProperties: 32, additionalProperties: false },
 );
 
-const StaticCredentialSchema = Type.Object(
+export const McpStaticCredentialMaterialSchema = Type.Object(
   {
     mode: Type.Literal(McpAuthMode.STATIC),
     headers: HeadersSchema,
@@ -42,9 +42,10 @@ const OAuthCredentialSchema = Type.Object(
 );
 
 export const McpCredentialMaterialSchema = Type.Union([
-  StaticCredentialSchema,
+  McpStaticCredentialMaterialSchema,
   OAuthCredentialSchema,
 ]);
+export type McpStaticCredentialMaterial = Static<typeof McpStaticCredentialMaterialSchema>;
 export type McpCredentialMaterial = Static<typeof McpCredentialMaterialSchema>;
 
 export const McpCredentialSchema = Type.Object(

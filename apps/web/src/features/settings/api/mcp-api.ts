@@ -58,12 +58,21 @@ const McpJsonServerSchema = Type.Union([
   ),
   Type.Object(
     {
-      type: Type.Union([
-        Type.Literal(McpJsonTransport.HTTP),
-        Type.Literal(McpTransport.STREAMABLE_HTTP),
-        Type.Literal(McpJsonTransport.SSE),
-      ]),
+      type: Type.Optional(
+        Type.Union([
+          Type.Literal(McpJsonTransport.HTTP),
+          Type.Literal(McpTransport.STREAMABLE_HTTP),
+          Type.Literal(McpJsonTransport.SSE),
+        ]),
+      ),
       url: Type.String({ minLength: 1, maxLength: 2048 }),
+      headers: Type.Optional(
+        Type.Record(
+          Type.String({ pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$" }),
+          Type.String({ minLength: 1, maxLength: 16384, pattern: "^[^\\u0000\\r\\n]+$" }),
+          { maxProperties: 32, additionalProperties: false },
+        ),
+      ),
     },
     { additionalProperties: false },
   ),
@@ -184,12 +193,14 @@ export interface McpServerInput {
   name: string;
   config: McpConfig;
   environment?: Record<string, string>;
+  headers?: Record<string, string>;
 }
-export interface McpStaticCredential {
-  mode: typeof McpAuthMode.STATIC;
-  headers: Record<string, string>;
-  environment: Record<string, string>;
-}
+const McpStaticCredentialSchema = Type.Object({
+  mode: Type.Literal(McpAuthMode.STATIC),
+  headers: Type.Record(Type.String(), Type.String()),
+  environment: Type.Record(Type.String(), Type.String()),
+});
+export type McpStaticCredential = Static<typeof McpStaticCredentialSchema>;
 const MCP_REQUEST_TIMEOUT_MS = 35_000;
 function requestMcp(path: string, init?: RequestInit): Promise<Response> {
   return apiRequest(path, {
@@ -234,11 +245,23 @@ export async function getMcpServer(serverId: string, signal: AbortSignal): Promi
   if (!Value.Check(McpServerSchema, body)) throw new Error("MCP 服务器详情格式无效");
   return body;
 }
+export async function getMcpCredential(
+  serverId: string,
+  signal: AbortSignal,
+): Promise<McpStaticCredential | null> {
+  const body: unknown = await (
+    await requestMcp(`${serverPath(serverId)}/credentials`, { signal })
+  ).json();
+  if (body !== null && !Value.Check(McpStaticCredentialSchema, body)) {
+    throw new Error("MCP 鉴权信息格式无效");
+  }
+  return body;
+}
 export async function saveMcpServer(
   input: McpServerInput,
   current?: McpServer,
 ): Promise<McpServer> {
-  const { environment, ...serverInput } = input;
+  const { environment, headers, ...serverInput } = input;
   const body: unknown = await (
     await requestMcp(current ? serverPath(current.id) : basePath, {
       method: current ? "PUT" : "POST",
@@ -250,13 +273,24 @@ export async function saveMcpServer(
     })
   ).json();
   if (!Value.Check(McpServerSchema, body)) throw new Error("MCP 服务器响应格式无效");
-  if (environment && Object.keys(environment).length > 0) {
-    await putMcpCredential(body, { mode: McpAuthMode.STATIC, headers: {}, environment });
+  if (environment !== undefined || headers !== undefined) {
+    const material = {
+      mode: McpAuthMode.STATIC,
+      headers: headers ?? {},
+      environment: environment ?? {},
+    } as const;
+    if (Object.keys(material.headers).length > 0 || Object.keys(material.environment).length > 0) {
+      await putMcpCredential(body, material);
+    } else if (current?.hasCredential) {
+      await deleteMcpCredential(body);
+    }
   }
   return body;
 }
 export async function importMcpServers(servers: McpServerInput[]): Promise<McpServer[]> {
-  const serverInputs = servers.map(({ environment: _environment, ...server }) => server);
+  const serverInputs = servers.map(
+    ({ environment: _environment, headers: _headers, ...server }) => server,
+  );
   const body: unknown = await (
     await requestMcp(`${basePath}/import`, {
       method: "POST",
@@ -266,11 +300,13 @@ export async function importMcpServers(servers: McpServerInput[]): Promise<McpSe
   if (!Value.Check(McpServersSchema, body)) throw new Error("MCP 导入响应格式无效");
   for (const [index, input] of servers.entries()) {
     const server = body[index];
-    if (server && input.environment && Object.keys(input.environment).length > 0) {
+    const headers = input.headers ?? {};
+    const environment = input.environment ?? {};
+    if (server && (Object.keys(headers).length > 0 || Object.keys(environment).length > 0)) {
       await putMcpCredential(server, {
         mode: McpAuthMode.STATIC,
-        headers: {},
-        environment: input.environment,
+        headers,
+        environment,
       });
     }
   }

@@ -457,7 +457,6 @@ export function McpServerDetail({
   onBack,
   onAuthorize,
   onCancelTest,
-  onCredentials,
   onEdit,
   onEnabledChange,
   onRefresh,
@@ -472,7 +471,6 @@ export function McpServerDetail({
   onBack: () => void;
   onAuthorize: () => void;
   onCancelTest: () => void;
-  onCredentials: () => void;
   onEdit: () => void;
   onEnabledChange: (isEnabled: boolean) => void;
   onRefresh: () => void;
@@ -540,19 +538,19 @@ export function McpServerDetail({
             <Alert.Description>
               {needsOAuth
                 ? "服务器声明了 OAuth，授权完成后会自动保存并刷新令牌。"
-                : "服务器未声明 OAuth，请填写它文档提供的请求头名称和值。"}
+                : "服务器未声明 OAuth，请在连接配置的 headers 中填写它文档提供的请求头名称和值。"}
             </Alert.Description>
             <Button
               size="sm"
               variant="tertiary"
               isDisabled={isBusy || (needsOAuth && !server.enabled)}
-              onPress={needsOAuth ? onAuthorize : onCredentials}
+              onPress={needsOAuth ? onAuthorize : onEdit}
             >
               {needsOAuth && !server.enabled
                 ? "先启用服务器"
                 : needsOAuth
                   ? "OAuth 授权"
-                  : "设置凭据"}
+                  : "编辑连接配置"}
             </Button>
           </Alert.Content>
         </Alert>
