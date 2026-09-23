@@ -19,9 +19,11 @@ import { createReadFileTool } from "./tools/read-file.js";
 import { createRequestUserInputTool } from "./tools/request-user-input.js";
 import { createRunCommandTool } from "./tools/run-command.js";
 import { createSearchTextTool } from "./tools/search-text.js";
+import { createStopCommandTool } from "./tools/stop-command.js";
 import { createUpdateTodosTool } from "./tools/todos.js";
 import { createViewImageTool } from "./tools/view-image.js";
 import { createViewPdfPageTool } from "./tools/view-pdf-page.js";
+import { createWaitCommandTool } from "./tools/wait-command.js";
 import { createWebFetchTool } from "./tools/web-fetch.js";
 import { createWebSearchTool } from "./tools/web-search.js";
 import { createWriteFileTool } from "./tools/write-file.js";
@@ -112,7 +114,19 @@ export function createWorkspaceToolRegistry(
       policy: { permission: ToolPermission.SHELL },
       source: BUILT_IN_SOURCE,
       timeoutMs: RUN_COMMAND_TIMEOUT_MS,
-      tool: createRunCommandTool(context, () => skillRegistry.getLoadedDirectories()),
+      tool: createRunCommandTool(context),
+    },
+    {
+      policy: readOnlyPolicy,
+      source: BUILT_IN_SOURCE,
+      timeoutMs: DEFAULT_TOOL_TIMEOUT_MS + 1_000,
+      tool: createWaitCommandTool(context),
+    },
+    {
+      policy: readOnlyPolicy,
+      source: BUILT_IN_SOURCE,
+      timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
+      tool: createStopCommandTool(context),
     },
   ];
   const builtInSkills: ToolRegistration[] = [

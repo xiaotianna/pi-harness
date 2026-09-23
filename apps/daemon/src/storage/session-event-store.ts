@@ -8,6 +8,7 @@ import {
   type ContextCompactedData,
   type HarnessEvent,
   HarnessEventType,
+  isCommandProcessSnapshot,
   isContextCheckpointRestoredData,
   isContextCompactedData,
   isContextWorkingStateResetData,
@@ -36,6 +37,7 @@ const TRANSIENT_EVENT_TYPES = new Set<string>([
   HarnessEventType.TOOL_UPDATED,
   HarnessEventType.SUBAGENT_MESSAGE_DELTA,
   HarnessEventType.SUBAGENT_TOOL_UPDATED,
+  HarnessEventType.COMMAND_UPDATED,
 ]);
 const USAGE_EVENT_TYPES = new Set<string>([
   HarnessEventType.RUN_STARTED,
@@ -167,6 +169,13 @@ function parseHarnessEvent(value: unknown, expectedSessionId: SessionId): Harnes
     (!isPlainObject(event.data) || typeof event.data.executionId !== "string")
   ) {
     throw new Error("Session subagent event is invalid");
+  }
+  if (
+    (event.type === HarnessEventType.COMMAND_STARTED ||
+      event.type === HarnessEventType.COMMAND_EXITED) &&
+    !isCommandProcessSnapshot(event.data)
+  ) {
+    throw new Error("Session command process event is invalid");
   }
   if (
     event.type === HarnessEventType.SUBAGENT_CONTEXT_COMPACTED &&

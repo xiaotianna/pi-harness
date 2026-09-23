@@ -191,6 +191,8 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     memories,
     mcpTools.prepare,
     async (providerId, modelId) => (await providers.resolveRunModel(providerId, modelId)).model,
+    (error, context) =>
+      server.log.error({ err: error, ...context }, "Command process lifecycle failed"),
   );
   const workspaces = new WorkspaceService(
     database.workspaces,

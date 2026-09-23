@@ -36,7 +36,9 @@ import {
   sessionSnapshotQueryOptions,
 } from "../api/session-queries";
 import { ChatComposer, type ChatComposerProps } from "../components/chat-composer";
+import { ChatNavbarActions } from "../components/chat-navbar-actions";
 import { ChatTraceView } from "../components/chat-trace-view";
+import { CommandTasksPopover } from "../components/command-tasks-popover";
 import { ConversationTurnToc } from "../components/conversation-turn-toc";
 import { ThreadMessageList, type ThreadMessageListHandle } from "../components/thread-message-list";
 import { ToolApprovalCard } from "../components/tool-approval-card";
@@ -565,195 +567,200 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   if (!snapshot) return null;
 
   return (
-    <div className="session-scrollbars relative h-[calc(100svh-var(--chat-navbar-height,64px))] overflow-hidden">
-      <div aria-hidden={!isPageReady} className="flex h-full flex-col" inert={!isPageReady}>
-        <div className="@container/conversation relative min-h-0 flex-1 overflow-hidden">
-          <AnimatePresence initial={false} mode="wait">
-            <motion.div
-              animate={{ opacity: 1, y: 0 }}
-              className="h-full"
-              exit={{ opacity: 0, y: -4 }}
-              initial={{ opacity: 0, y: 4 }}
-              key={activeView}
-              transition={transition}
-            >
-              {activeView === ChatPageView.CONVERSATION ? (
-                <ChatConversation
-                  ref={handleConversationRef}
-                  className="session-scrollbar h-full min-h-0"
-                  style={{ overflowAnchor: "none" }}
-                  initial="instant"
-                  resize="instant"
-                  onPointerDown={(event) => {
-                    if (event.target === event.currentTarget) stopFollowingConversation();
-                  }}
-                  onScroll={(event) => {
-                    const conversation = event.currentTarget;
-                    const distanceFromBottom =
-                      conversation.scrollHeight -
-                      conversation.scrollTop -
-                      conversation.clientHeight;
-                    conversationScrollPositionRef.current = {
-                      isAtBottom: distanceFromBottom <= CHAT_AUTO_SCROLL_THRESHOLD_PX,
-                      scrollTop: conversation.scrollTop,
-                      sessionId,
-                    };
-                    const turnId =
-                      distanceFromBottom <= 1
-                        ? lastConversationTurnId
-                        : messageListRef.current?.getTurnIdAtOffset(
-                            conversation.scrollTop + conversation.clientHeight * 0.25,
-                          );
-                    if (turnId) {
-                      setActiveConversationTurn((current) =>
-                        current?.sessionId === sessionId && current.turnId === turnId
-                          ? current
-                          : { sessionId, turnId },
-                      );
-                    }
-                    const isNearBottom = distanceFromBottom <= CHAT_AUTO_SCROLL_THRESHOLD_PX;
-                    shouldFollowConversationRef.current = isNearBottom;
-                  }}
-                  onTouchMove={stopFollowingConversation}
-                  onWheel={(event) => {
-                    if (event.deltaY < 0) stopFollowingConversation();
-                  }}
-                >
-                  <div ref={conversationContentRef} className="mx-auto flex w-full flex-col">
-                    <ThreadMessageList
-                      ref={messageListRef}
-                      messages={messages}
-                      onBeforeMessageEdit={stopFollowingConversation}
-                      onBeforeTurnNavigate={stopFollowingConversation}
-                      onSearchTargetComplete={clearSearchTarget}
-                      scrollContainerRef={conversationRef}
-                      scrollEndThreshold={CHAT_AUTO_SCROLL_THRESHOLD_PX}
-                      workspaceId={snapshot.session.workspaceId}
-                      workspaceRoot={snapshot.session.workspaceRoot}
-                      {...(isSessionRunning
-                        ? {}
-                        : {
-                            onRetryUserMessage: (messageEventId: string, prompt: string) =>
-                              retryMutation
-                                .mutateAsync({ messageEventId, prompt, sessionId })
-                                .then(() => undefined),
-                          })}
-                      {...(searchTarget ? { searchTarget } : {})}
-                    />
-                  </div>
-                  <ChatConversation.ScrollButton aria-label="滚动到底部" />
-                  <ChatConversation.ScrollAnchor />
-                </ChatConversation>
-              ) : activeView === ChatPageView.TRACE ? (
-                <ChatTraceView sessionId={sessionId} />
-              ) : (
-                <WorkspaceFilesView workspaceId={snapshot.session.workspaceId} />
-              )}
-            </motion.div>
-          </AnimatePresence>
-          {activeView === ChatPageView.CONVERSATION ? (
-            <ConversationTurnToc
-              activeTurnId={
-                activeConversationTurn?.sessionId === sessionId
-                  ? activeConversationTurn.turnId
-                  : null
-              }
-              messageListRef={messageListRef}
-              messages={messages}
-            />
-          ) : null}
-        </div>
+    <>
+      <ChatNavbarActions>
+        <CommandTasksPopover commands={snapshot.commands} />
+      </ChatNavbarActions>
+      <div className="session-scrollbars relative h-[calc(100svh-var(--chat-navbar-height,64px))] overflow-hidden">
+        <div aria-hidden={!isPageReady} className="flex h-full flex-col" inert={!isPageReady}>
+          <div className="@container/conversation relative min-h-0 flex-1 overflow-hidden">
+            <AnimatePresence initial={false} mode="wait">
+              <motion.div
+                animate={{ opacity: 1, y: 0 }}
+                className="h-full"
+                exit={{ opacity: 0, y: -4 }}
+                initial={{ opacity: 0, y: 4 }}
+                key={activeView}
+                transition={transition}
+              >
+                {activeView === ChatPageView.CONVERSATION ? (
+                  <ChatConversation
+                    ref={handleConversationRef}
+                    className="session-scrollbar h-full min-h-0"
+                    style={{ overflowAnchor: "none" }}
+                    initial="instant"
+                    resize="instant"
+                    onPointerDown={(event) => {
+                      if (event.target === event.currentTarget) stopFollowingConversation();
+                    }}
+                    onScroll={(event) => {
+                      const conversation = event.currentTarget;
+                      const distanceFromBottom =
+                        conversation.scrollHeight -
+                        conversation.scrollTop -
+                        conversation.clientHeight;
+                      conversationScrollPositionRef.current = {
+                        isAtBottom: distanceFromBottom <= CHAT_AUTO_SCROLL_THRESHOLD_PX,
+                        scrollTop: conversation.scrollTop,
+                        sessionId,
+                      };
+                      const turnId =
+                        distanceFromBottom <= 1
+                          ? lastConversationTurnId
+                          : messageListRef.current?.getTurnIdAtOffset(
+                              conversation.scrollTop + conversation.clientHeight * 0.25,
+                            );
+                      if (turnId) {
+                        setActiveConversationTurn((current) =>
+                          current?.sessionId === sessionId && current.turnId === turnId
+                            ? current
+                            : { sessionId, turnId },
+                        );
+                      }
+                      const isNearBottom = distanceFromBottom <= CHAT_AUTO_SCROLL_THRESHOLD_PX;
+                      shouldFollowConversationRef.current = isNearBottom;
+                    }}
+                    onTouchMove={stopFollowingConversation}
+                    onWheel={(event) => {
+                      if (event.deltaY < 0) stopFollowingConversation();
+                    }}
+                  >
+                    <div ref={conversationContentRef} className="mx-auto flex w-full flex-col">
+                      <ThreadMessageList
+                        ref={messageListRef}
+                        messages={messages}
+                        onBeforeMessageEdit={stopFollowingConversation}
+                        onBeforeTurnNavigate={stopFollowingConversation}
+                        onSearchTargetComplete={clearSearchTarget}
+                        scrollContainerRef={conversationRef}
+                        scrollEndThreshold={CHAT_AUTO_SCROLL_THRESHOLD_PX}
+                        workspaceId={snapshot.session.workspaceId}
+                        workspaceRoot={snapshot.session.workspaceRoot}
+                        {...(isSessionRunning
+                          ? {}
+                          : {
+                              onRetryUserMessage: (messageEventId: string, prompt: string) =>
+                                retryMutation
+                                  .mutateAsync({ messageEventId, prompt, sessionId })
+                                  .then(() => undefined),
+                            })}
+                        {...(searchTarget ? { searchTarget } : {})}
+                      />
+                    </div>
+                    <ChatConversation.ScrollButton aria-label="滚动到底部" />
+                    <ChatConversation.ScrollAnchor />
+                  </ChatConversation>
+                ) : activeView === ChatPageView.TRACE ? (
+                  <ChatTraceView sessionId={sessionId} />
+                ) : (
+                  <WorkspaceFilesView workspaceId={snapshot.session.workspaceId} />
+                )}
+              </motion.div>
+            </AnimatePresence>
+            {activeView === ChatPageView.CONVERSATION ? (
+              <ConversationTurnToc
+                activeTurnId={
+                  activeConversationTurn?.sessionId === sessionId
+                    ? activeConversationTurn.turnId
+                    : null
+                }
+                messageListRef={messageListRef}
+                messages={messages}
+              />
+            ) : null}
+          </div>
 
-        <div className="relative z-10 shrink-0 bg-background px-4 pb-2">
-          {activeView === ChatPageView.CONVERSATION ? (
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
-            />
-          ) : null}
-          <div className="mx-auto w-full max-w-[714px]">
-            <WorkingStatePanel
-              plan={workingState.plan}
-              todoRevision={workingState.todoRevision}
-              todos={workingState.todos}
-            />
-            <div className="relative z-10">
-              <div inert={pendingApproval !== undefined || pendingUserInput !== null}>
-                <ChatComposer
-                  className="w-full"
-                  conversationId={snapshot.session.id}
-                  events={events}
-                  modelId={snapshot.session.modelId}
-                  providerId={snapshot.session.providerId}
-                  queuedInputs={queuedInputsQuery.data ?? EMPTY_QUEUED_INPUTS}
-                  status={status}
-                  thinkingLevel={snapshot.session.thinkingLevel}
-                  usage={usage}
-                  workspaceId={snapshot.session.workspaceId}
-                  {...composerActions}
-                />
+          <div className="relative z-10 shrink-0 bg-background px-4 pb-2">
+            {activeView === ChatPageView.CONVERSATION ? (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 bottom-full h-16 bg-linear-to-b from-transparent to-background"
+              />
+            ) : null}
+            <div className="mx-auto w-full max-w-[714px]">
+              <WorkingStatePanel
+                plan={workingState.plan}
+                todoRevision={workingState.todoRevision}
+                todos={workingState.todos}
+              />
+              <div className="relative z-10">
+                <div inert={pendingApproval !== undefined || pendingUserInput !== null}>
+                  <ChatComposer
+                    className="w-full"
+                    conversationId={snapshot.session.id}
+                    events={events}
+                    modelId={snapshot.session.modelId}
+                    providerId={snapshot.session.providerId}
+                    queuedInputs={queuedInputsQuery.data ?? EMPTY_QUEUED_INPUTS}
+                    status={status}
+                    thinkingLevel={snapshot.session.thinkingLevel}
+                    usage={usage}
+                    workspaceId={snapshot.session.workspaceId}
+                    {...composerActions}
+                  />
+                </div>
+                <AnimatePresence initial={false}>
+                  {pendingUserInput && activeRunId ? (
+                    <motion.div
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute inset-x-0 bottom-0 z-20"
+                      exit={{ opacity: 0, y: 4 }}
+                      initial={{ opacity: 0, y: 4 }}
+                      transition={transition}
+                    >
+                      <UserInputCard
+                        key={pendingUserInput.inputId}
+                        {...(pendingInputAgentName === undefined
+                          ? {}
+                          : { agentName: pendingInputAgentName })}
+                        request={pendingUserInput}
+                        onCancel={() =>
+                          pendingUserInput.executionId
+                            ? abortSubAgent(sessionId, pendingUserInput.executionId)
+                            : abortMutation.mutateAsync(activeRunId)
+                        }
+                        onResolve={(submission) =>
+                          inputMutation.mutateAsync({
+                            inputId: pendingUserInput.inputId,
+                            runId: activeRunId,
+                            submission,
+                          })
+                        }
+                      />
+                    </motion.div>
+                  ) : pendingApproval && pendingApprovalTool ? (
+                    <motion.div
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute inset-x-0 bottom-0 z-20 min-h-full"
+                      exit={{ opacity: 0, y: 4 }}
+                      initial={{ opacity: 0, y: 4 }}
+                      transition={transition}
+                    >
+                      <ToolApprovalCard
+                        key={pendingApproval.approvalId}
+                        approval={pendingApproval}
+                        toolName={pendingApprovalTool.toolName}
+                        onResolve={(approval, decision) =>
+                          approvalMutation.mutateAsync({
+                            approvalId: approval.approvalId,
+                            decision,
+                            runId: approval.runId,
+                          })
+                        }
+                      />
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
               </div>
-              <AnimatePresence initial={false}>
-                {pendingUserInput && activeRunId ? (
-                  <motion.div
-                    animate={{ opacity: 1, y: 0 }}
-                    className="absolute inset-x-0 bottom-0 z-20"
-                    exit={{ opacity: 0, y: 4 }}
-                    initial={{ opacity: 0, y: 4 }}
-                    transition={transition}
-                  >
-                    <UserInputCard
-                      key={pendingUserInput.inputId}
-                      {...(pendingInputAgentName === undefined
-                        ? {}
-                        : { agentName: pendingInputAgentName })}
-                      request={pendingUserInput}
-                      onCancel={() =>
-                        pendingUserInput.executionId
-                          ? abortSubAgent(sessionId, pendingUserInput.executionId)
-                          : abortMutation.mutateAsync(activeRunId)
-                      }
-                      onResolve={(submission) =>
-                        inputMutation.mutateAsync({
-                          inputId: pendingUserInput.inputId,
-                          runId: activeRunId,
-                          submission,
-                        })
-                      }
-                    />
-                  </motion.div>
-                ) : pendingApproval && pendingApprovalTool ? (
-                  <motion.div
-                    animate={{ opacity: 1, y: 0 }}
-                    className="absolute inset-x-0 bottom-0 z-20 min-h-full"
-                    exit={{ opacity: 0, y: 4 }}
-                    initial={{ opacity: 0, y: 4 }}
-                    transition={transition}
-                  >
-                    <ToolApprovalCard
-                      key={pendingApproval.approvalId}
-                      approval={pendingApproval}
-                      toolName={pendingApprovalTool.toolName}
-                      onResolve={(approval, decision) =>
-                        approvalMutation.mutateAsync({
-                          approvalId: approval.approvalId,
-                          decision,
-                          runId: approval.runId,
-                        })
-                      }
-                    />
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
             </div>
           </div>
         </div>
+        {isPageReady ? null : (
+          <div className="absolute inset-0 z-30 bg-background">
+            <ChatPageSkeleton />
+          </div>
+        )}
       </div>
-      {isPageReady ? null : (
-        <div className="absolute inset-0 z-30 bg-background">
-          <ChatPageSkeleton />
-        </div>
-      )}
-    </div>
+    </>
   );
 }

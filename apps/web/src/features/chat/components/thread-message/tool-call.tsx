@@ -1,11 +1,13 @@
+import { Chip, ScrollShadow } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import { isPlainObject } from "es-toolkit";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ToolCall as ToolCallElement } from "../../../../components/ai/tool-call";
 import { WebSearch, type WebSearchResult } from "../../../../components/ai/web-search";
 import { sessionEventQueryOptions } from "../../api/session-queries";
 import { type ChatMessageTool, ChatToolState } from "../../data/chat";
 import { readToolResult } from "../../utils/session-messages";
+import { CommandStopButton } from "../command-stop-button";
 import { ToolIcon } from "./tool-icon";
 
 const TOOL_LABEL_BY_NAME: Readonly<Record<string, string>> = {
@@ -19,6 +21,8 @@ const TOOL_LABEL_BY_NAME: Readonly<Record<string, string>> = {
   reset_working_state: "重置工作状态",
   restore_context_checkpoint: "恢复上下文",
   run_command: "执行命令",
+  stop_command: "停止命令",
+  wait_command: "等待命令",
   search_session_history: "搜索会话历史",
   search_text: "搜索文本",
   skill_creator: "创建技能",
@@ -162,8 +166,83 @@ function GenericToolCall({ tool }: { tool: ChatMessageTool }) {
   );
 }
 
+const COMMAND_STATUS_LABELS = {
+  aborted: "已中止",
+  completed: "已完成",
+  daemon_stopped: "daemon 已停止",
+  failed: "执行失败",
+  running: "后台运行中",
+  stopped: "已停止",
+  timed_out: "已超时",
+} as const;
+
+function CommandToolCall({ tool }: { tool: ChatMessageTool }) {
+  const command = tool.command;
+  const [isOpen, setIsOpen] = useState(command?.status === "running");
+  useEffect(() => {
+    if (command?.status === "running") setIsOpen(true);
+  }, [command?.processId, command?.status]);
+  if (!command) return <GenericToolCall tool={tool} />;
+  const isRunning = command.status === "running";
+  const isFailed = command.status !== "running" && command.status !== "completed";
+  const result = isOpen ? (
+    <div className="flex flex-col gap-2 font-sans">
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip
+          color={isRunning ? "accent" : isFailed ? "danger" : "success"}
+          size="sm"
+          variant="soft"
+        >
+          {COMMAND_STATUS_LABELS[command.status]}
+        </Chip>
+        {command.exitCode === null ? null : (
+          <span className="text-xs text-muted">退出码 {command.exitCode}</span>
+        )}
+        {command.exitCode === null && command.signal ? (
+          <span className="text-xs text-muted">信号 {command.signal}</span>
+        ) : null}
+        <span className="text-xs text-muted">
+          {command.sandbox === "isolated" ? "沙箱" : "宿主机"}
+        </span>
+      </div>
+      <ScrollShadow className="session-scrollbar max-h-60" orientation="vertical">
+        <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground">
+          {command.output || "等待命令输出…"}
+        </pre>
+      </ScrollShadow>
+      {command.truncated ? <p className="text-xs text-muted">已省略较早输出</p> : null}
+      {isRunning ? (
+        <div className="flex justify-end">
+          <CommandStopButton command={command} />
+        </div>
+      ) : null}
+    </div>
+  ) : (
+    ""
+  );
+
+  return (
+    <ToolCallElement
+      activeLabel="后台运行中"
+      className="max-w-2xl"
+      failed={isFailed}
+      icon={<ToolIcon className="size-4" toolName="run_command" />}
+      label={COMMAND_STATUS_LABELS[command.status]}
+      onOpenChange={setIsOpen}
+      open={isOpen}
+      query={command.command}
+      request={isOpen ? formatToolValue(tool.input) : ""}
+      result={result}
+      resultClassName="max-h-none overflow-visible font-sans"
+      running={isRunning}
+    />
+  );
+}
+
 export function ToolCall({ tool }: { tool: ChatMessageTool }) {
-  return tool.toolName === "web_search" ? (
+  return tool.toolName === "run_command" ? (
+    <CommandToolCall tool={tool} />
+  ) : tool.toolName === "web_search" ? (
     <WebSearchToolCall tool={tool} />
   ) : (
     <GenericToolCall tool={tool} />

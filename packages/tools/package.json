@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./command-process": "./src/command-process.ts",
     "./planner": "./src/tools/planner.ts",
     "./request-user-input": "./src/tools/request-user-input.ts",
     "./sub-agent": "./src/tools/sub-agent.ts",

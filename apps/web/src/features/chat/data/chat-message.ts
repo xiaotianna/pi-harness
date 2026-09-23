@@ -1,6 +1,7 @@
 import type {
   ApprovalRequestKind,
   ApprovalResponseDecision,
+  CommandProcessSnapshot,
   SubAgentStartedData,
   SubAgentStatus,
 } from "@pi-harness/agent-runtime/harness-event";
@@ -69,6 +70,7 @@ export const ChatToolState = {
 export type ChatToolState = (typeof ChatToolState)[keyof typeof ChatToolState];
 
 export type ChatMessageTool = {
+  command?: CommandProcessSnapshot;
   displayName?: string;
   activeLabel?: string;
   approval?: {

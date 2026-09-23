@@ -91,6 +91,18 @@ export async function registerWorkspaceRoutes(
     controller.readFile,
   );
 
+  server.get<{ Params: WorkspaceParamsDto; Querystring: WorkspaceFileQueryDto }>(
+    "/api/workspaces/:workspaceId/files/media",
+    {
+      schema: {
+        params: WorkspaceParamsDtoSchema,
+        querystring: WorkspaceFileQueryDtoSchema,
+        response: errors,
+      },
+    },
+    controller.readImage,
+  );
+
   server.get<{ Params: WorkspaceParamsDto }>(
     "/api/workspaces/:workspaceId/skills",
     {

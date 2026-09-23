@@ -92,6 +92,7 @@ export function useSessionEvents(
           (event) =>
             event.type !== HarnessEventType.MESSAGE_DELTA &&
             event.type !== HarnessEventType.TOOL_UPDATED &&
+            event.type !== HarnessEventType.COMMAND_UPDATED &&
             event.type !== HarnessEventType.SUBAGENT_MESSAGE_DELTA &&
             event.type !== HarnessEventType.SUBAGENT_TOOL_UPDATED,
         )
@@ -169,6 +170,7 @@ export function useSessionEvents(
         }
         if (
           event.type === HarnessEventType.TOOL_UPDATED ||
+          event.type === HarnessEventType.COMMAND_UPDATED ||
           event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA ||
           event.type === HarnessEventType.SUBAGENT_TOOL_UPDATED
         ) {

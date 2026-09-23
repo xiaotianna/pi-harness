@@ -302,6 +302,28 @@ export class RunCoordinator {
     return result;
   }
 
+  /** 让受监管后台任务复用 Session 的单调事件序号与持久化链路。 */
+  public emitExternal(draft: HarnessEventDraft, runId: RunId): Promise<HarnessEvent> {
+    return this.emit(draft, runId);
+  }
+
+  /** 后台命令退出后直接发布最终文件变化，不依赖已经结束的工具调用钩子。 */
+  public async emitCommandFileChanges(
+    runId: RunId,
+    toolCallId: string,
+    changes: readonly FileChangeDetails[],
+  ): Promise<void> {
+    for (const change of changes) {
+      await this.emit(
+        {
+          data: { ...change, toolCallId, toolName: "run_command" },
+          type: HarnessEventType.FILE_CHANGED,
+        },
+        runId,
+      );
+    }
+  }
+
   /** 在当前 Run 的子任务树中创建子 Agent；没有活动子任务树时拒绝。 */
   public spawnSubAgent(toolCallId: string, input: SpawnAgentInput, signal?: AbortSignal) {
     if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");

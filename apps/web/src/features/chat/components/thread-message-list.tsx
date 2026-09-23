@@ -425,7 +425,7 @@ const ThreadMessageListInner = forwardRef<ThreadMessageListHandle, ThreadMessage
     };
 
     return (
-      <AssistantMarkdownLinkProvider workspaceRoot={workspaceRoot}>
+      <AssistantMarkdownLinkProvider workspaceId={workspaceId} workspaceRoot={workspaceRoot}>
         <div ref={listRef} onClickCapture={handleClickCapture}>
           {isVirtualized ? (
             <div

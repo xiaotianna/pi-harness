@@ -46,7 +46,7 @@ export function NewChatPage() {
       ]);
       queryClient.setQueryData<SessionSnapshot>(
         sessionQueryKeys.detail(session.id),
-        stageOptimisticUserInput({ events: [], session }, input),
+        stageOptimisticUserInput({ commands: [], events: [], session }, input),
       );
       const run = startSessionRun(session.id, input, draft?.boardTaskId);
       router.history.push(`/${session.id}`);

@@ -7,6 +7,7 @@ import type {
   RetryUserMessageDto,
   SessionApprovalParamsDto,
   SessionCheckpointParamsDto,
+  SessionCommandParamsDto,
   SessionFileChangesQueryDto,
   SessionInputParamsDto,
   SessionListQueryDto,
@@ -87,7 +88,11 @@ export class SessionController {
   ): Promise<FastifyReply | SessionSnapshotVo> => {
     try {
       const snapshot = await this.sessions.getSnapshot(request.params.sessionId);
-      return { events: [...snapshot.events], session: snapshot.session };
+      return {
+        commands: [...snapshot.commands],
+        events: [...snapshot.events],
+        session: snapshot.session,
+      };
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     }
@@ -128,7 +133,11 @@ export class SessionController {
   ): Promise<FastifyReply | SessionSnapshotVo> => {
     try {
       const snapshot = await this.sessions.getConversationSnapshot(request.params.sessionId);
-      return { events: [...snapshot.events], session: snapshot.session };
+      return {
+        commands: [...snapshot.commands],
+        events: [...snapshot.events],
+        session: snapshot.session,
+      };
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
     }
@@ -161,6 +170,19 @@ export class SessionController {
     if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
     try {
       await this.sessions.abortSubAgent(request.params.sessionId, request.params.executionId);
+      return reply.status(204).send();
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    }
+  };
+
+  public stopCommand = async (
+    request: FastifyRequest<{ Params: SessionCommandParamsDto }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    if (!isMutationRequestAllowed(this.config, request)) return rejectMutation(reply);
+    try {
+      await this.sessions.stopCommandProcess(request.params.sessionId, request.params.processId);
       return reply.status(204).send();
     } catch (error: unknown) {
       return this.sendError(request, reply, error);
@@ -474,6 +496,7 @@ export class SessionController {
     if (error instanceof SessionServiceError) {
       const status =
         error.code === "SESSION_NOT_FOUND" ||
+        error.code === "COMMAND_PROCESS_NOT_FOUND" ||
         error.code === "RUN_NOT_FOUND" ||
         error.code === "MESSAGE_NOT_FOUND" ||
         error.code === "QUEUED_INPUT_NOT_FOUND" ||

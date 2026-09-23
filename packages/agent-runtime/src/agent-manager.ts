@@ -3,6 +3,9 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { createMemoryToolRegistrations, type MemoryRuntime } from "@pi-harness/memory";
 import type { CommandPrefixRule, SandboxCredential } from "@pi-harness/policy";
 import {
+  CommandProcessEventKind,
+  CommandProcessManager,
+  type CommandProcessSnapshot,
   createSubAgentToolRegistrations,
   createWorkspaceToolRegistry,
   type PlanUpdatedData,
@@ -10,6 +13,7 @@ import {
   SkillRegistry,
   type TodoUpdatedData,
   type ToolRegistration,
+  type WorkspaceToolContext,
 } from "@pi-harness/tools";
 import { loadWorkspaceAgentContext } from "./context/workspace-agent-context.js";
 import { createAgent } from "./create-agent.js";
@@ -20,6 +24,7 @@ import type {
   RunId,
   SessionId,
 } from "./harness-event.js";
+import { HarnessEventType } from "./harness-event.js";
 import type { HumanInputRequester } from "./human-input.js";
 import { PLAN_MODE_SYSTEM_INSTRUCTION } from "./prompts/plan-mode-prompt.js";
 import { buildSystemPrompts } from "./prompts/system-prompt.js";
@@ -74,6 +79,7 @@ export type PrepareExternalTools = (
 // 核心：Map<SessionId, RunCoordinator>
 export class AgentManager {
   private readonly runtimes = new Map<SessionId, RunCoordinator>();
+  private readonly commandProcesses = new Map<SessionId, CommandProcessManager>();
   private activeSubAgents = 0;
 
   public constructor(
@@ -95,6 +101,10 @@ export class AgentManager {
       providerId: string,
       modelId: string,
     ) => Promise<Model<Api>>,
+    private readonly onCommandProcessError: (
+      error: unknown,
+      context: { processId: string; sessionId: string },
+    ) => void = () => undefined,
   ) {}
 
   private acquireSubAgentSlot = (): (() => void) | null => {
@@ -139,7 +149,24 @@ export class AgentManager {
   }
 
   public abort(sessionId: SessionId, runId: RunId): boolean {
-    return this.runtimes.get(sessionId)?.abort(runId) ?? false;
+    const aborted = this.runtimes.get(sessionId)?.abort(runId) ?? false;
+    if (aborted) {
+      void this.commandProcesses
+        .get(sessionId)
+        ?.stopRun(runId)
+        .catch((error: unknown) => {
+          this.onCommandProcessError(error, { processId: "run", sessionId });
+        });
+    }
+    return aborted;
+  }
+
+  public listCommandProcesses(sessionId: SessionId): readonly CommandProcessSnapshot[] {
+    return this.commandProcesses.get(sessionId)?.listActive() ?? [];
+  }
+
+  public stopCommandProcess(sessionId: SessionId, processId: string): Promise<boolean> {
+    return this.commandProcesses.get(sessionId)?.stop(processId) ?? Promise.resolve(false);
   }
 
   public async abortSubAgent(sessionId: SessionId, executionId: string): Promise<boolean> {
@@ -190,8 +217,10 @@ export class AgentManager {
   }
 
   public async close(): Promise<void> {
+    await Promise.all([...this.commandProcesses.values()].map((manager) => manager.close()));
     const runtimes = [...this.runtimes.values()];
     await Promise.all(runtimes.map((runtime) => runtime.close()));
+    this.commandProcesses.clear();
     this.runtimes.clear();
   }
 
@@ -238,62 +267,82 @@ export class AgentManager {
         return runtime.stopSubAgent(stopInput, signal);
       },
     });
-    const toolRegistry = createWorkspaceToolRegistry(
-      {
-        getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
-        getSandboxCredentials: this.getSandboxCredentials,
-        isFullAccess: () => runtime?.isFullAccess ?? false,
-        globalRoot: this.globalRoot,
-        isSkillEnabled: this.isSkillEnabled,
-        onPlanUpdated: (data) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.updatePlan(data);
-        },
-        onNetworkAccessRequested: (request, signal) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.requestNetworkAccess(request, signal);
-        },
-        onCommandFileChangesDetected: (data) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          runtime.recordCommandFileChanges(data);
-        },
-        onHostExecutionRequested: (request, signal) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.requestHostExecution(request, signal);
-        },
-        onContextCheckpointRestored: (steps) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.restoreContextCheckpoint(steps);
-        },
-        onSessionHistorySearched: (searchInput) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.searchSessionHistory(searchInput);
-        },
-        onTodosUpdated: (data) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.updateTodos(data);
-        },
-        onUserInputRequested: (data, signal) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.requestUserInput(data, signal);
-        },
-        onWorkingStateReset: (reason) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.resetWorkingState(reason);
-        },
-        protectedPaths: this.protectedPaths,
-        skillGatewayToken: this.skillGatewayToken,
-        skillGatewayUrl: this.skillGatewayUrl,
-        webSearchUrl: this.webSearchUrl,
-        supportsImageInput: () => toolCapabilities.supportsImageInput,
-        workspaceRoot: input.workspaceRoot,
+    const toolContext: WorkspaceToolContext = {
+      getRegisteredGlobalSkills: this.getRegisteredGlobalSkills,
+      getSandboxCredentials: this.getSandboxCredentials,
+      getActiveRunId: () => runtime?.activeRunId ?? null,
+      isFullAccess: () => runtime?.isFullAccess ?? false,
+      globalRoot: this.globalRoot,
+      isSkillEnabled: this.isSkillEnabled,
+      onPlanUpdated: (data) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.updatePlan(data);
       },
-      skillRegistry,
-      [
-        ...createMemoryToolRegistrations(this.memory, input.sessionId, input.workspaceId),
-        ...subAgentTools,
-      ],
-    );
+      onNetworkAccessRequested: (request, signal) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.requestNetworkAccess(request, signal);
+      },
+      onCommandFileChangesDetected: (data) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        runtime.recordCommandFileChanges(data);
+      },
+      onHostExecutionRequested: (request, signal) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.requestHostExecution(request, signal);
+      },
+      onContextCheckpointRestored: (steps) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.restoreContextCheckpoint(steps);
+      },
+      onSessionHistorySearched: (searchInput) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.searchSessionHistory(searchInput);
+      },
+      onTodosUpdated: (data) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.updateTodos(data);
+      },
+      onUserInputRequested: (data, signal) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.requestUserInput(data, signal);
+      },
+      onWorkingStateReset: (reason) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.resetWorkingState(reason);
+      },
+      protectedPaths: this.protectedPaths,
+      skillGatewayToken: this.skillGatewayToken,
+      skillGatewayUrl: this.skillGatewayUrl,
+      webSearchUrl: this.webSearchUrl,
+      supportsImageInput: () => toolCapabilities.supportsImageInput,
+      workspaceRoot: input.workspaceRoot,
+    };
+    const commandProcesses = new CommandProcessManager({
+      context: toolContext,
+      emitEvent: (kind, snapshot) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        const type =
+          kind === CommandProcessEventKind.STARTED
+            ? HarnessEventType.COMMAND_STARTED
+            : kind === CommandProcessEventKind.UPDATED
+              ? HarnessEventType.COMMAND_UPDATED
+              : HarnessEventType.COMMAND_EXITED;
+        return runtime.emitExternal({ data: snapshot, type }, snapshot.runId).then(() => undefined);
+      },
+      emitFileChanges: ({ changes, runId, toolCallId }) => {
+        if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+        return runtime.emitCommandFileChanges(runId, toolCallId, changes);
+      },
+      getSkillReadPaths: () => skillRegistry.getLoadedDirectories(),
+      onError: (error, processId) =>
+        this.onCommandProcessError(error, { processId, sessionId: input.sessionId }),
+      sessionId: input.sessionId,
+    });
+    toolContext.commandProcesses = commandProcesses;
+    const toolRegistry = createWorkspaceToolRegistry(toolContext, skillRegistry, [
+      ...createMemoryToolRegistrations(this.memory, input.sessionId, input.workspaceId),
+      ...subAgentTools,
+    ]);
     const agent = createAgent({ ...input, tools: toolRegistry.tools });
     runtime = new RunCoordinator(
       input.sessionId,
@@ -325,6 +374,7 @@ export class AgentManager {
       },
       subAgentTools.map(({ tool }) => tool.name),
     );
+    this.commandProcesses.set(input.sessionId, commandProcesses);
     this.runtimes.set(input.sessionId, runtime);
     return runtime;
   }

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import {
   ApprovalDecision,
   type ApprovalResolvedData,
+  type CommandProcessSnapshot,
+  CommandProcessStatus,
   type HarnessEvent,
   HarnessEventType,
   type InputExpiredData,
@@ -18,6 +20,29 @@ import {
 } from "../storage/session-event-store.js";
 import { findInterruptedRun } from "../utils/session-recovery.js";
 import type { BoardTaskService } from "./board-task-service.js";
+
+function findInterruptedCommands(
+  events: readonly HarnessEvent[],
+): readonly CommandProcessSnapshot[] {
+  const active = new Map<string, CommandProcessSnapshot>();
+  for (const event of events) {
+    if (
+      event.type === HarnessEventType.COMMAND_STARTED &&
+      isPlainObject(event.data) &&
+      typeof event.data.processId === "string"
+    ) {
+      active.set(event.data.processId, event.data as unknown as CommandProcessSnapshot);
+    }
+    if (
+      event.type === HarnessEventType.COMMAND_EXITED &&
+      isPlainObject(event.data) &&
+      typeof event.data.processId === "string"
+    ) {
+      active.delete(event.data.processId);
+    }
+  }
+  return [...active.values()];
+}
 
 interface RecordedRunContextState {
   contexts: ReadonlyMap<string, string>;
@@ -167,10 +192,29 @@ export class SessionEventService {
       const snapshot = await this.eventStore.load(session.id);
       this.runContextStateBySession.set(session.id, readRunContextState(snapshot.events));
       const interrupted = findInterruptedRun(snapshot.events);
-      if (interrupted === null) continue;
-
       let nextSeq = Math.max(session.lastSeq, snapshot.lastPersistedSeq) + 1;
       const timestamp = Date.now();
+      for (const command of findInterruptedCommands(snapshot.events)) {
+        await this.handle({
+          data: {
+            ...command,
+            durationMs: Math.max(0, timestamp - command.startedAt),
+            endedAt: timestamp,
+            exitCode: null,
+            signal: null,
+            status: CommandProcessStatus.DAEMON_STOPPED,
+          } satisfies CommandProcessSnapshot,
+          id: randomUUID(),
+          runId: command.runId,
+          seq: nextSeq,
+          sessionId: session.id,
+          timestamp,
+          type: HarnessEventType.COMMAND_EXITED,
+        });
+        nextSeq += 1;
+      }
+      if (interrupted === null) continue;
+
       for (const approval of interrupted.pendingApprovals) {
         await this.handle({
           data: {

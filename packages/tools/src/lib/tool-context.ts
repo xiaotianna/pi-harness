@@ -1,5 +1,6 @@
 import type { SandboxCredential } from "@pi-harness/policy";
 import { resolveWorkspacePath } from "@pi-harness/policy";
+import type { CommandProcessManager } from "../command-process-manager.js";
 import type { SkillDefinition } from "../skills/types.js";
 import type {
   ContextCheckpointRestoreHandler,
@@ -13,6 +14,8 @@ import type { FileChangeDetails } from "../utils/file.js";
 
 // 保存固定的 globalRoot、workspaceRoot 和受保护路径。
 export interface WorkspaceToolContext {
+  commandProcesses?: CommandProcessManager;
+  getActiveRunId?: () => string | null;
   getRegisteredGlobalSkills?: () => readonly SkillDefinition[];
   getSandboxCredentials?: () => readonly SandboxCredential[];
   isFullAccess?: () => boolean;

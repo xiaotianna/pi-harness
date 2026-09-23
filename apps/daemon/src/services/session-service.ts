@@ -6,6 +6,7 @@ import {
   type AgentManager,
   ApprovalDecision,
   type ApprovalResponseDecision,
+  type CommandProcessSnapshot,
   type ContextCheckpointRestoredData,
   type FileChangedData,
   type HarnessEvent,
@@ -77,6 +78,7 @@ const SessionErrorCode = {
   APPROVAL_INVALID: "APPROVAL_INVALID",
   BUSY: "SESSION_BUSY",
   CHECKPOINT_NOT_FOUND: "CONTEXT_CHECKPOINT_NOT_FOUND",
+  COMMAND_PROCESS_NOT_FOUND: "COMMAND_PROCESS_NOT_FOUND",
   EMPTY_PROMPT: "EMPTY_RUN_PROMPT",
   EMPTY_TITLE: "EMPTY_SESSION_TITLE",
   NOT_FOUND: "SESSION_NOT_FOUND",
@@ -126,6 +128,7 @@ export interface UpdateSessionInput {
 }
 
 export interface SessionSnapshot {
+  commands: readonly CommandProcessSnapshot[];
   events: readonly HarnessEvent[];
   session: SessionRecord;
 }
@@ -436,7 +439,11 @@ export class SessionService {
     const session = this.getRequiredSession(sessionId);
     const snapshot = await this.eventStore.load(sessionId);
     this.reconcileIndex(session, snapshot);
-    return { events: snapshot.events, session: this.getRequiredSession(sessionId) };
+    return {
+      commands: this.agents.listCommandProcesses(sessionId),
+      events: snapshot.events,
+      session: this.getRequiredSession(sessionId),
+    };
   }
 
   public async getEvent(sessionId: SessionId, eventSeq: number): Promise<HarnessEvent> {
@@ -458,6 +465,16 @@ export class SessionService {
   public async getConversationSnapshot(sessionId: SessionId): Promise<SessionSnapshot> {
     const snapshot = await this.getSnapshot(sessionId);
     return { ...snapshot, events: projectSessionConversationEvents(snapshot.events) };
+  }
+
+  public async stopCommandProcess(sessionId: SessionId, processId: string): Promise<void> {
+    this.getRequiredSession(sessionId);
+    if (!(await this.agents.stopCommandProcess(sessionId, processId))) {
+      throw new SessionServiceError(
+        SessionErrorCode.COMMAND_PROCESS_NOT_FOUND,
+        "后台命令不存在或已经结束",
+      );
+    }
   }
 
   public async getSubAgentEvents(

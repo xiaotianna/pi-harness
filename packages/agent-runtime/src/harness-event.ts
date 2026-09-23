@@ -6,6 +6,14 @@ import type {
   UserInputResponseAction,
 } from "@pi-harness/tools/request-user-input";
 import type { SubAgentType } from "@pi-harness/tools/sub-agent";
+
+export {
+  type CommandProcessSnapshot,
+  CommandProcessStatus,
+  type CommandProcessStatus as CommandProcessStatusValue,
+  isCommandProcessSnapshot,
+} from "@pi-harness/tools/command-process";
+
 import { isPlainObject } from "es-toolkit";
 import type { RunMode } from "./user-input.js";
 
@@ -102,6 +110,12 @@ export const HarnessEventType = {
   TOOL_FAILED: "tool.failed",
   // 工具调用被跳过，没有实际执行
   TOOL_SKIPPED: "tool.skipped",
+  /**
+   * daemon 监管的后台命令生命周期；updated 只走 SSE，started/exited 写入 JSONL。
+   */
+  COMMAND_STARTED: "command.started",
+  COMMAND_UPDATED: "command.updated",
+  COMMAND_EXITED: "command.exited",
   SUBAGENT_STARTED: "subagent.started",
   SUBAGENT_MESSAGE_STARTED: "subagent.message.started",
   SUBAGENT_MESSAGE_DELTA: "subagent.message.delta",

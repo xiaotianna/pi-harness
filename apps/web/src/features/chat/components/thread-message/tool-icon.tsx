@@ -23,6 +23,8 @@ const TOOL_ICON_BY_NAME: Readonly<Record<string, ToolIconComponent>> = {
   read_document: BookOpen,
   read_file: BookOpen,
   run_command: Terminal,
+  stop_command: Terminal,
+  wait_command: Terminal,
   search_text: Magnifier,
   skill_creator: MagicWand,
   view_image: Picture,

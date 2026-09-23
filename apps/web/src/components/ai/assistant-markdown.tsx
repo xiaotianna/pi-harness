@@ -9,7 +9,11 @@ import { StreamdownContext, useIsCodeFenceIncomplete } from "streamdown";
 import { cn } from "../../shared/utils/cn";
 import { SearchHighlightedText } from "../ui/search-highlighted-text";
 import { AssistantCodeBlock } from "./assistant-code-block";
-import { AssistantMarkdownLink, isAssistantMarkdownLinkTarget } from "./assistant-markdown-link";
+import {
+  AssistantMarkdownImage,
+  AssistantMarkdownLink,
+  isAssistantMarkdownLinkTarget,
+} from "./assistant-markdown-link";
 import { ChartBlock } from "./chart-block";
 import { FlowDiagram } from "./flow-diagram";
 import { FormulaBlock } from "./formula-block";
@@ -124,6 +128,7 @@ const ASSISTANT_MARKDOWN_COMPONENTS = {
         </Checkbox.Content>
       </Checkbox>
     ) : null,
+  img: AssistantMarkdownImage,
   h1: ({ children }) => <h1>{renderMarkdownText(children)}</h1>,
   h2: ({ children }) => <h2>{renderMarkdownText(children)}</h2>,
   h3: ({ children }) => <h3>{renderMarkdownText(children)}</h3>,

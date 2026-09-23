@@ -1,5 +1,6 @@
 import {
   type ApprovalResponseDecision,
+  type CommandProcessSnapshot,
   type HarnessEvent,
   HarnessEventType,
 } from "@pi-harness/agent-runtime/harness-event";
@@ -48,8 +49,35 @@ const HarnessEventSchema = Type.Object({
   type: Type.String({ minLength: 1 }),
 });
 
+const CommandProcessSchema = Type.Object({
+  command: Type.String(),
+  durationMs: Type.Number({ minimum: 0 }),
+  endedAt: Type.Optional(Type.Integer({ minimum: 0 })),
+  exitCode: Type.Union([Type.Integer(), Type.Null()]),
+  output: Type.String(),
+  outputBytes: Type.Integer({ minimum: 0 }),
+  processId: Type.String({ minLength: 1 }),
+  runId: Type.String({ minLength: 1 }),
+  sandbox: Type.Union([Type.Literal("host"), Type.Literal("isolated")]),
+  sessionId: Type.String({ minLength: 1 }),
+  signal: Type.Union([Type.String(), Type.Null()]),
+  startedAt: Type.Integer({ minimum: 0 }),
+  status: Type.Union([
+    Type.Literal("running"),
+    Type.Literal("completed"),
+    Type.Literal("failed"),
+    Type.Literal("stopped"),
+    Type.Literal("timed_out"),
+    Type.Literal("aborted"),
+    Type.Literal("daemon_stopped"),
+  ]),
+  toolCallId: Type.String({ minLength: 1 }),
+  truncated: Type.Boolean(),
+});
+
 const SessionListSchema = Type.Array(SessionSchema);
 const SessionSnapshotSchema = Type.Object({
+  commands: Type.Array(CommandProcessSchema),
   events: Type.Array(HarnessEventSchema),
   session: SessionSchema,
 });
@@ -96,6 +124,7 @@ export interface SessionSnapshotEventMetadata {
   transientByKey: ReadonlyMap<string, HarnessEvent>;
 }
 export interface SessionSnapshot {
+  commands: readonly CommandProcessSnapshot[];
   /** Client-only incremental state. The daemon response never includes this field. */
   eventMetadata?: SessionSnapshotEventMetadata;
   events: readonly HarnessEvent[];
@@ -204,7 +233,18 @@ async function readSessionSnapshot(response: Response): Promise<SessionSnapshot>
   if (!Value.Check(SessionSnapshotSchema, body)) {
     throw new Error("daemon 返回了无效的 Session 快照");
   }
-  return { events: body.events.map(parseEvent), session: body.session };
+  return {
+    commands: body.commands as readonly CommandProcessSnapshot[],
+    events: body.events.map(parseEvent),
+    session: body.session,
+  };
+}
+
+export async function stopSessionCommand(sessionId: string, processId: string): Promise<void> {
+  await apiRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(processId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function updateSession(

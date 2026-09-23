@@ -4,14 +4,8 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import {
-  type SandboxRuntimeConfig,
-  VENDORED_SRT_WIN_EXE,
-} from "@anthropic-ai/sandbox-runtime";
-import {
-  resolveWorkspacePath,
-  type SandboxCredential,
-} from "@pi-harness/policy";
+import { type SandboxRuntimeConfig, VENDORED_SRT_WIN_EXE } from "@anthropic-ai/sandbox-runtime";
+import { resolveWorkspacePath, type SandboxCredential } from "@pi-harness/policy";
 import { execa } from "execa";
 
 interface SandboxBoundaryInput {
@@ -22,6 +16,7 @@ interface SandboxBoundaryInput {
   credentials?: readonly SandboxCredentialInput[];
   isWorkspaceWritable?: boolean;
   readPaths?: readonly string[];
+  onNetworkApproval?: (request: { host: string; port?: number }) => Promise<boolean>;
 }
 
 interface SandboxCredentialInput {
@@ -39,10 +34,7 @@ export interface SandboxCommandInput {
   deniedDomains?: readonly string[];
   credentials?: readonly SandboxCredential[];
   isWorkspaceWritable?: boolean;
-  onNetworkApproval?: (request: {
-    host: string;
-    port?: number;
-  }) => Promise<boolean>;
+  onNetworkApproval?: (request: { host: string; port?: number }) => Promise<boolean>;
   readPaths?: readonly string[];
   timeoutMs: number;
   maxOutputBytes: number;
@@ -61,6 +53,7 @@ export interface SandboxProcessInput extends SandboxBoundaryInput {
 export interface SandboxedProcess {
   process: ChildProcessWithoutNullStreams;
   close(): Promise<void>;
+  getViolations?(): readonly string[];
 }
 
 const ENVIRONMENT_NAMES = ["LANG", "LC_ALL", "PATH", "TERM"] as const;
@@ -87,23 +80,14 @@ async function prepareSandbox(input: SandboxBoundaryInput) {
   // SRT 的 allow 不接受全局 `*`；空 allow 由 ask callback 放行，凭据目标仍需进入配置完成 SRT 校验。
   const allowedDomains =
     input.allowedDomains.length === 0
-      ? [
-          ...new Set(
-            (input.credentials ?? []).flatMap(
-              ({ injectHosts }) => injectHosts ?? [],
-            ),
-          ),
-        ]
+      ? [...new Set((input.credentials ?? []).flatMap(({ injectHosts }) => injectHosts ?? []))]
       : [...input.allowedDomains];
   const config: SandboxRuntimeConfig = {
     network: {
       allowedDomains,
       deniedDomains: [...(input.deniedDomains ?? [])],
       deniedDomainReasons: Object.fromEntries(
-        (input.deniedDomains ?? []).map((entry) => [
-          entry,
-          `PI Harness deny rule: ${entry}`,
-        ]),
+        (input.deniedDomains ?? []).map((entry) => [entry, `PI Harness deny rule: ${entry}`]),
       ),
       ...((input.credentials?.length ?? 0) > 0 ? { tlsTerminate: {} } : {}),
     },
@@ -115,10 +99,7 @@ async function prepareSandbox(input: SandboxBoundaryInput) {
         dirname(process.execPath),
         ...(input.readPaths ?? []),
       ],
-      allowWrite: [
-        ...(input.isWorkspaceWritable === false ? [] : [workspaceRoot]),
-        temporaryRoot,
-      ],
+      allowWrite: [...(input.isWorkspaceWritable === false ? [] : [workspaceRoot]), temporaryRoot],
       denyWrite: [
         ...input.protectedPaths,
         ...(process.platform === "win32" ? [VENDORED_SRT_WIN_EXE] : []),
@@ -128,9 +109,7 @@ async function prepareSandbox(input: SandboxBoundaryInput) {
       ? {
           credentials: {
             envVars: input.credentials?.map(({ injectHosts, name }) => ({
-              ...(injectHosts === undefined
-                ? {}
-                : { injectHosts: [...injectHosts] }),
+              ...(injectHosts === undefined ? {} : { injectHosts: [...injectHosts] }),
               mode: "mask" as const,
               name,
             })),
@@ -163,8 +142,7 @@ async function prepareSandbox(input: SandboxBoundaryInput) {
 /** 独立进程持有 SRT 的全局管理器，避免并发 workspace 串用文件权限和网络代理。 */
 export async function runSandboxedCommand(input: SandboxCommandInput) {
   input.signal?.throwIfAborted();
-  const { config, environment, temporaryRoot, workspaceRoot } =
-    await prepareSandbox(input);
+  const { config, environment, temporaryRoot, workspaceRoot } = await prepareSandbox(input);
   try {
     const subprocess = execa(
       process.execPath,
@@ -200,9 +178,7 @@ export async function runSandboxedCommand(input: SandboxCommandInput) {
       if (subprocess.pid === undefined || hasStoppedGroup) return;
       hasStoppedGroup = true;
       const pids =
-        process.platform === "win32"
-          ? [sandboxProcessPid, subprocess.pid]
-          : [-subprocess.pid];
+        process.platform === "win32" ? [sandboxProcessPid, subprocess.pid] : [-subprocess.pid];
       for (const pid of pids) {
         if (pid === undefined) continue;
         try {
@@ -221,12 +197,7 @@ export async function runSandboxedCommand(input: SandboxCommandInput) {
     });
     const ipcTask = (async () => {
       for await (const message of subprocess.getEachMessage()) {
-        if (
-          typeof message !== "object" ||
-          message === null ||
-          !("type" in message)
-        )
-          continue;
+        if (typeof message !== "object" || message === null || !("type" in message)) continue;
         if (
           message.type === "network-approval" &&
           "requestId" in message &&
@@ -235,9 +206,7 @@ export async function runSandboxedCommand(input: SandboxCommandInput) {
           typeof message.host === "string"
         ) {
           const port =
-            "port" in message && typeof message.port === "number"
-              ? message.port
-              : undefined;
+            "port" in message && typeof message.port === "number" ? message.port : undefined;
           let allowed = input.allowedDomains.length === 0;
           try {
             if (!allowed) {
@@ -262,14 +231,8 @@ export async function runSandboxedCommand(input: SandboxCommandInput) {
         ) {
           sandboxProcessPid = message.pid;
         }
-        if (
-          message.type === "violations" &&
-          "lines" in message &&
-          Array.isArray(message.lines)
-        ) {
-          violations = message.lines.filter(
-            (line): line is string => typeof line === "string",
-          );
+        if (message.type === "violations" && "lines" in message && Array.isArray(message.lines)) {
+          violations = message.lines.filter((line): line is string => typeof line === "string");
         }
       }
     })();
@@ -280,8 +243,7 @@ export async function runSandboxedCommand(input: SandboxCommandInput) {
       stopGroup();
     });
     await ipcTask;
-    if (hasCleanupError)
-      throw new Error("SANDBOX_CLEANUP_FAILED: 无法终止沙箱进程组");
+    if (hasCleanupError) throw new Error("SANDBOX_CLEANUP_FAILED: 无法终止沙箱进程组");
     return {
       ...result,
       violations,
@@ -292,17 +254,12 @@ export async function runSandboxedCommand(input: SandboxCommandInput) {
 }
 
 /** 长驻进程与一次性命令使用同一 SRT worker 边界，stdio 只作为协议管道转发。 */
-export async function spawnSandboxedProcess(
-  input: SandboxProcessInput,
-): Promise<SandboxedProcess> {
+export async function spawnSandboxedProcess(input: SandboxProcessInput): Promise<SandboxedProcess> {
   input.signal?.throwIfAborted();
   if (process.platform === "win32") {
-    throw new Error(
-      "SANDBOX_PLATFORM_UNAVAILABLE: 当前平台尚未验证长驻沙箱进程回收",
-    );
+    throw new Error("SANDBOX_PLATFORM_UNAVAILABLE: 当前平台尚未验证长驻沙箱进程回收");
   }
-  const { config, environment, temporaryRoot, workspaceRoot } =
-    await prepareSandbox(input);
+  const { config, environment, temporaryRoot, workspaceRoot } = await prepareSandbox(input);
   const subprocess = spawn(
     process.execPath,
     [fileURLToPath(new URL("./sandbox-worker.mjs", import.meta.url))],
@@ -313,21 +270,16 @@ export async function spawnSandboxedProcess(
       stdio: ["pipe", "pipe", "pipe", "ipc"],
     },
   );
-  if (
-    subprocess.stdin === null ||
-    subprocess.stdout === null ||
-    subprocess.stderr === null
-  ) {
+  if (subprocess.stdin === null || subprocess.stdout === null || subprocess.stderr === null) {
     subprocess.kill("SIGKILL");
     await rm(temporaryRoot, { recursive: true, force: true });
     throw new Error("SANDBOX_PROCESS_START_FAILED: 沙箱 worker 管道不可用");
   }
   const sandboxWorker = subprocess as ChildProcessWithoutNullStreams;
+  let violations: string[] = [];
   let closing: Promise<void> | undefined;
   let cleanup: Promise<void> | undefined;
-  const exited = new Promise<void>((resolve) =>
-    subprocess.once("exit", () => resolve()),
-  );
+  const exited = new Promise<void>((resolve) => subprocess.once("exit", () => resolve()));
   const removeTemporaryRoot = () =>
     (cleanup ??= rm(temporaryRoot, { recursive: true, force: true }));
   const signalGroup = (signal: NodeJS.Signals) => {
@@ -335,10 +287,7 @@ export async function spawnSandboxedProcess(
     try {
       process.kill(-subprocess.pid, signal);
     } catch (error: unknown) {
-      if (
-        !(error instanceof Error && "code" in error && error.code === "ESRCH")
-      )
-        throw error;
+      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
     }
   };
   const close = () =>
@@ -350,17 +299,12 @@ export async function spawnSandboxedProcess(
           if (subprocess.exitCode === null && subprocess.signalCode === null) {
             signalGroup("SIGTERM");
             await Promise.race([exited, delay(500)]);
-            if (
-              subprocess.exitCode === null &&
-              subprocess.signalCode === null
-            ) {
+            if (subprocess.exitCode === null && subprocess.signalCode === null) {
               signalGroup("SIGKILL");
               await Promise.race([
                 exited,
                 delay(1_500).then(() => {
-                  throw new Error(
-                    "SANDBOX_CLEANUP_FAILED: 沙箱进程未在期限内退出",
-                  );
+                  throw new Error("SANDBOX_CLEANUP_FAILED: 沙箱进程未在期限内退出");
                 }),
               ]);
             }
@@ -393,35 +337,49 @@ export async function spawnSandboxedProcess(
     rejectReady = reject;
   });
   subprocess.on("message", (message: unknown) => {
-    if (typeof message !== "object" || message === null || !("type" in message))
-      return;
+    if (typeof message !== "object" || message === null || !("type" in message)) return;
     if (message.type === "sandbox-process") {
       sandboxWorker.stderr.removeListener("data", captureStartupError);
       resolveReady?.();
       return;
     }
+    if (message.type === "violations" && "lines" in message && Array.isArray(message.lines)) {
+      violations = message.lines.filter((line): line is string => typeof line === "string");
+      return;
+    }
     if (
       message.type === "network-approval" &&
       "requestId" in message &&
-      typeof message.requestId === "string"
+      typeof message.requestId === "string" &&
+      "host" in message &&
+      typeof message.host === "string"
     ) {
-      void send({
-        allowed: input.allowedDomains.length === 0,
-        requestId: message.requestId,
-        type: "network-approval-result",
-      }).catch(() => signalGroup("SIGKILL"));
+      const host = message.host;
+      const requestId = message.requestId;
+      const port = "port" in message && typeof message.port === "number" ? message.port : undefined;
+      void (async () => {
+        const allowed =
+          input.allowedDomains.length === 0 ||
+          ((await input.onNetworkApproval?.({
+            host,
+            ...(port === undefined ? {} : { port }),
+          })) ??
+            false);
+        await send({
+          allowed,
+          requestId,
+          type: "network-approval-result",
+        });
+      })().catch(() => signalGroup("SIGKILL"));
     }
   });
   subprocess.once("error", () =>
-    rejectReady?.(
-      new Error("SANDBOX_PROCESS_START_FAILED: 无法启动沙箱 worker"),
-    ),
+    rejectReady?.(new Error("SANDBOX_PROCESS_START_FAILED: 无法启动沙箱 worker")),
   );
   subprocess.once("exit", () =>
     rejectReady?.(
       new Error(
-        startupError.trim() ||
-          "SANDBOX_PROCESS_START_FAILED: 沙箱 worker 在服务就绪前退出",
+        startupError.trim() || "SANDBOX_PROCESS_START_FAILED: 沙箱 worker 在服务就绪前退出",
       ),
     ),
   );
@@ -443,7 +401,11 @@ export async function spawnSandboxedProcess(
     });
     await ready;
     input.signal?.throwIfAborted();
-    return { process: sandboxWorker, close };
+    return {
+      process: sandboxWorker,
+      close,
+      getViolations: () => violations,
+    };
   } catch (error: unknown) {
     await close();
     input.signal?.throwIfAborted();

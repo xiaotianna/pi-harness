@@ -90,6 +90,36 @@ export class WorkspaceController {
     }
   };
 
+  public readImage = async (
+    request: FastifyRequest<{
+      Params: WorkspaceParamsDto;
+      Querystring: WorkspaceFileQueryDto;
+    }>,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> => {
+    const abortController = new AbortController();
+    const handleAborted = () => abortController.abort();
+    request.raw.once("aborted", handleAborted);
+    try {
+      const image = await this.workspaces.readImage(
+        request.params.workspaceId,
+        request.query.path,
+        abortController.signal,
+      );
+      return reply
+        .headers({
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        })
+        .type(image.mimeType)
+        .send(image.buffer);
+    } catch (error: unknown) {
+      return this.sendError(request, reply, error);
+    } finally {
+      request.raw.off("aborted", handleAborted);
+    }
+  };
+
   public listSkills = async (
     request: FastifyRequest<{ Params: WorkspaceParamsDto }>,
     reply: FastifyReply,

@@ -5,7 +5,15 @@ import type { ExtraProps } from "react-markdown";
 import { cn } from "../../shared/utils/cn";
 import { FileIconRender, resolveFileIcon } from "../ui/file-icon-render";
 
-const WorkspaceRootContext = createContext<string | undefined>(undefined);
+interface AssistantMarkdownWorkspace {
+  id: string | undefined;
+  root: string | undefined;
+}
+
+const AssistantMarkdownWorkspaceContext = createContext<AssistantMarkdownWorkspace>({
+  id: undefined,
+  root: undefined,
+});
 const URI_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:/i;
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-z]:[\\/]/i;
 const PATH_LOCATION_PATTERN = /(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/i;
@@ -13,16 +21,23 @@ const HTTP_URL_PATTERN = /^https?:\/\/\S+$/i;
 
 export interface AssistantMarkdownLinkProviderProps {
   children: ReactNode;
+  workspaceId: string | undefined;
   workspaceRoot: string | undefined;
 }
 
 export type AssistantMarkdownLinkProps = ComponentPropsWithoutRef<"a"> & ExtraProps;
+export type AssistantMarkdownImageProps = ComponentPropsWithoutRef<"img"> & ExtraProps;
 
 export function AssistantMarkdownLinkProvider({
   children,
+  workspaceId,
   workspaceRoot,
 }: AssistantMarkdownLinkProviderProps) {
-  return <WorkspaceRootContext value={workspaceRoot}>{children}</WorkspaceRootContext>;
+  return (
+    <AssistantMarkdownWorkspaceContext value={{ id: workspaceId, root: workspaceRoot }}>
+      {children}
+    </AssistantMarkdownWorkspaceContext>
+  );
 }
 
 function decodePath(path: string): string {
@@ -84,7 +99,7 @@ export function AssistantMarkdownLink({
   title,
   ...props
 }: AssistantMarkdownLinkProps) {
-  const workspaceRoot = useContext(WorkspaceRootContext);
+  const { root: workspaceRoot } = useContext(AssistantMarkdownWorkspaceContext);
 
   if (href && /^https?:\/\//i.test(href)) {
     return (
@@ -140,4 +155,20 @@ export function AssistantMarkdownLink({
       </Tooltip.Content>
     </Tooltip>
   );
+}
+
+export function AssistantMarkdownImage({
+  alt,
+  className,
+  node: _node,
+  src,
+  ...props
+}: AssistantMarkdownImageProps) {
+  const { id: workspaceId } = useContext(AssistantMarkdownWorkspaceContext);
+  const imageSrc =
+    src && workspaceId && isLocalPath(src)
+      ? `/api/workspaces/${encodeURIComponent(workspaceId)}/files/media?${new URLSearchParams({ path: decodePath(src) })}`
+      : src;
+
+  return <img alt={alt ?? ""} className={cn("max-w-full", className)} src={imageSrc} {...props} />;
 }

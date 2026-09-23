@@ -1,3 +1,17 @@
+export {
+  CommandProcessEventKind,
+  type CommandProcessEventKind as CommandProcessEventKindValue,
+  type CommandProcessSnapshot,
+  CommandProcessStatus,
+  type CommandProcessStatus as CommandProcessStatusValue,
+  isCommandProcessSnapshot,
+} from "./command-process.js";
+export {
+  CommandProcessManager,
+  type CommandProcessManagerOptions,
+  type CommandProcessWaitResult,
+  type StartCommandProcessInput,
+} from "./command-process-manager.js";
 export type { WorkspaceToolContext } from "./lib/tool-context.js";
 export { type ToolRegistration, ToolRegistry } from "./lib/tool-registry.js";
 export {
@@ -42,6 +56,12 @@ export {
   readTextFile,
   TextFileReadError,
 } from "./utils/file.js";
+export {
+  detectImageMimeType,
+  expectedImageMimeType,
+  readRegularFile,
+  type SupportedImageMimeType,
+} from "./utils/media-file.js";
 export { createToolFingerprint } from "./utils/tool-fingerprint.js";
 export {
   hasIgnoredWorkspaceDirectory,

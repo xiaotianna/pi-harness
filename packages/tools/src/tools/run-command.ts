@@ -1,40 +1,17 @@
 import type { AgentTool, AgentToolUpdateCallback } from "@earendil-works/pi-agent-core";
-import { truncateTail } from "@earendil-works/pi-agent-core";
-import { readSandboxPolicy, SandboxProfile } from "@pi-harness/policy";
-import { runSandboxedCommand } from "@pi-harness/sandbox";
-import { execa } from "execa";
 import { Type } from "typebox";
-import { resolveToolPath, type WorkspaceToolContext } from "../lib/tool-context.js";
+import type { CommandProcessSnapshot } from "../command-process.js";
+import type { WorkspaceToolContext } from "../lib/tool-context.js";
 import type { FileChangeDetails } from "../utils/file.js";
 import {
   captureWorkspaceTextSnapshot,
-  collectWorkspaceFileChanges,
-  type WorkspaceFileChanges,
   type WorkspaceTextSnapshot,
 } from "../utils/workspace-file-changes.js";
 
-const DEFAULT_TIMEOUT_MS = 120_000;
-const MAX_TIMEOUT_MS = 600_000;
-const MAX_CAPTURE_BYTES = 1024 * 1024;
-const MAX_APPROVAL_PREVIEW_CHARS = 65_536;
-const UPDATE_THROTTLE_MS = 100;
-const HOST_ENVIRONMENT_NAMES = [
-  "APPDATA",
-  "COMSPEC",
-  "HOME",
-  "LANG",
-  "LC_ALL",
-  "LOCALAPPDATA",
-  "PATH",
-  "PATHEXT",
-  "SYSTEMROOT",
-  "TEMP",
-  "TERM",
-  "TMP",
-  "TMPDIR",
-  "USER",
-  "USERPROFILE",
-] as const;
+const DEFAULT_TIMEOUT_MS = 4 * 60 * 60_000;
+const MAX_TIMEOUT_MS = 24 * 60 * 60_000;
+const DEFAULT_YIELD_TIME_MS = 10_000;
+const MAX_YIELD_TIME_MS = 30_000;
 
 const RunCommandParameters = Type.Object({
   command: Type.String({
@@ -52,82 +29,70 @@ const RunCommandParameters = Type.Object({
   ),
   timeoutMs: Type.Optional(
     Type.Integer({
-      description: "超时时间，默认 120000ms",
+      description: "进程总生存时间，默认 4 小时，最长 24 小时",
       maximum: MAX_TIMEOUT_MS,
       minimum: 1,
+    }),
+  ),
+  yieldTimeMs: Type.Optional(
+    Type.Integer({
+      description: "等待命令退出的时间；超过后返回 processId 并转为受监管后台任务",
+      maximum: MAX_YIELD_TIME_MS,
+      minimum: 250,
     }),
   ),
 });
 
 interface RunCommandProgressDetails {
-  stage: "awaiting_approval" | "collecting_changes" | "preparing" | "running";
+  stage: "preparing" | "running";
+}
+
+interface RunCommandBackgroundDetails {
+  process: CommandProcessSnapshot;
+  stage: "background";
 }
 
 interface RunCommandCompletedDetails {
-  durationMs: number;
-  exitCode: number | null;
   fileChanges: readonly FileChangeDetails[];
   fileChangesTruncated: boolean;
+  process: CommandProcessSnapshot;
   stage: "completed";
-  sandbox: {
-    elevated: boolean;
-    level: "host" | "isolated";
-    network: "host" | "policy";
-    outputBytes: number;
-    target: ".";
-    violations: readonly string[];
-  };
-  truncated: boolean;
 }
 
-export type RunCommandDetails = RunCommandProgressDetails | RunCommandCompletedDetails;
+export type RunCommandDetails =
+  | RunCommandProgressDetails
+  | RunCommandBackgroundDetails
+  | RunCommandCompletedDetails;
 
-function runHostCommand(input: {
-  command: string;
-  maxOutputBytes: number;
-  onOutput: (chunk: string) => void;
-  signal?: AbortSignal;
-  timeoutMs: number;
-  workspaceRoot: string;
-}) {
-  const subprocess = execa(input.command, {
-    all: true,
-    cwd: input.workspaceRoot,
-    env: Object.fromEntries(
-      HOST_ENVIRONMENT_NAMES.flatMap((name) =>
-        process.env[name] === undefined ? [] : [[name, process.env[name]]],
-      ),
-    ),
-    extendEnv: false,
-    killSignal: "SIGKILL",
-    maxBuffer: input.maxOutputBytes,
-    reject: false,
-    shell: true,
-    timeout: input.timeoutMs,
-    ...(input.signal === undefined ? {} : { cancelSignal: input.signal }),
-  });
-  subprocess.all?.on("data", (chunk: Buffer | string) => input.onOutput(chunk.toString()));
-  return subprocess;
+function terminalFailure(snapshot: CommandProcessSnapshot): Error {
+  const output = snapshot.output.trim();
+  const suffix = output ? `\n${output}` : "";
+  if (snapshot.status === "timed_out") {
+    return new Error(`TOOL_TIMEOUT: 命令执行超时${suffix}`);
+  }
+  if (snapshot.status === "aborted" || snapshot.status === "stopped") {
+    return new Error(`TOOL_COMMAND_STOPPED: 命令已停止${suffix}`);
+  }
+  if (snapshot.status === "daemon_stopped") {
+    return new Error(`TOOL_COMMAND_STOPPED: daemon 已停止命令${suffix}`);
+  }
+  return new Error(`TOOL_COMMAND_FAILED: 命令退出码 ${snapshot.exitCode ?? "未知"}${suffix}`);
 }
 
-/**
- * run_command 工具
- * 调度：串行（executionMode：sequential）
- * 实际执行：在固定 workspace 根目录用 Shell 执行命令；完全访问时走宿主机，其余模式走 SRT。
- */
 export function createRunCommandTool(
   context: WorkspaceToolContext,
-  getSkillReadPaths: () => readonly string[] = () => [],
 ): AgentTool<typeof RunCommandParameters, RunCommandDetails> {
   return {
     name: "run_command",
     label: "Run command",
     description:
-      "在固定 workspace 根目录执行 Shell 命令；完全访问时直接使用宿主机权限，其余模式由沙箱限制文件和网络。支持取消、超时和输出限制；安全且适合复用审批的单条命令应同时提供 prefixRule。",
+      "在固定 workspace 根目录执行 Shell 命令。命令在 yieldTimeMs 内退出时返回最终结果；仍在运行时返回 processId 并作为受监管后台任务继续执行。后台运行只表示进程仍存活，不表示命令已成功；安装、登录和其他必须完成的任务应调用 wait_command 等待退出码。",
     parameters: RunCommandParameters,
     executionMode: "sequential",
     async execute(toolCallId, input, signal, onUpdate) {
-      const workspaceRoot = await resolveToolPath(context, ".");
+      const manager = context.commandProcesses;
+      const runId = context.getActiveRunId?.();
+      if (!manager || !runId) throw new Error("COMMAND_PROCESS_UNAVAILABLE: 当前没有活动 Run");
       const update = (
         stage: RunCommandProgressDetails["stage"],
         text: string,
@@ -143,182 +108,61 @@ export function createRunCommandTool(
       }
 
       update("running", "命令已启动，等待输出…");
-      let liveOutput = "";
-      let updateTimer: ReturnType<typeof setTimeout> | undefined;
-      let lastUpdateAt = 0;
-      const emitOutput = () => {
-        updateTimer = undefined;
-        lastUpdateAt = Date.now();
-        update("running", truncateTail(liveOutput).content || "命令已启动，等待输出…");
+      const started = await manager.start({
+        beforeSnapshot,
+        command: input.command,
+        runId,
+        ...(signal === undefined ? {} : { signal }),
+        timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        toolCallId,
+      });
+      const abort = () => {
+        void manager.stop(started.processId);
       };
-      const onOutput = (chunk: string) => {
-        liveOutput = (liveOutput + chunk).slice(-MAX_CAPTURE_BYTES);
-        const delay = UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
-        if (delay <= 0) emitOutput();
-        else updateTimer ??= setTimeout(emitOutput, delay);
-      };
-      let result:
-        | Awaited<ReturnType<typeof runHostCommand>>
-        | Awaited<ReturnType<typeof runSandboxedCommand>>;
-      let sandboxViolations: readonly string[] = [];
-      const isFullAccess = context.isFullAccess?.() === true;
-      if (isFullAccess) {
-        result = await runHostCommand({
-          command: input.command,
-          maxOutputBytes: MAX_CAPTURE_BYTES,
-          onOutput,
-          ...(signal === undefined ? {} : { signal }),
-          timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-          workspaceRoot,
-        }).finally(() => {
-          if (updateTimer) clearTimeout(updateTimer);
-        });
-      } else {
-        const sandboxPolicy = await readSandboxPolicy(context.globalRoot, signal);
-        result = await runSandboxedCommand({
-          command: input.command,
-          commandId: toolCallId,
-          workspaceRoot,
-          protectedPaths: [...(context.protectedPaths ?? []), context.globalRoot],
-          allowedDomains: sandboxPolicy.network.allowedDomains,
-          deniedDomains: sandboxPolicy.network.deniedDomains,
-          credentials: context.getSandboxCredentials?.() ?? [],
-          isWorkspaceWritable: sandboxPolicy.profile === SandboxProfile.WORKSPACE_WRITE,
-          onNetworkApproval: ({ host, port }) =>
-            context.onNetworkAccessRequested?.(
-              { host, ...(port === undefined ? {} : { port }), toolCallId },
-              signal,
-            ) ?? Promise.resolve(false),
-          readPaths: getSkillReadPaths(),
-          timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-          maxOutputBytes: MAX_CAPTURE_BYTES,
-          ...(signal === undefined ? {} : { signal }),
-          onOutput,
-        }).finally(() => {
-          if (updateTimer) clearTimeout(updateTimer);
-        });
-        sandboxViolations = result.violations;
-      }
-      let output = truncateTail(result.all ?? "");
-      let totalDurationMs = result.durationMs;
-      let isElevated = false;
-
-      const collectChanges = async (status: string): Promise<WorkspaceFileChanges> => {
-        update("collecting_changes", status);
-        if (beforeSnapshot === null) return { changes: [], truncated: true };
-        try {
-          return await collectWorkspaceFileChanges(context, beforeSnapshot, signal);
-        } catch (error: unknown) {
-          if (signal?.aborted) throw error;
-          return { changes: [], truncated: true };
+      signal?.addEventListener("abort", abort, { once: true });
+      try {
+        const snapshot = await manager.wait(
+          started.processId,
+          input.yieldTimeMs ?? DEFAULT_YIELD_TIME_MS,
+        );
+        signal?.throwIfAborted();
+        if (snapshot.status === "running") {
+          manager.detach(snapshot.processId);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `${snapshot.output || "命令已启动，暂时没有输出。"}\n\n后台任务仍在运行，processId: ${snapshot.processId}`,
+              },
+            ],
+            details: { process: snapshot, stage: "background" },
+          };
         }
-      };
-      const recordFailedChanges = (fileChanges: WorkspaceFileChanges) => {
+
+        const completed = manager.consumeFileChanges(snapshot.processId);
         context.onCommandFileChangesDetected?.({
-          changes: fileChanges.changes,
+          changes: completed.fileChanges,
           toolCallId,
         });
-      };
-
-      if (result.isCanceled) throw new Error("命令已取消");
-      if (result.failed && sandboxViolations.length > 0) {
-        const sandboxChanges = await collectChanges("沙箱已阻止命令，正在确认已产生的文件变化…");
-        const reason =
-          truncateTail(sandboxViolations.join("\n")).content.slice(-MAX_APPROVAL_PREVIEW_CHARS) ||
-          "SRT 已阻止命令访问受限资源。";
-        update(
-          "awaiting_approval",
-          `${output.content || "命令被沙箱阻止"}\n\n沙箱原因：\n${reason}`,
-        );
-        let approved = false;
-        try {
-          approved =
-            (await context.onHostExecutionRequested?.(
-              {
-                changedFileCount: sandboxChanges.changes.length,
-                command: input.command,
-                reason,
-                toolCallId,
-              },
-              signal,
-            )) ?? false;
-        } catch (error: unknown) {
-          recordFailedChanges(sandboxChanges);
-          throw error;
-        }
-        if (!approved) {
-          recordFailedChanges(sandboxChanges);
-          throw new Error(
-            `SANDBOX_ESCALATION_REJECTED: 未批准在宿主机重新执行。\nSANDBOX_VIOLATIONS: ${JSON.stringify(sandboxViolations)}`,
-          );
-        }
-
-        const currentWorkspaceRoot = await resolveToolPath(context, ".");
-        liveOutput = "";
-        update("running", "已批准提升权限，正在宿主机重新执行命令…");
-        result = await runHostCommand({
-          command: input.command,
-          maxOutputBytes: MAX_CAPTURE_BYTES,
-          onOutput,
-          ...(signal === undefined ? {} : { signal }),
-          timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-          workspaceRoot: currentWorkspaceRoot,
-        }).finally(() => {
-          if (updateTimer) clearTimeout(updateTimer);
-        });
-        isElevated = true;
-        totalDurationMs += result.durationMs;
-        output = truncateTail(result.all ?? "");
-      }
-
-      if (result.isCanceled) throw new Error("命令已取消");
-      const fileChanges = await collectChanges(
-        result.failed
-          ? "命令执行失败，正在统计已产生的文件变化…"
-          : output.content
-            ? `${output.content}\n\n正在统计文件变化…`
-            : "命令执行完成，正在统计文件变化…",
-      );
-      const trackingNotice = fileChanges.truncated ? "\n\n[文件变更统计可能不完整]" : "";
-
-      if (result.timedOut) {
-        recordFailedChanges(fileChanges);
-        throw new Error(`TOOL_TIMEOUT: 命令执行超过 ${input.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms`);
-      }
-      if (result.isMaxBuffer) {
-        recordFailedChanges(fileChanges);
-        throw new Error("TOOL_OUTPUT_LIMIT: 命令输出超过 1MB 限制");
-      }
-      if (result.failed) {
-        recordFailedChanges(fileChanges);
-        const violation =
-          sandboxViolations.length === 0
-            ? ""
-            : `\nSANDBOX_VIOLATIONS: ${JSON.stringify(sandboxViolations)}`;
-        throw new Error(
-          `TOOL_COMMAND_FAILED: ${output.content || "命令执行失败"}${violation}${trackingNotice}`,
-        );
-      }
-
-      return {
-        content: [{ type: "text", text: (output.content || "(no output)") + trackingNotice }],
-        details: {
-          durationMs: totalDurationMs,
-          exitCode: result.exitCode ?? null,
-          fileChanges: fileChanges.changes,
-          fileChangesTruncated: fileChanges.truncated,
-          stage: "completed",
-          sandbox: {
-            elevated: isElevated,
-            level: isFullAccess || isElevated ? "host" : "isolated",
-            target: ".",
-            network: isFullAccess || isElevated ? "host" : "policy",
-            outputBytes: Buffer.byteLength(result.all ?? ""),
-            violations: sandboxViolations,
+        if (snapshot.status !== "completed") throw terminalFailure(snapshot);
+        const trackingNotice = completed.fileChangesTruncated ? "\n\n[文件变更统计可能不完整]" : "";
+        return {
+          content: [
+            {
+              type: "text",
+              text: (snapshot.output || "(no output)") + trackingNotice,
+            },
+          ],
+          details: {
+            fileChanges: completed.fileChanges,
+            fileChangesTruncated: completed.fileChangesTruncated,
+            process: snapshot,
+            stage: "completed",
           },
-          truncated: output.truncated,
-        },
-      };
+        };
+      } finally {
+        signal?.removeEventListener("abort", abort);
+      }
     },
   };
 }

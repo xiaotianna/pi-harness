@@ -9,7 +9,10 @@ import {
 } from "@pi-harness/agent-runtime/user-input";
 import { isPathWithin, resolveWorkspacePath } from "@pi-harness/policy";
 import {
+  detectImageMimeType,
+  expectedImageMimeType,
   hasIgnoredWorkspaceDirectory,
+  readRegularFile,
   readTextFile,
   type SkillDefinition,
   SkillRegistry,
@@ -44,6 +47,7 @@ const MAX_CONTEXT_ITEMS = 500;
 const MAX_CONTEXT_CANDIDATES = 2_000;
 // ponytail: 文件树单次最多 10,000 项；真实项目超过后再改为分页目录读取。
 const MAX_WORKSPACE_FILES = 10_000;
+const MAX_LOCAL_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_FILE_EXTENSIONS = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
 
 const WorkspaceErrorCode = {
@@ -426,6 +430,40 @@ export class WorkspaceService {
         throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "文件不存在");
       }
       throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "无法预览此文件");
+    }
+  }
+
+  public async readImage(workspaceId: string, path: string, signal?: AbortSignal) {
+    const workspaceRoot = this.getRequired(workspaceId).rootPath;
+    try {
+      const resolvedPath = isAbsolute(path.trim())
+        ? await realpath(path.trim())
+        : await resolveWorkspacePath({ path, workspaceRoot });
+      if (isPathWithin(await realpath(this.globalRoot), resolvedPath)) {
+        throw new Error("拒绝读取 daemon 受保护数据");
+      }
+      if (
+        isPathWithin(workspaceRoot, resolvedPath) &&
+        hasIgnoredWorkspaceDirectory(relative(workspaceRoot, resolvedPath))
+      ) {
+        throw new Error("图片不可预览");
+      }
+      const buffer = await readRegularFile(resolvedPath, MAX_LOCAL_IMAGE_BYTES, signal);
+      const mimeType = detectImageMimeType(buffer);
+      if (mimeType === null || expectedImageMimeType(path) !== mimeType) {
+        throw new Error("图片格式无效");
+      }
+      return { buffer, mimeType };
+    } catch (error: unknown) {
+      if (signal?.aborted) throw error;
+      if (error instanceof WorkspaceServiceError) throw error;
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        throw new WorkspaceServiceError(WorkspaceErrorCode.INVALID, "图片不存在");
+      }
+      throw new WorkspaceServiceError(
+        WorkspaceErrorCode.INVALID,
+        "只能预览本机上不超过 5 MiB 的 PNG、JPEG、GIF 或 WebP 图片",
+      );
     }
   }
 

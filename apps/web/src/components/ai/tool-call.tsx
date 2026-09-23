@@ -15,6 +15,7 @@ export interface ToolCallProps {
   query: string;
   request: string;
   result: ReactNode;
+  resultClassName?: string;
   running: boolean;
 }
 
@@ -29,6 +30,7 @@ export function ToolCall({
   query,
   request,
   result,
+  resultClassName,
   running,
 }: ToolCallProps) {
   return (
@@ -83,14 +85,15 @@ export function ToolCall({
                 <Separator className="mx-3.5" />
                 <div className="px-3.5 pb-2.5 pt-2">
                   <p className="mb-1 font-mono text-muted">{running ? "实时输出" : "结果"}</p>
-                  <pre
+                  <div
                     className={cn(
                       "max-h-52 overflow-auto whitespace-pre-wrap break-words font-mono",
                       failed ? "text-danger" : "text-foreground",
+                      resultClassName,
                     )}
                   >
                     {result}
-                  </pre>
+                  </div>
                 </div>
               </>
             ) : null}

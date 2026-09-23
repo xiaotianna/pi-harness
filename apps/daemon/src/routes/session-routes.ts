@@ -16,6 +16,8 @@ import {
   SessionApprovalParamsDtoSchema,
   type SessionCheckpointParamsDto,
   SessionCheckpointParamsDtoSchema,
+  type SessionCommandParamsDto,
+  SessionCommandParamsDtoSchema,
   type SessionEventsQueryDto,
   SessionEventsQueryDtoSchema,
   type SessionFileChangesQueryDto,
@@ -176,6 +178,17 @@ export async function registerSessionRoutes(
       },
     },
     controller.abortSubAgent,
+  );
+
+  server.delete<{ Params: SessionCommandParamsDto }>(
+    "/api/sessions/:sessionId/commands/:processId",
+    {
+      schema: {
+        params: SessionCommandParamsDtoSchema,
+        response: { 204: Type.Null(), ...errors },
+      },
+    },
+    controller.stopCommand,
   );
 
   server.get<{ Params: SessionParamsDto }>(

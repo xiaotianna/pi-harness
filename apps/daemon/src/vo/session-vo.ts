@@ -65,7 +65,34 @@ export const SessionSearchResultListVoSchema = Type.Array(SessionSearchResultVoS
 
 export type SessionSearchResultVo = Static<typeof SessionSearchResultVoSchema>;
 
+export const CommandProcessVoSchema = Type.Object({
+  command: Type.String(),
+  durationMs: Type.Number({ minimum: 0 }),
+  endedAt: Type.Optional(Type.Integer({ minimum: 0 })),
+  exitCode: Type.Union([Type.Integer(), Type.Null()]),
+  output: Type.String(),
+  outputBytes: Type.Integer({ minimum: 0 }),
+  processId: Type.String({ format: "uuid" }),
+  runId: Type.String({ minLength: 1 }),
+  sandbox: Type.Union([Type.Literal("host"), Type.Literal("isolated")]),
+  sessionId: Type.String({ minLength: 1 }),
+  signal: Type.Union([Type.String(), Type.Null()]),
+  startedAt: Type.Integer({ minimum: 0 }),
+  status: Type.Union([
+    Type.Literal("running"),
+    Type.Literal("completed"),
+    Type.Literal("failed"),
+    Type.Literal("stopped"),
+    Type.Literal("timed_out"),
+    Type.Literal("aborted"),
+    Type.Literal("daemon_stopped"),
+  ]),
+  toolCallId: Type.String({ minLength: 1 }),
+  truncated: Type.Boolean(),
+});
+
 export const SessionSnapshotVoSchema = Type.Object({
+  commands: Type.Array(CommandProcessVoSchema),
   events: Type.Array(HarnessEventVoSchema),
   session: SessionVoSchema,
 });

@@ -34,7 +34,9 @@ export {
   type UserInputSubmission,
   type UserInputToolResult,
 } from "./request-user-input.js";
-export { createRunCommandTool } from "./run-command.js";
+export { createRunCommandTool, type RunCommandDetails } from "./run-command.js";
+export { createStopCommandTool } from "./stop-command.js";
+export { createWaitCommandTool } from "./wait-command.js";
 export { createSearchTextTool } from "./search-text.js";
 export {
   createSubAgentToolRegistrations,

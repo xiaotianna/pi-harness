@@ -1,6 +1,8 @@
 import {
+  type CommandProcessSnapshot,
   type HarnessEvent,
   HarnessEventType,
+  isCommandProcessSnapshot,
   isInputRequestedData,
   MessageDeltaKind,
 } from "@pi-harness/agent-runtime/harness-event";
@@ -34,6 +36,19 @@ export function selectSessionEventMetadata(
     } else {
       stableEvents.push(event);
     }
+  }
+  for (const command of snapshot.commands) {
+    const event: HarnessEvent = {
+      data: command,
+      id: `active-command-${command.processId}`,
+      runId: command.runId,
+      seq: snapshot.session.lastSeq,
+      sessionId: snapshot.session.id,
+      timestamp: command.startedAt,
+      type: HarnessEventType.COMMAND_UPDATED,
+    };
+    transientByKey.set(transientKey(event), event);
+    changedRunIds.add(command.runId);
   }
   const metadata = { changedRunIds, stableEvents, transientByKey };
   metadataBySnapshot.set(snapshot, metadata);
@@ -73,6 +88,7 @@ function isTransient(event: HarnessEvent): boolean {
   return (
     event.type === HarnessEventType.MESSAGE_DELTA ||
     event.type === HarnessEventType.TOOL_UPDATED ||
+    event.type === HarnessEventType.COMMAND_UPDATED ||
     event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA ||
     event.type === HarnessEventType.SUBAGENT_TOOL_UPDATED
   );
@@ -80,6 +96,9 @@ function isTransient(event: HarnessEvent): boolean {
 
 function transientKey(event: HarnessEvent): string {
   const data = isPlainObject(event.data) ? event.data : {};
+  if (event.type === HarnessEventType.COMMAND_UPDATED) {
+    return `command:${data.processId ?? event.id}`;
+  }
   return event.type === HarnessEventType.MESSAGE_DELTA ||
     event.type === HarnessEventType.SUBAGENT_MESSAGE_DELTA
     ? `${event.runId}:${data.executionId ?? "root"}:message:${data.contentIndex}:${data.kind}:${data.toolCallId ?? ""}`
@@ -116,6 +135,7 @@ export function updateSnapshotWithEvents(
         (isPlainObject(data.message) && data.message.role === "assistant"));
     const isToolEnd =
       event.type === HarnessEventType.TOOL_COMPLETED || event.type === HarnessEventType.TOOL_FAILED;
+    const isCommandEnd = event.type === HarnessEventType.COMMAND_EXITED;
     const isChildToolEnd =
       event.type === HarnessEventType.SUBAGENT_TOOL_COMPLETED ||
       event.type === HarnessEventType.SUBAGENT_TOOL_FAILED ||
@@ -147,6 +167,9 @@ export function updateSnapshotWithEvents(
         (isToolEnd &&
           currentEvent.type === HarnessEventType.TOOL_UPDATED &&
           currentEvent.data.toolCallId === data.toolCallId) ||
+        (isCommandEnd &&
+          currentEvent.type === HarnessEventType.COMMAND_UPDATED &&
+          currentEvent.data.processId === data.processId) ||
         (isChildToolEnd &&
           currentEvent.type === HarnessEventType.SUBAGENT_TOOL_UPDATED &&
           currentEvent.data.executionId === data.executionId &&
@@ -187,12 +210,29 @@ export function updateSnapshotWithEvents(
       : [...current.stableEvents, ...appendedStable];
   const eventMetadata = { changedRunIds, stableEvents, transientByKey };
   const last = accepted.at(-1);
+  let commands: readonly CommandProcessSnapshot[] = snapshot.commands;
+  for (const event of accepted) {
+    if (!isCommandProcessSnapshot(event.data)) continue;
+    const commandEvent = event.data;
+    if (
+      event.type === HarnessEventType.COMMAND_STARTED ||
+      event.type === HarnessEventType.COMMAND_UPDATED
+    ) {
+      commands = [
+        ...commands.filter((command) => command.processId !== commandEvent.processId),
+        commandEvent,
+      ];
+    } else if (event.type === HarnessEventType.COMMAND_EXITED) {
+      commands = commands.filter((command) => command.processId !== commandEvent.processId);
+    }
+  }
   const persistedUserMessageCount = accepted.filter(
     (event) =>
       event.type === HarnessEventType.MESSAGE_COMPLETED && isHarnessUserMessage(event.data),
   ).length;
   const optimisticUserInputs = snapshot.optimisticUserInputs?.slice(persistedUserMessageCount);
   return {
+    commands,
     eventMetadata,
     // Keep the public event array stable during token-only batches. Transient events live in
     // eventMetadata and are materialized only for consumers that explicitly need them.

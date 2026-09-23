@@ -2,9 +2,11 @@ import { isInternalAgentMessage } from "@pi-harness/agent-runtime/agent-message"
 import {
   ApprovalDecision,
   ApprovalRequestKind,
+  type CommandProcessSnapshot,
   type HarnessEvent,
   HarnessEventType,
   isApprovalGranted,
+  isCommandProcessSnapshot,
   isInputRequestedData,
   isInputResolvedData,
   isSubAgentStartedData,
@@ -315,6 +317,11 @@ function readToolDetails(value: unknown): unknown {
   return isPlainObject(value) ? value.details : undefined;
 }
 
+function readCommandProcess(value: unknown): CommandProcessSnapshot | null {
+  if (!isPlainObject(value) || !isPlainObject(value.details)) return null;
+  return isCommandProcessSnapshot(value.details.process) ? value.details.process : null;
+}
+
 function readToolError(value: unknown): string {
   const result = readToolResult(value);
   return typeof result === "string" && result ? result : "工具执行失败";
@@ -562,6 +569,19 @@ export function sessionEventsToMessages({
   const messagesByTransient = messagesByEventState.get(stableEvents);
   const cached = messagesByTransient?.get(transientByKey);
   if (cached) return cached;
+
+  if (
+    [...transientByKey.values()].some((event) => event.type === HarnessEventType.COMMAND_UPDATED)
+  ) {
+    const events = selectActiveSessionEvents(
+      [...stableEvents, ...transientByKey.values()].sort((left, right) => left.seq - right.seq),
+    );
+    const currentMessages = projectRunMessages(events, findActiveRunId(events));
+    const cache = messagesByTransient ?? new WeakMap();
+    cache.set(transientByKey, currentMessages);
+    if (!messagesByTransient) messagesByEventState.set(stableEvents, cache);
+    return currentMessages;
+  }
 
   const stableProjection = readStableSessionProjection(stableEvents);
   const activeRunId = stableProjection.activeRunId;
@@ -977,6 +997,32 @@ function projectRunMessages(
     }
 
     if (
+      (event.type === HarnessEventType.COMMAND_STARTED ||
+        event.type === HarnessEventType.COMMAND_UPDATED ||
+        event.type === HarnessEventType.COMMAND_EXITED) &&
+      isCommandProcessSnapshot(event.data)
+    ) {
+      const tool = toolsByCallId.get(event.data.toolCallId);
+      if (tool) {
+        tool.command = event.data;
+        tool.output = event.data.output;
+        if (event.type === HarnessEventType.COMMAND_EXITED) {
+          tool.state =
+            event.data.status === "completed"
+              ? ChatToolState.OUTPUT_AVAILABLE
+              : ChatToolState.OUTPUT_ERROR;
+          if (event.data.status !== "completed") {
+            tool.errorText =
+              event.data.status === "failed"
+                ? `命令执行失败，退出码 ${event.data.exitCode ?? "未知"}`
+                : "命令已停止";
+          }
+        }
+      }
+      continue;
+    }
+
+    if (
       event.type === HarnessEventType.APPROVAL_REQUESTED &&
       event.runId &&
       isPlainObject(event.data) &&
@@ -1083,8 +1129,10 @@ function projectRunMessages(
           tool.errorText = readToolError(event.data.result);
           tool.state = ChatToolState.OUTPUT_ERROR;
         } else {
+          const command = readCommandProcess(event.data.result);
           tool.details = readToolDetails(event.data.result);
           tool.output = readToolResult(event.data.result);
+          if (command) tool.command = command;
           tool.state = ChatToolState.OUTPUT_AVAILABLE;
         }
         refreshToolGroupState(toolGroupsByCallId.get(event.data.toolCallId));
