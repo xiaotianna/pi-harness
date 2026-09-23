@@ -1,6 +1,7 @@
 import { Skeleton } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import { useReducedMotion } from "motion/react";
+import { AssistantMarkdownLinkProvider } from "../../../components/ai/assistant-markdown-link";
 import { AgentTraceView } from "../../trace";
 import { sessionTraceSnapshotQueryOptions } from "../api/session-queries";
 import { useSessionEvents } from "../hooks/use-session-events";
@@ -81,5 +82,12 @@ export function ChatTraceView({ sessionId }: { sessionId: string }) {
   );
   if (query.isError) throw query.error;
   if (!query.data) return <ChatTraceSkeleton />;
-  return <AgentTraceView events={selectSessionEvents(query.data)} />;
+  return (
+    <AssistantMarkdownLinkProvider
+      workspaceId={query.data.session.workspaceId}
+      workspaceRoot={query.data.session.workspaceRoot}
+    >
+      <AgentTraceView events={selectSessionEvents(query.data)} />
+    </AssistantMarkdownLinkProvider>
+  );
 }
