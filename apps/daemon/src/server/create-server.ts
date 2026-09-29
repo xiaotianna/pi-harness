@@ -193,6 +193,7 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
     async (providerId, modelId) => (await providers.resolveRunModel(providerId, modelId)).model,
     (error, context) =>
       server.log.error({ err: error, ...context }, "Command process lifecycle failed"),
+    localMemoryEmbedder,
   );
   const workspaces = new WorkspaceService(
     database.workspaces,

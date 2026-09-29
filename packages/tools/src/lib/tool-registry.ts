@@ -5,6 +5,7 @@ import { ToolExecutionGuard } from "../tool-execution-guard.js";
 
 export interface ToolRegistration {
   readonly policy: ToolPolicy;
+  readonly searchDescription?: string;
   readonly source: string;
   readonly timeoutMs: number;
   readonly tool: AgentTool;
@@ -38,7 +39,7 @@ export class ToolRegistry {
     this.add(registrations);
   }
 
-  private add(registrations: readonly ToolRegistration[]): void {
+  private add(registrations: readonly ToolRegistration[], shouldCompile = true): void {
     for (const registration of registrations) {
       const { tool } = registration;
       if (!tool.name.trim() || !tool.description.trim()) {
@@ -56,7 +57,7 @@ export class ToolRegistry {
       if (!Number.isInteger(registration.timeoutMs) || registration.timeoutMs < 1) {
         throw new Error(`工具 ${tool.name} 缺少有效超时`);
       }
-      Compile(tool.parameters);
+      if (shouldCompile) Compile(tool.parameters);
       this.declarations.set(tool.name, registration);
       this.registrations.set(tool.name, {
         ...registration,
@@ -89,7 +90,7 @@ export class ToolRegistry {
         this.declarations.delete(name);
       }
     }
-    this.add(registrations);
+    this.add(registrations, false);
   }
 
   public get(toolName: string): ToolRegistration | undefined {

@@ -17,6 +17,7 @@ import {
   isInputResolvedData,
   isMessageBranchStartedData,
   isPlanUpdatedData,
+  isRunToolsLoadedData,
   isSubAgentStartedData,
   isSubAgentTerminalData,
   isTodoUpdatedData,
@@ -146,6 +147,13 @@ function parseHarnessEvent(value: unknown, expectedSessionId: SessionId): Harnes
   }
   if (event.type === HarnessEventType.SUBAGENT_STARTED && !isSubAgentStartedData(event.data)) {
     throw new Error("Session subagent start event is invalid");
+  }
+  if (
+    (event.type === HarnessEventType.RUN_TOOLS_LOADED ||
+      event.type === HarnessEventType.SUBAGENT_TOOLS_LOADED) &&
+    !isRunToolsLoadedData(event.data)
+  ) {
+    throw new Error("Session tool load event is invalid");
   }
   if (
     (event.type === HarnessEventType.SUBAGENT_COMPLETED ||

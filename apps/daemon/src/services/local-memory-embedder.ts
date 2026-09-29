@@ -1,3 +1,4 @@
+import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { type FeatureExtractionPipeline, pipeline } from "@huggingface/transformers";
 import type { MemoryEmbedder } from "@pi-harness/memory";
@@ -55,16 +56,39 @@ export class LocalMemoryEmbedder implements MemoryEmbedder {
 
   private getExtractor(): Promise<FeatureExtractionPipeline> {
     if (!this.extractor) {
-      this.extractor = pipeline("feature-extraction", MODEL_ID, {
-        cache_dir: join(this.globalRoot, "models"),
-        device: "cpu",
-        dtype: "q8",
-        revision: MODEL_REVISION,
-      }).catch((error: unknown) => {
+      this.extractor = this.createExtractor().catch((error: unknown) => {
         this.extractor = undefined;
         throw error;
       });
     }
     return this.extractor;
+  }
+
+  private async createExtractor(): Promise<FeatureExtractionPipeline> {
+    const cacheRoot = join(this.globalRoot, "models");
+    const localPath = join(cacheRoot, MODEL_ID, MODEL_REVISION);
+    const requiredFiles = [
+      "config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "onnx/model_quantized.onnx",
+    ];
+    const isCached = (
+      await Promise.all(
+        requiredFiles.map((file) =>
+          access(join(localPath, file)).then(
+            () => true,
+            () => false,
+          ),
+        ),
+      )
+    ).every(Boolean);
+    return pipeline("feature-extraction", isCached ? localPath : MODEL_ID, {
+      cache_dir: cacheRoot,
+      device: "cpu",
+      dtype: "q8",
+      local_files_only: isCached,
+      revision: MODEL_REVISION,
+    });
   }
 }

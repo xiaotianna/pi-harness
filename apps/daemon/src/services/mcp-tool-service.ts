@@ -324,6 +324,7 @@ export class McpToolService {
           };
           registrations.push({
             source: `mcp:${server.id}:${server.revision}:${definitionHash}`,
+            searchDescription: tool.description ?? "",
             timeoutMs: server.config.requestTimeoutMs,
             policy:
               setting.trustedReadOnly && !isComputerUse
@@ -398,23 +399,6 @@ export class McpToolService {
               },
             },
           });
-          if (
-            registrations.length > 64 ||
-            Buffer.byteLength(
-              JSON.stringify(
-                registrations.map(({ tool }) => ({
-                  name: tool.name,
-                  description: tool.description,
-                  parameters: tool.parameters,
-                })),
-              ),
-            ) >
-              512 * 1024
-          )
-            throw new McpError(
-              McpErrorCode.LIMIT_EXCEEDED,
-              "MCP 工具数量或定义超过运行预算，请减少启用的服务器",
-            );
         }
         if (isComputerUse && hasComputerAct && hasComputerObserve && !hasComputerExec) {
           const definitionHash = createToolFingerprint([

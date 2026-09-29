@@ -64,6 +64,15 @@ export {
 } from "./utils/media-file.js";
 export { createToolFingerprint } from "./utils/tool-fingerprint.js";
 export {
+  HybridToolSearch,
+  loadToolRegistrations,
+  MAX_TOOL_SEARCH_RESULTS,
+  MAX_VISIBLE_TOOLS,
+  searchToolRegistrations,
+  type ToolSearchEmbedder,
+  type ToolSearchMatch,
+} from "./utils/tool-search.js";
+export {
   hasIgnoredWorkspaceDirectory,
   WORKSPACE_FILE_PATTERNS,
 } from "./utils/workspace-file-changes.js";

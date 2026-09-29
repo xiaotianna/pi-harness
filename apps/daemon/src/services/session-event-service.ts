@@ -78,6 +78,10 @@ function indexRunContexts(contexts: readonly RunContextData[]): Map<string, stri
 function readRunContextState(events: readonly HarnessEvent[]): RecordedRunContextState {
   let state = EMPTY_RUN_CONTEXT_STATE;
   for (const event of events) {
+    if (event.type === HarnessEventType.RUN_TOOLS_LOADED) {
+      state = { ...state, system: null };
+      continue;
+    }
     if (event.type !== HarnessEventType.RUN_STARTED || !isPlainObject(event.data)) continue;
     const contexts = readRunContexts(event.data.contexts);
     let nextContexts = state.contexts;
@@ -110,6 +114,9 @@ function compactRunContextSnapshot(
   event: HarnessEvent,
   previous: RecordedRunContextState,
 ): { event: HarnessEvent; state: RecordedRunContextState } {
+  if (event.type === HarnessEventType.RUN_TOOLS_LOADED) {
+    return { event, state: { ...previous, system: null } };
+  }
   if (event.type !== HarnessEventType.RUN_STARTED || !isPlainObject(event.data)) {
     return { event, state: previous };
   }

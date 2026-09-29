@@ -81,6 +81,7 @@ export const HarnessEventType = {
   RUN_FAILED: "run.failed",
   // run被用户主动停止或系统取消
   RUN_ABORTED: "run.aborted",
+  RUN_TOOLS_LOADED: "run.tools_loaded",
   // run暂停执行，正在等待用户回答问题
   RUN_AWAITING_INPUT: "run.awaiting_input",
   // 用户提供输入后，暂停的 run 恢复执行
@@ -117,6 +118,7 @@ export const HarnessEventType = {
   COMMAND_UPDATED: "command.updated",
   COMMAND_EXITED: "command.exited",
   SUBAGENT_STARTED: "subagent.started",
+  SUBAGENT_TOOLS_LOADED: "subagent.tools_loaded",
   SUBAGENT_MESSAGE_STARTED: "subagent.message.started",
   SUBAGENT_MESSAGE_DELTA: "subagent.message.delta",
   SUBAGENT_MESSAGE_COMPLETED: "subagent.message.completed",
@@ -243,6 +245,26 @@ export interface RunToolDefinition {
   description: string;
   name: string;
   parameters: unknown;
+}
+
+export interface RunToolsLoadedData {
+  executionId?: string;
+  tools: RunToolDefinition[];
+}
+
+export function isRunToolsLoadedData(value: unknown): value is RunToolsLoadedData {
+  return (
+    isPlainObject(value) &&
+    (value.executionId === undefined || typeof value.executionId === "string") &&
+    Array.isArray(value.tools) &&
+    value.tools.every(
+      (tool) =>
+        isPlainObject(tool) &&
+        typeof tool.name === "string" &&
+        typeof tool.description === "string" &&
+        "parameters" in tool,
+    )
+  );
 }
 
 export interface RunContextData {

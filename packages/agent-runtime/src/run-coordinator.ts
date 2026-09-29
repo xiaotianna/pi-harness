@@ -16,14 +16,19 @@ import {
 import { ApprovalPolicy, type ApprovalPolicyValue } from "@pi-harness/policy";
 import {
   type FileChangeDetails,
+  type HybridToolSearch,
+  loadToolRegistrations,
+  MAX_VISIBLE_TOOLS,
   type PlanUpdatedData,
   type RequestUserInputData,
   type SendAgentMessageInput,
   type SkillRegistry,
   type SpawnAgentInput,
   type StopAgentInput,
+  searchToolRegistrations,
   type TodoUpdatedData,
   type ToolRegistry,
+  type ToolSearchMatch,
   UserInputRequestKind,
   UserInputResponseAction,
   type UserInputToolResult,
@@ -122,6 +127,8 @@ interface ActiveRun extends AgentEventAdapterContext {
   planRetryPrompt: string | null;
   preparationAbortController: AbortController;
   preparationFailures: PreparedExternalTools["failures"];
+  searchedToolNames: Set<string>;
+  visibleToolNames: Set<string>;
   runId: RunId;
   startMessageIndex: number;
   streamFn: StreamFn;
@@ -229,6 +236,7 @@ export class RunCoordinator {
       throw new Error("SUBAGENT_MODEL_FAILED: 模型覆盖不可用");
     },
     private readonly subAgentToolNames: readonly string[] = [],
+    private readonly toolSearch?: HybridToolSearch,
   ) {
     this.toolHooks = new RunToolHooks({
       agent,
@@ -328,6 +336,41 @@ export class RunCoordinator {
   public spawnSubAgent(toolCallId: string, input: SpawnAgentInput, signal?: AbortSignal) {
     if (this.subAgents === null) throw new Error("SUBAGENT_NOT_ACTIVE: 当前没有活动 Run");
     return this.subAgents.spawn(null, toolCallId, input, signal);
+  }
+
+  public async searchTools(
+    query: string,
+    signal?: AbortSignal,
+  ): Promise<readonly ToolSearchMatch[]> {
+    signal?.throwIfAborted();
+    const run = this.activeRun;
+    if (run === null) throw new Error("TOOL_SEARCH_UNAVAILABLE: 当前没有活动 Run");
+    const remaining = MAX_VISIBLE_TOOLS - run.visibleToolNames.size;
+    if (remaining <= 0) throw new Error("TOOL_SEARCH_LIMIT_EXCEEDED: 当前 Run 的工具数量已达上限");
+    const available = this.toolRegistry.rawRegistrations.filter(
+      ({ source, tool }) => source.startsWith("mcp:") && !run.visibleToolNames.has(tool.name),
+    );
+    const matches = this.toolSearch
+      ? await this.toolSearch.search(available, query, signal)
+      : searchToolRegistrations(available, query);
+    signal?.throwIfAborted();
+    for (const match of matches) run.searchedToolNames.add(match.name);
+    return matches;
+  }
+
+  public async loadTools(
+    names: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<readonly string[]> {
+    signal?.throwIfAborted();
+    const run = this.activeRun;
+    if (run === null) throw new Error("TOOL_LOAD_UNAVAILABLE: 当前没有活动 Run");
+    return loadToolRegistrations(
+      this.toolRegistry.rawRegistrations,
+      names,
+      run.searchedToolNames,
+      run.visibleToolNames,
+    );
   }
 
   /** 等待当前 Run 中指定的子 Agent 完成，等待过程可取消。 */
@@ -729,10 +772,14 @@ export class RunCoordinator {
     ]
       .filter(Boolean)
       .join("\n");
+    const initialTools = this.toolRegistry.tools.filter(
+      (tool) =>
+        !this.toolRegistry.get(tool.name)?.source.startsWith("mcp:") &&
+        (input.isSubAgentEnabled || !this.subAgentToolNames.includes(tool.name)),
+    );
+    const visibleToolNames = new Set(initialTools.map(({ name }) => name));
     const runTools = (): AgentTool[] =>
-      input.isSubAgentEnabled
-        ? this.toolRegistry.tools
-        : this.toolRegistry.tools.filter((tool) => !this.subAgentToolNames.includes(tool.name));
+      this.toolRegistry.tools.filter(({ name }) => visibleToolNames.has(name));
     const runStartedData = {
       contexts: runContexts,
       maxTokens: input.model.maxTokens,
@@ -741,7 +788,7 @@ export class RunCoordinator {
       providerId: input.providerId,
       systemPrompt: input.systemPrompt,
       thinkingLevel,
-      tools: createRunToolSnapshot(this.toolRegistry, runTools()),
+      tools: createRunToolSnapshot(this.toolRegistry, initialTools),
     } satisfies RunStartedData;
     let requestIndex = 0;
     this.agent.streamFunction = async (model, context, options) => {
@@ -787,6 +834,8 @@ export class RunCoordinator {
       planRetryPrompt: null,
       preparationAbortController,
       preparationFailures: [],
+      searchedToolNames: new Set<string>(),
+      visibleToolNames,
       ...runStartedData,
       runId: input.runId,
       startMessageIndex: this.agent.state.messages.length,
@@ -818,12 +867,30 @@ export class RunCoordinator {
           .join("\n");
         this.toolRegistry.replaceExternal(externalTools?.registrations ?? []);
         this.agent.state.tools = runTools();
+        this.agent.prepareNextTurnWithContext = async ({ context }, signal) => {
+          signal?.throwIfAborted();
+          const nextTools = runTools();
+          const previousNames = new Set(context.tools?.map(({ name }) => name));
+          const loaded = nextTools.filter(({ name }) => !previousNames.has(name));
+          if (loaded.length === 0) return undefined;
+          this.agent.state.tools = nextTools;
+          activeRun.tools = createRunToolSnapshot(this.toolRegistry, nextTools);
+          await this.emit(
+            {
+              data: { tools: createRunToolSnapshot(this.toolRegistry, loaded) },
+              type: HarnessEventType.RUN_TOOLS_LOADED,
+            },
+            input.runId,
+          );
+          return { context: { ...context, tools: nextTools } };
+        };
         runStartedData.tools = createRunToolSnapshot(this.toolRegistry, this.agent.state.tools);
         activeRun.tools = runStartedData.tools;
         this.subAgents = input.isSubAgentEnabled
           ? new SubAgentTree({
               rootAgent: this.agent,
               rootRegistry: this.toolRegistry,
+              ...(this.toolSearch === undefined ? {} : { toolSearch: this.toolSearch }),
               ...(this.skillRegistry === undefined ? {} : { skillRegistry: this.skillRegistry }),
               runId: input.runId,
               model: input.model,
@@ -937,6 +1004,7 @@ export class RunCoordinator {
       this.subAgents?.abortAll();
       await externalTools?.release();
       this.toolRegistry.replaceExternal([]);
+      delete this.agent.prepareNextTurnWithContext;
       this.agent.state.tools = this.toolRegistry.tools;
       this.toolHooks.finishRun();
       this.inputQueue.finishRun();

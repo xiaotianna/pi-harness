@@ -762,6 +762,11 @@ export function sessionEventsToAgentTraces(
         toolDefinitionsCache.set(tools, currentToolDefinitions);
       }
       toolDefinitionsByRunId.set(event.runId, currentToolDefinitions);
+    } else if (event.type === HarnessEventType.RUN_TOOLS_LOADED && isPlainObject(event.data)) {
+      const loaded = readToolDefinitions(event.data.tools);
+      const current = toolDefinitionsByRunId.get(event.runId) ?? EMPTY_TOOL_DEFINITIONS;
+      currentToolDefinitions = [...current, ...loaded];
+      toolDefinitionsByRunId.set(event.runId, currentToolDefinitions);
     }
   }
 
@@ -786,6 +791,8 @@ export function sessionEventsToAgentTraces(
   let hasRecordedContextSnapshot = false;
   let recordedContexts = new Map<string, RunContextData>();
   let recordedSystem: string | null = null;
+  let recordedSystemPrompt = "";
+  let recordedSystemTools: AgentTraceToolDefinition[] = [];
   let systemRecordCount = 0;
 
   for (const trace of runTraces) {
@@ -801,6 +808,10 @@ export function sessionEventsToAgentTraces(
         typeof data.systemPrompt === "string" && Array.isArray(data.tools)
           ? JSON.stringify([systemPrompt, tools])
           : null;
+      if (systemSnapshot !== null) {
+        recordedSystemPrompt = systemPrompt;
+        recordedSystemTools = tools;
+      }
       if (systemSnapshot !== null && systemSnapshot !== recordedSystem) {
         const isInitial = systemRecordCount === 0;
         records.push({
@@ -901,6 +912,42 @@ export function sessionEventsToAgentTraces(
         }
         recordedContexts = nextContexts;
         hasRecordedContextSnapshot = true;
+      }
+    }
+
+    if (runStarted) {
+      const startData = isPlainObject(runStarted.data) ? runStarted.data : {};
+      const systemPrompt = recordedSystemPrompt;
+      const tools = [...recordedSystemTools];
+      for (const event of runEvents) {
+        if (event.type !== HarnessEventType.RUN_TOOLS_LOADED || !isPlainObject(event.data))
+          continue;
+        tools.push(...readToolDefinitions(event.data.tools));
+        recordedSystemTools = [...tools];
+        recordedSystem = JSON.stringify([systemPrompt, tools]);
+        records.push({
+          durationMs: 0,
+          id: event.id,
+          kind: AgentTraceRecordKind.SYSTEM,
+          label: "System Prompt Updated",
+          lane: AgentTraceLane.INPUT,
+          preview: `${tools.length} 个工具 · ${typeof startData.modelId === "string" ? startData.modelId : "未知模型"}`,
+          raw: {
+            eventId: event.id,
+            modelId: startData.modelId,
+            providerId: startData.providerId,
+            runId: trace.traceId,
+            seq: event.seq,
+            systemPrompt,
+            tools: [...tools],
+          },
+          source: HarnessEventType.RUN_TOOLS_LOADED,
+          startMs: runOffset + eventOffset(event, runStarted.timestamp),
+          status: AgentTraceStatus.COMPLETED,
+          summary: `已加载工具，当前包含 ${tools.length} 个工具。`,
+          systemPrompt: { content: systemPrompt, tools: [...tools] },
+          turn: 0,
+        });
       }
     }
 
@@ -1046,6 +1093,7 @@ export function sessionEventsToAgentTraces(
 }
 
 const SUB_AGENT_EVENT_TYPES: Partial<Record<string, HarnessEventType>> = {
+  [HarnessEventType.SUBAGENT_TOOLS_LOADED]: HarnessEventType.RUN_TOOLS_LOADED,
   [HarnessEventType.SUBAGENT_CONTEXT_USAGE_SNAPSHOT]: HarnessEventType.CONTEXT_USAGE_SNAPSHOT,
   [HarnessEventType.SUBAGENT_CONTEXT_COMPACTED]: HarnessEventType.CONTEXT_COMPACTED,
   [HarnessEventType.SUBAGENT_MESSAGE_STARTED]: HarnessEventType.MESSAGE_STARTED,

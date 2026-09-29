@@ -1,18 +1,22 @@
 import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { createMemoryToolRegistrations, type MemoryRuntime } from "@pi-harness/memory";
-import type { CommandPrefixRule, SandboxCredential } from "@pi-harness/policy";
+import { type CommandPrefixRule, type SandboxCredential, ToolPermission } from "@pi-harness/policy";
 import {
   CommandProcessEventKind,
   CommandProcessManager,
   type CommandProcessSnapshot,
+  createLoadToolsTool,
+  createSearchToolsTool,
   createSubAgentToolRegistrations,
   createWorkspaceToolRegistry,
+  HybridToolSearch,
   type PlanUpdatedData,
   type SkillDefinition,
   SkillRegistry,
   type TodoUpdatedData,
   type ToolRegistration,
+  type ToolSearchEmbedder,
   type WorkspaceToolContext,
 } from "@pi-harness/tools";
 import { loadWorkspaceAgentContext } from "./context/workspace-agent-context.js";
@@ -80,6 +84,7 @@ export type PrepareExternalTools = (
 export class AgentManager {
   private readonly runtimes = new Map<SessionId, RunCoordinator>();
   private readonly commandProcesses = new Map<SessionId, CommandProcessManager>();
+  private readonly toolSearch: HybridToolSearch;
   private activeSubAgents = 0;
 
   public constructor(
@@ -105,7 +110,10 @@ export class AgentManager {
       error: unknown,
       context: { processId: string; sessionId: string },
     ) => void = () => undefined,
-  ) {}
+    toolSearchEmbedder?: ToolSearchEmbedder,
+  ) {
+    this.toolSearch = new HybridToolSearch(toolSearchEmbedder);
+  }
 
   private acquireSubAgentSlot = (): (() => void) | null => {
     if (this.activeSubAgents >= 8) return null;
@@ -342,6 +350,24 @@ export class AgentManager {
     const toolRegistry = createWorkspaceToolRegistry(toolContext, skillRegistry, [
       ...createMemoryToolRegistrations(this.memory, input.sessionId, input.workspaceId),
       ...subAgentTools,
+      {
+        policy: { permission: ToolPermission.READ_ONLY },
+        source: "built_in",
+        timeoutMs: 30_000,
+        tool: createSearchToolsTool((query, signal) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.searchTools(query, signal);
+        }),
+      },
+      {
+        policy: { permission: ToolPermission.READ_ONLY },
+        source: "built_in",
+        timeoutMs: 30_000,
+        tool: createLoadToolsTool((names, signal) => {
+          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
+          return runtime.loadTools(names, signal);
+        }),
+      },
     ]);
     const agent = createAgent({ ...input, tools: toolRegistry.tools });
     runtime = new RunCoordinator(
@@ -373,6 +399,7 @@ export class AgentManager {
         return this.resolveSubAgentModel(providerId, modelId);
       },
       subAgentTools.map(({ tool }) => tool.name),
+      this.toolSearch,
     );
     this.commandProcesses.set(input.sessionId, commandProcesses);
     this.runtimes.set(input.sessionId, runtime);

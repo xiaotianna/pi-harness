@@ -14,6 +14,7 @@ import {
   type SkillType as SkillTypeValue,
 } from "./skills/types.js";
 import { detectImageMimeType, readRegularFile } from "./utils/media-file.js";
+import { searchScore } from "./utils/search-score.js";
 import {
   readSkillDocument,
   SKILL_NAME_PATTERN,
@@ -231,11 +232,17 @@ export class SkillRegistry {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) return [];
     return (await this.discoverRecords(scope, signal))
-      .filter((skill) =>
-        `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(normalizedQuery),
+      .map((skill) => ({
+        score: searchScore(normalizedQuery, skill.name, skill.description),
+        skill,
+      }))
+      .filter(({ score }) => score > 0)
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.skill.name.localeCompare(right.skill.name),
       )
       .slice(0, 20)
-      .map(toSummary);
+      .map(({ skill }) => toSummary(skill));
   }
 
   // 获取 Skill 元数据和资源文件列表

@@ -15,14 +15,20 @@ import {
   createGetSkillTool,
   createLoadSkillPolicy,
   createLoadSkillTool,
+  createLoadToolsTool,
   createRequestUserInputTool,
+  createSearchToolsTool,
   createSubAgentToolRegistrations,
+  type HybridToolSearch,
+  loadToolRegistrations,
+  MAX_VISIBLE_TOOLS,
   type RequestUserInputData,
   type SendAgentMessageInput,
   type SkillRegistry,
   type SpawnAgentInput,
   type StopAgentInput,
   SubAgentType,
+  searchToolRegistrations,
   type ToolRegistration,
   ToolRegistry,
   type UserInputToolResult,
@@ -85,6 +91,8 @@ const EXCLUDED_CHILD_TOOLS = new Set([
   "wait_agents",
   "send_agent_message",
   "stop_agent",
+  "search_tools",
+  "load_tools",
 ]);
 const MAX_DIRECT_CHILDREN = 3;
 const MAX_DEPTH = 2;
@@ -118,6 +126,7 @@ interface Execution {
 export interface SubAgentTreeOptions {
   rootAgent: Agent;
   rootRegistry: ToolRegistry;
+  toolSearch?: HybridToolSearch;
   skillRegistry?: SkillRegistry;
   runId: RunId;
   model: Model<Api>;
@@ -365,8 +374,51 @@ export class SubAgentTree {
               ),
           },
         }));
-      const registry = new ToolRegistry([
+      const visibleToolNames = new Set(
+        raw.filter(({ source }) => !source.startsWith("mcp:")).map(({ tool }) => tool.name),
+      );
+      const searchedToolNames = new Set<string>();
+      const registry: ToolRegistry = new ToolRegistry([
         ...raw,
+        ...(input.agentType === SubAgentType.WORKER
+          ? [
+              {
+                policy: { permission: ToolPermission.READ_ONLY },
+                source: "built_in",
+                timeoutMs: 30_000,
+                tool: createSearchToolsTool(async (query, searchSignal) => {
+                  searchSignal?.throwIfAborted();
+                  const remaining = MAX_VISIBLE_TOOLS - visibleToolNames.size;
+                  if (remaining <= 0)
+                    throw new Error("TOOL_SEARCH_LIMIT_EXCEEDED: 当前子任务的工具数量已达上限");
+                  const available = registry.rawRegistrations.filter(
+                    ({ source, tool }) =>
+                      source.startsWith("mcp:") && !visibleToolNames.has(tool.name),
+                  );
+                  const matches = this.options.toolSearch
+                    ? await this.options.toolSearch.search(available, query, searchSignal)
+                    : searchToolRegistrations(available, query);
+                  searchSignal?.throwIfAborted();
+                  for (const match of matches) searchedToolNames.add(match.name);
+                  return matches;
+                }),
+              } satisfies ToolRegistration,
+              {
+                policy: { permission: ToolPermission.READ_ONLY },
+                source: "built_in",
+                timeoutMs: 30_000,
+                tool: createLoadToolsTool(async (names, loadSignal) => {
+                  loadSignal?.throwIfAborted();
+                  return loadToolRegistrations(
+                    registry.rawRegistrations,
+                    names,
+                    searchedToolNames,
+                    visibleToolNames,
+                  );
+                }),
+              } satisfies ToolRegistration,
+            ]
+          : []),
         ...(input.agentType === SubAgentType.WORKER && skillRegistry !== null
           ? [
               {
@@ -399,6 +451,10 @@ export class SubAgentTree {
         },
         ...createSubAgentToolRegistrations(this.handlers(executionId)),
       ]);
+      for (const { tool } of registry.rawRegistrations) {
+        if (!registry.get(tool.name)?.source.startsWith("mcp:")) visibleToolNames.add(tool.name);
+      }
+      const visibleTools = () => registry.tools.filter(({ name }) => visibleToolNames.has(name));
       const systemPrompt = buildSubAgentPrompt(
         this.options.systemPrompt,
         input.agentType,
@@ -413,7 +469,7 @@ export class SubAgentTree {
           providerId: model.provider,
           systemPrompt,
           thinkingLevel,
-          tools: createRunToolSnapshot(registry),
+          tools: createRunToolSnapshot(registry, visibleTools()),
         },
       });
       startedPersisted = true;
@@ -424,8 +480,24 @@ export class SubAgentTree {
         sessionId: executionId,
         systemPrompt,
         streamFn: this.options.streamFn,
-        tools: registry.tools,
+        tools: visibleTools(),
       });
+      agent.prepareNextTurnWithContext = async ({ context }, nextSignal) => {
+        nextSignal?.throwIfAborted();
+        const tools = visibleTools();
+        const previousNames = new Set(context.tools?.map(({ name }) => name));
+        const loaded = tools.filter(({ name }) => !previousNames.has(name));
+        if (loaded.length === 0) return undefined;
+        agent.state.tools = tools;
+        await this.options.emit({
+          type: HarnessEventType.SUBAGENT_TOOLS_LOADED,
+          data: {
+            executionId,
+            tools: createRunToolSnapshot(registry, loaded),
+          },
+        });
+        return { context: { ...context, tools } };
+      };
       agent.state.thinkingLevel = thinkingLevel;
       let requestCount = 0;
       agent.streamFunction = async (requestModel, context, streamOptions) => {
