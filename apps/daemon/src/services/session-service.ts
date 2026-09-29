@@ -94,8 +94,7 @@ const SessionErrorCode = {
 
 const DEFAULT_SESSION_TITLE = "New session";
 const MAX_REVERT_FILE_BYTES = 1024 * 1024;
-const SESSION_TITLE_MAX_TOKENS = 64;
-const SESSION_TITLE_TIMEOUT_MS = 10_000;
+const SESSION_TITLE_TIMEOUT_MS = 30_000;
 
 export type SessionErrorCode = (typeof SessionErrorCode)[keyof typeof SessionErrorCode];
 
@@ -994,34 +993,44 @@ export class SessionService {
     source: string,
   ): Promise<string> {
     const fallback = createFallbackSessionTitle(source);
-    const supportsLowReasoning = getSupportedThinkingLevels(model).includes(ThinkingLevels.LOW);
+    const thinkingLevels = getSupportedThinkingLevels(model);
+    const titleReasoning = thinkingLevels.includes(ThinkingLevels.OFF)
+      ? undefined
+      : clampThinkingLevel(model, ThinkingLevels.MINIMAL);
     try {
-      const stream = await streamFn(
-        model,
-        {
-          messages: [
-            {
-              content: buildSessionTitlePrompt(source),
-              role: "user",
-              timestamp: Date.now(),
-            },
-          ],
-          systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
-        },
-        {
-          maxRetries: 0,
-          maxTokens: SESSION_TITLE_MAX_TOKENS,
-          ...(supportsLowReasoning ? { reasoning: ThinkingLevels.LOW } : {}),
-          signal: AbortSignal.timeout(SESSION_TITLE_TIMEOUT_MS),
-          timeoutMs: SESSION_TITLE_TIMEOUT_MS,
-        },
-      );
-      const response = await stream.result();
-      if (response.stopReason === "aborted" || response.stopReason === "error") return fallback;
-      const text = response.content
-        .flatMap((part) => (part.type === "text" ? [part.text] : []))
-        .join(" ");
-      return normalizeGeneratedSessionTitle(text, fallback);
+      // Each request fits the model context; the full first message is still covered.
+      const chunkSize = Math.max(256, Math.floor(model.contextWindow / 4) - 512);
+      let title = "";
+      for (let offset = 0; offset < source.length; offset += chunkSize) {
+        const stream = await streamFn(
+          model,
+          {
+            messages: [
+              {
+                content: buildSessionTitlePrompt(source.slice(offset, offset + chunkSize), title),
+                role: "user",
+                timestamp: Date.now(),
+              },
+            ],
+            systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
+          },
+          {
+            maxRetries: 1,
+            ...(titleReasoning === undefined || titleReasoning === ThinkingLevels.OFF
+              ? {}
+              : { reasoning: titleReasoning }),
+            signal: AbortSignal.timeout(SESSION_TITLE_TIMEOUT_MS),
+            timeoutMs: SESSION_TITLE_TIMEOUT_MS,
+          },
+        );
+        const response = await stream.result();
+        if (response.stopReason === "aborted" || response.stopReason === "error") return fallback;
+        const text = response.content
+          .flatMap((part) => (part.type === "text" ? [part.text] : []))
+          .join(" ");
+        title = normalizeGeneratedSessionTitle(text, fallback);
+      }
+      return title || fallback;
     } catch {
       return fallback;
     }

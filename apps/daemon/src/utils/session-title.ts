@@ -1,5 +1,4 @@
 const MAX_SESSION_TITLE_LENGTH = 60;
-const MAX_SESSION_TITLE_SOURCE_LENGTH = 4_000;
 
 export function buildSessionTitleSource(
   prompt: string,
@@ -12,8 +11,7 @@ export function buildSessionTitleSource(
     referencePaths.length ? `引用：${referencePaths.join("、")}` : "",
   ]
     .filter(Boolean)
-    .join("\n")
-    .slice(0, MAX_SESSION_TITLE_SOURCE_LENGTH);
+    .join("\n");
 }
 
 export function createFallbackSessionTitle(source: string): string {
