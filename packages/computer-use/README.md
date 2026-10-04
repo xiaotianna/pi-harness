@@ -1,6 +1,6 @@
 # computer-use
 
-macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、受限 JavaScript 执行、JSONL RPC、超时和中止；长期驻留的 Rust helper 同时提供内置 MCP 服务，负责 Accessibility Tree、单帧窗口截图与输入事件。
+macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、受限 JavaScript 执行、JSONL RPC、超时和中止；Rust helper 同时提供内置 MCP 服务，负责 Accessibility Tree、单帧窗口截图与输入事件。
 
 ## 为什么使用 Rust
 
@@ -8,7 +8,9 @@ macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、受限 Java
 
 ## 给模型的数据
 
-`computer_list_apps` 可列出当前运行的应用；`computer_observe` 可用显示名称或 bundle ID 在后台找到/启动目标应用，并返回两个 content block：
+原生 MCP 服务提供 `computer_list_apps`、`computer_observe` 和 `computer_act`。daemon 在观察和动作能力均开启时补充 `computer_exec`。这些能力随 MCP 工具目录进入 `search_tools` / `load_tools`，完整工具定义按需加入模型请求；模型实际调用名是 daemon 生成的稳定 MCP 别名。
+
+`computer_list_apps` 可列出当前运行且未被保护规则排除的应用；`computer_observe` 可用显示名称或 bundle ID 在后台找到/启动目标应用，省略 `app` 时观察前台应用，并返回以下 content block：
 
 1. 可选的 PNG `ImageContent`；
 2. 一段 JSON 文本，其中 `accessibilityTree` 是可直接引用元素编号的缩进树。
@@ -25,19 +27,21 @@ macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、受限 Java
 }
 ```
 
-这不是屏幕共享或视频流。每次观察通过 ScreenCaptureKit 获取目标窗口的一帧；模型执行动作后再次观察。AX 树负责语义和可操作元素，截图负责画布、自绘控件和布局判断。动作位置显示独立绘制的 AI 光标，背景有柔和呼吸动效，停住后轻微左右摆动；它不接管用户的实体光标，闲置 12 秒后隐藏，并遵循系统的减少动态效果设置。
+每次观察通过 ScreenCaptureKit 获取目标窗口的一帧；模型执行动作后再次观察。AX 树负责语义和可操作元素，截图负责画布、自绘控件和布局判断。`includeScreenshot: false` 仅省略返回的图片，当前实现仍捕获窗口来固定窗口身份和坐标，因此仍需要屏幕录制权限。动作位置显示独立绘制的 AI 光标，背景有柔和呼吸动效，停住后轻微左右摆动；它不接管用户的实体光标，闲置 12 秒后隐藏，并遵循系统的减少动态效果设置。
 
 ## 安全边界
 
-- 元素编号只在同一 `scopeId + observationId` 中有效；一次成功动作后立即失效。
+- 元素编号只在同一 `scopeId + observationId` 中有效；同一 scope 新观察会替换旧观察，动作进入原生分发前就消耗该观察。动作失败后也需重新观察，避免重放可能已部分完成的输入。
 - 每个动作仍会校验目标应用 PID、目标窗口 ID 和窗口尺寸；定向键鼠输入还会复查应用内的焦点窗口，不要求目标应用保持前台。
 - 观察超过 120 秒、目标窗口改变、元素不存在或坐标落在观察窗口外时拒绝动作。
 - 坐标是 macOS 全局逻辑坐标；`screenshotFrame.scale` 只描述截图像素与逻辑坐标的比例。
-- AX 树限制深度、节点数和字符数，截图最长边限制在 1920 × 1200 范围内，RPC 响应限制为 24 MiB。
-- secure text field 不回传值；截图 base64 只存在于 Tool content，不在 `details` 中重复保存。
-- `computer_exec` 在普通审批模式下使用 SRT 隔离的持久化 JavaScript 子进程，完全访问下直接启动宿主机子进程；两种模式都通过受限 JavaScript 上下文只暴露 `cua` 能力对象，禁用动态代码生成，不提供 Node、Shell、文件系统或网络对象，并限制为 25 个输入动作、50 个步骤和 30 秒。
+- AX 树默认深度 20、节点数 1,000，上限分别为 50 和 5,000，树文本上限 200,000；截图宽高限制在 1920 × 1200 范围内，RPC 响应限制为 24 MiB。
+- 原生 helper 阻止观察和控制 PI Harness 桌面应用及内置保护列表中的终端应用（Terminal、iTerm、Warp、Ghostty 等），并从应用清单中过滤这些目标；完全访问也不绕过该原生检查。当前按具体名称及 bundle ID 判断，并非任意应用的通用危险操作识别。
+- secure text field 不回传值，`set_value` 拒绝写入它，键盘及文本输入会检查焦点并拒绝向密码字段输入；截图仍是目标窗口的画面。截图 base64 位于 Tool content，不在 `details` 中重复保存，完整工具结果仍随 Session 事件持久化。
+- 内置 Computer Use MCP helper 在所有审批模式下都以宿主机原生进程运行，使用 macOS 辅助功能与屏幕录制权限；它不在 SRT 的 workspace 文件隔离内。应用观察授权与具体操作审批继续由 daemon 执行。
+- `computer_exec` 在非完全访问模式下使用 SRT 隔离的持久化 JavaScript 子进程，采用只读且禁止联网的配置；完全访问下直接启动宿主机子进程。两种模式都通过受限 JavaScript 上下文暴露 `cua` 和 `console.log`，禁用动态代码生成，不提供 Node、Shell、文件系统或网络对象，并限制为 20,000 字符代码、25 个输入动作、50 个步骤、30 秒和 200,000 字节运行时响应缓冲。
 - `computer_observe` 和 `computer_act` 都是串行工具，并分别导出 `computerObservePolicy` / `computerActPolicy`。它们通过通用 `USER_APPROVAL` 策略自行定义审批信息，完全访问下自动放行。
-- 通过插件 MCP 接入时，daemon 只按稳定 bundle ID 保存应用观察授权；非完全访问模式下，`computer_exec` 的一次批准只覆盖当前脚本，选择“本次会话允许”后，同一 Run 内针对该应用的后续脚本可继续执行；请求批准模式下，单步 `computer_act` 仍逐次审批。
+- 通过插件 MCP 接入时，daemon 只按稳定 bundle ID 保存持久应用观察授权，在「设置 → 电脑操控」可撤销；应用显示名称或当前前台应用仅支持本次观察授权。非完全访问模式下，`computer_exec` 的一次批准只覆盖当前脚本，选择“本次会话允许”后，同一 Run 内针对该应用的后续脚本可继续执行；请求批准模式下，单步 `computer_act` 仍逐次审批。「帮我批准」可由审批模型复核这些调用，完全访问自动批准工具层操作；macOS 权限、原生保护规则与未确认 Plan 的副作用限制持续生效。Computer Use 工具不能在 MCP 设置中标记为可信只读。
 
 ## 脚本执行
 
@@ -51,9 +55,11 @@ if (before.accessibilityTree.includes("继续")) {
 return before;
 ```
 
-每个动作完成后运行时会通过 helper 自动重新观察，脚本拿到的元素编号始终来自最新状态。需要跨 `computer_exec` 调用保存的值放在 `globalThis`。
+`computer_exec` 参数必须包含准确的应用 bundle ID `app` 和脚本 `code`。先观察并从当前 AX 树确定编号，再发起动作；示例中的 `12` 只表示当前观察中已确认的元素。
+
+每个成功动作完成后运行时会通过 helper 自动重新观察，后续动作使用最新观察。需要在同一 Run 的多次 `computer_exec` 调用间保存的值放在 `globalThis`；Run 结束、超时、中止或运行时重置后不保留这份状态。
 `computer_exec` 复用当前 Computer Use MCP 连接和已驻留的 helper，不会另起一份原生 helper；脚本运行时关闭时也不会关闭共享 MCP 客户端。
-所有 `cua` 调用都必须 `await`；脚本结束时仍有未完成的电脑操作会失败并重置运行时，避免悬空 RPC 影响后续调用。沙箱不提供 `cua.find`、`cua.elements`、`setTimeout` 或 `console.error`，等待使用 `cua.wait(ms)`。
+所有 `cua` 调用都必须 `await`；脚本结束时仍有未完成的电脑操作会失败并重置运行时，避免悬空 RPC 影响后续调用。运行时提供 `cua.observe`、`act`、`press`、`performAction`、`setValue`、`click`、`typeText`、`pressKey`、`scroll`、`drag`、`wait` 和只读 `cua.state`；不提供 `cua.find`、`cua.elements`、`setTimeout` 或 `console.error`。等待使用 `cua.wait(ms)`，单次为 0–5,000ms，并计入脚本总预算。
 
 ## 构建与使用
 
@@ -70,10 +76,10 @@ tccutil reset Accessibility com.piharness.computer-use
 tccutil reset ScreenCapture com.piharness.computer-use
 ```
 
-要让后续重建保留授权，可在钥匙串访问的「证书助理 → 创建证书」中创建一个「自签名根」身份、「代码签名」类型、名称为 `PI Harness Local Code Signing` 的本地证书；打包脚本会自动使用它，不需将证书设为系统信任根。也可安装 Apple Development 证书，并设置 `COMPUTER_USE_CODESIGN_IDENTITY` 为其 SHA-1，该变量优先于本地证书。切换到固定签名后还需按上述方式重置一次旧授权。正式分发使用稳定的 Apple 代码签名身份。
+要让后续重建保留授权，可在钥匙串访问的「证书助理 → 创建证书」中创建一个「自签名根」身份、「代码签名」类型、名称为 `PI Harness Local Code Signing` 的本地证书；打包脚本会自动使用它，不需将证书设为系统信任根。开发签名依次选择 `COMPUTER_USE_CODESIGN_IDENTITY`、`APPLE_SIGNING_IDENTITY`、该本地证书，最后才使用临时签名。切换到固定签名后还需按上述方式重置一次旧授权。`PI_HARNESS_RELEASE=1` 时必须提供稳定的 `APPLE_SIGNING_IDENTITY`，并启用 hardened runtime 和时间戳；正式分发不能使用临时签名。
 单独部署 daemon 时，把 `pi-computer-use-helper` 与 `PI Harness Computer Use.app` 放在同一目录，并用 `COMPUTER_USE_HELPER_PATH` 指向命令行代理；无需安装或启动 Tauri 桌面端。
 
-桌面端打包会构建命令行代理 sidecar，并将后台 App 放在 `Contents/Helpers`。插件市场中的 Computer Use 包含一个 MCP 服务和一个 Skill；安装插件后分别开启它们即可接入 Agent Runtime。首次使用可在「设置 → 电脑操控」查看“辅助功能”和“屏幕与系统录制”状态，并由本地 daemon 调用后台 App 发起 macOS 授权；系统弹窗中的最终确认仍由用户完成。
+桌面端打包会构建命令行代理 sidecar，并将后台 App 放在 `Contents/Helpers`。插件市场中的 Computer Use 包含一个 MCP App 和一个 Skill；安装插件后分别管理它们的开关，开启 App 会信任连接并刷新工具目录，Skill 正文由 Agent 按需加载。首次使用可在「设置 → 电脑操控」查看“辅助功能”和“屏幕与系统录制”状态，并由本地 daemon 调用后台 App 发起 macOS 授权；系统弹窗中的最终确认仍由用户完成。
 
 ## 调试
 
@@ -110,4 +116,6 @@ const tools = [
 ];
 ```
 
-直接嵌入工具时同时把 `COMPUTER_USE_SYSTEM_PROMPT` 注入 System Prompt，daemon 关闭时调用 `client.close()`。通过插件 MCP 接入时 daemon 会在工具准备阶段自动注入这段上下文，并兼容部分 Provider 把 `computer_act.action` 输出为 JSON 字符串的情况；字符串解析后仍按原始动作 Schema 严格校验。所有调用继续经过 daemon 的 MCP Policy 与审批链。
+直接嵌入工具时，需要同时注册 `computerObservePolicy` / `computerActPolicy` 到调用方的执行链，把 `COMPUTER_USE_SYSTEM_PROMPT` 注入 System Prompt，并在关闭时调用 `client.close()`；单独创建 Tool 或 Client 不会自动建立用户审批。
+
+通过插件 MCP 接入时 daemon 在工具准备阶段自动注入这段上下文，并兼容部分 Provider 把 `computer_act.action` 输出为 JSON 字符串的情况；字符串解析后仍按原始动作 Schema 严格校验。调用继续经过 daemon 的 MCP Policy 与审批链。更多连接说明见 [MCP 使用说明](../../docs/mcp-usage.md)。

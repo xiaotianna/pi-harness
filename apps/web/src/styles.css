@@ -257,6 +257,11 @@ html[data-overlay-scrollbars] *::-webkit-scrollbar {
   }
 }
 
+/* 弹层聚焦时只允许内部滚动区域移动，避免隐藏的外壳被 scrollIntoView 横向滚动。 */
+[data-app-layout][data-scroll-mode="content"] {
+  overflow: clip;
+}
+
 @media (min-width: 1025px) {
   [data-app-layout][data-resizable] [data-panel]:has(> .app-layout__aside-panel) {
     transition: flex-grow 220ms cubic-bezier(0.22, 1, 0.36, 1);

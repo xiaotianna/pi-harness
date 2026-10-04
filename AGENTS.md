@@ -4,7 +4,7 @@
 
 PI Harness 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 风格的交互界面，由运行在用户本机的后端 daemon 执行模型调用、Agent Loop、本地文件操作和 Shell 命令。
 
-完整架构说明见 `架构设计.md`。实现与文档发生冲突时，先更新设计并保持两者一致，不要静默引入另一套架构。
+完整架构说明见 [`docs/架构设计.md`](docs/架构设计.md)，当前实现与启动配置见 [`docs/runtime-setup.md`](docs/runtime-setup.md)。实现与文档发生冲突时，先更新设计并保持两者一致，不要静默引入另一套架构。
 
 ## 架构原则
 
@@ -16,8 +16,8 @@ PI Harness 是一个本地优先的 Agent Harness：通过浏览器提供 Codex 
 - 不直接使用 `pi-coding-agent`，不引入 Commander、TUI 或 Electron；桌面端仅允许 Tauri 作为现有 Web 与 daemon 的薄壳。
 - Agent Loop 使用 `@earendil-works/pi-agent-core` 的 `Agent`，模型与 Provider 使用 `@earendil-works/pi-ai`。
 - 不将 Pi 原始事件直接暴露给 Web；必须转换为项目自己的 `HarnessEvent` 协议。
-- 初始阶段不实现云端服务、多 Agent、MCP、Skill 市场、完整 IDE 或内嵌终端；该限制描述初始范围，不代表后续已明确纳入的能力。
-- PI Harness 作为 MCP Host，Client 运行在 daemon，外部 MCP 工具继续经过现有 Policy、审批与工具执行链；本轮不提供对外 MCP Server。
+- 当前已有 Sub Agent 执行树、任务看板、MCP Host、插件市场、长期记忆、macOS Computer Use 和 Tauri 薄壳；云端业务服务、完整 IDE 与交互式内嵌终端仍不属于当前范围。命令监管卡片不等于交互式终端。
+- PI Harness 作为 MCP Host，Client 运行在 daemon，外部 MCP 工具继续经过现有 Policy、审批与工具执行链；当前不提供对外 MCP Server。
 
 ## 技术栈
 
@@ -83,6 +83,7 @@ apps/
 │       ├── utils/          # 小型无状态基础工具
 │       ├── vo/             # HTTP 响应模型与 TypeBox schema
 │       └── server/         # Fastify 实例装配
+├── desktop/                # Tauri 薄壳、daemon sidecar 生命周期和发布脚本
 └── web/                    # React 页面
     └── src/
         ├── app/            # 应用入口、Provider、Router 和全局初始化
@@ -93,11 +94,16 @@ apps/
         └── api/            # HTTP/SSE 基础客户端
 
 packages/
-├── agent-runtime/          # AgentManager、Agent 创建、上下文和事件适配
+├── agent-runtime/          # 主 Agent、RunCoordinator、SubAgentTree、上下文和事件适配
 ├── memory/                 # 长期记忆 contract、领域服务、用户画像派生、Context 投影与 Agent 工具
 ├── providers/              # 创建 pi-ai Models、按需加载内置 Provider 和导出自定义 Provider 能力
-├── tools/                  # tools：文件、Shell、Planner、Todos；skills：发现、加载与选择
-└── policy/                 # 路径保护、命令策略和用户审批
+├── tools/                  # 文件/网络/命令监管、Planner/Todos、Context/子代理工具、Skill 与插件
+├── policy/                 # 路径保护、命令策略、审批和沙箱配置
+├── sandbox/                # SRT 进程与网络隔离、独立 worker
+├── computer-use/           # macOS 原生 MCP helper、系统观察/输入与 JavaScript 执行器
+└── evals/                  # Context Pipeline 与 JSONL 恢复评估入口
+
+hero-ui-pro/                # 本地 @agile-avocation/ui-pro workspace 兼容组件包
 ```
 
 新增代码应放入职责最接近的模块。不要把业务逻辑堆积在 Fastify route、React 页面或 `bootstrap.ts` 中。
@@ -107,8 +113,11 @@ packages/
 - `apps/web` 只能依赖浏览器安全的包，不得导入 daemon 源码、Node API、`pi-ai`、`pi-agent-core`、daemon storage 或 tools。
 - Fastify route 只负责声明路径、schema 和 controller；controller 映射 HTTP 请求与响应，service 处理业务流程。
 - `agent-runtime` 负责编排，不直接实现文件读写或 SQL。
+- Sub Agent 属于根 Run 的执行树，独立消息与工具上下文由 `SubAgentTree` 管理，不创建独立 Session。子事件保留根 `sessionId` / `runId`，以 `executionId` / `parentExecutionId` 区分并继承工具执行与审批边界。
 - `memory` 不依赖 `agent-runtime`、HTTP 或 SQLite；用户画像只由已确认个人记忆派生，不建立第二事实源；daemon 实现其持久化端口，Web 只导入浏览器安全的 `@pi-harness/memory/contract`。
 - `tools` 不直接操作 Web、SSE 或数据库事务；工具进度通过回调或领域事件上报。
+- `sandbox` 负责 SRT 隔离和网络边界，`policy` 负责授权决策；`computer-use` 的固定原生 helper 通过 macOS 系统权限访问目标应用，daemon 负责 MCP 与审批装配。
+- `evals` 是评估消费者，不参与 daemon 正常运行；Web 的 Trace 是 `HarnessEvent` 派生视图，不建立第二份执行事实源。
 - `apps/daemon/src/storage` 只负责当前 daemon 的持久化，不包含 OAuth 流程、Agent 调度、权限判断或 UI 逻辑；出现第二个真实消费者前不提前拆成 workspace package。
 - `policy` 是所有副作用操作的统一入口。审批不能散落在 route 或具体页面中。
 - 避免循环依赖；类型放在实际消费它的应用或领域中，出现明确的第二个运行时消费者前不提前提取 workspace package，也不创建无边界的 `utils` 大杂烩。
@@ -185,7 +194,7 @@ export const sessionQueryKeys = {
 
 ## Agent 与 Provider 规范
 
-- 每个 session 对应一个 `Agent` 实例；一个 session 同时只能存在一个活动 run。
+- 每个 session 对应一个主 `Agent` 实例；一个 session 同时只能存在一个活动顶层 run。根 run 可以拥有独立子 Agent 执行树，受角色、并发、深度、请求数与超时预算约束。
 - 同一 workspace 的不同 session 可以并发运行。副作用工具执行前必须复查目标状态；目标已变化时阻止本次调用，由 Agent 重新读取后再修改。
 - Provider 按需注册，优先使用 `@earendil-works/pi-ai/providers/<provider>`，不要默认导入所有 Provider。
 - `pi-ai Models` 是唯一的 Provider/Model 运行时注册表，不创建只转发其方法的自定义 Registry 类。
@@ -202,16 +211,17 @@ export const sessionQueryKeys = {
 
 ## 工具与安全规范
 
-- 内置工具范围包含 `read_file`、`view_image`、`read_document`、`view_pdf_page`、`list_files`、`search_text`、`web_search`、`web_fetch`、`edit_file`、`write_file` 和 `run_command`。
+- 内置工作区工具范围包含 `read_file`、`view_image`、`read_document`、`view_pdf_page`、`list_files`、`search_text`、`web_search`、`web_fetch`、`edit_file`、`write_file`、`run_command`、`wait_command` 和 `stop_command`。Planner/Todos、人工输入、Context、Memory、子 Agent 与 MCP 搜索/加载工具按对应运行能力注册。
 - 文件读取、搜索和网络读取工具可以并行；写入工具和 Shell 工具必须串行执行。
-- `web_search` 只访问 daemon 配置的本机 SearXNG；`web_fetch` 只读取公开 HTTP(S) 地址，并在每次跳转前阻止本机、私有、链路本地、保留和组播地址。两者都必须限制超时、响应大小和输出长度并支持中止。
+- `web_search` 只访问 daemon 配置的本机 SearXNG；`web_fetch` 读取公开 HTTP(S) 地址，并在每次跳转前阻止本机、私有、链路本地、保留和组播地址。唯一的本机例外是 daemon 配置的 Skill Gateway origin 与 `/api/skill-gateway/*` 精确路径，由 Runtime 附加进程内令牌；不得扩大为其他本机访问。两者都必须限制超时、响应大小和输出长度并支持中止。
 - 每个 session 必须绑定不可变的 `workspaceRoot`。工具不得接受调用方任意覆盖工作目录。
-- 所有文件路径在审批前和实际执行前都要进行规范化与 workspace 边界检查。
-- 使用真实路径检查符号链接，拒绝访问 workspace 外部路径以及 daemon 凭据目录。
-- 默认审批策略下所有文件写入和 Shell 命令都需要用户审批；`auto_approve` 只自动批准工作区文件写入，`full_access` 自动批准工作区文件写入和 Shell 命令。审批策略不得绕过 workspace 边界、受保护目录、固定 cwd、环境变量白名单、超时、输出限制和中止信号；只读、目录列举和文本搜索始终可以自动执行。
+- 普通工作区文件工具的路径在审批前和实际执行前都要进行规范化与 workspace 边界检查，使用真实路径检查符号链接，拒绝 workspace 外部路径与 daemon 凭据目录。
+- Skill 工具按 Registry 解析的系统、项目或全局 Skill 根目录检查资源边界，不接受任意外部路径；专用 `skill_creator` 的全局写入只允许 daemon Skill 根目录。不得借 Skill 读取或写入绕过普通文件工具的路径保护。
+- 默认 `request_approval` 策略下，工作区文件写入、Shell 命令和未分类 MCP 工具需要用户审批；`auto_approve` 自动批准工作区文件写入，Shell 和未分类 MCP 工具交独立审批模型复核，不确定、失败或超时仍请求人工批准；`full_access` 自动批准这些工具。
+- 内置文件工具始终执行 workspace 真实路径与受保护目录检查。普通审批模式下 Shell 和普通 stdio MCP 使用 SRT；`full_access` 下直接以宿主机权限运行，Shell 仍固定 cwd、环境变量白名单、超时、输出限制和中止信号。MCP 连接信任、账号鉴权与 macOS 系统权限独立于工具审批；Computer Use 原生 helper 的宿主访问只允许固定内置身份，不能扩展为普通 MCP 例外。只读、目录列举和文本搜索可以自动执行。
 - 审批请求必须包含工具名、规范化后的目标、参数摘要、风险说明、session ID 和 run ID。
 - 审批等待必须支持拒绝、超时、Agent abort 和 daemon 关闭。
-- `run_command` 必须设置 cwd、超时、输出上限并传递 `AbortSignal`，不得创建无法追踪的后台进程。
+- `run_command` 必须设置 cwd、总生存超时、输出上限并传递 `AbortSignal`；短暂等待后仍运行时返回受监管的 `processId`，通过 `wait_command` / `stop_command` 或命令 API 查询和停止。Run 中止和 daemon 关闭必须回收命令进程，不能创建无法追踪的后台进程。
 - 工具失败时抛出有上下文的错误，由 Agent 转换为 tool error；不要把错误文本伪装成成功结果。
 - 写文件前记录 before，成功后记录 after。Diff 使用该记录生成，不依赖 git 状态。
 - 日志和错误响应必须移除 API Key、Authorization、Cookie、环境变量值和敏感文件内容。
@@ -234,7 +244,7 @@ export const sessionQueryKeys = {
 - 每个 session 对应一个 `<sessionId>.jsonl`，文件位于 SQLite 同级数据目录的 `sessions/` 下。
 - JSONL 是对话、run、工具调用、审批和文件变更的唯一事实来源，SQLite 不存副本。
 - 每行保存一个完整的 `HarnessEvent`；`message.completed.data` 保存完整 `AgentMessage`。
-- `message.delta` 和 `tool.updated` 只通过 SSE 发送，不写入 JSONL。
+- `message.delta`、`tool.updated`、`command.updated`、`subagent.message.delta` 和 `subagent.tool.updated` 只通过 SSE 发送，不写入 JSONL；其余影响恢复和审计的事件按顺序持久化。
 - 同一 session 只允许串行追加，`seq` 必须严格递增；写入前必须校验 session ID 和目标路径。
 - 恢复时逐行校验 JSON 和事件结构。只可丢弃崩溃留下的不完整末行；中间行损坏必须报错。
 
@@ -243,7 +253,7 @@ export const sessionQueryKeys = {
 - 使用显式 migration，不在应用启动时根据 TypeScript 类型隐式修改表结构。
 - SQL 访问集中在 repository，不允许 React、route 或工具直接执行 SQL。
 - 表名和列名使用 `snake_case`，TypeScript 字段使用 `camelCase`，映射集中处理。
-- SQLite 只保存认证、workspace、session 元数据、Provider 和应用设置等需要结构化查询的数据。
+- SQLite 保存认证、workspace、session 元数据、Provider、应用设置、任务看板、MCP 配置/信任/授权和长期记忆等结构化事实；会话搜索、Memory FTS/向量与 MCP 能力目录是可重建派生数据。
 - `sessions` 表只保存轻量索引，不建立 `messages`、`runs`、`tool_calls`、`approvals` 或 `file_changes` 副本表。
 - 会话写入先追加 JSONL，再更新 SQLite 索引；索引失败不得删除已持久化的会话记录。
 - migration 必须向前兼容已有本地数据；破坏性迁移需要明确的数据转换步骤。
