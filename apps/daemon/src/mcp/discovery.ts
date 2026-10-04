@@ -71,6 +71,12 @@ export class McpDiscovery {
       templates.status !== "fulfilled" ||
       prompts.status !== "fulfilled"
     ) {
+      options.signal.throwIfAborted();
+      for (const result of results) {
+        if (result.status === "rejected" && result.reason instanceof McpError) {
+          throw result.reason;
+        }
+      }
       throw new McpError(McpErrorCode.CONNECTION_FAILED, "MCP 能力发现失败，请重试或检查服务状态");
     }
     options.signal.throwIfAborted();

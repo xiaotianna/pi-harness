@@ -127,7 +127,6 @@ interface ActiveRun extends AgentEventAdapterContext {
   planRetryPrompt: string | null;
   preparationAbortController: AbortController;
   preparationFailures: PreparedExternalTools["failures"];
-  searchedToolNames: Set<string>;
   visibleToolNames: Set<string>;
   runId: RunId;
   startMessageIndex: number;
@@ -340,11 +339,13 @@ export class RunCoordinator {
 
   public async searchTools(
     query: string,
+    limit: number,
     signal?: AbortSignal,
   ): Promise<readonly ToolSearchMatch[]> {
     signal?.throwIfAborted();
     const run = this.activeRun;
     if (run === null) throw new Error("TOOL_SEARCH_UNAVAILABLE: 当前没有活动 Run");
+    run.preparationAbortController.signal.throwIfAborted();
     const remaining = MAX_VISIBLE_TOOLS - run.visibleToolNames.size;
     if (remaining <= 0) throw new Error("TOOL_SEARCH_LIMIT_EXCEEDED: 当前 Run 的工具数量已达上限");
     const available = this.toolRegistry.rawRegistrations.filter(
@@ -354,23 +355,23 @@ export class RunCoordinator {
       ? await this.toolSearch.search(available, query, signal)
       : searchToolRegistrations(available, query);
     signal?.throwIfAborted();
-    for (const match of matches) run.searchedToolNames.add(match.name);
-    return matches;
-  }
-
-  public async loadTools(
-    names: readonly string[],
-    signal?: AbortSignal,
-  ): Promise<readonly string[]> {
-    signal?.throwIfAborted();
-    const run = this.activeRun;
-    if (run === null) throw new Error("TOOL_LOAD_UNAVAILABLE: 当前没有活动 Run");
-    return loadToolRegistrations(
-      this.toolRegistry.rawRegistrations,
-      names,
-      run.searchedToolNames,
-      run.visibleToolNames,
-    );
+    run.preparationAbortController.signal.throwIfAborted();
+    if (this.activeRun !== run) throw new Error("TOOL_SEARCH_UNAVAILABLE: 搜索所属 Run 已结束");
+    const selected = matches
+      .filter(({ name }) => !run.visibleToolNames.has(name))
+      .slice(0, Math.min(limit, MAX_VISIBLE_TOOLS - run.visibleToolNames.size));
+    if (selected.length > 0) {
+      loadToolRegistrations(
+        this.toolRegistry.rawRegistrations,
+        selected.map(({ name }) => name),
+        run.visibleToolNames,
+      );
+      // 转向续轮会从 state 创建新的初始 Context，不一定经过下一轮准备钩子。
+      this.agent.state.tools = this.toolRegistry.tools.filter(({ name }) =>
+        run.visibleToolNames.has(name),
+      );
+    }
+    return selected;
   }
 
   /** 等待当前 Run 中指定的子 Agent 完成，等待过程可取消。 */
@@ -792,6 +793,21 @@ export class RunCoordinator {
     } satisfies RunStartedData;
     let requestIndex = 0;
     this.agent.streamFunction = async (model, context, options) => {
+      // 初始请求与转向续轮都经过这里，按实际请求记录加载，避免准备钩子被中止后漏审计。
+      const requestToolNames = new Set(context.tools?.map(({ name }) => name));
+      const requestTools = runTools().filter(({ name }) => requestToolNames.has(name));
+      const recordedToolNames = new Set(activeRun.tools.map(({ name }) => name));
+      const loaded = requestTools.filter(({ name }) => !recordedToolNames.has(name));
+      if (loaded.length > 0) {
+        await this.emit(
+          {
+            data: { tools: createRunToolSnapshot(this.toolRegistry, loaded) },
+            type: HarnessEventType.RUN_TOOLS_LOADED,
+          },
+          input.runId,
+        );
+        activeRun.tools = createRunToolSnapshot(this.toolRegistry, requestTools);
+      }
       requestIndex += 1;
       await this.emit(
         {
@@ -834,7 +850,6 @@ export class RunCoordinator {
       planRetryPrompt: null,
       preparationAbortController,
       preparationFailures: [],
-      searchedToolNames: new Set<string>(),
       visibleToolNames,
       ...runStartedData,
       runId: input.runId,
@@ -874,14 +889,6 @@ export class RunCoordinator {
           const loaded = nextTools.filter(({ name }) => !previousNames.has(name));
           if (loaded.length === 0) return undefined;
           this.agent.state.tools = nextTools;
-          activeRun.tools = createRunToolSnapshot(this.toolRegistry, nextTools);
-          await this.emit(
-            {
-              data: { tools: createRunToolSnapshot(this.toolRegistry, loaded) },
-              type: HarnessEventType.RUN_TOOLS_LOADED,
-            },
-            input.runId,
-          );
           return { context: { ...context, tools: nextTools } };
         };
         runStartedData.tools = createRunToolSnapshot(this.toolRegistry, this.agent.state.tools);

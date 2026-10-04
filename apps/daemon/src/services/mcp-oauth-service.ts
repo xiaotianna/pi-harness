@@ -131,15 +131,23 @@ export class McpOAuthService {
       context.server.config.transport !== McpTransport.STDIO &&
       (context.server.config.authMode === McpAuthMode.OAUTH ||
         material?.mode === McpAuthMode.OAUTH ||
-        challenge.resourceMetadataUrl !== undefined);
+        (context.server.config.authMode === McpAuthMode.NONE &&
+          material?.mode !== McpAuthMode.STATIC &&
+          challenge.resourceMetadataUrl !== undefined));
     if (!isOAuth) {
       this.servers.noteAuthenticationRequired(context.server.id, McpAuthRequirement.STATIC);
       if (await this.servers.invalidateExternalCredential(context.server.id)) {
         throw new McpError(McpErrorCode.STATIC_CREDENTIAL_REQUIRED, "插件授权已失效，请重新授权");
       }
+      if (material?.mode === McpAuthMode.STATIC && Object.keys(material.headers).length > 0) {
+        throw new McpError(
+          McpErrorCode.AUTHENTICATION_FAILED,
+          "认证失败（HTTP 401）：已保存认证请求头，但服务拒绝认证。请核对 Token/API Key、有效期、访问权限和请求头格式。",
+        );
+      }
       throw new McpError(
         McpErrorCode.STATIC_CREDENTIAL_REQUIRED,
-        "该 MCP 服务需要 Token 或 API Key，请设置请求头凭据",
+        "未配置认证请求头。请在服务器设置中填写 Authorization 或服务要求的 API Key 请求头。",
       );
     }
     this.servers.noteAuthenticationRequired(

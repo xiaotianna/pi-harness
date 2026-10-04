@@ -58,7 +58,12 @@ export class McpServerService {
   >();
   private readonly catalogRefreshes = new Map<
     string,
-    { status: typeof McpCatalogStatus.LOADING | typeof McpCatalogStatus.ERROR; message?: string }
+    {
+      configRevision: number;
+      credentialRevision: number | undefined;
+      status: typeof McpCatalogStatus.LOADING | typeof McpCatalogStatus.ERROR;
+      message?: string;
+    }
   >();
   private mutationChain: Promise<void> = Promise.resolve();
   private isMutating = false;
@@ -111,9 +116,14 @@ export class McpServerService {
     };
   }
 
-  public beginCatalogRefresh(serverId: string, expectedRevision: number): void {
-    this.requireRevision(serverId, expectedRevision);
-    this.catalogRefreshes.set(serverId, { status: McpCatalogStatus.LOADING });
+  public beginCatalogRefresh(serverId: string, expectedRevision: number): McpServerVo {
+    const server = this.toVo(this.requireRevision(serverId, expectedRevision));
+    this.catalogRefreshes.set(serverId, {
+      configRevision: expectedRevision,
+      credentialRevision: server.credentialRevision,
+      status: McpCatalogStatus.LOADING,
+    });
+    return server;
   }
 
   public saveCatalog(catalog: McpDiagnosticsVo): void {
@@ -122,9 +132,53 @@ export class McpServerService {
     this.catalogRefreshes.delete(catalog.serverId);
   }
 
-  public failCatalogRefresh(serverId: string, expectedRevision: number, message: string): void {
-    if (this.repository.find(serverId)?.revision !== expectedRevision) return;
-    this.catalogRefreshes.set(serverId, { status: McpCatalogStatus.ERROR, message });
+  public async failCatalogRefresh(
+    serverId: string,
+    expectedRevision: number,
+    message: string,
+    expectedCredentialRevision: number | undefined,
+    shouldDisable: boolean,
+  ): Promise<void> {
+    const record = this.repository.find(serverId);
+    if (record?.revision !== expectedRevision) return;
+    let server = this.toVo(record);
+    if (server.credentialRevision !== expectedCredentialRevision) return;
+    if (shouldDisable && server.enabled) {
+      try {
+        server = await this.update(
+          serverId,
+          {
+            name: server.name,
+            config: server.config,
+            enabled: false,
+            expectedRevision,
+          },
+          { expectedCredentialRevision },
+        );
+        if (server.enabled && server.credentialRevision !== expectedCredentialRevision) return;
+      } catch (error: unknown) {
+        if (
+          error instanceof McpError &&
+          (error.code === McpErrorCode.CONFIG_CONFLICT || error.code === McpErrorCode.NOT_FOUND)
+        ) {
+          return;
+        }
+        throw error;
+      }
+    }
+    const current = this.repository.find(serverId);
+    if (
+      current?.revision !== server.revision ||
+      this.readCredential(current)?.revision !== server.credentialRevision
+    ) {
+      return;
+    }
+    this.catalogRefreshes.set(serverId, {
+      configRevision: server.revision,
+      credentialRevision: server.credentialRevision,
+      status: McpCatalogStatus.ERROR,
+      message,
+    });
   }
 
   public cancelCatalogRefresh(serverId: string, expectedRevision: number): void {
@@ -259,9 +313,30 @@ export class McpServerService {
     };
   }
 
-  public update(serverId: string, input: UpdateMcpServerDto): Promise<McpServerVo> {
+  public update(
+    serverId: string,
+    input: UpdateMcpServerDto,
+    catalogFailure?: { expectedCredentialRevision: number | undefined },
+  ): Promise<McpServerVo> {
     return this.mutate(async () => {
       const current = this.requireRevision(serverId, input.expectedRevision);
+      if (catalogFailure !== undefined) {
+        // 失败关闭排队期间可能已经保存新凭据或恢复目录，不能覆盖修复后的状态。
+        if (
+          !current.enabled ||
+          this.readCredential(current)?.revision !== catalogFailure.expectedCredentialRevision
+        ) {
+          return this.toVo(current);
+        }
+        try {
+          if (this.repository.findCatalog(serverId, current.revision) !== null) {
+            return this.toVo(current);
+          }
+        } catch (error: unknown) {
+          if (!(error instanceof McpError) || error.code !== McpErrorCode.STORAGE_FAILED)
+            throw error;
+        }
+      }
       const config = normalizeMcpConfig(input.config);
       const name = reserveUniqueMcpName(
         input.name,
@@ -576,7 +651,12 @@ export class McpServerService {
   ): McpServerVo {
     const credential = this.readCredential(record);
     const catalogUpdatedAt = this.repository.findCatalogUpdatedAt(record.id, record.revision);
-    const catalogRefresh = this.catalogRefreshes.get(record.id);
+    const refresh = this.catalogRefreshes.get(record.id);
+    const catalogRefresh =
+      refresh?.configRevision === record.revision &&
+      refresh.credentialRevision === credential?.revision
+        ? refresh
+        : undefined;
     return {
       ...record,
       authRequirement:

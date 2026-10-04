@@ -64,11 +64,13 @@ export {
 } from "./utils/media-file.js";
 export { createToolFingerprint } from "./utils/tool-fingerprint.js";
 export {
+  DEFAULT_TOOL_SEARCH_LIMIT,
   HybridToolSearch,
   loadToolRegistrations,
   MAX_TOOL_SEARCH_RESULTS,
   MAX_VISIBLE_TOOLS,
   searchToolRegistrations,
+  TOOL_SEARCH_TOOL_NAME,
   type ToolSearchEmbedder,
   type ToolSearchMatch,
 } from "./utils/tool-search.js";

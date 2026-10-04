@@ -51,7 +51,7 @@ export function createMcpTransportFactory(
     if (config.authMode === McpAuthMode.STATIC && material?.mode !== McpAuthMode.STATIC) {
       throw new McpError(
         McpErrorCode.STATIC_CREDENTIAL_REQUIRED,
-        "该 MCP 服务需要 Token 或 API Key，请设置请求头凭据",
+        "未配置认证请求头。请在服务器设置中填写 Authorization 或服务要求的 API Key 请求头。",
       );
     }
     if (config.authMode === McpAuthMode.OAUTH && material?.mode !== McpAuthMode.OAUTH) {

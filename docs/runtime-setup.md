@@ -17,7 +17,7 @@
 | Session 搜索 | SQLite FTS5 从 JSONL 有效分支派生消息索引；Agent 另有当前 Session 历史搜索工具 | [SessionService](../apps/daemon/src/services/session-service.ts)、[Context Runtime Tools](../packages/tools/src/tools/context-runtime.ts) |
 | Trace | Web 从 HarnessEvent 派生主/子 Agent 轨迹；完整消息、模型请求、工具、审批和压缩详情按需加载 | [Agent Trace 投影](../apps/web/src/features/trace/utils/session-events-to-agent-traces.ts) |
 | MCP Host | daemon 管理服务器、凭据、信任、能力目录和 Client；调用接入现有执行链 | [MCP 模块](../apps/daemon/src/mcp)、[McpToolService](../apps/daemon/src/services/mcp-tool-service.ts) |
-| MCP 工具发现 | search_tools 做名称/词法与本地向量混合检索；load_tools 加载已搜索定义；搜索不授予执行权限 | [搜索与加载工具](../packages/tools/src/tools/search-tools.ts)、[HybridToolSearch](../packages/tools/src/utils/tool-search.ts) |
+| MCP 工具发现 | tool_search 做精确名称优先、BM25/本地向量混合检索并自动加载匹配定义；默认 8 个、最多 10 个；搜索不授予执行权限 | [工具搜索](../packages/tools/src/tools/tool-search.ts)、[HybridToolSearch](../packages/tools/src/utils/tool-search.ts) |
 | Long-term Memory | user/workspace scope、自动学习、编辑/删除、派生用户画像、FTS/本地向量混合召回与请求级 Context | [MemoryService](../packages/memory/src/memory-service.ts)、[SQLite adapter](../apps/daemon/src/storage/memory-repository.ts) |
 | Computer Use | macOS 原生 helper、受限脚本、窗口截图、Accessibility Tree 和输入，通过内置 MCP App/权限链接入 | [Computer Use](../packages/computer-use/README.md)、[系统权限服务](../apps/daemon/src/services/computer-use-permission-service.ts) |
 | 任务看板与 Sub Agent | 顶层任务关联 Run；成功完成进入待确认，由用户确认完成，失败/中止进入等待；父子执行树、委派/等待/消息/停止、独立轨迹与重启中断恢复 | [BoardTaskService](../apps/daemon/src/services/board-task-service.ts)、[SubAgentTree](../packages/agent-runtime/src/sub-agent-tree.ts) |
@@ -110,7 +110,7 @@ SessionEventStore 串行追加并同步写盘，seq 严格递增但可不连续�
 [createServer](../apps/daemon/src/server/create-server.ts) 负责统一装配：
 
 1. 打开 SQLite、独立 Credential Store，创建文件打开与系统权限服务。
-2. 装配 MCP 配置、Client、OAuth、诊断、插件连接，启动可取消的能力目录预热。
+2. 装配 MCP 配置、Client、OAuth、诊断、插件连接，复用有效本地能力目录；仅对缺失、版本不匹配或损坏的缓存启动可取消的后台补齐。
 3. 初始化 JSONL、SSE broker 和 BoardTask 投影，恢复中断执行。
 4. 创建 ProviderService、本地 embedding、MemoryService、AgentManager、WorkspaceService、SessionService，初始化搜索索引。
 5. 注册 Host/Origin 与桌面 Cookie 检查，以及 auth、settings、board、health、MCP、memory、provider、session、skill、workspace 路由。桌面配置开启时额外托管 Web 与 bootstrap/shutdown。

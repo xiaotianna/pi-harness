@@ -1,6 +1,8 @@
 import { isPlainObject } from "es-toolkit";
 import type { ToolRegistration } from "../lib/tool-registry.js";
 
+export const TOOL_SEARCH_TOOL_NAME = "tool_search";
+export const DEFAULT_TOOL_SEARCH_LIMIT = 8;
 export const MAX_TOOL_SEARCH_RESULTS = 10;
 export const MAX_VISIBLE_TOOLS = 64;
 const MAX_CACHED_TOOL_VECTORS = 4_000;
@@ -9,6 +11,8 @@ const SEMANTIC_CANDIDATES = 60;
 const SEMANTIC_SCORE_DROP = 0.05;
 const SEMANTIC_TIMEOUT_MS = 18_000;
 const RANK_FUSION_K = 60;
+const BM25_K1 = 1.2;
+const BM25_B = 0.75;
 
 export interface ToolSearchMatch {
   description: string;
@@ -34,93 +38,121 @@ interface SearchCandidate {
 }
 
 function normalizeName(value: string): string {
-  return value.toLocaleLowerCase().replace(/[_/-]+/g, " ");
+  return value
+    .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2")
+    .replace(/(\p{Lu})(\p{Lu}\p{Ll})/gu, "$1 $2")
+    .toLocaleLowerCase()
+    .replace(/[_/-]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
-function parameterNames(parameters: unknown): string {
-  return isPlainObject(parameters) && isPlainObject(parameters.properties)
-    ? Object.keys(parameters.properties).join(" ")
-    : "";
+function parameterSearchText(parameters: unknown): string {
+  const pending: unknown[] = [parameters];
+  const visited = new Set<object>();
+  const text: string[] = [];
+  while (pending.length > 0) {
+    const schema = pending.pop();
+    if (!isPlainObject(schema) || visited.has(schema)) continue;
+    visited.add(schema);
+    if (typeof schema.description === "string") text.push(schema.description);
+    if (isPlainObject(schema.properties)) {
+      for (const [name, property] of Object.entries(schema.properties)) {
+        text.push(name);
+        pending.push(property);
+      }
+    }
+    if (isPlainObject(schema.items)) pending.push(schema.items);
+    for (const keyword of ["allOf", "anyOf", "oneOf"] as const) {
+      if (Array.isArray(schema[keyword])) pending.push(...schema[keyword]);
+    }
+  }
+  return text.join(" ");
 }
 
-function searchTerms(query: string): string[] {
-  const chunks = query.match(/[\p{Script=Han}]+|[\p{L}\p{N}]+/gu) ?? [];
-  return [
-    ...new Set(
-      chunks.flatMap((chunk) => {
-        if (!/^[\p{Script=Han}]+$/u.test(chunk) || chunk.length <= 2) return [chunk];
-        return Array.from({ length: chunk.length - 1 }, (_, index) =>
-          chunk.slice(index, index + 2),
-        );
-      }),
-    ),
-  ];
-}
-
-function toolSearchScore(
-  query: string,
-  name: string,
-  label: string,
-  description: string,
-  parameters: string,
-): number {
-  const normalizedName = normalizeName(name);
-  const normalizedLabel = normalizeName(label);
-  const originalName = normalizeName(label.split(" / ").at(-1) ?? label);
-  const normalizedDescription = description.toLocaleLowerCase();
-  const normalizedParameters = parameters.toLocaleLowerCase().replace(/[_/-]+/g, " ");
-  const normalizedQuery = query.replace(/[_/-]+/g, " ");
-  const terms = searchTerms(query);
-  if (terms.length === 0) return 0;
-  const hits = terms.map((term) =>
-    normalizedName.includes(term)
-      ? 8
-      : normalizedLabel.includes(term)
-        ? 6
-        : normalizedDescription.includes(term)
-          ? 2
-          : normalizedParameters.includes(term)
-            ? 1
-            : 0,
-  );
-  return (
-    (normalizedName === normalizedQuery ? 100 : 0) +
-    (originalName === normalizedQuery ? 100 : 0) +
-    (normalizedName.includes(normalizedQuery) ? 40 : 0) +
-    (normalizedLabel.includes(normalizedQuery) ? 30 : 0) +
-    (normalizedDescription.includes(query) ? 12 : 0) +
-    hits.reduce<number>((total, hit) => total + hit, 0)
-  );
+function searchTerms(text: string): string[] {
+  const chunks =
+    normalizeName(text)
+      .replace(/([\p{Script=Han}]+)/gu, " $1 ")
+      .match(/[\p{L}\p{N}]+/gu) ?? [];
+  return chunks.flatMap((chunk) => {
+    if (/^[\p{Script=Han}]+$/u.test(chunk)) {
+      const characters = Array.from(chunk);
+      if (characters.length <= 2) return [chunk];
+      return characters.slice(1).map((character, index) => `${characters[index]}${character}`);
+    }
+    // 仅归一化常见英语复数，避免把 status、analysis 等单词截断。
+    if (/^[a-z]+$/.test(chunk) && chunk.length > 3) {
+      if (chunk.length > 4 && chunk.endsWith("ies")) return [`${chunk.slice(0, -3)}y`];
+      if (/(ches|shes|sses|xes|zes)$/.test(chunk)) return [chunk.slice(0, -2)];
+      if (chunk.endsWith("s") && !/(ss|us|is|as)$/.test(chunk)) return [chunk.slice(0, -1)];
+    }
+    return [chunk];
+  });
 }
 
 function candidates(registrations: readonly ToolRegistration[], query: string): SearchCandidate[] {
-  return registrations.map(({ searchDescription, source, tool }) => {
+  const normalizedQuery = normalizeName(query);
+  const queryTerms = [...new Set(searchTerms(query))];
+  const documentFrequencies = new Map<string, number>();
+  const documents = registrations.map(({ searchDescription, source, tool }) => {
     const description = searchDescription ?? tool.description;
-    const parameters = parameterNames(tool.parameters);
+    const parameters = parameterSearchText(tool.parameters);
     const match = {
       description: description.slice(0, 160),
       label: tool.label,
       name: tool.name,
       source: source.startsWith("mcp:") ? "mcp" : source,
     };
-    const text = `${tool.label}. ${description.slice(0, 900)}. Parameters: ${parameters}`;
+    const text = `${tool.label}. ${description.slice(0, 900)}. Parameters: ${parameters.slice(0, 900)}`;
+    // 普通索引使用上游名称，模型别名中的服务器散列只参与完整名称匹配。
+    const terms = searchTerms(`${tool.label} ${description} ${parameters}`);
+    const frequencies = new Map<string, number>();
+    for (const term of terms) frequencies.set(term, (frequencies.get(term) ?? 0) + 1);
+    for (const term of frequencies.keys()) {
+      documentFrequencies.set(term, (documentFrequencies.get(term) ?? 0) + 1);
+    }
     return {
-      exact:
-        normalizeName(tool.name) === normalizeName(query) ||
-        normalizeName(tool.label.split(" / ").at(-1) ?? tool.label) === normalizeName(query),
-      key: JSON.stringify([source, tool.name, text]),
-      match,
-      score: toolSearchScore(query, tool.name, tool.label, description, parameters),
-      text,
+      candidate: {
+        exact:
+          normalizeName(tool.name) === normalizedQuery ||
+          normalizeName(tool.label.split(" / ").at(-1) ?? tool.label) === normalizedQuery,
+        key: JSON.stringify([source, tool.name, text]),
+        match,
+        text,
+      },
+      frequencies,
+      length: terms.length,
     };
   });
+  const averageLength =
+    documents.reduce((total, document) => total + document.length, 0) / documents.length || 1;
+  return documents.map(({ candidate, frequencies, length }) => ({
+    ...candidate,
+    score: queryTerms.reduce((score, term) => {
+      const frequency = frequencies.get(term) ?? 0;
+      if (frequency === 0) return score;
+      const documentFrequency = documentFrequencies.get(term) ?? 0;
+      const inverseDocumentFrequency = Math.log1p(
+        (documents.length - documentFrequency + 0.5) / (documentFrequency + 0.5),
+      );
+      return (
+        score +
+        (inverseDocumentFrequency * frequency * (BM25_K1 + 1)) /
+          (frequency + BM25_K1 * (1 - BM25_B + (BM25_B * length) / averageLength))
+      );
+    }, 0),
+  }));
 }
 
 function lexicalCandidates(values: readonly SearchCandidate[]): SearchCandidate[] {
   return values
-    .filter(({ score }) => score > 0)
+    .filter(({ exact, score }) => exact || score > 0)
     .sort(
-      (left, right) => right.score - left.score || left.match.name.localeCompare(right.match.name),
+      (left, right) =>
+        Number(right.exact) - Number(left.exact) ||
+        right.score - left.score ||
+        left.match.name.localeCompare(right.match.name),
     );
 }
 
@@ -135,10 +167,9 @@ function fuseCandidates(
 ): ToolSearchMatch[] {
   const ranks = new Map<string, { candidate: SearchCandidate; score: number }>();
   for (const [index, candidate] of lexical.entries()) {
-    const weight = candidate.score >= 40 ? 1.5 : candidate.score >= 8 ? 1.1 : 0.8;
     ranks.set(candidate.match.name, {
       candidate,
-      score: weight / (RANK_FUSION_K + index + 1),
+      score: 1 / (RANK_FUSION_K + index + 1),
     });
   }
   for (const [index, candidate] of semantic.entries()) {
@@ -159,7 +190,7 @@ function fuseCandidates(
     .map(({ candidate }) => candidate.match);
 }
 
-/** 检索只处理候选摘要；完整 schema 仍由 load_tools 在下一次模型请求中提供。 */
+/** 检索只处理候选摘要；tool_search 加载后由 Runtime 在下一次模型请求中提供完整 schema。 */
 export class HybridToolSearch {
   private readonly vectors = new Map<string, readonly number[]>();
 
@@ -171,7 +202,7 @@ export class HybridToolSearch {
     signal?: AbortSignal,
   ): Promise<ToolSearchMatch[]> {
     signal?.throwIfAborted();
-    const phrase = query.trim().toLocaleLowerCase();
+    const phrase = query.trim();
     if (!phrase) return [];
     const available = candidates(registrations, phrase);
     const lexical = lexicalCandidates(available);
@@ -236,7 +267,7 @@ export function searchToolRegistrations(
   query: string,
   limit = MAX_TOOL_SEARCH_RESULTS,
 ): ToolSearchMatch[] {
-  const phrase = query.trim().toLocaleLowerCase();
+  const phrase = query.trim();
   if (!phrase || limit <= 0) return [];
   return lexicalCandidates(candidates(registrations, phrase))
     .slice(0, Math.min(limit, MAX_TOOL_SEARCH_RESULTS))
@@ -246,7 +277,6 @@ export function searchToolRegistrations(
 export function loadToolRegistrations(
   registrations: readonly ToolRegistration[],
   names: readonly string[],
-  searchedNames: ReadonlySet<string>,
   visibleNames: Set<string>,
 ): string[] {
   if (
@@ -259,8 +289,8 @@ export function loadToolRegistrations(
     registrations.filter(({ source }) => source.startsWith("mcp:")).map(({ tool }) => tool.name),
   );
   for (const name of names) {
-    if (!searchedNames.has(name) || !available.has(name))
-      throw new Error(`TOOL_LOAD_NOT_FOUND: 工具 ${name} 不在本轮搜索结果中`);
+    if (!available.has(name))
+      throw new Error(`TOOL_LOAD_NOT_FOUND: 工具 ${name} 不在本轮 MCP 目录中`);
   }
   const newNames = names.filter((name) => !visibleNames.has(name));
   if (visibleNames.size + newNames.length > MAX_VISIBLE_TOOLS)

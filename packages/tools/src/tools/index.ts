@@ -36,7 +36,6 @@ export {
 } from "./request-user-input.js";
 export { createRunCommandTool, type RunCommandDetails } from "./run-command.js";
 export { createSearchTextTool } from "./search-text.js";
-export { createLoadToolsTool, createSearchToolsTool } from "./search-tools.js";
 export { createStopCommandTool } from "./stop-command.js";
 export {
   createSubAgentToolRegistrations,
@@ -58,6 +57,7 @@ export {
   type TodoUpdatedData,
   type TodoUpdateHandler,
 } from "./todos.js";
+export { createToolSearchTool } from "./tool-search.js";
 export { createViewImageTool } from "./view-image.js";
 export { createViewPdfPageTool } from "./view-pdf-page.js";
 export { createWaitCommandTool } from "./wait-command.js";

@@ -12,7 +12,12 @@ import {
   trustMcpServer,
   updateMcpTool,
 } from "../api/mcp-api";
-import { mcpCatalogQueryOptions, mcpQueryKeys, mcpServersQueryOptions } from "../api/mcp-queries";
+import {
+  mcpCatalogQueryOptions,
+  mcpQueryKeys,
+  mcpServerQueryOptions,
+  mcpServersQueryOptions,
+} from "../api/mcp-queries";
 
 export const McpAction = {
   CONNECT: "connect",
@@ -68,8 +73,7 @@ export function useMcpServers(selectedServerId: string | null) {
   const action = useMutation<McpServer | McpTestResult | null, Error, ActionInput, ToggleContext>({
     retry: false,
     mutationFn: async ({ server, kind, signal }: ActionInput) => {
-      if (kind === McpAction.ENABLE || kind === McpAction.DISABLE)
-        return setMcpEnabled(server, kind === McpAction.ENABLE);
+      if (kind === McpAction.DISABLE) return setMcpEnabled(server, false);
       if (kind === McpAction.DELETE) {
         await deleteMcpServer(server);
         return null;
@@ -79,19 +83,16 @@ export function useMcpServers(selectedServerId: string | null) {
         return null;
       }
       let current = server;
-      if (kind === McpAction.CONNECT) {
+      if (kind === McpAction.CONNECT || kind === McpAction.ENABLE) {
         if (!current.enabled) current = await setMcpEnabled(current, true);
         signal.throwIfAborted();
-        await trustMcpServer(current);
+        if (!current.isTrusted) await trustMcpServer(current);
       }
       signal.throwIfAborted();
       return testMcpServer(current, signal);
     },
     onError: (error, input, context) => {
-      if (
-        (input.kind === McpAction.ENABLE || input.kind === McpAction.DISABLE) &&
-        context?.previousServer
-      ) {
+      if (input.kind === McpAction.DISABLE && context?.previousServer) {
         client.setQueryData<readonly McpServer[]>(mcpQueryKeys.servers(), (servers) =>
           servers?.map((server) =>
             server.id === context.previousServer?.id ? context.previousServer : server,
@@ -126,20 +127,33 @@ export function useMcpServers(selectedServerId: string | null) {
       return previousServer ? { previousServer } : {};
     },
     onSettled: async (_data, _error, input) => {
-      controllers.current.delete(input.server.id);
-      setPendingActions((current) => {
-        const next = new Map(current);
-        next.delete(input.server.id);
-        return next;
-      });
-      if (
-        input.kind === McpAction.CONNECT ||
-        input.kind === McpAction.DISCOVER ||
-        input.kind === McpAction.TEST ||
-        input.kind === McpAction.DELETE ||
-        input.kind === McpAction.REVOKE
-      ) {
-        await client.invalidateQueries({ queryKey: mcpQueryKeys.all });
+      try {
+        if (input.kind === McpAction.DELETE) {
+          await client.invalidateQueries({ queryKey: mcpQueryKeys.all });
+          return;
+        }
+        try {
+          const updatedServer = await client.fetchQuery({
+            ...mcpServerQueryOptions(input.server.id),
+            staleTime: 0,
+          });
+          client.setQueryData<readonly McpServer[]>(mcpQueryKeys.servers(), (servers) =>
+            servers?.map((server) => (server.id === updatedServer.id ? updatedServer : server)),
+          );
+          if (input.kind === McpAction.REVOKE) {
+            await client.invalidateQueries({ queryKey: mcpQueryKeys.catalog(input.server.id) });
+          }
+        } catch {
+          // 握手失败可能已由 daemon 停用，保留原始错误并重新读取真实状态。
+          await client.invalidateQueries({ queryKey: mcpQueryKeys.servers() });
+        }
+      } finally {
+        controllers.current.delete(input.server.id);
+        setPendingActions((current) => {
+          const next = new Map(current);
+          next.delete(input.server.id);
+          return next;
+        });
       }
     },
   });

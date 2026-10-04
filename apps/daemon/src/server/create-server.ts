@@ -132,9 +132,12 @@ export async function createServer(config: HarnessConfig = loadHarnessConfig()) 
   );
   await skillConnections.synchronizeApps();
   const mcpWarmupController = new AbortController();
-  const mcpWarmup = mcpDiagnostics.refreshAll(mcpWarmupController.signal, (serverId, error) => {
-    server.log.warn({ err: error, serverId }, "MCP catalog warmup failed");
-  });
+  const mcpWarmup = mcpDiagnostics.initializeCatalogs(
+    mcpWarmupController.signal,
+    (serverId, error) => {
+      server.log.warn({ err: error, serverId }, "MCP catalog warmup failed");
+    },
+  );
   const skillGatewayToken = randomBytes(32).toString("base64url");
   const eventStore = new SessionEventStore(config.sessionsPath);
   await eventStore.initialize();

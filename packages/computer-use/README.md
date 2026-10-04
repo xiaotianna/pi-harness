@@ -8,7 +8,7 @@ macOS 本地 Computer Use 执行层。TypeScript 提供 Agent Tool、受限 Java
 
 ## 给模型的数据
 
-原生 MCP 服务提供 `computer_list_apps`、`computer_observe` 和 `computer_act`。daemon 在观察和动作能力均开启时补充 `computer_exec`。这些能力随 MCP 工具目录进入 `search_tools` / `load_tools`，完整工具定义按需加入模型请求；模型实际调用名是 daemon 生成的稳定 MCP 别名。
+原生 MCP 服务提供 `computer_list_apps`、`computer_observe` 和 `computer_act`。daemon 在观察和动作能力均开启时补充 `computer_exec`。这些能力随 MCP 工具目录通过 `tool_search` 搜索并自动加载，完整工具定义按需加入下一次模型请求；模型实际调用名是 daemon 生成的稳定 MCP 别名。
 
 `computer_list_apps` 可列出当前运行且未被保护规则排除的应用；`computer_observe` 可用显示名称或 bundle ID 在后台找到/启动目标应用，省略 `app` 时观察前台应用，并返回以下 content block：
 

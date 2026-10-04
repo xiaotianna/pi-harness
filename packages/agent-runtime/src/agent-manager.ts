@@ -6,9 +6,8 @@ import {
   CommandProcessEventKind,
   CommandProcessManager,
   type CommandProcessSnapshot,
-  createLoadToolsTool,
-  createSearchToolsTool,
   createSubAgentToolRegistrations,
+  createToolSearchTool,
   createWorkspaceToolRegistry,
   HybridToolSearch,
   type PlanUpdatedData,
@@ -354,18 +353,9 @@ export class AgentManager {
         policy: { permission: ToolPermission.READ_ONLY },
         source: "built_in",
         timeoutMs: 30_000,
-        tool: createSearchToolsTool((query, signal) => {
+        tool: createToolSearchTool((query, limit, signal) => {
           if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.searchTools(query, signal);
-        }),
-      },
-      {
-        policy: { permission: ToolPermission.READ_ONLY },
-        source: "built_in",
-        timeoutMs: 30_000,
-        tool: createLoadToolsTool((names, signal) => {
-          if (runtime === null) throw new Error("Session Runtime 尚未就绪");
-          return runtime.loadTools(names, signal);
+          return runtime.searchTools(query, limit, signal);
         }),
       },
     ]);

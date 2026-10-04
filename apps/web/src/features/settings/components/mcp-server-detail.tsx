@@ -1,10 +1,6 @@
 import { ArrowRotateRight, Pencil, Xmark } from "@gravity-ui/icons";
 import { Alert, Button, Card, Disclosure, Label, Skeleton, Switch, Tabs } from "@heroui/react";
-import {
-  McpAuthRequirement,
-  McpCatalogStatus,
-  McpTransport,
-} from "@pi-harness/agent-runtime/mcp-contract";
+import { McpAuthRequirement, McpTransport } from "@pi-harness/agent-runtime/mcp-contract";
 import type { ReactNode } from "react";
 import { AssistantCodeBlock } from "../../../components/ai/assistant-code-block";
 import { AssistantMarkdown } from "../../../components/ai/assistant-markdown";
@@ -484,36 +480,22 @@ export function McpServerDetail({
     server.config.transport === McpTransport.STDIO ? server.config.command : server.config.url;
   const needsCredential = needsMcpCredential(server);
   const needsOAuth = !server.hasCredential && server.authRequirement === McpAuthRequirement.OAUTH;
-  const statusLabel = !server.enabled
-    ? "未启用"
-    : needsCredential
-      ? "待鉴权"
-      : isLoading
-        ? "连接中"
-        : server.catalogStatus === McpCatalogStatus.ERROR
-          ? "加载失败"
-          : server.isTrusted
-            ? "已启用"
-            : "待连接";
   return (
     <SettingsCatalogDetail
       action={
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-sm text-muted">{statusLabel}</span>
-          <Switch
-            aria-label={`${server.name} 启用状态`}
-            isDisabled={isBusy}
-            isSelected={server.enabled}
-            size="sm"
-            onChange={onEnabledChange}
-          >
-            <Switch.Content>
-              <Switch.Control>
-                <Switch.Thumb />
-              </Switch.Control>
-            </Switch.Content>
-          </Switch>
-        </div>
+        <Switch
+          aria-label={`${server.name} 启用状态`}
+          isDisabled={isBusy}
+          isSelected={server.enabled}
+          size="sm"
+          onChange={onEnabledChange}
+        >
+          <Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+          </Switch.Content>
+        </Switch>
       }
       ariaLabel={`${server.name} MCP 服务器详情`}
       backLabel="返回 MCP 服务器"

@@ -22,7 +22,7 @@ export class McpDiagnosticsService {
     return this.servers.getCatalog(serverId);
   }
 
-  public async refreshAll(
+  public async initializeCatalogs(
     signal: AbortSignal,
     onError: (serverId: string, error: unknown) => void,
   ): Promise<void> {
@@ -36,6 +36,13 @@ export class McpDiagnosticsService {
         const server = queue[nextIndex++];
         if (server === undefined) return;
         try {
+          try {
+            if (this.servers.getCatalog(server.id) !== null) continue;
+          } catch (error: unknown) {
+            if (!(error instanceof McpError) || error.code !== McpErrorCode.STORAGE_FAILED)
+              throw error;
+            // 能力目录是可重建派生数据；损坏时与缺失目录一样重新发现。
+          }
           await this.test(server.id, { expectedRevision: server.revision }, signal);
         } catch (error: unknown) {
           if (!signal.aborted) onError(server.id, error);
@@ -50,7 +57,7 @@ export class McpDiagnosticsService {
     input: TestMcpConnectionDto,
     signal: AbortSignal,
   ): Promise<McpDiagnosticsVo> {
-    this.servers.beginCatalogRefresh(serverId, input.expectedRevision);
+    const server = this.servers.beginCatalogRefresh(serverId, input.expectedRevision);
     try {
       const { catalog, context, durationMs } = await this.inspect(serverId, input, signal);
       const redact = (text: string) => redactMcpText(text, context.credential);
@@ -130,10 +137,16 @@ export class McpDiagnosticsService {
       if (signal.aborted) {
         this.servers.cancelCatalogRefresh(serverId, input.expectedRevision);
       } else {
-        this.servers.failCatalogRefresh(
+        await this.servers.failCatalogRefresh(
           serverId,
           input.expectedRevision,
           error instanceof McpError ? error.message : "MCP 能力目录加载失败",
+          server.credentialRevision,
+          !(
+            error instanceof McpError &&
+            (error.code === McpErrorCode.OAUTH_REQUIRED ||
+              error.code === McpErrorCode.STATIC_CREDENTIAL_REQUIRED)
+          ),
         );
       }
       throw error;

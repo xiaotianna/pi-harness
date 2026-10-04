@@ -67,7 +67,7 @@ Session（固定 workspaceRoot、同一个 Session JSONL）
 | 角色 | 当前工作工具范围 |
 |---|---|
 | `explorer` | 只继承 `read_file`、`view_image`、`read_document`、`view_pdf_page`、`list_files`、`search_text`、`web_search`、`web_fetch` 中声明为只读的工具；另获得普通 `request_user_input` 和子 Agent 控制工具。不能用 MCP、Shell、文件写入或 Skill 发现/加载工具，只能委派 `explorer`。 |
-| `worker` | 继承直接父 `rawRegistrations` 中未排除的工作工具与已注册 MCP 工具；重建 `search_tools` / `load_tools` 按需公开 MCP；fork SkillRegistry 并提供 `find_skill` / `get_skill` / `load_skill`；另获得普通用户输入和子 Agent 控制工具。 |
+| `worker` | 继承直接父 `rawRegistrations` 中未排除的工作工具与已注册 MCP 工具；重建 `tool_search`，按 BM25/本地向量混合结果自动加载并按需公开 MCP；fork SkillRegistry 并提供 `find_skill` / `get_skill` / `load_skill`；另获得普通用户输入和子 Agent 控制工具。 |
 
 子 Agent 不继承 `update_plan`、`update_todos`、checkpoint 恢复、工作状态重置、会话历史搜索或 `skill_creator`。这些属于父 Run 控制面。Plan 尚未确认时只能创建 `explorer`；工具钩子继续限制未经确认的副作用。子 Agent 只能请求普通问题，不能提交 Plan Review。
 

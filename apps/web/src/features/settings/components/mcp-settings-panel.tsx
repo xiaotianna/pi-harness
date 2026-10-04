@@ -150,6 +150,7 @@ export function McpSettingsPanel() {
             selectedPendingAction === McpAction.DISCOVER ||
             selectedPendingAction === McpAction.TEST ||
             selectedPendingAction === McpAction.CONNECT ||
+            selectedPendingAction === McpAction.ENABLE ||
             selectedServer.catalogStatus === McpCatalogStatus.LOADING ||
             catalog.isPending
           }
@@ -237,7 +238,8 @@ export function McpSettingsPanel() {
                   const isConnectionPending =
                     pendingAction === McpAction.DISCOVER ||
                     pendingAction === McpAction.TEST ||
-                    pendingAction === McpAction.CONNECT;
+                    pendingAction === McpAction.CONNECT ||
+                    pendingAction === McpAction.ENABLE;
                   const endpoint =
                     server.config.transport === McpTransport.STDIO
                       ? server.config.command
@@ -354,19 +356,6 @@ export function McpSettingsPanel() {
                               {mainAction === "cancel" ? mainActionLabel : "测试连接"}
                             </Tooltip.Content>
                           </Tooltip>
-                          <span className="hidden text-sm text-muted @xl/settings:inline">
-                            {!server.enabled
-                              ? "未启用"
-                              : needsCredential
-                                ? "待鉴权"
-                                : isCatalogLoading
-                                  ? "连接中"
-                                  : server.catalogStatus === McpCatalogStatus.ERROR
-                                    ? "加载失败"
-                                    : server.isTrusted
-                                      ? "已启用"
-                                      : "待连接"}
-                          </span>
                           <Switch
                             aria-label={`${server.name} 启用状态`}
                             isDisabled={isBusy}

@@ -15,10 +15,9 @@ import {
   createGetSkillTool,
   createLoadSkillPolicy,
   createLoadSkillTool,
-  createLoadToolsTool,
   createRequestUserInputTool,
-  createSearchToolsTool,
   createSubAgentToolRegistrations,
+  createToolSearchTool,
   type HybridToolSearch,
   loadToolRegistrations,
   MAX_VISIBLE_TOOLS,
@@ -29,6 +28,7 @@ import {
   type StopAgentInput,
   SubAgentType,
   searchToolRegistrations,
+  TOOL_SEARCH_TOOL_NAME,
   type ToolRegistration,
   ToolRegistry,
   type UserInputToolResult,
@@ -91,8 +91,7 @@ const EXCLUDED_CHILD_TOOLS = new Set([
   "wait_agents",
   "send_agent_message",
   "stop_agent",
-  "search_tools",
-  "load_tools",
+  TOOL_SEARCH_TOOL_NAME,
 ]);
 const MAX_DIRECT_CHILDREN = 3;
 const MAX_DEPTH = 2;
@@ -377,7 +376,6 @@ export class SubAgentTree {
       const visibleToolNames = new Set(
         raw.filter(({ source }) => !source.startsWith("mcp:")).map(({ tool }) => tool.name),
       );
-      const searchedToolNames = new Set<string>();
       const registry: ToolRegistry = new ToolRegistry([
         ...raw,
         ...(input.agentType === SubAgentType.WORKER
@@ -386,8 +384,15 @@ export class SubAgentTree {
                 policy: { permission: ToolPermission.READ_ONLY },
                 source: "built_in",
                 timeoutMs: 30_000,
-                tool: createSearchToolsTool(async (query, searchSignal) => {
+                tool: createToolSearchTool(async (query, limit, searchSignal) => {
                   searchSignal?.throwIfAborted();
+                  const execution = this.executions.get(executionId);
+                  if (
+                    execution?.status !== SubAgentStatus.RUNNING ||
+                    execution.abortRequested ||
+                    execution.timedOut
+                  )
+                    throw new Error("TOOL_SEARCH_UNAVAILABLE: 搜索所属子任务已结束");
                   const remaining = MAX_VISIBLE_TOOLS - visibleToolNames.size;
                   if (remaining <= 0)
                     throw new Error("TOOL_SEARCH_LIMIT_EXCEEDED: 当前子任务的工具数量已达上限");
@@ -399,22 +404,26 @@ export class SubAgentTree {
                     ? await this.options.toolSearch.search(available, query, searchSignal)
                     : searchToolRegistrations(available, query);
                   searchSignal?.throwIfAborted();
-                  for (const match of matches) searchedToolNames.add(match.name);
-                  return matches;
-                }),
-              } satisfies ToolRegistration,
-              {
-                policy: { permission: ToolPermission.READ_ONLY },
-                source: "built_in",
-                timeoutMs: 30_000,
-                tool: createLoadToolsTool(async (names, loadSignal) => {
-                  loadSignal?.throwIfAborted();
-                  return loadToolRegistrations(
-                    registry.rawRegistrations,
-                    names,
-                    searchedToolNames,
-                    visibleToolNames,
-                  );
+                  if (
+                    execution.status !== SubAgentStatus.RUNNING ||
+                    execution.abortRequested ||
+                    execution.timedOut
+                  )
+                    throw new Error("TOOL_SEARCH_UNAVAILABLE: 搜索所属子任务已结束");
+                  const selected = matches
+                    .filter(({ name }) => !visibleToolNames.has(name))
+                    .slice(0, Math.min(limit, MAX_VISIBLE_TOOLS - visibleToolNames.size));
+                  if (selected.length > 0) {
+                    loadToolRegistrations(
+                      registry.rawRegistrations,
+                      selected.map(({ name }) => name),
+                      visibleToolNames,
+                    );
+                    execution.agent.state.tools = registry.tools.filter(({ name }) =>
+                      visibleToolNames.has(name),
+                    );
+                  }
+                  return selected;
                 }),
               } satisfies ToolRegistration,
             ]
@@ -489,20 +498,27 @@ export class SubAgentTree {
         const loaded = tools.filter(({ name }) => !previousNames.has(name));
         if (loaded.length === 0) return undefined;
         agent.state.tools = tools;
-        await this.options.emit({
-          type: HarnessEventType.SUBAGENT_TOOLS_LOADED,
-          data: {
-            executionId,
-            tools: createRunToolSnapshot(registry, loaded),
-          },
-        });
         return { context: { ...context, tools } };
       };
       agent.state.thinkingLevel = thinkingLevel;
       let requestCount = 0;
       agent.streamFunction = async (requestModel, context, streamOptions) => {
-        requestCount += 1;
         const current = this.executions.get(executionId);
+        const requestToolNames = new Set(context.tools?.map(({ name }) => name));
+        const requestTools = visibleTools().filter(({ name }) => requestToolNames.has(name));
+        const recordedToolNames = new Set(current?.adapterContext.tools.map(({ name }) => name));
+        const loaded = requestTools.filter(({ name }) => !recordedToolNames.has(name));
+        if (current && loaded.length > 0) {
+          await this.options.emit({
+            type: HarnessEventType.SUBAGENT_TOOLS_LOADED,
+            data: {
+              executionId,
+              tools: createRunToolSnapshot(registry, loaded),
+            },
+          });
+          current.adapterContext.tools = createRunToolSnapshot(registry, requestTools);
+        }
+        requestCount += 1;
         if (current) current.requestCount = requestCount;
         await this.options.emit({
           type: HarnessEventType.SUBAGENT_CONTEXT_USAGE_SNAPSHOT,
@@ -601,7 +617,7 @@ export class SubAgentTree {
           providerId: model.provider,
           systemPrompt: agent.state.systemPrompt,
           thinkingLevel,
-          tools: createRunToolSnapshot(registry),
+          tools: createRunToolSnapshot(registry, visibleTools()),
         },
         agentType: input.agentType,
         abortRequested: false,
