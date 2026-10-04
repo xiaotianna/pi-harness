@@ -79,6 +79,7 @@ const SessionListSchema = Type.Array(SessionSchema);
 const SessionSnapshotSchema = Type.Object({
   commands: Type.Array(CommandProcessSchema),
   events: Type.Array(HarnessEventSchema),
+  lastPersistedSeq: Type.Integer({ minimum: 0 }),
   session: SessionSchema,
 });
 const SubAgentEventsSchema = Type.Object({
@@ -128,6 +129,7 @@ export interface SessionSnapshot {
   /** Client-only incremental state. The daemon response never includes this field. */
   eventMetadata?: SessionSnapshotEventMetadata;
   events: readonly HarnessEvent[];
+  lastPersistedSeq: number;
   /** Client-only messages shown until the daemon persists the submitted user messages. */
   optimisticUserInputs?: readonly OptimisticSessionUserInput[];
   session: Session;
@@ -236,6 +238,7 @@ async function readSessionSnapshot(response: Response): Promise<SessionSnapshot>
   return {
     commands: body.commands as readonly CommandProcessSnapshot[],
     events: body.events.map(parseEvent),
+    lastPersistedSeq: body.lastPersistedSeq,
     session: body.session,
   };
 }

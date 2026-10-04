@@ -19,6 +19,11 @@ import { TERMINAL_RUN_EVENTS } from "../constants/session-events";
 const metadataBySnapshot = new WeakMap<SessionSnapshot, SessionSnapshotEventMetadata>();
 const mergedEventsByMetadata = new WeakMap<SessionSnapshotEventMetadata, readonly HarnessEvent[]>();
 
+/** Return the highest event already represented in the client snapshot. */
+export function selectSessionEventCursor(snapshot: SessionSnapshot): number {
+  return snapshot.eventMetadata ? snapshot.session.lastSeq : snapshot.lastPersistedSeq;
+}
+
 export function selectSessionEventMetadata(
   snapshot: SessionSnapshot,
 ): SessionSnapshotEventMetadata {
@@ -110,7 +115,7 @@ export function updateSnapshotWithEvents(
   snapshot: SessionSnapshot,
   incoming: readonly HarnessEvent[],
 ): SessionSnapshot {
-  let lastAcceptedSeq = snapshot.session.lastSeq;
+  let lastAcceptedSeq = selectSessionEventCursor(snapshot);
   const accepted = [...incoming]
     .sort((left, right) => left.seq - right.seq)
     .filter((event) => {
@@ -210,6 +215,10 @@ export function updateSnapshotWithEvents(
       : [...current.stableEvents, ...appendedStable];
   const eventMetadata = { changedRunIds, stableEvents, transientByKey };
   const last = accepted.at(-1);
+  const lastPersistedSeq = accepted.reduce(
+    (seq, event) => (isTransient(event) ? seq : Math.max(seq, event.seq)),
+    snapshot.lastPersistedSeq,
+  );
   let commands: readonly CommandProcessSnapshot[] = snapshot.commands;
   for (const event of accepted) {
     if (!isCommandProcessSnapshot(event.data)) continue;
@@ -237,10 +246,11 @@ export function updateSnapshotWithEvents(
     // Keep the public event array stable during token-only batches. Transient events live in
     // eventMetadata and are materialized only for consumers that explicitly need them.
     events: stableEvents,
+    lastPersistedSeq,
     ...(optimisticUserInputs?.length ? { optimisticUserInputs } : {}),
     session: {
       ...snapshot.session,
-      lastSeq: last?.seq ?? snapshot.session.lastSeq,
+      lastSeq: Math.max(snapshot.session.lastSeq, last?.seq ?? 0),
       updatedAt: Math.max(snapshot.session.updatedAt, last?.timestamp ?? 0),
     },
   };

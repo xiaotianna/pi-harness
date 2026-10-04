@@ -17,6 +17,13 @@ const STREAM_FLUSH_INTERVAL_MS = 100;
 const TRACE_FLUSH_INTERVAL_MS = 500;
 const STALE_CONNECTION_TIMEOUT_MS = 45_000;
 const EVENT_TYPES = Object.values(HarnessEventType);
+const TRANSIENT_EVENT_TYPES = new Set<HarnessEvent["type"]>([
+  HarnessEventType.MESSAGE_DELTA,
+  HarnessEventType.TOOL_UPDATED,
+  HarnessEventType.COMMAND_UPDATED,
+  HarnessEventType.SUBAGENT_MESSAGE_DELTA,
+  HarnessEventType.SUBAGENT_TOOL_UPDATED,
+]);
 
 export function useSessionEvents(
   sessionId: string,
@@ -24,19 +31,23 @@ export function useSessionEvents(
   isRead: boolean,
   isTrace = false,
   isReady = true,
+  initialPersistedSeq = initialSeq,
 ): void {
   const queryClient = useQueryClient();
   const lastSeqRef = useRef(initialSeq);
+  const lastPersistedSeqRef = useRef(initialPersistedSeq);
   const sessionIdRef = useRef(sessionId);
 
   useEffect(() => {
     if (sessionIdRef.current !== sessionId) {
       sessionIdRef.current = sessionId;
       lastSeqRef.current = initialSeq;
+      lastPersistedSeqRef.current = initialPersistedSeq;
       return;
     }
     lastSeqRef.current = Math.max(lastSeqRef.current, initialSeq);
-  }, [initialSeq, sessionId]);
+    lastPersistedSeqRef.current = Math.max(lastPersistedSeqRef.current, initialPersistedSeq);
+  }, [initialPersistedSeq, initialSeq, sessionId]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -82,6 +93,11 @@ export function useSessionEvents(
         useChatSidebarStore.getState().markSessionCompleted(sessionId);
       }
       lastSeqRef.current = Math.max(lastSeqRef.current, events.at(-1)?.seq ?? 0);
+      for (const event of events) {
+        if (!TRANSIENT_EVENT_TYPES.has(event.type)) {
+          lastPersistedSeqRef.current = Math.max(lastPersistedSeqRef.current, event.seq);
+        }
+      }
       queryClient.setQueryData<SessionSnapshot>(
         isTrace ? sessionQueryKeys.trace(sessionId) : sessionQueryKeys.detail(sessionId),
         (snapshot) => (snapshot ? updateSnapshotWithEvents(snapshot, events) : snapshot),
@@ -190,7 +206,9 @@ export function useSessionEvents(
 
     const connect = () => {
       if (isClosed) return;
-      const nextSource = new EventSource(sessionEventsUrl(sessionId, lastSeqRef.current, isTrace));
+      const nextSource = new EventSource(
+        sessionEventsUrl(sessionId, lastPersistedSeqRef.current, isTrace),
+      );
       source = nextSource;
       for (const type of EVENT_TYPES) nextSource.addEventListener(type, receive as EventListener);
       nextSource.onmessage = markConnectionAlive;

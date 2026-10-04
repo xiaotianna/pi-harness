@@ -83,6 +83,7 @@ export class SessionEventsController {
       reply.raw.write("retry: 2000\n\n");
 
       for (const event of snapshot.events) send(event);
+      for (const event of this.broker.replay(sessionId, lastSentSeq)) send(event);
       isReplaying = false;
       pendingLiveEvents.sort((left, right) => left.seq - right.seq);
       for (const event of pendingLiveEvents) send(event);

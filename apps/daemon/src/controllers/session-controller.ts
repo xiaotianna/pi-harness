@@ -91,6 +91,7 @@ export class SessionController {
       return {
         commands: [...snapshot.commands],
         events: [...snapshot.events],
+        lastPersistedSeq: snapshot.lastPersistedSeq,
         session: snapshot.session,
       };
     } catch (error: unknown) {
@@ -136,6 +137,7 @@ export class SessionController {
       return {
         commands: [...snapshot.commands],
         events: [...snapshot.events],
+        lastPersistedSeq: snapshot.lastPersistedSeq,
         session: snapshot.session,
       };
     } catch (error: unknown) {

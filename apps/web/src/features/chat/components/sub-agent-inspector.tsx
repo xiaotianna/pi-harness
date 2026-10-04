@@ -340,7 +340,7 @@ function SubAgentDetail({
   const [initialSeq, setInitialSeq] = useState<number | null>(null);
   useEffect(() => {
     if (initialSeq === null && snapshotQuery.data)
-      setInitialSeq(snapshotQuery.data.session.lastSeq);
+      setInitialSeq(snapshotQuery.data.lastPersistedSeq);
   }, [initialSeq, snapshotQuery.data]);
   const live = useLiveSubAgentEvents(sessionId, executionId, initialSeq);
   const [isStopping, setIsStopping] = useState(false);

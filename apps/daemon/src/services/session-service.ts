@@ -129,6 +129,7 @@ export interface UpdateSessionInput {
 export interface SessionSnapshot {
   commands: readonly CommandProcessSnapshot[];
   events: readonly HarnessEvent[];
+  lastPersistedSeq: number;
   session: SessionRecord;
 }
 
@@ -441,6 +442,7 @@ export class SessionService {
     return {
       commands: this.agents.listCommandProcesses(sessionId),
       events: snapshot.events,
+      lastPersistedSeq: snapshot.lastPersistedSeq,
       session: this.getRequiredSession(sessionId),
     };
   }

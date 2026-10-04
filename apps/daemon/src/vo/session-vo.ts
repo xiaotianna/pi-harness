@@ -94,6 +94,7 @@ export const CommandProcessVoSchema = Type.Object({
 export const SessionSnapshotVoSchema = Type.Object({
   commands: Type.Array(CommandProcessVoSchema),
   events: Type.Array(HarnessEventVoSchema),
+  lastPersistedSeq: Type.Integer({ minimum: 0 }),
   session: SessionVoSchema,
 });
 

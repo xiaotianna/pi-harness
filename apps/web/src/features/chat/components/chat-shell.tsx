@@ -18,6 +18,7 @@ import {
   archivedSessionListQueryOptions,
   sessionListQueryOptions,
   sessionQueryKeys,
+  sessionSnapshotQueryOptions,
 } from "../api/session-queries";
 import {
   removeWorkspace,
@@ -37,6 +38,7 @@ import { useChatSidebarStore } from "../state/chat-sidebar-store";
 import { useNewChatStore } from "../state/new-chat-store";
 import { useWorkspaceInspectorStore } from "../state/workspace-inspector-store";
 import { sessionToChatThread } from "../utils/session-messages";
+import { selectSessionEventCursor } from "../utils/session-snapshot";
 import { ChatNavbar } from "./chat-navbar";
 import { ChatSearchDialog } from "./chat-search-dialog";
 import { ChatRenameDialog, type ChatRenameTarget } from "./chat-shell-dialogs";
@@ -52,7 +54,16 @@ export interface ChatShellProps {
 }
 
 function SessionEventBridge({ session }: { session: Session }) {
-  useSessionEvents(session.id, session.lastSeq, false);
+  const snapshotQuery = useQuery(sessionSnapshotQueryOptions(session.id));
+  const snapshot = snapshotQuery.data;
+  useSessionEvents(
+    session.id,
+    snapshot ? selectSessionEventCursor(snapshot) : 0,
+    false,
+    false,
+    snapshot !== undefined,
+    snapshot?.lastPersistedSeq ?? 0,
+  );
   return null;
 }
 

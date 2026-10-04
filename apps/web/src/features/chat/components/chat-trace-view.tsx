@@ -5,7 +5,7 @@ import { AssistantMarkdownLinkProvider } from "../../../components/ai/assistant-
 import { AgentTraceView } from "../../trace";
 import { sessionTraceSnapshotQueryOptions } from "../api/session-queries";
 import { useSessionEvents } from "../hooks/use-session-events";
-import { selectSessionEvents } from "../utils/session-snapshot";
+import { selectSessionEventCursor, selectSessionEvents } from "../utils/session-snapshot";
 
 function ChatTraceSkeleton() {
   const shouldReduceMotion = useReducedMotion();
@@ -75,10 +75,11 @@ export function ChatTraceView({ sessionId }: { sessionId: string }) {
   const query = useQuery(sessionTraceSnapshotQueryOptions(sessionId));
   useSessionEvents(
     sessionId,
-    query.data?.session.lastSeq ?? 0,
+    query.data ? selectSessionEventCursor(query.data) : 0,
     true,
     true,
     query.data !== undefined,
+    query.data?.lastPersistedSeq ?? 0,
   );
   if (query.isError) throw query.error;
   if (!query.data) return <ChatTraceSkeleton />;

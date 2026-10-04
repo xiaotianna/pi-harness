@@ -58,6 +58,7 @@ import {
 } from "../utils/session-messages";
 import {
   clearOptimisticUserInput,
+  selectSessionEventCursor,
   selectSessionEventMetadata,
   stageOptimisticUserInput,
 } from "../utils/session-snapshot";
@@ -159,7 +160,14 @@ export function ChatPage({ sessionId }: ChatPageProps) {
   const snapshotQuery = useQuery(sessionSnapshotQueryOptions(sessionId));
   const snapshot = snapshotQuery.data;
   const isSnapshotReady = snapshot !== undefined;
-  useSessionEvents(sessionId, snapshot?.session.lastSeq ?? 0, true, false, isSnapshotReady);
+  useSessionEvents(
+    sessionId,
+    snapshot ? selectSessionEventCursor(snapshot) : 0,
+    true,
+    false,
+    isSnapshotReady,
+    snapshot?.lastPersistedSeq ?? 0,
+  );
   const clearSearchTarget = useChatSearchTargetStore((state) => state.clearTarget);
   const searchTarget = useChatSearchTargetStore((state) =>
     state.target?.sessionId === sessionId ? state.target : null,
